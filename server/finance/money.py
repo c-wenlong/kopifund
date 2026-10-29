@@ -22,35 +22,61 @@ for any other currency, thousands commas, two decimals, and a true minus
 (U+2212) for a negative amount. Data fields, CSV exports and API values stay
 plain numbers.
 """
-from decimal import ROUND_HALF_UP, Decimal
+import re
+from decimal import Decimal
 
 MINUS = "−"
 NBSP = " "
-_CENT = Decimal(1)
+# A number's text as a person or a statement writes it: a sign, digits with
+# thousands commas only between groups of three ("1,234,567", never "1,2,3"),
+# and a decimal point. No exponent, no currency, no bracket or trailing sign.
+_TEXT = re.compile(r"[+-]?(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]*)?|[+-]?\.[0-9]+")
+# Cents of 28 digits or more are no amount of money; it was the ceiling of
+# Decimal's default precision, which the rounding no longer goes through
+_CENTS_LIMIT = 10 ** 28
 
 
 def to_cents(x):
     """Dollars as integer cents, rounded half up (away from zero).
 
-    Takes an int, a float, a Decimal or a number's text ("1,234.5", commas and
-    spaces allowed). A float is read as it prints, never as its binary value.
-    Raises TypeError for a bool, None or anything else that is not a number,
-    and ValueError for text that is not a number, NaN or an infinity. A caller
-    that wants a size without its sign takes `abs` of the answer itself."""
+    Takes an int, a float, a Decimal or a number's text ("1,234.5": thousands
+    commas between groups of three, spaces around it allowed). A float is read
+    as it prints, never as its binary value. The rounding is exact integer
+    arithmetic, whatever the decimal context. Raises TypeError for a bool, None
+    or anything else that is not a number, and ValueError for text that is not
+    a plain number ("1,2,3", "(12.00)", "1e2"), NaN, an infinity, or 10^26
+    dollars and more. A caller that wants a size without its sign takes `abs`
+    of the answer itself."""
     if isinstance(x, bool) or not isinstance(x, (int, float, Decimal, str)):
         raise TypeError(f"{x!r} is not an amount of dollars")
     if isinstance(x, int):
+        if abs(x) * 100 >= _CENTS_LIMIT:
+            raise ValueError(f"{x!r} is too large to be an amount of dollars")
         return x * 100
-    try:
-        if isinstance(x, str):
-            d = Decimal(x.replace(",", "").strip())
-        else:
-            d = Decimal(repr(x)) if isinstance(x, float) else x
-        if not d.is_finite():
+    if isinstance(x, str):
+        text = x.strip()
+        if not _TEXT.fullmatch(text):
             raise ValueError(f"{x!r} is not an amount of dollars")
-        return int((d * 100).quantize(_CENT, rounding=ROUND_HALF_UP))
-    except ArithmeticError:            # InvalidOperation, Overflow
-        raise ValueError(f"{x!r} is not an amount of dollars") from None
+        d = Decimal(text.replace(",", ""))
+    else:
+        d = Decimal(repr(x)) if isinstance(x, float) else x
+    if not d.is_finite():
+        raise ValueError(f"{x!r} is not an amount of dollars")
+    negative, digits, exp = d.as_tuple()
+    n, exp = int("".join(map(str, digits))), exp + 2          # in cents
+    if exp >= 0:
+        if len(digits) + exp > 28:
+            raise ValueError(f"{x!r} is too large to be an amount of dollars")
+        cents = n * 10 ** exp
+    elif -exp > len(digits):                                  # under a tenth of a cent
+        cents = 0
+    else:
+        cents, rest = divmod(n, 10 ** -exp)
+        if 2 * rest >= 10 ** -exp:                            # half a cent or more
+            cents += 1
+    if cents >= _CENTS_LIMIT:
+        raise ValueError(f"{x!r} is too large to be an amount of dollars")
+    return -cents if negative else cents
 
 
 def from_cents(cents):
