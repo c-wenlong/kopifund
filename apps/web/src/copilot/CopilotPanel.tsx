@@ -8,6 +8,8 @@ import { ArrowUp, History, LoaderCircle, Lock, Plus, Sparkles, Square, Trash2, X
 import { postJSON, refreshViews, revalidate, useApi, type Loaded } from "../api";
 import { Button, buttonClass } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { ErrorBoundary } from "../components/ErrorBoundary";
+import { Problem } from "../components/States";
 import { Sheet } from "../components/Sheet";
 import { showToast } from "../components/Toast";
 import { formatDay } from "../dates";
@@ -142,10 +144,28 @@ const ready = (ai: Loaded<AiSettings>) => (ai.data && gate(ai.data) === "ready" 
 
 const labelOf = (ai: AiSettings) => ai.providers.find((p) => p.name === ai.provider)?.label ?? ai.provider ?? "the provider";
 
+type BodyProps = { copilot: Copilot; page: CopilotPage; ai: Loaded<AiSettings>; onFollow?: () => void; extra?: ReactNode };
+
+export const ANSWER_FAILED = "This answer failed to draw.";
+
+/**
+ * Audit: an answer part the panel cannot draw (a card or chart in a shape it does not know) shows a
+ * problem in the panel instead of taking the page down; the box below still asks, and a new
+ * answer, another thread or the history list starts clean.
+ */
+function Body(props: BodyProps) {
+  const { copilot } = props;
+  const last = copilot.turns[copilot.turns.length - 1];
+  return (
+    <ErrorBoundary resetKey={`${copilot.thread}:${copilot.history}:${copilot.turns.length}:${last?.status}`}
+      fallback={(reset) => <Problem message={ANSWER_FAILED} onRetry={reset} />}>
+      <Turns {...props} />
+    </ErrorBoundary>
+  );
+}
+
 /** `extra` sits at the right of the first line (the sheet's History button, whose header has no room for it). */
-function Body({ copilot, page, ai, onFollow, extra }: {
-  copilot: Copilot; page: CopilotPage; ai: Loaded<AiSettings>; onFollow?: () => void; extra?: ReactNode;
-}) {
+function Turns({ copilot, page, ai, onFollow, extra }: BodyProps) {
   const end = useRef<HTMLDivElement>(null);
   const last = copilot.turns[copilot.turns.length - 1];
   // follow the answer as it grows

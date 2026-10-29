@@ -3,7 +3,7 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Toaster } from "../components/Toast";
 import type { AiSettings, CopilotCard, CopilotEvent, CopilotThread } from "../types.gen";
-import { CopilotSide } from "./CopilotPanel";
+import { ANSWER_FAILED, CopilotSide } from "./CopilotPanel";
 import { CUT_SHORT, stepsOf, useCopilot } from "./useCopilot";
 
 // G22: the Ask Kopifund panel: the answer's steps as they come, the answer and its parts, confirm cards, and its states.
@@ -640,5 +640,19 @@ describe("a reopened answer's steps", () => {
       { kind: "text" as const, text: "Groceries came to S$100.00.", tools: [] }];
     expect(stepsOf({ text: "Groceries came to S$100.00.", tools, steps }).map((s) => s.kind)).toEqual(["thinking"]);
     expect(stepsOf({ text: "Something else.", tools, steps }).map((s) => s.kind)).toEqual(["thinking", "text"]);
+  });
+});
+
+describe("an answer the panel cannot draw", () => {
+  // Audit: a part in a shape this build does not know used to take the whole app down with it
+  it("shows a problem in the panel and keeps the box", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const odd = { type: "chart", chart: { title: "Odd", result: "not a result" } } as unknown as CopilotEvent;
+    stub(aiOn, (url) => (url === "/api/copilot/ask" ? lines([odd, { type: "done" }]) : undefined));
+    render(<Panel />);
+    await askIt("Show me something odd");
+    expect(await screen.findByText(ANSWER_FAILED)).toBeInTheDocument();
+    await waitFor(() => expect(box()).toBeEnabled());
+    vi.mocked(console.error).mockRestore();
   });
 });
