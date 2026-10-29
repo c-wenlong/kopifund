@@ -108,13 +108,16 @@ Source) never need to be touched.
 | Kopifund Email | **Email** | Only fires for accounts in Apple Mail (Settings > Apps > Mail > Mail Accounts); Gmail/Outlook apps cannot fire it. PayLah sends no SMS, so this is its only path. Sender `dbs` catches `*@dbs.com` and PayLah mail |
 | Kopifund Wallet | **Wallet** ("When I tap a Wallet Card or Pass") | Leave the card filter on Any Card |
 
-Each automation finishes in the background without opening the app. If iOS
-refuses an unsigned shortcut file, enable **Allow Untrusted Shortcuts**
-(Settings > Apps > Shortcuts) once, then add it again.
-
-The unsigned sources live in `Shortcuts/unsigned/`; regenerate the bundled
-copies with `shortcuts sign -m anyone -i <unsigned> -o <bundled>` on a Mac
-signed into iCloud if signed files are ever needed.
+Each automation finishes in the background without opening the app. The files
+the app bundles and exports (`Alerts/Resources/Shortcuts/*.shortcut`) are
+signed, in "anyone" mode, so iOS imports them without a setting. A signed
+shortcut carries the signing Apple ID's validation record (its account id and
+hashed email and phone), so sign with an account you are happy to have in the
+file. The unsigned sources live in `Shortcuts/unsigned/`; if iOS refuses one of
+those, enable **Allow Untrusted Shortcuts** (Settings > Apps > Shortcuts) once,
+then add it again. To regenerate a bundled copy, run
+`shortcuts sign -m anyone -i <unsigned> -o <bundled>` on a Mac signed into
+iCloud.
 
 The merchant and card names arrive from Apple's Wallet record, which prints
 them title-cased ("Sgh - Digestive & Live") where the bank's SMS prints the
@@ -128,7 +131,7 @@ the same charge each write a row. With no shared id between channels a new
 row counts as the same spend when the amount, currency and day all agree
 with an existing row and the payees match once case and punctuation are
 dropped ("Sgh - Digestive & Live" equals "SGH - DIGESTIVE & LIVE"). The
-poorer of the pair — the one without the bank's raw text — parks itself
+poorer of the pair (the one without the bank's raw text) parks itself
 under **Possible duplicates** and never syncs; open it to see the row it
 matched and tap **Not a duplicate** if two real charges tripped the rule.
 

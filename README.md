@@ -88,5 +88,15 @@ text with your details replaced, for whoever builds its layout.
 
 Statements and the database stay on your machine, in `~/.kopifund`. Kopifund
 never asks for a bank login and never connects to a bank; it reads the PDFs you
-download yourself. The only data that leaves the machine is what you choose to
-mirror to your own Notion workspace or export.
+download yourself. Nothing leaves the machine unless you switch it on or use it:
+
+- **Notion mirror and exports.** What you choose to mirror to your own Notion
+  workspace, or export.
+- **AI payee suggestions.** After an upload check, the merchant text of rows no
+  rule matched, and a rounded typical amount unless you turn that off, go to
+  the model provider you set in Settings. `[ai] enabled = false` turns it off.
+- **Copilot.** Dates, amounts, payees, categories and account display names of
+  the rows a question needs go to that provider, only after you turn on "Send
+  matching rows" in Settings (a model on this machine needs no switch).
+- **The iOS app.** The transactions you approve go to `api.ynab.com`, your YNAB
+  plan, with the personal access token you give it.

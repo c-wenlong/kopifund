@@ -18,6 +18,21 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
+      # poppler gives `pdftotext`, so the one test that reads a real PDF runs
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - run: make install
       - run: make check
       - run: make build
+
+  # The iOS app's Swift packages (G24). Storage has no tests yet, so it is not run.
+  swift:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: swift test, per package
+        run: |
+          set -e
+          for pkg in Matching YNABClient Intents; do
+            echo "== $pkg"
+            (cd "apps/ios/Packages/$pkg" && swift test)
+          done
