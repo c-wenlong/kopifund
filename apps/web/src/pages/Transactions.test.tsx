@@ -72,6 +72,7 @@ function stubFetch(rows = page.rows, pinnedPayee = "A friend", applied = true) {
 }
 
 // the address is shared by every test in this file: each starts on a bare /transactions
+const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 const bare = () => window.history.replaceState(null, "", "/transactions");
 
 describe("Transactions", () => {
@@ -248,6 +249,21 @@ describe("Transactions", () => {
     await waitFor(() => expect(calls.filter((c) => c.url === "/api/rules/pin")).toHaveLength(2));
     expect(JSON.parse(calls.filter((c) => c.url === "/api/rules/pin")[1].body!))
       .toEqual({ key: "f1", category: "Donations", payee: "A friend", kind: "Person", note: "a gift" });
+  });
+
+  it("asks before leaving a row's More form with something typed, and not once it is saved", async () => {
+    stubFetch();
+    render(<><Transactions /><Toaster /></>);
+    fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row/ }));
+    fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Donations" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    await screen.findByRole("textbox", { name: "Payee for the 12 Sep 2026 row" });
+    expect(leaveAsks()).toBe(false);
+    fireEvent.change(screen.getByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
+    expect(leaveAsks()).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).not.toBeInTheDocument());
+    expect(leaveAsks()).toBe(false);
   });
 
   it("opens on the row's category, and picking it again saves nothing", async () => {

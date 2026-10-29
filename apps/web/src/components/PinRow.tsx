@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { postJSON, rowsChanged, useApi, type GroupRow, type GroupRows, type PinSet, type Relinked, type RuleUndone } from "../api";
 import { formatAmount } from "../money";
 import { formatDay } from "../dates";
+import { useUnsavedGuard } from "../router";
 import { BankMark } from "./BankMark";
 import { Button } from "./Button";
 import { Combobox } from "./Combobox";
@@ -54,11 +55,16 @@ export function PinForm({ row, categories, kinds, onPinned, draft, onDraft }: {
   // rules page would suggest for the text it printed (a person only for a
   // counterparty, as `suggest` in finance/rules_app.py), not "Person" for all
   // but a merchant's own line
-  const [category, setCategory] = useState(draft?.category ?? row.category);
-  const [payee, setPayee] = useState(draft?.payee ?? row.payee);
-  const [kind, setKind] = useState(draft?.kind ?? row.similar?.kind ?? (row.field === "counterparty" ? "Person" : "Merchant"));
+  const [opened] = useState(() => ({ category: row.category, payee: row.payee, kind: row.similar?.kind ?? (row.field === "counterparty" ? "Person" : "Merchant") }));
+  const [category, setCategory] = useState(draft?.category ?? opened.category);
+  const [payee, setPayee] = useState(draft?.payee ?? opened.payee);
+  const [kind, setKind] = useState(draft?.kind ?? opened.kind);
   const [note, setNote] = useState(draft?.note ?? "");
   useEffect(() => { onDraft?.({ category, payee, kind, note }); }, [category, payee, kind, note]);
+  // G18: something typed and not saved (a draft kept from before a change of layout included) asks before the
+  // page is left; a kind counts only with a payee
+  useUnsavedGuard(category !== opened.category || payee.trim() !== opened.payee.trim() || note.trim() !== ""
+    || (!!payee.trim() && kind !== opened.kind));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const what = `the ${formatDay(row.date)} row`;

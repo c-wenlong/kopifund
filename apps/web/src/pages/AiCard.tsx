@@ -41,6 +41,8 @@ export function AiCard() {
   const [draft, setDraft] = useState<Partial<Draft> | null>(null);
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  // a save on its way: what is typed meanwhile is an edit, even back to the old saved value
+  const inFlight = useRef(false);
   const saved = data ? savedOf(data) : null;
   const d = { ...saved, ...draft } as Draft;
   const dirty = !!saved && KEYS.some((k) => d[k] !== saved[k]);
@@ -70,8 +72,8 @@ export function AiCard() {
   const set = (patch: Partial<Draft>) => {
     setDraft((now) => {
       const next = { ...now, ...patch };
-      // a value set back to what is saved is no longer an edit
-      for (const k of KEYS) if (k in next && next[k] === saved[k]) delete next[k];
+      // a value set back to what is saved is no longer an edit, unless that value is about to change
+      if (!inFlight.current) for (const k of KEYS) if (k in next && next[k] === saved[k]) delete next[k];
       return Object.keys(next).length ? next : null;
     });
     setProblem(null);
@@ -79,16 +81,23 @@ export function AiCard() {
 
   async function save() {
     setSaving(true);
+    inFlight.current = true;
+    const sent = { ...d };
     try {
       // Off sends only the provider: the models and consent stay saved for the day AI is turned on again
       const fields = { model: d.model.trim(), copilot_model: d.copilot_model.trim(), send_rows: d.send_rows };
       // G22: a custom provider is config.toml's: picking it hands back to config.toml, models and all
       await postJSON<AiSettings>("/api/ai/settings", JSON.stringify(d.provider === null ? { provider: null }
         : custom ? { provider: d.provider, send_rows: d.send_rows } : { provider: d.provider, ...fields }));
-      setDraft(null);
+      // G18: the fields the save covered are saved; one changed while it was on its way stays an edit
+      setDraft((now) => {
+        const left = Object.fromEntries(Object.entries(now ?? {}).filter(([k, v]) => v !== sent[k as keyof Draft]));
+        return Object.keys(left).length ? left : null;
+      });
     } catch (e) {
       setProblem((e as Error).message);
     } finally {
+      inFlight.current = false;
       setSaving(false);
     }
   }

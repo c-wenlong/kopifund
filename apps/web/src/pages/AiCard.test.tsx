@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { choose } from "../test-select";
 import type { AiKey, AiSettings } from "../types.gen";
@@ -105,6 +105,36 @@ describe("the AI card's settings", () => {
     expect(within(c).queryByRole("checkbox")).not.toBeInTheDocument();
     fireEvent.click(within(c).getByRole("button", { name: "Discard" }));
     expect(within(c).getByRole("checkbox", { name: "Send matching rows to Anthropic" })).toBeChecked();
+  });
+
+  it("keeps what is typed while a save is on its way, a box set back to the old saved value included", async () => {
+    stub(settings(keychain));
+    let release: () => void = () => {};
+    const ask = globalThis.fetch;
+    let now = settings(keychain);
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/ai/settings" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        return new Promise<Response>((done) => {
+          release = () => { now = settings(keychain, body); done(new Response(JSON.stringify(now), { status: 200 })); };
+        });
+      }
+      if (url === "/api/ai") return new Response(JSON.stringify(now), { status: 200 });
+      return ask(url, init);
+    }));
+    render(<AiCard />);
+    const c = await card();
+    fireEvent.change(within(c).getByRole("combobox", { name: "Ask Kopifund model" }), { target: { value: "claude-opus-4-1" } });
+    fireEvent.click(within(c).getByRole("button", { name: "Save" }));
+    // typed while the save is on its way: the consent ticked, and the model set back to the old saved one (none)
+    fireEvent.click(within(c).getByRole("checkbox", { name: "Send matching rows to Anthropic" }));
+    fireEvent.change(within(c).getByRole("combobox", { name: "Ask Kopifund model" }), { target: { value: "" } });
+    await act(async () => release());
+    await waitFor(() => expect(now.copilot_model).toBe("claude-opus-4-1"));
+    await waitFor(() => expect(within(c).getByRole("button", { name: "Save" })).toBeEnabled());
+    expect(within(c).getByRole("checkbox", { name: "Send matching rows to Anthropic" })).toBeChecked();
+    expect(within(c).getByRole("combobox", { name: "Ask Kopifund model" })).toHaveValue("");
+    expect(within(c).getByText("Unsaved changes")).toBeInTheDocument();
   });
 
   it("tests the provider and says how it went", async () => {

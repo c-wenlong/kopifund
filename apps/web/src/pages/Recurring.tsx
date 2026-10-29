@@ -539,6 +539,10 @@ const draftOf = (v: SeriesAnswer): Draft => ({
   amount: centsText(v.amount), cadence: (v.cadence || v.detected.cadence || "monthly") as Cadence,
   day: v.day == null ? "" : String(v.day), ended: v.ended_on ?? "",
 });
+const DRAFT_KEYS: (keyof Draft)[] = ["amount", "cadence", "day", "ended"];
+/** `d` moved from the values `from` to `to`: a box still holding its `from` value takes the new one, a box typed in keeps its text. */
+const follow = (d: Draft, from: Draft, to: Draft): Draft =>
+  Object.fromEntries(DRAFT_KEYS.map((k) => [k, d[k] === from[k] ? to[k] : d[k]])) as Draft;
 const sameKind = (a: string, b: string) => BY_WEEKDAY.includes(a) === BY_WEEKDAY.includes(b);
 const dayOptions = (c: string) => (BY_WEEKDAY.includes(c)
   ? WEEKDAYS.map((w, i) => ({ value: String(i + 1), label: w }))
@@ -567,10 +571,9 @@ function SeriesView({ id }: { id: string }) {
   return (
     <div className="flex flex-col gap-3">
       <BackLink />
-      {/* keyed by the values the form holds, so a save of them (here or in another tab) starts the boxes again
-          from it, while Not recurring and Recurring, which change none of them, keep what is typed */}
-      <SeriesEditor key={JSON.stringify([data.id, data.amount, data.cadence, data.day, data.ended_on, data.edit.amount,
-        data.edit.cadence, data.edit.day, data.edit.ended_on])} v={data} />
+      {/* keyed by the series alone: a save of its values (here or in another tab) moves the boxes left alone
+          to what was saved and keeps what is typed in the others (SeriesEditor) */}
+      <SeriesEditor key={data.id} v={data} />
       <ScheduleList v={data} />
       <PaymentList v={data} />
     </div>
@@ -581,6 +584,13 @@ function SeriesView({ id }: { id: string }) {
 function SeriesEditor({ v }: { v: SeriesAnswer }) {
   const saved = draftOf(v);
   const [draft, setDraft] = useState<Draft>(saved);
+  // G18: the saved values the boxes started from. When they change (this form's save, or another tab's), a box
+  // left alone shows the new value and one typed in, while a save was on its way included, keeps what was typed
+  const [base, setBase] = useState<Draft>(saved);
+  if (DRAFT_KEYS.some((k) => base[k] !== saved[k])) {
+    setBase(saved);
+    setDraft((d) => follow(d, base, saved));
+  }
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   // an amount is compared as cents, so "98.00" is the saved 98
@@ -596,9 +606,12 @@ function SeriesEditor({ v }: { v: SeriesAnswer }) {
   async function send(body: object, form = false) {
     setSaving(true);
     setProblem(null);
+    const sent = draft;
     try {
       const next = await postJSON<SeriesAnswer>("/api/recurring/series", JSON.stringify({ id: v.id, ...body }));
-      if (form) setDraft(draftOf(next));
+      // a box the save covered shows what was saved (an amount kept as detected reads back as the detected
+      // one); one changed while the save was on its way keeps what was typed
+      if (form) setDraft((d) => follow(d, sent, draftOf(next)));
     } catch (e) {
       setProblem((e as Error).message);
     } finally {

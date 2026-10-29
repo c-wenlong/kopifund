@@ -79,6 +79,7 @@ const MANY: RulesState = (() => {
   }));
   return { ...STATE, rules, groups, pending: 0 };
 })();
+const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 const pages = () => screen.getByRole("navigation", { name: "Rules pages" });
 
 const rowsOf = () => screen.getAllByRole("button", { name: /^Show the rules for / }).map((b) => b.getAttribute("aria-label"));
@@ -532,6 +533,25 @@ describe("Rules", () => {
     refuse();
     expect(await screen.findByRole("alert")).toHaveTextContent(/Another tab changed that line|409|Request failed/);
     expect(screen.getByRole("button", { name: "Save rule" })).toBeEnabled();
+  });
+
+  it("asks before leaving a rule with typed changes, and not an editor opened and left as it was", async () => {
+    stubFetch();
+    render(<Rules />);
+    fireEvent.click(await screen.findByRole("button", { name: "Add rule" }));
+    const form = await screen.findByRole("textbox", { name: "Pattern for new rule" });
+    expect(leaveAsks()).toBe(false);
+    fireEvent.change(form, { target: { value: "KOPI*" } });
+    await waitFor(() => expect(leaveAsks()).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    expect(leaveAsks()).toBe(false);
+    // a rule opened for editing is unsaved only once something in it changes
+    fireEvent.click(screen.getByRole("button", { name: "Show the rules for Kopitiam" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit merchant KOPITIAM*" }));
+    const pattern = await screen.findByRole("textbox", { name: /^Pattern for / });
+    expect(leaveAsks()).toBe(false);
+    fireEvent.change(pattern, { target: { value: "KOPITIAM 0*" } });
+    await waitFor(() => expect(leaveAsks()).toBe(true));
   });
 
   it("does not let a save from a cancelled editor reach the next one opened", async () => {

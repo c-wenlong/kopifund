@@ -19,12 +19,15 @@ import { HEAD_ROW, ROW, TABLE_BOX, TH } from "../components/tableKit";
 import { Loading, Problem } from "../components/States";
 import { showToast, type ToastAction } from "../components/Toast";
 import { useWide } from "../components/useWide";
+import { useUnsavedGuard } from "../router";
 import { tierLabel } from "../ruleWords";
 import { KindLabel, PAYEE_KIND_ICON, STEP_STATUS_ICON } from "../icons";
 
 type Show = "all" | "pins" | "problems";
-// `n` tells two drafts apart, so choosing another one remounts the form with it
-type Editing = { rule: Rule | null; draft: Draft; n: number; status?: SaveStatus };
+// `n` tells two drafts apart, so choosing another one remounts the form with it; `start` is what it opened on
+type Editing = { rule: Rule | null; draft: Draft; start: Draft; n: number; status?: SaveStatus };
+
+const sameDraft = (a: Draft, b: Draft) => (Object.keys(a) as (keyof Draft)[]).every((k) => a[k] === b[k]);
 
 const count = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-SG")} ${n === 1 ? one : many}`;
 const label = (g: RuleGroup) => g.payee || g.category;
@@ -54,6 +57,8 @@ export function Rules() {
   const [busy, setBusy] = useState(false);
   const [history, setHistory] = useState(false);
   const [needsOpen, setNeedsOpen] = useState<string | null>(null);   // the needs-rule group whose rows are listed
+  // G18: leaving with a rule typed into and not saved asks first, as every other form does
+  useUnsavedGuard(!!editing && !sameDraft(editing.draft, editing.start));
 
   const s = state.data;
   const byId = useMemo(() => new Map((s?.rules ?? []).map((r) => [r.id, r])), [s]);
@@ -132,7 +137,7 @@ export function Rules() {
       JSON.stringify({ file: r.file, line: r.line, pattern: r.pattern, revision: r.revision }));
     return { message: `Deleted ${nameOf(r)}, ${rowsChanged(done.relinked)}.`, action: undoAction(done.change) };
   });
-  const edit = (rule: Rule | null, draft: Draft) => setEditing({ rule, draft, n: ++edits.current });
+  const edit = (rule: Rule | null, draft: Draft) => setEditing({ rule, draft, start: draft, n: ++edits.current });
   const saved = (text: string, r: RuleSavedEdit) => {
     setEditing(null);
     showToast({ message: r.unchanged ? text : `${text}.`, action: r.unchanged ? undefined : undoAction(r.change) });

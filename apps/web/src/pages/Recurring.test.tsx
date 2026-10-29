@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { choose } from "../test-select";
 import type { ActiveSeries, ComingUpRow, RecurringPage, SeriesView } from "../api";
 import { ComingUpItem, DotStrip, mergeSeries, Recurring, stepOn } from "./Recurring";
 import { leadingIcon } from "../test-icons";
@@ -613,6 +614,35 @@ describe("A series' own view, G16", () => {
     // the record keeps the amount as detected, so the box reads the detected one again
     expect(await within(screen.getByRole("region", { name: "Gym" })).findByText("Saved")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Gym" })).getByLabelText("Usual amount")).toHaveValue("50");
+  });
+
+  it("keeps what is typed while a save is on its way, and shows what the save covered as saved", async () => {
+    let release: () => void = () => {};
+    let now = VIEW;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        return new Promise<Response>((done) => {
+          release = () => {
+            now = { ...VIEW, amount: body.amount ?? VIEW.amount, edit: { ...VIEW.edit, amount: body.amount } };
+            done(new Response(JSON.stringify(now), { status: 200 }));
+          };
+        });
+      }
+      return new Response(JSON.stringify(url.startsWith("/api/recurring/series") ? now : PAGE), { status: 200 });
+    }));
+    render(<Recurring />);
+    const head = await screen.findByRole("region", { name: "Gym" });
+    fireEvent.change(within(head).getByLabelText("Usual amount"), { target: { value: "55" } });
+    fireEvent.click(within(head).getByRole("button", { name: "Save" }));
+    // typed while the save is on its way
+    choose(within(head).getByRole("button", { name: "How often" }), "Quarterly");
+    await act(async () => release());
+    await waitFor(() => expect(now.amount).toBe(5500));
+    const region = screen.getByRole("region", { name: "Gym" });
+    await waitFor(() => expect(within(region).getByLabelText("Usual amount")).toHaveValue("55"));
+    expect(within(region).getByRole("button", { name: "How often" })).toHaveTextContent("Quarterly");
+    expect(within(region).getByText("Unsaved changes")).toBeInTheDocument();
   });
 
   it("refuses an amount that is not dollars and cents before it sends anything", async () => {

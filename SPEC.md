@@ -1567,7 +1567,9 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   `--scrim` token, Escape or the backdrop closes it, the focus moves in, stays
   in and goes back to the button that opened it, and the page behind is inert.
   With reduced motion it appears without sliding. A page with unsaved edits
-  (Net worth's inputs, Plan, Settings' scam checks, Profile's date of birth)
+  (Net worth's inputs, Plan, Settings' scam checks and AI card, Profile's date of birth, a
+  recurring series' form, a rule open in Rules' editor, a row's own form on Transactions or
+  under Needs a rule, and Upload while a PDF waits for its account or an upload runs)
   holds any move away, a sidebar or page link, `navigate`, or the browser's
   Back and Forward: a bar at the top of the page asks "Leave without saving?"
   with Keep editing, which stays, and Leave, which goes on. Saving or
@@ -1576,7 +1578,9 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   a Sheet with unsaved edits asks the same in its foot before it closes.
   Unsaved means typed on this page: a save from another tab moves a form
   nobody touched along with it and leaves it saved, keeps whatever was typed,
-  and a box typed back to its saved value counts as untouched. On a phone the
+  and a box typed back to its saved value counts as untouched. A save keeps
+  what was typed while it was on its way: the boxes it covered show what was
+  saved, and one changed meanwhile stays an edit, even back to the old value. On a phone the
   question closes the menu as it comes up, so its buttons can be reached.
 - **Shared states** (`apps/web/src/components/States.tsx`, `ServerBanner.tsx`,
   `Toast.tsx`). Each page names the browser tab ("Spending, Kopifund").
