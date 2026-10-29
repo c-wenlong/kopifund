@@ -320,6 +320,7 @@ class MultiPageExport(unittest.TestCase):
 
     def setUp(self):
         self.parsed = sup.run_wise(["wise-sgd-pages.txt"])
+        self.warnings = list(ps.WARNINGS)       # the next run clears them
         self.one_page = sup.run_wise(["wise-sgd.txt"])
 
     def test_every_page_is_parsed(self):
@@ -333,7 +334,7 @@ class MultiPageExport(unittest.TestCase):
                          [(b["month"], b["opening"], b["closing"]) for b in self.one_page.blocks])
         self.assertEqual(self.parsed.blocks[0]["month"], "2024-07")
         self.assertEqual(self.parsed.stmts[0]["opening"], 0.0)
-        self.assertEqual(ps.WARNINGS, [])
+        self.assertEqual(self.warnings, [])
 
     def test_a_row_split_over_the_page_break_keeps_its_description(self):
         text = sup.text("wise-sgd-pages.txt")
@@ -342,8 +343,8 @@ class MultiPageExport(unittest.TestCase):
             "\n\n\n\n   Wise Asia-Pacific", "\n" + topup + "\n\n\n\n   Wise Asia-Pacific", 1)
         self.assertEqual(moved.index(topup) < moved.index("1/2"), True)
         parsed = sup.run_wise(["wise-sgd-pages.txt"], lines={"wise-sgd-pages.txt": moved})
-        self.assertEqual(parsed.keys(), self.one_page.keys())
         self.assertEqual(ps.WARNINGS, [])
+        self.assertEqual(parsed.keys(), self.one_page.keys())
 
 
 class NoClosingPrinted(unittest.TestCase):
