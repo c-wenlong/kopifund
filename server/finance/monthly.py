@@ -236,7 +236,7 @@ def check(cfg, conn):
     problems = list(parsed.problems) + sync.check_environment(cfg) + \
         sync.check_statements(cfg, parsed) + \
         sync.check_statement_files(cfg, dict(conn.execute("SELECT path, sha256 FROM statement_file"))) + \
-        sync.check_blocks(parsed)
+        sync.check_blocks(parsed) + sync.check_pinned_rows(conn, parsed)
     problems = sync.one_problem_per_copy(problems)
     have = {r["txn_key"]: r for r in conn.execute(
         "SELECT txn_key, amount_minor, category_id, payee_id, archived_at FROM txn")}

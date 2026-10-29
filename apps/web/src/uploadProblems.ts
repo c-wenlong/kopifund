@@ -78,6 +78,10 @@ export const KNOWN: Record<string, Known> = {
     headline: "Rows no longer in any statement",
     next: "A statement may have left the folder. Put it back, or archive these rows once you have checked them.",
   },
+  "pinned-rows-gone": {
+    headline: "A load would drop rows you saved something on",
+    next: "Their statement may have left the folder. Put it back, or take the trip pin, mark or rule off those rows, then check again.",
+  },
   "orphan-blocks": {
     headline: "Months no longer in any statement",
     next: "A statement may have left the folder. Put it back, or archive these months once you have checked them.",

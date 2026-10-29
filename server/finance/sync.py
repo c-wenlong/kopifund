@@ -349,9 +349,86 @@ def categorise(parsed, rules_path, categories=None):
         parsed.problems.append(Problem("rules-invalid", rules_module._label(rules_path),
                                        f"the rules did not load: {e}"))
         return []
+    attach_former_keys(parsed.rows)
     rules_module.categorise_rows(parsed.rows, rules)
     parsed.rules = rules
     return rules
+
+
+def attach_former_keys(rows):
+    """Give each row the keys the record loaded it under before
+    (db.former_keys), as `_former_keys`, so a keys.csv rule saved on an old
+    key still matches it, on the load that re-keys it too. Without a record,
+    or with one that does not open, the rows carry none."""
+    try:
+        from . import db
+        if not db.db_path().exists():
+            return
+        conn = db.connect()
+        try:
+            former = db.former_keys(conn, rows)
+        finally:
+            conn.close()
+    except Exception:  # an unreadable record only means no old keys, never a broken run
+        return
+    for r in rows:
+        if r.get("txn_key") in former:
+            r["_former_keys"] = former[r["txn_key"]]
+
+
+def check_pinned_rows(conn, parsed):
+    """Audit: rows the owner saved something on that this load would archive.
+    A trip pin, a "marked fine", a series edit or a keys.csv rule names a row
+    by its txn_key; a row the parser re-keys keeps all four (db.rekeys and
+    txn_key_alias), so one that would still go has left the tree or changed
+    in a way that cannot be paired. The Notion path's orphan check (check_orphans)
+    needs a plan; this one reads the record, so a load with Notion off has it
+    too. `--archive-orphans` lets the CLI load past it."""
+    from . import db
+    from .parsers import categorise as rules_module
+    keys = {r["txn_key"] for r in parsed.rows}
+    moved = {tid for tid, _, _ in db.rekeys(conn, parsed.rows)}
+    leaving = {t["id"]: t["txn_key"] for t in conn.execute(
+        "SELECT id, txn_key FROM txn WHERE archived_at IS NULL")
+        if t["txn_key"] not in keys and t["id"] not in moved}
+    if not leaving:
+        return []
+    by_key = {k: tid for tid, k in leaving.items()}
+    by_key.update({old: tid for old, tid in conn.execute("SELECT old_key, txn_id FROM txn_key_alias")
+                   if tid in leaving})
+    saved = defaultdict(set)
+    for what, sql in (("a trip pin", "SELECT txn_key FROM trip_pin"),
+                      ("marked fine", "SELECT txn_key FROM txn_marked_fine"),
+                      ("a series edit", "SELECT txn_key FROM series_override_txn")):
+        for (k,) in conn.execute(sql):
+            if k in by_key:
+                saved[by_key[k]].add(what)
+    key_rules = [r for r in (getattr(parsed, "rules", None) or []) if r["match_on"] == "key"]
+    if key_rules:
+        matcher = rules_module.Matcher(key_rules)
+        for k, tid in by_key.items():
+            if matcher.first("key", rules_module.norm(k)):
+                saved[tid].add("a key rule")
+    if not saved:
+        return []
+    sample = ", ".join(f"{leaving[tid]} ({', '.join(sorted(saved[tid]))})" for tid in sorted(saved)[:5])
+    return [Problem("pinned-rows-gone", f"{len(saved)} row(s): {sample}",
+                    "this load would archive rows you saved something on: their statement left the "
+                    "tree or the parser now reads them differently. Put the statement back, or take "
+                    "what you saved off the rows, then load again (the command line loads past it "
+                    "with --archive-orphans)")]
+
+
+def check_record_pins(parsed):
+    """check_pinned_rows against the data folder's record, when there is one."""
+    from . import db
+    if not db.db_path().exists():
+        return []
+    conn = db.connect()
+    try:
+        return check_pinned_rows(conn, parsed)
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------- Notion state
@@ -874,6 +951,8 @@ def doctor(cfg, parsed, state, plan, force=False, archive_orphans=False):
         problems += check_insert_size(parsed, state, plan, force)
         if not archive_orphans:
             problems += check_orphans(plan)
+    if not archive_orphans:
+        problems += check_record_pins(parsed)
     return one_problem_per_copy(problems)
 
 

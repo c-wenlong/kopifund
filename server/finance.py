@@ -28,7 +28,9 @@ reuses it rather than reading the eight databases a second time.
   --dry-run          do everything except write
   --force            allow an implausibly large insert (see doctor)
   --archive-orphans  move transactions the parser no longer produces to the
-                     trash; without it they are only reported
+                     trash; without it they are only reported. For load and
+                     sync it also archives rows that carry a trip pin, a mark,
+                     a series edit or a key rule (pinned-rows-gone)
   --rules PATH       rules file or directory (default: the repo's data/rules/, plus
                      the data folder's rules/ when it holds any)
   --csv DIR          reuse an earlier parser run instead of reparsing
@@ -543,7 +545,8 @@ def cmd_load(cfg, args):
     from finance import db, local
     parsed, rules_path = prepare(cfg, args)
     problems = (list(parsed.problems) + sync.check_environment(cfg) + sync.check_statements(cfg, parsed)
-                + sync.check_statement_files(cfg) + sync.check_blocks(parsed))
+                + sync.check_statement_files(cfg) + sync.check_blocks(parsed)
+                + ([] if args.archive_orphans else sync.check_record_pins(parsed)))
     if problems:
         for p in problems:
             print(p.line())
@@ -556,7 +559,8 @@ def cmd_load(cfg, args):
     conn = db.connect()
     counts = local.load(cfg, conn, parsed)
     print(f"kopifund.db: {counts['inserted']} added, {counts['updated']} updated, "
-          f"{counts['archived']} archived, {counts['trips assigned']} rows on a trip")
+          f"{counts['archived']} archived, {counts['rekeyed']} re-keyed, "
+          f"{counts['trips assigned']} rows on a trip")
     return CLEAN
 
 

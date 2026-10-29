@@ -40,6 +40,11 @@ def record_rows(conn):
         row["_id"] = r["id"]
         row["_links"] = {k: r[k] for k in db.LINKS}
         out.append(row)
+    # a keys.csv rule saved on a key the row had before still matches it, as on a load
+    former = db.former_keys(conn)
+    for row in out:
+        if row["txn_key"] in former:
+            row["_former_keys"] = former[row["txn_key"]]
     return out
 
 

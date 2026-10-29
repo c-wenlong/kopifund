@@ -264,6 +264,7 @@ block or count.
 | doctor | `orphan-rows` | the parser no longer produces these keys. Either the statement left the tree or a key changed; rerun with --archive-orphans once you have checked them |
 | doctor | `pdf-not-parsed` | no rows and no block came out of this PDF; check the layout, or move it out of the statement tree |
 | doctor | `pdftotext-missing` | brew install poppler (the parsers shell out to pdftotext) |
+| doctor | `pinned-rows-gone` | this load would archive rows you saved something on: their statement left the tree or the parser now reads them differently. Put the statement back, or take what you saved off the rows, then load again (the command line loads past it with --archive-orphans) |
 | doctor | `same-file-two-places` | these paths hold the same file. Move the extra copy out of statements/ (into documents/superseded/, say); never delete a statement |
 | doctor | `statement-moved` | the record has this file at {was}, in another account's folder. Move it back to {was} |
 | doctor | `unknown-account` | create the Accounts row in Notion and add its page id to [accounts] in the data folder's config.toml |
