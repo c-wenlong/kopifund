@@ -42,7 +42,7 @@ from pathlib import Path
 
 from finance.paths import places_path
 
-from .parse_statements import ALPHA2, US_STATES
+from .parse_statements import ALPHA2, US_STATES, two_letter_country
 
 # the currency a card row was charged in, when the statement prints one
 CCY_COUNTRY = {"AED": "ARE", "AUD": "AUS", "CAD": "CAN", "CHF": "CHE", "CNY": "CHN",
@@ -250,7 +250,7 @@ def split_country(name, fx_ccy, wallet):
     elif tail_u in ALPHA3:
         cc = tail_u
     elif len(tail_u) == 2 and (tail_u in ALPHA2 or tail_u in US_STATES):
-        cc = "USA" if tail_u in US_STATES else ALPHA2[tail_u]
+        cc = two_letter_country(tail_u, head.rpartition(",")[2])
     elif (c := city_country(tail_u)):
         cc = c
     if cc is None:
