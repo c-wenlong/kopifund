@@ -1,6 +1,8 @@
 """AI payee suggestions (G12): what is sent, what comes back, and the batch save."""
 import isolate  # noqa: F401  first: no test writes the real record or cache
 import csv
+import http.server
+import threading
 import json
 import os
 import tempfile
@@ -247,7 +249,7 @@ class SuggestTest(unittest.TestCase):
         body = json.dumps({"type": "error", "error": {"type": "invalid_request_error",
                                                       "message": "needs a workspace " + "x" * 400}})
         err = urllib.error.HTTPError("u", 400, "Bad Request", {}, io.BytesIO(body.encode()))
-        with mock.patch("urllib.request.urlopen", side_effect=err), \
+        with mock.patch.object(ai._OPENER, "open", side_effect=err), \
                 self.assertRaisesRegex(ai.AIError, r"^The AI provider said 400: needs a workspace x+$"):
             ai._post("https://example.test", {}, {})
 
@@ -333,3 +335,88 @@ class RouteTest(DataFolder):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class Recorder(http.server.BaseHTTPRequestHandler):
+    """A local server: /moved answers 302 to `target`, /deny answers 401 with
+    an error that echoes the key it was sent, anything else records the
+    headers it got and answers {}."""
+    target, seen = "", []
+
+    def log_message(self, *args):
+        pass
+
+    def answer(self):
+        if self.path == "/moved":
+            self.send_response(302)
+            self.send_header("Location", self.target)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+            return
+        if self.path.startswith("/deny"):
+            body = json.dumps({"error": {"message": f"Incorrect API key provided: {self.headers.get('x-api-key')}, "
+                                                    f"{self.headers.get('authorization')}"}}).encode()
+            self.send_response(401)
+        else:
+            type(self).seen.append({k.lower(): v for k, v in self.headers.items()})
+            body = b"{}"
+            self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_GET(self):
+        self.answer()
+
+    def do_POST(self):
+        self.rfile.read(int(self.headers.get("Content-Length") or 0))
+        self.answer()
+
+
+class TransportTest(unittest.TestCase):
+    """Audit: the key goes to the provider's own address and nowhere else, and
+    never comes back in an error's words."""
+    KEY = "sk-secret-123456789"
+
+    def server(self):
+        Recorder.seen = []
+        srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Recorder)
+        threading.Thread(target=srv.serve_forever, daemon=True).start()
+        self.addCleanup(srv.server_close)
+        self.addCleanup(srv.shutdown)
+        return f"http://127.0.0.1:{srv.server_address[1]}"
+
+    def test_a_redirect_is_refused_so_the_key_never_reaches_another_host(self):
+        here = self.server()
+        Recorder.target = f"http://localhost:{here.rsplit(':', 1)[1]}/elsewhere"
+        headers = {"x-api-key": self.KEY, "authorization": f"Bearer {self.KEY}"}
+        for body in (None, {"q": 1}):
+            with self.subTest(post=body is not None):
+                with self.assertRaisesRegex(ai.AIError, "redirect"):
+                    ai._request(f"{here}/moved", headers, body)
+        self.assertEqual(Recorder.seen, [])
+        ai._request(f"{here}/fine", headers)        # the same headers to the address asked for still go
+        self.assertEqual(Recorder.seen[0].get("x-api-key"), self.KEY)
+
+    def test_an_error_that_echoes_the_key_comes_back_without_it(self):
+        here = self.server()
+        for headers in ({"x-api-key": self.KEY, "anthropic-version": "2023-06-01"},
+                        {"authorization": f"Bearer {self.KEY}"}):
+            with self.subTest(headers=list(headers)):
+                with self.assertRaises(ai.AIError) as caught:
+                    ai._request(f"{here}/deny", headers, {"q": 1})
+                self.assertIn("401", str(caught.exception))
+                self.assertNotIn(self.KEY, str(caught.exception))
+                self.assertNotIn(self.KEY[-12:], str(caught.exception))
+
+    def test_payee_suggestions_show_a_provider_error_without_the_key(self):
+        # the payee suggestions pass the provider's words on as they come (api_writes.post_rules_suggest)
+        here = self.server()
+        for fmt in ("anthropic", "openai"):
+            with self.subTest(format=fmt):
+                settings = {"provider": fmt, "format": fmt, "base_url": f"{here}/deny", "model": "m"}
+                with self.assertRaises(ai.AIError) as caught:
+                    ai.ask(settings, self.KEY, "hello")
+                self.assertIn("401", str(caught.exception))
+                self.assertNotIn(self.KEY, str(caught.exception))
