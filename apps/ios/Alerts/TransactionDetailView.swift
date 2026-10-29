@@ -61,7 +61,8 @@ struct TransactionDetailView: View {
                 LabeledContent("Source", value: row.source ?? "unknown")
                 LabeledContent("Received",
                                value: row.receivedAt.formatted(date: .abbreviated, time: .shortened))
-                LabeledContent("Currency", value: row.currency)
+                LabeledContent("Currency",
+                               value: row.currency.isEmpty ? "Not stated" : row.currency)
                 if let hint = row.accountHint, !hint.isEmpty {
                     LabeledContent("Card", value: hint)
                 }
@@ -87,31 +88,34 @@ struct TransactionDetailView: View {
                     }
                 }
             }
-            if row.state == "kopifund" {
-                // a loaded statement row already covers this spend: the row
-                // is parked out of the YNAB flush unless the owner disagrees
-                Section("Already in kopifund") {
-                    Text("A statement in the record covers this spend")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Button("Not recorded") {
-                        row.state = "pending"
+            if let plan = heldFor {
+                // G24 audit: a foreign spend never posts as the plan's
+                // currency on its own; the owner types the converted figure
+                Section {
+                    Button("Post in \(plan)") {
+                        row.postInPlanCurrency(plan)
                         try? context.save()
+                        Task { await SyncService.flush(context: context) }
+                        dismiss()
                     }
+                } header: {
+                    Text("Different currency")
+                } footer: {
+                    Text("This spend is in \(row.currency) and the YNAB plan keeps \(plan). "
+                       + "Change Amount to the \(plan) figure first, then post it.")
                 }
-            }
-            if let err = row.syncError {
+            } else if let err = row.syncError {
                 Section("Sync error") { Text(err).foregroundStyle(.red) }
             }
         }
-        .navigationTitle(row.state == "pending" ? "Review"
-                         : row.state == "kopifund" ? "in kopifund" : row.state)
+        .navigationTitle(row.state == "pending" ? "Review" : row.state)
         .task {
             loadSibling()
             categoryOptions = YNABCache.categories(in: context, planID: planID)
                 .map { ($0.id, "\($0.group) · \($0.name)") }
         }
         .toolbar {
-            if row.state == "pending" {
+            if row.state == "pending" && heldFor == nil {
                 Button("Approve") {
                     row.state = "approved"
                     try? context.save()
@@ -128,6 +132,15 @@ struct TransactionDetailView: View {
     }
 
     @State private var sibling: TransactionRecord?
+
+    /// The plan's currency when this pending row is in another one, so it
+    /// waits for the owner instead of offering a plain Approve.
+    private var heldFor: String? {
+        guard row.state == "pending", let plan = PlanCurrency.saved(),
+              Currency.holdReason(currency: row.currency, planCurrency: plan) != nil
+        else { return nil }
+        return plan
+    }
 
     private func loadSibling() {
         guard let id = row.duplicateOf else { return }
