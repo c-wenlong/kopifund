@@ -14,14 +14,16 @@ or a paste box inside the app.
 | --- | --- |
 | `Packages/Matching` | Pure Swift, no UI, no dependencies: tokenizer, alert-reading helpers (boilerplate, field candidates, shape signatures), tap-to-pattern builder, regex matcher, unit tests |
 | `Packages/YNABClient` | `api.ynab.com` over `URLSession` + `Codable`: plans, accounts, categories, payees, transaction creation, milliunits, `import_id` |
+| `Packages/KopifundClient` | The phone link (G25): pairs with the Mac's Kopifund server over Tailscale with a device token, reads its profile, transactions, categories and overview, and posts approved alert rows to it |
 | `Packages/Storage` | SwiftData models, the shared App Group store, and the suppressed alert-shape set |
 | `Packages/Intents` | `Ingest Alert` and `Ingest Wallet Transaction` App Intents |
 | `Alerts` | The SwiftUI app: Inbox, Unmatched, Alert reader, Pattern builder, Settings |
 | `ShareExtension` | Share-sheet target that runs the same ingest path |
 | `project.yml` | XcodeGen spec; `xcodegen` regenerates `Alerts.xcodeproj` |
 
-The only network host the app calls is `api.ynab.com`. There is no backend,
-no analytics, and no third-party dependency.
+The app calls two hosts: `api.ynab.com`, and your own Mac's Kopifund server over
+your tailnet once you pair a phone (the phone link; unpaired, it never calls it).
+There is no backend of ours, no analytics, and no third-party dependency.
 
 ## Build
 
@@ -33,7 +35,7 @@ open Alerts.xcodeproj   # set your own signing team on the Alerts target
 ```
 
 Run package tests with `swift test` inside any of `Packages/Matching`,
-`Packages/YNABClient`, `Packages/Storage` or `Packages/Intents`, or build the app for a simulator with
+`Packages/YNABClient`, `Packages/KopifundClient`, `Packages/Storage` or `Packages/Intents`, or build the app for a simulator with
 `xcodebuild -scheme Alerts -destination 'platform=iOS Simulator,name=iPhone 17 Pro'`.
 
 Signing: the bundle ids are `com.kopifund.alerts` and

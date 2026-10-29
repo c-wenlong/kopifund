@@ -69,7 +69,9 @@ The app
   build            build the web app into apps/web/dist
   types            write apps/web/src/types.gen.ts from finance/types.py and serve.py (after changing what an endpoint sends)
   serve            build the app, then serve it and the API at $(URL)
+  link             the phone link's checklist (G25): tailscale serve must proxy 443 to 127.0.0.1:$(PORT), and the API up
   desktop          build Kopifund.app, the desktop app (G23), and put it in ~/Applications
+  app-icon         write app-icons/ into the web, iOS and desktop apps; SET=iso makes iso the default first
   dev              the app with hot reload on http://localhost:5173 (port $(PORT) sends you there): the API restarts on a Python change, the page on a web change
 
 Checks

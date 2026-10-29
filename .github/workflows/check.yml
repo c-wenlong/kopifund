@@ -24,15 +24,18 @@ jobs:
       - run: make check
       - run: make build
 
-  # The iOS app's Swift packages (G24). Storage has no tests yet, so it is not run.
+  # The iOS app's Swift packages (G24, G25), each in its own step so a failure names its package
   swift:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
-      - name: swift test, per package
-        run: |
-          set -e
-          for pkg in Matching YNABClient Intents; do
-            echo "== $pkg"
-            (cd "apps/ios/Packages/$pkg" && swift test)
-          done
+      - name: swift test Matching
+        run: cd apps/ios/Packages/Matching && swift test
+      - name: swift test YNABClient
+        run: cd apps/ios/Packages/YNABClient && swift test
+      - name: swift test Intents
+        run: cd apps/ios/Packages/Intents && swift test
+      - name: swift test KopifundClient
+        run: cd apps/ios/Packages/KopifundClient && swift test
+      - name: swift test Storage
+        run: cd apps/ios/Packages/Storage && swift test

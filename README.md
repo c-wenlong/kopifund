@@ -93,11 +93,17 @@ download yourself. Nothing leaves the machine unless you switch it on or use it:
 - **Notion mirror and exports.** What you choose to mirror to your own Notion
   workspace, or export.
 - **AI payee suggestions.** After an upload check, the merchant text of rows no
-  rule matched, and a rounded typical amount unless you turn that off, go to
-  the model provider you set in Settings. Turn AI off in Settings to stop it;
+  rule matched, and a rounded typical amount unless `send_amounts = false`
+  under `[ai]`, go to the model provider you set in Settings. Turn AI off in Settings to stop it;
   `[ai] enabled = false` only turns it off while Settings has not picked a provider.
 - **Copilot.** Dates, amounts, payees, categories and account display names of
   the rows a question needs go to that provider, only after you turn on "Send
   matching rows" in Settings (a model on this machine needs no switch).
 - **The iOS app.** The transactions you approve go to `api.ynab.com`, your YNAB
   plan, with the personal access token you give it.
+- **The phone link (G25).** Once you pair a phone (Settings, "Link a phone")
+  and run `tailscale serve`, the phone reads your profile, transactions,
+  categories and overview from this machine over your own tailnet, with a
+  device token you can revoke, and posts the alert rows you approve back to it.
+  The server still listens on this machine only; nothing is opened to the
+  internet. Without the pairing, nothing is shared.
