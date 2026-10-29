@@ -124,3 +124,15 @@ describe("Combobox", () => {
     expect(box).toHaveValue("");
   });
 });
+
+// Audit: aria-controls named a list that is not there while closed
+describe("Combobox's ARIA", () => {
+  it("points at its list only while the list is open", () => {
+    render(<Harness />);
+    const box = screen.getByRole("combobox", { name: "Category" });
+    expect(box).not.toHaveAttribute("aria-controls");
+    fireEvent.focus(box);
+    const id = box.getAttribute("aria-controls");
+    expect(id && document.getElementById(id)).toBeTruthy();
+  });
+});

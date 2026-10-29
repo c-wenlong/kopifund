@@ -151,7 +151,9 @@ describe("the server banner", () => {
     down();
     await act(async () => { await checkServer(); });
     const banner = screen.getByRole("alert");
-    expect(banner).toHaveTextContent("Can't reach Kopifund. Is make serve running?");
+    expect(banner).toHaveTextContent("Can't reach Kopifund. Quit and reopen Kopifund, then Retry.");
+    // Audit: words an app user can act on, not a developer's command
+    expect(banner).not.toHaveTextContent(/make serve/);
     expect(within(banner).getByRole("button", { name: "Retry" })).toBeInTheDocument();
   });
 
@@ -194,7 +196,9 @@ describe("Toast", () => {
   it("sits in a polite live region, and goes away by itself", () => {
     vi.useFakeTimers();
     const { container } = render(<Toaster />);
-    expect(container.firstElementChild).toHaveAttribute("aria-live", "polite");
+    // Audit: straight under <body>, outside the root an open Sheet makes inert
+    expect(container).toBeEmptyDOMElement();
+    expect(document.querySelector("body > [aria-live]")).toHaveAttribute("aria-live", "polite");
     act(() => { showToast({ message: "Saved." }); });
     expect(screen.getByRole("status")).toHaveTextContent("Saved.");
     act(() => { vi.advanceTimersByTime(5100); });

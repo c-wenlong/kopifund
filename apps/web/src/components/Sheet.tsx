@@ -3,6 +3,7 @@ import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { askToLeave, keepEditing, leaveAsked, useUnsavedGuard } from "../router";
 import { LeaveBar, sheetOpened, topSheet } from "./LeaveBar";
+import { holdTab, KEEP_LIVE } from "./focusTrap";
 
 // G18: the app's one modal for a form or a long read. At 768px and up it is a
 // dialog in the middle of the screen; under 768px it rises from the foot as a
@@ -36,11 +37,6 @@ export function Sheet(props: SheetProps) {
   return props.open ? <SheetFrame {...props} /> : null;
 }
 
-const FOCUSABLE = 'a[href], button:not(:disabled), input:not(:disabled):not([type="hidden"]), select:not(:disabled), textarea:not(:disabled), [tabindex]:not([tabindex="-1"])';
-
-function focusables(within: HTMLElement): HTMLElement[] {
-  return [...within.querySelectorAll<HTMLElement>(FOCUSABLE)].filter((el) => !el.closest("[hidden], [inert]"));
-}
 
 function SheetFrame({ title, onClose, onRequestClose, dirty = false, wide = false, footer, initialFocus, children }: SheetProps) {
   const [me] = useState(() => ({}));
@@ -68,7 +64,7 @@ function SheetFrame({ title, onClose, onRequestClose, dirty = false, wide = fals
     // everything else on the page goes inert: no pointer, no focus, hidden from a screen reader
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     const others = [...document.body.children].filter(
-      (el): el is HTMLElement => el instanceof HTMLElement && el !== root.current && !el.hasAttribute("inert"),
+      (el): el is HTMLElement => el instanceof HTMLElement && el !== root.current && !el.hasAttribute("inert") && !el.hasAttribute(KEEP_LIVE),
     );
     others.forEach((el) => el.setAttribute("inert", ""));
     (initialFocus?.current ?? closeButton.current)?.focus();
@@ -82,21 +78,10 @@ function SheetFrame({ title, onClose, onRequestClose, dirty = false, wide = fals
         if (leaveAsked()) keepEditing();
         else request.current();
       } else if (e.key === "Tab" && panel.current) {
-        const all = focusables(panel.current);
-        if (!all.length) return;
-        const first = all[0];
-        const last = all[all.length - 1];
+        // a toast's Undo, outside the panel, keeps its own Tab (it is live for that, KEEP_LIVE)
         const at = document.activeElement;
-        const inside = at instanceof Node && panel.current.contains(at);
-        // focus that has left for nowhere (the body, a part gone inert) comes back in
-        const lost = !at || at === document.body || (at instanceof HTMLElement && !!at.closest("[inert]"));
-        if (lost || (inside && e.shiftKey && at === first)) {
-          e.preventDefault();
-          (e.shiftKey ? last : first).focus();
-        } else if (inside && !e.shiftKey && at === last) {
-          e.preventDefault();
-          first.focus();
-        }
+        if (at instanceof HTMLElement && at.closest(`[${KEEP_LIVE}]`)) return;
+        holdTab(e, panel.current);
       }
     };
     window.addEventListener("keydown", onKey);

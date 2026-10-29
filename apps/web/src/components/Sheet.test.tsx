@@ -1,4 +1,5 @@
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
+import { showToast, Toaster } from "./Toast";
 import userEvent from "@testing-library/user-event";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
@@ -197,5 +198,25 @@ describe("an Escape inside a field's own list", () => {
     expect(screen.getByRole("dialog", { name: "Edit" })).toBeInTheDocument();
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("dialog", { name: "Edit" })).not.toBeInTheDocument();
+  });
+});
+
+// Audit: the Toaster sat inside #root, which an open Sheet makes inert, so a toast's Undo was hidden and out of reach
+describe("a toast raised while a Sheet is open", () => {
+  it("stays live, above the scrim, with its Undo in reach", async () => {
+    const undo = vi.fn();
+    const user = userEvent.setup();
+    const root = document.createElement("div");
+    root.id = "root";
+    document.body.appendChild(root);
+    render(<><Page /><Toaster /></>, { container: root });
+    await user.click(screen.getByRole("button", { name: "Edit inputs" }));
+    act(() => showToast({ message: "Budget: saved", action: { label: "Undo", onClick: undo } }));
+    const button = screen.getByRole("button", { name: "Undo" });
+    expect(button.closest("[inert]")).toBeNull();
+    expect(root).toHaveAttribute("inert");
+    await user.click(button);
+    expect(undo).toHaveBeenCalled();
+    root.remove();
   });
 });

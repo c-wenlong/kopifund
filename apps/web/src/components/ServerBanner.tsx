@@ -34,7 +34,8 @@ export function ServerBanner() {
     <div role="alert" className="sticky top-0 z-10 mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-line bg-warn-bg px-4 py-2.5 text-[14px] text-warn">
       <CircleAlert size={16} className="shrink-0" aria-hidden />
       <p className="m-0 min-w-0 flex-1">
-        Can't reach Kopifund. Is <span className="font-medium">make serve</span> running?
+        {/* Audit: words an app user can act on; a developer running make serve knows to start it again */}
+        Can't reach Kopifund. Quit and reopen Kopifund, then Retry.
         {stale && " Showing figures from your last visit."}
         {tried && " Still no answer."}
       </p>

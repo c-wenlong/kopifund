@@ -148,3 +148,30 @@ describe("App shell on a desktop", () => {
     expect(screen.queryByRole("banner")).not.toBeInTheDocument();
   });
 });
+
+describe("keyboard ways round the shell (audit)", () => {
+  it("offers a skip link first that puts the focus on the page", async () => {
+    setWidth(true);
+    render(<App />);
+    await userEvent.tab();
+    const skip = screen.getByRole("link", { name: "Skip to content" });
+    expect(skip).toHaveFocus();
+    await userEvent.keyboard("{Enter}");
+    expect(screen.getByRole("main")).toHaveFocus();
+  });
+
+  it("keeps Tab inside the phone menu, which says it is modal", async () => {
+    setWidth(false);
+    render(<App />);
+    expect(menuButton()).not.toHaveAttribute("aria-controls");
+    await userEvent.click(menuButton());
+    expect(menuButton()).toHaveAttribute("aria-controls", "app-drawer");
+    const drawer = screen.getByRole("dialog", { name: "Menu" });
+    for (let i = 0; i < 40; i++) {
+      await userEvent.tab();
+      expect(drawer).toContainElement(document.activeElement as HTMLElement);
+    }
+    await userEvent.tab({ shift: true });
+    expect(drawer).toContainElement(document.activeElement as HTMLElement);
+  });
+});

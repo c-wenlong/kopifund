@@ -143,3 +143,12 @@ describe("describeProblem", () => {
     }
   });
 });
+
+// Audit: the next step is for someone using the app; a developer's command goes on the details line only
+describe("the next step's words", () => {
+  it("names no shell command", () => {
+    for (const [code, k] of Object.entries(KNOWN)) {
+      expect(k.next, code).not.toMatch(/\b(brew|python3|make|finance\.py|npm)\b/);
+    }
+  });
+});
