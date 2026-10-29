@@ -1,5 +1,6 @@
 import isolate  # noqa: F401  first: no test writes the real record or cache
 import json
+import re
 import unittest
 from pathlib import Path
 
@@ -26,6 +27,19 @@ class DesktopConfigTest(unittest.TestCase):
         # (main.rs, `navigation`); a config window would be built without that guard
         self.assertIs(self.main.get("create"), False)
         self.assertIn("on_navigation", (DESKTOP / "src-tauri" / "src" / "main.rs").read_text())
+
+
+class ReadyLineTest(unittest.TestCase):
+    """The shell leaves the start page when serve.py prints its ready line.
+    The two programs spell it separately, so a rename on one side would leave
+    the window on "Starting Kopifund" until the startup timeout."""
+
+    def test_main_rs_waits_for_the_line_serve_py_prints(self):
+        import serve
+        main_rs = (DESKTOP / "src-tauri" / "src" / "main.rs").read_text()
+        found = re.search(r'^const READY: &str = "([^"]+)";', main_rs, re.M)
+        self.assertIsNotNone(found, "main.rs declares const READY")
+        self.assertEqual(found.group(1), serve.READY)
 
 
 if __name__ == "__main__":

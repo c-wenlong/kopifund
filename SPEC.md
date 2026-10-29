@@ -1249,7 +1249,14 @@ terminal and a browser tab. `apps/desktop/` holds a Tauri v2 shell; nothing in
 - **The starting page** ([apps/desktop/ui](apps/desktop/ui)) shows while the server
   starts, in the page colour of `apps/web/src/index.css`. If the server stops
   before or after its ready line, the window goes back to it with the
-  server's last 40 lines and a Retry button.
+  server's last 40 lines and a Retry button. A start has 45 seconds to print
+  its ready line: a profile line that waits for input, or a Python that hangs
+  before it listens, would otherwise leave the page on "Starting" for good, so
+  the shell kills the server and says it did not start. A start that takes
+  over five seconds shows what the server has printed so far. If the checkout
+  the app was built from is gone, the page says so and names it instead of
+  trying. Stopping the old server on Retry runs off the main thread, so the
+  window never freezes.
 - **The window** loads the page from the sidecar's address, so the page and
   `/api` share one origin and `serve.py`'s Origin and Host checks hold as they
   are. The shell adds no API of its own to the page. The service worker is not
