@@ -1262,6 +1262,11 @@ terminal and a browser tab. `apps/desktop/` holds a Tauri v2 shell; nothing in
   window, a link to another site opens in the default browser, and anything
   else is refused, so a file dropped beside the drop area never replaces the
   app with the file.
+- **Downloads.** WebKit cancels any download a window has no handler for, so
+  the shell installs one: a file the server hands out (Settings' exports) is
+  saved to the Downloads folder under its own name (a free one if that is
+  taken) and shown in Finder once saved. A download from another site is
+  refused.
 - **One instance.** A second launch brings the open window forward. Quitting
   the app stops the server. The window keeps its size and place.
 - **Mac behaviour.** The standard menus (Edit for copy and paste, View for
