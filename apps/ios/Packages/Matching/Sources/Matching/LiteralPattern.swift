@@ -17,13 +17,23 @@ enum LiteralPattern {
         var isWild: Bool { if case .wild = self { return true }; return false }
     }
 
+    /// The literal's full regex, edges included. Every whitespace run is
+    /// matched possessively (`\s*+`, `\s++`): the pieces on either side of a
+    /// run never start or end on whitespace, so there is exactly one way to
+    /// match it, and a failed match cannot retry every split of a long run
+    /// (the catastrophic backtracking a 2,000-space alert hit).
     static func pattern(for literal: String) -> String {
         // a newline the sample printed is part of the template: it becomes a
         // required break in the regex, which also bounds a capture sitting
-        // on the line before it
-        return literal.components(separatedBy: "\n")
-            .map(linePattern(for:))
-            .joined(separator: #"\s*\n\s*"#)
+        // on the line before it. The space before the break must not eat
+        // the newline itself, so it is horizontal only.
+        let lines = literal.components(separatedBy: "\n").map(linePattern(for:))
+        var out = ""
+        for (i, line) in lines.enumerated() {
+            if i > 0 { out += #"[^\S\n]*+\n"# }
+            if !line.isEmpty { out += #"\s*+"# + line }
+        }
+        return out + #"\s*+"#
     }
 
     /// True when the literal's first word folds to a wildcard instead of
@@ -55,7 +65,8 @@ enum LiteralPattern {
                     + NSRegularExpression.escapedPattern(for: w.trailing)))
                 i += w.width
             } else if words[i].contains(where: { $0.isNumber }) {
-                out.append(.wild(#"\S*\d\S*"#))
+                // possessive: the run is read once, never re-split
+                out.append(.wild(#"[^\s\d]*+\d\S*+"#))
                 i += 1
             } else {
                 out.append(.fixed(words[i]))
@@ -75,7 +86,7 @@ enum LiteralPattern {
             case .fixed(let w): return NSRegularExpression.escapedPattern(for: w)
             case .wild(let r): return r
             }
-        }.joined(separator: #"\s+"#)
+        }.joined(separator: #"\s++"#)
     }
 
     private static let months: Set<String> = [

@@ -297,25 +297,33 @@ final class AnchorTests: XCTestCase {
 }
 
 final class LiteralPatternTests: XCTestCase {
+    /// A line break the sample printed stays required, and the space in
+    /// front of it is horizontal only so it cannot eat the break itself.
+    func test_a_line_break_stays_required() {
+        XCTAssertEqual(LiteralPattern.pattern(for: "\nTo:\n"),
+                       #"[^\S\n]*+\n\s*+To:[^\S\n]*+\n\s*+"#)
+        XCTAssertEqual(LiteralPattern.pattern(for: " "), #"\s*+"#)
+    }
+
     func test_words_and_punctuation_stay_anchors() {
         XCTAssertEqual(LiteralPattern.pattern(for: "card ending on"),
-                       #"card\s+ending\s+on"#)
+                       #"\s*+card\s++ending\s++on\s*+"#)
     }
 
     func test_a_digit_run_folds() {
         XCTAssertEqual(LiteralPattern.pattern(for: "Ref TXN-8842-1027. Balance"),
-                       #"Ref\s+\S*\d\S*\s+Balance"#)
+                       #"\s*+Ref\s++[^\s\d]*+\d\S*+\s++Balance\s*+"#)
     }
 
     func test_a_date_run_folds_to_its_shape() {
         XCTAssertEqual(LiteralPattern.pattern(for: "dated 27 Oct 2026."),
-                       #"dated\s+(?:\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\."#)
+                       #"\s*+dated\s++(?:\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\.\s*+"#)
     }
 
     /// Punctuation broke the date window, so the pieces fold one by one and
     /// the month name rides along instead of pinning "Oct" down.
     func test_a_split_date_keeps_the_month_flexible() {
         XCTAssertEqual(LiteralPattern.pattern(for: "(27 Oct 2026)"),
-                       #"\S*\d\S*\s+[A-Za-z]{3,9}\s+\S*\d\S*"#)
+                       #"\s*+[^\s\d]*+\d\S*+\s++[A-Za-z]{3,9}\s++[^\s\d]*+\d\S*+\s*+"#)
     }
 }
