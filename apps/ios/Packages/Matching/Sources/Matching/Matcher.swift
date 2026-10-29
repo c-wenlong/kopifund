@@ -125,10 +125,11 @@ public enum Matcher {
             default:
                 pattern += #"(?>[\s\S]*?"#
             }
-            for seg in block {
+            for (k, seg) in zip(block.indices, block) {
                 switch seg {
                 case .literal(let s):
-                    pattern += LiteralPattern.pattern(for: s)
+                    pattern += LiteralPattern.pattern(for: s,
+                                                      trailingSpace: k != block.index(before: block.endIndex))
                 case .ignore:
                     break
                 case .amount:

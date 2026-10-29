@@ -87,8 +87,10 @@ break has to stand there, or the regex cannot tell where the name ends.
 
 The regex is built so a failed match stays close to linear in the alert's
 length: whitespace runs read possessively, a payee or card capture starts
-and ends on a non-space and reads at most 200 characters, and each ignore
-span commits to the first place the text after it reads. One pattern gets
+and ends on a non-space (and reads at most 200 characters while it looks
+for the anchor after it; one that ends the template reads to its line's
+end), and each ignore span commits to the first place the text after it
+reads. One pattern gets
 250 ms on one alert; past that it gives up with "text too long to read in
 time" rather than freezing the app or getting an intent killed.
 

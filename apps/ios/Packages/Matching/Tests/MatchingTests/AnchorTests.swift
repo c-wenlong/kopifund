@@ -269,6 +269,56 @@ final class AnchorTests: XCTestCase {
         }
     }
 
+    /// Review: a line break after an ignore span stays required even when
+    /// the alert leaves the ignored text out; the literal before the ignore
+    /// must not swallow it.
+    func test_a_line_break_after_an_empty_ignore_still_reads() throws {
+        let mail = "Paid SGD 4.80 at SHOP ref X\nEnd"
+        let p = try pattern(from: mail) { _, t in
+            switch t.text {
+            case "SGD", "4.80": return .amount
+            case "SHOP": return .payee
+            case "X": return .ignore
+            default: return nil
+            }
+        }
+        for next in ["Paid SGD 9.00 at CAFE ref \nEnd", "Paid SGD 9.00 at CAFE ref\nEnd",
+                     "Paid SGD 9.00 at CAFE ref Y Z\nEnd"] {
+            switch Matcher.match(text: next, source: "mail", receivedAt: Date(), patterns: [p]) {
+            case .matched(let t): XCTAssertEqual(t.payee, "CAFE", next.debugDescription)
+            case .unmatched(let r): XCTFail("unmatched \(next.debugDescription): \(r)")
+            }
+        }
+        switch Matcher.match(text: "Paid SGD 9.00 at CAFE ref End", source: "mail",
+                             receivedAt: Date(), patterns: [p]) {
+        case .matched: XCTFail("the line break is part of the template")
+        case .unmatched: break
+        }
+    }
+
+    /// Review: a reference glued to the amount ("8842:$4.80") folds to a
+    /// wildcard that must leave the amount to its capture.
+    func test_a_folded_reference_glued_to_the_amount_leaves_it() throws {
+        let mail = "Ref 8842:$4.80 at SHOP"
+        let p = try pattern(from: mail) { i, t in
+            let tokens = Tokenizer.tokenize(mail)
+            switch t.text {
+            case "$": return i + 1 < tokens.count && tokens[i + 1].text == "4.80" ? .amount : nil
+            case "4.80": return .amount
+            case "SHOP": return .payee
+            default: return nil
+            }
+        }
+        for (text, payee, amount) in [(mail, "SHOP", "4.80"), ("Ref 9911:$12.50 at CAFE", "CAFE", "12.50")] {
+            switch Matcher.match(text: text, source: "mail", receivedAt: Date(), patterns: [p]) {
+            case .matched(let t):
+                XCTAssertEqual(t.payee, payee)
+                XCTAssertEqual(t.amount, Decimal(string: amount))
+            case .unmatched(let r): XCTFail("unmatched \(text): \(r)")
+            }
+        }
+    }
+
     /// A trailing space after the tagged card is a literal that can match
     /// empty, so the lazy capture in front of it shrank "1234" to "1" and
     /// any other card's first digit equalled it. Whitespace-only literals
@@ -303,6 +353,7 @@ final class LiteralPatternTests: XCTestCase {
         XCTAssertEqual(LiteralPattern.pattern(for: "\nTo:\n"),
                        #"[^\S\n]*+\n\s*+To:[^\S\n]*+\n\s*+"#)
         XCTAssertEqual(LiteralPattern.pattern(for: " "), #"\s*+"#)
+        XCTAssertEqual(LiteralPattern.pattern(for: " ref ", trailingSpace: false), #"\s*+ref"#)
     }
 
     func test_words_and_punctuation_stay_anchors() {
@@ -324,6 +375,6 @@ final class LiteralPatternTests: XCTestCase {
     /// the month name rides along instead of pinning "Oct" down.
     func test_a_split_date_keeps_the_month_flexible() {
         XCTAssertEqual(LiteralPattern.pattern(for: "(27 Oct 2026)"),
-                       #"\s*+[^\s\d]*+\d\S*+\s++[A-Za-z]{3,9}\s++[^\s\d]*+\d\S*+\s*+"#)
+                       #"\s*+[^\s\d]*+\d\S*+\s++[A-Za-z]{3,9}\s++[^\s\d]*+\d\S*?\s*+"#)
     }
 }

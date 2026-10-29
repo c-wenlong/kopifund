@@ -22,18 +22,30 @@ enum LiteralPattern {
     /// run never start or end on whitespace, so there is exactly one way to
     /// match it, and a failed match cannot retry every split of a long run
     /// (the catastrophic backtracking a 2,000-space alert hit).
-    static func pattern(for literal: String) -> String {
+    ///
+    /// `trailingSpace` is false for a literal that ends its block in the
+    /// matcher (an ignore span or the template's end follows): the next
+    /// block opens on its own whitespace, and a possessive run here would
+    /// take a line break that block requires when the ignored text is
+    /// missing ("ref \nEnd" for a template "ref X\nEnd").
+    static func pattern(for literal: String, trailingSpace: Bool = true) -> String {
         // a newline the sample printed is part of the template: it becomes a
         // required break in the regex, which also bounds a capture sitting
         // on the line before it. The space before the break must not eat
         // the newline itself, so it is horizontal only.
-        let lines = literal.components(separatedBy: "\n").map(linePattern(for:))
+        // the sample printed the next capture glued to this literal (no
+        // space between): only then may a digit run here give it characters
+        let glued = !(literal.last?.isWhitespace ?? true)
+        let raw = literal.components(separatedBy: "\n")
+        let lines = raw.enumerated().map { i, line in
+            linePattern(for: line, gluedEnd: glued && i == raw.count - 1)
+        }
         var out = ""
         for (i, line) in lines.enumerated() {
             if i > 0 { out += #"[^\S\n]*+\n"# }
             if !line.isEmpty { out += #"\s*+"# + line }
         }
-        return out + #"\s*+"#
+        return trailingSpace ? out + #"\s*+"# : out
     }
 
     /// True when the literal's first word folds to a wildcard instead of
@@ -55,7 +67,7 @@ enum LiteralPattern {
         return false
     }
 
-    private static func linePattern(for line: String) -> String {
+    private static func linePattern(for line: String, gluedEnd: Bool) -> String {
         let words = line.split(whereSeparator: { $0.isWhitespace }).map(String.init)
         var out: [Piece] = []
         var i = 0
@@ -65,8 +77,7 @@ enum LiteralPattern {
                     + NSRegularExpression.escapedPattern(for: w.trailing)))
                 i += w.width
             } else if words[i].contains(where: { $0.isNumber }) {
-                // possessive: the run is read once, never re-split
-                out.append(.wild(#"[^\s\d]*+\d\S*+"#))
+                out.append(.wild(digitRun))
                 i += 1
             } else {
                 out.append(.fixed(words[i]))
@@ -81,13 +92,25 @@ enum LiteralPattern {
             let rightWild = j + 1 < out.count && out[j + 1].isWild
             if leftWild || rightWild { out[j] = .wild(#"[A-Za-z]{3,9}"#) }
         }
-        return out.map { piece in
+        return out.enumerated().map { j, piece in
             switch piece {
             case .fixed(let w): return NSRegularExpression.escapedPattern(for: w)
+            case .wild(let r) where r == digitRun && gluedEnd && j == out.count - 1: return digitRunGlued
             case .wild(let r): return r
             }
         }.joined(separator: #"\s++"#)
     }
+
+    /// A whitespace-free run holding a digit, read once: up to its first
+    /// digit, then the rest of the run, both possessive. Where the sample
+    /// put whitespace after it, the run always ends at whitespace.
+    private static let digitRun = #"[^\s\d]*+\d\S*+"#
+    /// The same run where the sample glued the next capture to it
+    /// ("Ref 8842:$4.80" with the amount tagged): the tail after the first
+    /// digit is lazy, so the run ends as early as it can and the capture
+    /// reads all it was tagged with. The part up to the first digit stays
+    /// possessive, which keeps a failed match linear in the run's length.
+    private static let digitRunGlued = #"[^\s\d]*+\d\S*?"#
 
     private static let months: Set<String> = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
