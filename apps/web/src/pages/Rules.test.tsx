@@ -501,6 +501,18 @@ describe("Rules", () => {
     expect(within(pages()).getByText("1 to 25 of 60")).toBeInTheDocument();
   });
 
+  it("stays on its page when the option already chosen is clicked again", async () => {
+    stubFetch(MANY);
+    render(<Rules />);
+    await screen.findByRole("searchbox", { name: "Search rules" });
+    fireEvent.click(within(pages()).getByRole("button", { name: "Page 2" }));
+    expect(window.location.search).toBe("?page=2");
+    for (const name of ["By payee", "All"]) fireEvent.click(screen.getByRole("radio", { name }));
+    choose(screen.getByRole("button", { name: "Category" }), "All categories");
+    expect(window.location.search).toBe("?page=2");
+    expect(within(pages()).getByText("26 to 50 of 60")).toBeInTheDocument();
+  });
+
   it("tells every other reader of the address when a filter changes", async () => {
     stubFetch();
     render(<><Rules /><AddressProbe /></>);

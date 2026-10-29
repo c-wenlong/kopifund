@@ -52,11 +52,12 @@ export function Rules() {
   const showParam = params.get("show");
   const show: Show = showParam === "pins" || showParam === "problems" ? showParam : "all";
   const category = params.get("category") ?? "";
-  // a filter changed here starts the list at page 1, and the page leaves the address in the same write
-  const setView = (v: "payee" | "order") => patch({ view: v === "order" ? v : null, page: null });
-  const setQ = (text: string) => patch({ q: text, page: null });
-  const setShow = (v: Show) => patch({ show: v === "all" ? null : v, page: null });
-  const setCategory = (c: string) => patch({ category: c, page: null });
+  // a filter changed here starts the list at page 1, and the page leaves the address in the same write;
+  // the option already chosen, clicked again, changes nothing and keeps the page
+  const setView = (v: "payee" | "order") => { if (v !== view) patch({ view: v === "order" ? v : null, page: null }); };
+  const setQ = (text: string) => { if (text !== q) patch({ q: text, page: null }); };
+  const setShow = (v: Show) => { if (v !== show) patch({ show: v === "all" ? null : v, page: null }); };
+  const setCategory = (c: string) => { if (c !== category) patch({ category: c, page: null }); };
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<Editing | null>(null);
   const edits = useRef(0);   // a number for each editor opened, never reused, so a save from a closed one cannot reach a new one
