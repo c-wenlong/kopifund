@@ -64,6 +64,72 @@ class RetryTest(unittest.TestCase):
         self.assertEqual(len(calls), 3)
 
 
+class CreateIsNotResentTest(unittest.TestCase):
+    """POST /pages is not idempotent: a create whose answer was lost may have
+    made the page, so sending it again could make a second one with the same
+    key (audit, notion.call). Reads and patches keep their retries."""
+
+    def run_call(self, method, path, failures):
+        import io
+        import json
+        import urllib.request
+        c = notion.NotionClient("token", "v", pace=0.0, tries=3)
+        calls = []
+
+        def flaky(req, timeout=None):
+            calls.append(1)
+            if len(calls) <= len(failures):
+                raise failures[len(calls) - 1]
+
+            class R(io.BytesIO):
+                def __enter__(self): return self
+                def __exit__(self, *a): return False
+            return R(json.dumps({"id": "p1"}).encode())
+
+        with unittest.mock.patch.object(urllib.request, "urlopen", flaky), \
+                unittest.mock.patch("time.sleep"), unittest.mock.patch("sys.stderr"):
+            try:
+                return c.call(method, path, {}), len(calls)
+            except notion.NotionError as e:
+                return e, len(calls)
+
+    @staticmethod
+    def http(code):
+        import email.message
+        import io
+        import urllib.error
+        headers = email.message.Message()
+        return urllib.error.HTTPError("https://api.notion.com/v1/pages", code, "x", headers, io.BytesIO(b"{}"))
+
+    def test_a_create_that_timed_out_is_not_sent_again(self):
+        got, calls = self.run_call("POST", "/pages", [TimeoutError("The read operation timed out")])
+        self.assertIsInstance(got, notion.NotionError)
+        self.assertIn("may have been created", str(got))
+        self.assertEqual(calls, 1)
+
+    def test_a_create_that_got_a_gateway_error_is_not_sent_again(self):
+        for code in (500, 502, 503, 504):
+            with self.subTest(code):
+                got, calls = self.run_call("POST", "/pages", [self.http(code)])
+                self.assertIsInstance(got, notion.NotionError)
+                self.assertEqual(calls, 1)
+
+    def test_a_create_is_retried_where_notion_never_saw_it(self):
+        import socket
+        import urllib.error
+        for failure in (self.http(429), urllib.error.URLError(ConnectionRefusedError()),
+                        urllib.error.URLError(socket.gaierror("no name"))):
+            with self.subTest(failure):
+                got, calls = self.run_call("POST", "/pages", [failure])
+                self.assertEqual((got, calls), ({"id": "p1"}, 2))
+
+    def test_reads_and_patches_still_retry(self):
+        for method, path in (("POST", "/data_sources/ds/query"), ("PATCH", "/pages/p1"), ("GET", "/pages/p1")):
+            with self.subTest(path):
+                got, calls = self.run_call(method, path, [TimeoutError("timed out"), self.http(502)])
+                self.assertEqual((got, calls), ({"id": "p1"}, 3))
+
+
 class PacingTest(unittest.TestCase):
 
     def test_threads_share_one_rate(self):
