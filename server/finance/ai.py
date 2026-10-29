@@ -432,8 +432,9 @@ def _scrubbed(text, headers):
     for name, value in headers.items():
         if name.lower() in _PLAIN_HEADERS or not isinstance(value, str):
             continue
-        for secret in {value, value.split(" ", 1)[-1]}:
-            if len(secret) >= 8:
+        # longest first, so the bare key never splits a match of the whole value
+        for secret in sorted({value, value.split(" ", 1)[-1]}, key=len, reverse=True):
+            if secret:
                 text = text.replace(secret, "(the key)")
     return text
 
@@ -459,7 +460,8 @@ def _request(url, headers, body=None, timeout=TIMEOUT):
             detail = json.loads(detail)["error"]["message"]
         except (ValueError, KeyError, TypeError):
             pass
-        raise AIError(_scrubbed(f"The AI provider said {e.code}: {str(detail)[:300]}", headers)) from None
+        # the key out before the cut, so a key the cut would split leaves no part behind
+        raise AIError(f"The AI provider said {e.code}: {_scrubbed(str(detail), headers)[:300]}") from None
     except (urllib.error.URLError, TimeoutError) as e:
         raise AIError(_scrubbed(f"Could not reach the AI provider: {getattr(e, 'reason', e)}", headers)) from None
     except ValueError:

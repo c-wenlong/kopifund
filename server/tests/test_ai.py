@@ -333,9 +333,6 @@ class RouteTest(DataFolder):
         self.assertEqual(self.write("/api/rules/batch", {"rules": [rule]})["added"], 1)
 
 
-if __name__ == "__main__":
-    unittest.main()
-
 
 class Recorder(http.server.BaseHTTPRequestHandler):
     """A local server: /moved answers 302 to `target`, /deny answers 401 with
@@ -354,7 +351,8 @@ class Recorder(http.server.BaseHTTPRequestHandler):
             self.end_headers()
             return
         if self.path.startswith("/deny"):
-            body = json.dumps({"error": {"message": f"Incorrect API key provided: {self.headers.get('x-api-key')}, "
+            pad = "x" * int(self.headers.get("x-pad") or 0)
+            body = json.dumps({"error": {"message": f"{pad}Incorrect API key provided: {self.headers.get('x-api-key')}, "
                                                     f"{self.headers.get('authorization')}"}}).encode()
             self.send_response(401)
         else:
@@ -410,6 +408,18 @@ class TransportTest(unittest.TestCase):
                 self.assertNotIn(self.KEY, str(caught.exception))
                 self.assertNotIn(self.KEY[-12:], str(caught.exception))
 
+    def test_a_key_the_cut_would_split_or_a_short_key_leaves_no_part_behind(self):
+        here = self.server()
+        # the message is cut to 300 characters: a key that starts just before the cut
+        lead = len("Incorrect API key provided: ")
+        with self.assertRaises(ai.AIError) as caught:
+            ai._request(f"{here}/deny", {"x-api-key": self.KEY, "x-pad": str(295 - lead)}, {"q": 1})
+        self.assertNotIn(self.KEY[:5], str(caught.exception))
+        # a key found through key_env or key_command has no minimum length
+        with self.assertRaises(ai.AIError) as caught:
+            ai._request(f"{here}/deny", {"authorization": "Bearer k3y"}, {"q": 1})
+        self.assertNotIn("k3y", str(caught.exception))
+
     def test_payee_suggestions_show_a_provider_error_without_the_key(self):
         # the payee suggestions pass the provider's words on as they come (api_writes.post_rules_suggest)
         here = self.server()
@@ -420,3 +430,7 @@ class TransportTest(unittest.TestCase):
                     ai.ask(settings, self.KEY, "hello")
                 self.assertIn("401", str(caught.exception))
                 self.assertNotIn(self.KEY, str(caught.exception))
+
+
+if __name__ == "__main__":
+    unittest.main()
