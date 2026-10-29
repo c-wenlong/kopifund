@@ -66,12 +66,14 @@ def reload_forever(port: int, every: float = 1.0, page: str | None = None) -> No
         while True:
             time.sleep(every)
             code = child.poll()
+            # checked on every tick the child is down, not once: another
+            # checkout can take the port while this one waits for a fix
+            if code is not None and port_answers(port):
+                print(f"The API server stopped (exit {code}) and another program answers on port {port}, "
+                      f"probably `make serve` in another checkout: /api would reach that server, so make dev "
+                      f"stops. Stop it, or run make dev PORT=<another port>.", file=sys.stderr, flush=True)
+                raise SystemExit(1)
             if code is not None and not reported:
-                if port_answers(port):
-                    print(f"The API server stopped (exit {code}) and another program answers on port {port}, "
-                          f"probably `make serve` in another checkout: /api would reach that server, so make dev "
-                          f"stops. Stop it, or run make dev PORT=<another port>.", file=sys.stderr, flush=True)
-                    raise SystemExit(1)
                 print(f"The API server stopped (exit {code}); it starts again on the next change",
                       file=sys.stderr, flush=True)
                 reported = True

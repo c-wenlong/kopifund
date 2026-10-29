@@ -256,6 +256,18 @@ class ReloadLoopTest(unittest.TestCase):
         self.assertEqual(stop.exception.code, 1)
         self.assertIn("8770", err.getvalue())
 
+    def test_a_port_taken_after_a_crash_still_stops_make_dev(self):
+        crashed = self.child(alive=False)
+        popen = mock.Mock(side_effect=[crashed])
+        # free on the first tick, taken by another checkout on the second
+        with mock.patch("dev_reload.python_files", side_effect=[{"a": 1}, {"a": 1}, {"a": 1}]), \
+                mock.patch.object(dev_reload.subprocess, "Popen", popen), \
+                mock.patch.object(dev_reload.time, "sleep", side_effect=[None, None, KeyboardInterrupt]), \
+                mock.patch("dev_reload.port_answers", side_effect=[False, True]), \
+                mock.patch("sys.stderr", new_callable=io.StringIO), \
+                self.assertRaises(SystemExit):
+            dev_reload.reload_forever(8770)
+
     def test_a_crashed_child_on_a_free_port_waits_for_the_next_change(self):
         crashed = self.child(alive=False)
         popen = self.run_loop([{"a": 1}, {"a": 1}, {"a": 1}], [crashed], [None, None, KeyboardInterrupt])

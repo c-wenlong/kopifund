@@ -40,22 +40,21 @@ fail() { printf '\nbuild_macos.sh: %s\n' "$*" >&2; exit 1; }
 
 [ "$(uname)" = Darwin ] || fail "this builds the Mac app; run it on a Mac"
 
-# one build at a time: two would share the Rust output and delete each other's
-# folders. lockf(1) holds a kernel lock on the file while this script runs
-# again under it, and the kernel drops the lock when the run ends however it
-# ends, so no lock is ever stale and two runs can never both take it.
-mkdir -p "$SUPPORT"
-if [ -z "${KOPIFUND_BUILD_LOCKED:-}" ]; then
-  status=0
-  KOPIFUND_BUILD_LOCKED=1 lockf -s -t 0 "$SUPPORT/build.lockf" "$BASH" "$0" "$@" || status=$?
-  [ "$status" -ne 75 ] || fail "another build is running; wait for it to finish"   # 75: lockf's EX_TEMPFAIL
-  exit "$status"
-fi
-
 say "Checking what the build needs"
 for tool in git python3 node npm cargo pdftotext; do
   command -v "$tool" >/dev/null || fail "$tool is missing (AGENTS.md lists what Kopifund needs; Rust comes from rustup.rs)"
 done
+
+# one build at a time, this script or `make desktop`: they share the Rust output
+# and its bundle folder, and would delete or install each other's app. The lock
+# is a kernel flock on file descriptor 9, which this script and everything it
+# starts hold open: the kernel drops it when the run ends however it ends, so
+# it is never stale and two runs can never both hold it. (python3 takes it:
+# macOS ships no flock(1).)
+mkdir -p "$SUPPORT"
+exec 9>"$SUPPORT/build.lock.file"
+python3 -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)' 2>/dev/null \
+  || fail "another build (build_macos.sh or make desktop) is running; wait for it to finish"
 # the app runs python3 and pdftotext from the owner's login shell (SPEC.md, "Desktop
 # app (G23)"), whose PATH can differ from this one (pyenv or conda in .zshrc), so
 # they are checked the way the app finds them
@@ -118,10 +117,16 @@ say "Installing in $APPS"
 # copied beside the old app first, then swapped in: an interrupted or failed copy
 # leaves the old app where it was
 NEW="$APPS/.Kopifund.app.new"
-rm -rf "$NEW"
+OLD="$APPS/.Kopifund.app.old"
+rm -rf "$NEW" "$OLD"
 ditto "$BUILT" "$NEW" || { rm -rf "$NEW"; fail "could not copy the app into $APPS; the old one is still there"; }
-rm -rf "$APPS/Kopifund.app"
-mv "$NEW" "$APPS/Kopifund.app"
+# two renames on one volume: the old app is only deleted once the new one is in place
+if [ -e "$APPS/Kopifund.app" ]; then mv "$APPS/Kopifund.app" "$OLD"; fi
+if ! mv "$NEW" "$APPS/Kopifund.app"; then
+  [ ! -e "$OLD" ] || mv "$OLD" "$APPS/Kopifund.app"
+  fail "could not put the new app in place; the old one is back"
+fi
+rm -rf "$OLD"
 
 # the installed app needs only this build's code and the web app's dist: drop the
 # npm packages, and every older build (no app runs from them any more)
