@@ -77,6 +77,7 @@ class ToCentsTest(unittest.TestCase):
         self.assertEqual(money.to_cents(Decimal("5E-3")), 1)
         self.assertEqual(money.to_cents(Decimal("4.9999E-3")), 0)
         self.assertEqual(money.to_cents(Decimal("1E-999999")), 0)
+        self.assertEqual(money.to_cents(Decimal("0E+26")), 0)          # zero, whatever its exponent
         self.assertEqual(money.to_cents("0." + "1" * 5000), 11)
         self.assertEqual(money.to_cents("0.00" + "5" * 5000), 1)
         self.assertEqual(money.to_cents(10 ** 15), 10 ** 17)
@@ -86,7 +87,7 @@ class ToCentsTest(unittest.TestCase):
         """str() of a Decimal can carry an exponent ("1E+3", "0E-7"): the plan's
         checked text is that, so it reads the same as the Decimal itself."""
         for text, cents in (("1E+3", 100000), ("1e3", 100000), ("-1.5E+2", -15000), ("0E-7", 0), ("2.5e-2", 3),
-                            (".5E1", 500)):
+                            (".5E1", 500), ("0E+26", 0), ("-0E+999", 0)):
             with self.subTest(text=text):
                 self.assertEqual(money.to_cents(text), cents)
         rng = random.Random(41)

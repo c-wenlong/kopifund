@@ -67,6 +67,8 @@ def to_cents(x):
         raise ValueError(f"{x!r} is not an amount of dollars") from None
     if not d.is_finite():
         raise ValueError(f"{x!r} is not an amount of dollars")
+    if d.is_zero():                                           # "0E+26" is zero, not too large
+        return 0
     negative, digits, exp = d.as_tuple()
     exp += 2                                                  # in cents
     whole = len(digits) + exp                                 # digits before the cents' point
