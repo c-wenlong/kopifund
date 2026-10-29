@@ -27,6 +27,14 @@ public enum PlanCurrency {
         defaults?.set(Currency.normalized(code) ?? code, forKey: codeKey)
         defaults?.set(planID, forKey: planKey)
     }
+
+    /// Picking another plan drops the old plan's reading, so intake and
+    /// review never hold a spend against the wrong currency; the next sync
+    /// reads the new plan's.
+    public static func forget(in defaults: UserDefaults? = AppGroup.defaults) {
+        defaults?.removeObject(forKey: codeKey)
+        defaults?.removeObject(forKey: planKey)
+    }
 }
 
 public enum Currency {

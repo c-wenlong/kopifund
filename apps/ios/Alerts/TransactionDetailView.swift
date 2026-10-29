@@ -136,7 +136,7 @@ struct TransactionDetailView: View {
     /// The plan's currency when this pending row is in another one, so it
     /// waits for the owner instead of offering a plain Approve.
     private var heldFor: String? {
-        guard row.state == "pending", let plan = PlanCurrency.saved(),
+        guard row.state == "pending", let plan = PlanCurrency.saved(planID: planID),
               Currency.holdReason(currency: row.currency, planCurrency: plan) != nil
         else { return nil }
         return plan

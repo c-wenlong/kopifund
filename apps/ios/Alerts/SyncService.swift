@@ -31,16 +31,19 @@ enum SyncService {
         let approved = (try? context.fetch(
             FetchDescriptor<TransactionRecord>(predicate: #Predicate {
                 $0.state == "approved" || $0.state == "failed" || $0.state == "syncing" }))) ?? []
-        guard !approved.isEmpty else { return }
         let client = YNABClient(token: token)
         // G24 audit: a row posts only in the plan's own currency. Read it
-        // fresh each flush; fall back to this plan's last reading when YNAB
-        // can't be reached, and with neither, rows that state a currency wait
+        // fresh when posting, or once for a newly picked plan so intake can
+        // hold a foreign alert; fall back to this plan's last reading when
+        // YNAB can't be reached, and with neither, rows that state a
+        // currency wait
         var planCurrency = PlanCurrency.saved(planID: planID)
-        if let code = try? await client.planCurrency(planID: planID) {
+        if !approved.isEmpty || planCurrency == nil,
+           let code = try? await client.planCurrency(planID: planID) {
             PlanCurrency.remember(code, planID: planID)
             planCurrency = code
         }
+        guard !approved.isEmpty else { return }
         let postApproved = UserDefaults.standard.bool(forKey: "postApproved")
         // a store view on its own context: an App Intent's dedup write lands
         // on the same file but never merges into this context's copies, so a

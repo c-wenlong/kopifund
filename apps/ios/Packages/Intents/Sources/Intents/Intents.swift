@@ -167,15 +167,30 @@ public enum Ingest {
             // row is the only move that cannot double-post
             row.state = "duplicate"
             row.duplicateOf = sent.id
+            inheritCurrency(into: sent, from: row)
         } else if let sib = best {
             if rank(row) > rank(sib) {
                 sib.state = "duplicate"
                 sib.duplicateOf = row.id
+                inheritCurrency(into: row, from: sib)
             } else {
                 row.state = "duplicate"
                 row.duplicateOf = sib.id
+                inheritCurrency(into: sib, from: row)
             }
         }
+    }
+
+    /// The kept row of a pair is the same spend as the parked one, so a
+    /// currency only the parked capture stated (a Wallet tap passing JPY
+    /// beside an alert that printed none) moves onto the keeper. The sync's
+    /// currency check then holds it instead of posting it as the plan's.
+    /// A keeper already syncing or synced is past changing.
+    private static func inheritCurrency(into keeper: TransactionRecord,
+                                        from parked: TransactionRecord) {
+        guard keeper.currency.isEmpty, !parked.currency.isEmpty,
+              keeper.state != "syncing", keeper.state != "synced" else { return }
+        keeper.currency = parked.currency
     }
 
     private static func rank(_ r: TransactionRecord) -> Int { r.alertText.isEmpty ? 0 : 1 }

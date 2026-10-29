@@ -346,3 +346,43 @@ private func rows(_ container: ModelContainer) throws -> [TransactionRecord] {
     #expect(sgd.state == "pending")
     #expect(usd.state == "pending")
 }
+
+@Test @MainActor func keptRowTakesTheCurrencyOnlyItsParkedPairStated() throws {
+    // review on #319: a JPY Wallet tap parked beside an auto-approved alert
+    // that printed no currency must not let the alert post as the plan's
+    let context = ModelContext(try Store.memory())
+    let tap = makeRow(payee: "LAWSON", cents: 120000, at: day)
+    tap.currency = "JPY"
+    context.insert(tap)
+    let alert = makeRow(payee: "LAWSON", cents: 120000, state: "approved", at: day, rich: true)
+    context.insert(alert)
+    Ingest.settleDuplicates(of: alert, in: context)
+    #expect(tap.state == "duplicate")
+    #expect(alert.currency == "JPY")
+    #expect(alert.checkCurrency(against: "SGD") == false)
+    #expect(alert.state == "pending")
+}
+
+@Test @MainActor func parkedNewRowHandsItsCurrencyToAnUnsentKeeper() throws {
+    let context = ModelContext(try Store.memory())
+    let alert = makeRow(payee: "LAWSON", cents: 120000, at: day, rich: true)
+    context.insert(alert)
+    let tap = makeRow(payee: "LAWSON", cents: 120000, at: day)
+    tap.currency = "JPY"
+    context.insert(tap)
+    Ingest.settleDuplicates(of: tap, in: context)
+    #expect(tap.state == "duplicate")
+    #expect(alert.currency == "JPY")
+}
+
+@Test @MainActor func syncedKeeperKeepsItsCurrency() throws {
+    let context = ModelContext(try Store.memory())
+    let sent = makeRow(payee: "LAWSON", cents: 120000, state: "synced", at: day, rich: true)
+    sent.currency = "SGD"
+    context.insert(sent)
+    let tap = makeRow(payee: "LAWSON", cents: 120000, at: day)
+    context.insert(tap)
+    Ingest.settleDuplicates(of: tap, in: context)
+    #expect(tap.state == "duplicate")
+    #expect(sent.currency == "SGD")
+}

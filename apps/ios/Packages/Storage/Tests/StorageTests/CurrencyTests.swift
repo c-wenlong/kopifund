@@ -83,6 +83,9 @@ private func row(_ currency: String?, state: String = "approved") -> Transaction
     #expect(PlanCurrency.saved(planID: "p1", in: defaults) == "SGD")
     // a switched plan never borrows the last plan's currency
     #expect(PlanCurrency.saved(planID: "p2", in: defaults) == nil)
+    // picking another plan forgets the reading for intake too
+    PlanCurrency.forget(in: defaults)
+    #expect(PlanCurrency.saved(in: defaults) == nil)
 }
 
 @Test(arguments: [("SGD", "SGD"), (" jpy ", "JPY"), ("usd\n", "USD")])
