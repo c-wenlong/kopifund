@@ -1275,8 +1275,9 @@ terminal and a browser tab. `apps/desktop/` holds a Tauri v2 shell; nothing in
   named) under `~/Library/Application Support/Kopifund/builds` instead, so
   the app in `/Applications` keeps serving that version while the checkout
   changes branch; each build replaces the last, older copies are deleted, and
-  one Rust cache (`~/Library/Caches/Kopifund/cargo-target`) keeps rebuilds
-  quick. The later
+  one Rust cache (`~/Library/Caches/Kopifund/cargo-target`, shared with `make
+  desktop` and `make check`) keeps rebuilds quick. Both installs copy the new
+  app beside the old one and swap it in, so a failed copy leaves the old app. The later
   lines bundle Python and `pdftotext`, sign and notarise the app, add updates
   from GitHub Releases, and build for Windows.
 

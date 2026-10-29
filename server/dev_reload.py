@@ -6,6 +6,7 @@ serve.py).
 from __future__ import annotations
 
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -31,11 +32,26 @@ def python_files(root: Path = ROOT) -> dict[Path, float]:
     return out
 
 
+def port_answers(port: int) -> bool:
+    """Whether something accepts a connection on 127.0.0.1:port."""
+    try:
+        with socket.create_connection(("127.0.0.1", port), timeout=0.5):
+            return True
+    except OSError:
+        return False
+
+
 def reload_forever(port: int, every: float = 1.0, page: str | None = None) -> None:
     """Run the server in a child process and start a fresh one whenever a
     watched file is added, removed or changed, so an edit or a `git pull`
     shows up without stopping anything by hand. A child that crashes (a
-    syntax error mid-edit) is started again on the next change."""
+    syntax error mid-edit) is started again on the next change.
+
+    A child that has stopped while something else answers on the port lost
+    the port to another server, `make serve` in another checkout say. Vite
+    would forward /api to that server and show this checkout's page against
+    its Python, so the loop stops with an error (exit 1) and `make dev` with
+    it."""
     argv = [sys.executable, str(ROOT / "serve.py"), "--port", str(port)] + (["--page", page] if page else [])
 
     def stop(signum, frame):
@@ -46,8 +62,19 @@ def reload_forever(port: int, every: float = 1.0, page: str | None = None) -> No
     seen = python_files()
     child = subprocess.Popen(argv)
     try:
+        reported = False
         while True:
             time.sleep(every)
+            code = child.poll()
+            if code is not None and not reported:
+                if port_answers(port):
+                    print(f"The API server stopped (exit {code}) and another program answers on port {port}, "
+                          f"probably `make serve` in another checkout: /api would reach that server, so make dev "
+                          f"stops. Stop it, or run make dev PORT=<another port>.", file=sys.stderr, flush=True)
+                    raise SystemExit(1)
+                print(f"The API server stopped (exit {code}); it starts again on the next change",
+                      file=sys.stderr, flush=True)
+                reported = True
             now = python_files()
             if now == seen:
                 continue
@@ -60,9 +87,14 @@ def reload_forever(port: int, every: float = 1.0, page: str | None = None) -> No
                 child.kill()
                 child.wait()
             child = subprocess.Popen(argv)
+            reported = False
     except KeyboardInterrupt:
         pass
     finally:
+        # Ctrl-C reaches the whole group and the Makefile's trap sends SIGTERM
+        # after it: the second signal must not cut short the wait for the child
+        for sig in before:
+            signal.signal(sig, signal.SIG_IGN)
         if child.poll() is None:
             child.terminate()
             child.wait()

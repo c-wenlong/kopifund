@@ -40,31 +40,34 @@ fail() { printf '\nbuild_macos.sh: %s\n' "$*" >&2; exit 1; }
 
 [ "$(uname)" = Darwin ] || fail "this builds the Mac app; run it on a Mac"
 
+# one build at a time: two would share the Rust output and delete each other's
+# folders. lockf(1) holds a kernel lock on the file while this script runs
+# again under it, and the kernel drops the lock when the run ends however it
+# ends, so no lock is ever stale and two runs can never both take it.
+mkdir -p "$SUPPORT"
+if [ -z "${KOPIFUND_BUILD_LOCKED:-}" ]; then
+  status=0
+  KOPIFUND_BUILD_LOCKED=1 lockf -s -t 0 "$SUPPORT/build.lockf" "$BASH" "$0" "$@" || status=$?
+  [ "$status" -ne 75 ] || fail "another build is running; wait for it to finish"   # 75: lockf's EX_TEMPFAIL
+  exit "$status"
+fi
+
 say "Checking what the build needs"
 for tool in git python3 node npm cargo pdftotext; do
   command -v "$tool" >/dev/null || fail "$tool is missing (AGENTS.md lists what Kopifund needs; Rust comes from rustup.rs)"
 done
-python3 -c 'import sys; sys.exit(sys.version_info < (3, 14))' \
-  || fail "Kopifund needs Python 3.14 or later; python3 is $(python3 -V 2>&1)"
+# the app runs python3 and pdftotext from the owner's login shell (SPEC.md, "Desktop
+# app (G23)"), whose PATH can differ from this one (pyenv or conda in .zshrc), so
+# they are checked the way the app finds them
+APP_SHELL="${SHELL:-/bin/zsh}"
+in_app_shell() { "$APP_SHELL" -l -i -c "$1" </dev/null 2>/dev/null; }
+in_app_shell 'python3 -c "import sys; sys.exit(sys.version_info < (3, 14))"' \
+  || fail "Kopifund needs Python 3.14 or later where the app finds it; $APP_SHELL -l -i has $(in_app_shell 'python3 -V' | tail -1 | grep . || echo 'no python3')"
+in_app_shell 'command -v pdftotext >/dev/null' \
+  || fail "the app's login shell ($APP_SHELL -l -i) finds no pdftotext (brew install poppler)"
 [ "$(node -p 'process.versions.node.split(".")[0]')" -ge 22 ] \
   || fail "Kopifund needs Node 22 or later; node is $(node -v)"
 [ -w "$APPS" ] || { APPS="$HOME/Applications"; mkdir -p "$APPS"; echo "/Applications is not writable here, so the app goes in ~/Applications"; }
-
-# one build at a time: two would share the Rust output and delete each other's folders
-mkdir -p "$SUPPORT"
-LOCK="$SUPPORT/build.lock"
-if ! mkdir "$LOCK" 2>/dev/null; then
-  sleep 1   # a run that has just taken the lock may not have written its pid yet
-  holder="$(cat "$LOCK/pid" 2>/dev/null || true)"
-  # the pid counts only while it is still this script: after a crash or restart
-  # the number may belong to some other process, and the lock is stale
-  if [ -n "$holder" ] && ps -p "$holder" -o command= 2>/dev/null | grep -q "build_macos.sh"; then
-    fail "another build is running (process $holder); wait for it to finish"
-  fi
-  rm -rf "$LOCK"; mkdir "$LOCK" || fail "could not take the build lock at $LOCK"
-fi
-echo $$ > "$LOCK/pid"
-trap 'rm -rf "$LOCK"' EXIT
 
 say "Finding the version to build ($REF)"
 case "$REF" in
@@ -89,9 +92,14 @@ say "Building the web app"
 (cd "$WEB" && npm ci --no-audit --no-fund --loglevel=error && npm run build)
 
 say "Building Kopifund.app (the first build compiles Rust for a few minutes)"
-(cd "$DT" && npm ci --no-audit --no-fund --loglevel=error && npm run tauri -- build --bundles app)
 BUILT="$CARGO_TARGET_DIR/release/bundle/macos/Kopifund.app"
+# the Rust cache is shared, so the bundle from the last build sits where this one
+# lands: remove it, and accept only a bundle newer than this build's start
+rm -rf "$BUILT"
+STARTED="$DIR/BUILD"
+(cd "$DT" && npm ci --no-audit --no-fund --loglevel=error && npm run tauri -- build --bundles app -- --locked)
 [ -d "$BUILT" ] || fail "the build finished but $BUILT is not there"
+[ "$BUILT/Contents/Info.plist" -nt "$STARTED" ] || fail "$BUILT is older than this build; it is not the one just built"
 trap - ERR
 
 if [ "$(osascript -e "application id \"$APP_ID\" is running" 2>/dev/null)" = true ]; then
@@ -107,8 +115,13 @@ if [ "$(osascript -e "application id \"$APP_ID\" is running" 2>/dev/null)" = tru
 fi
 
 say "Installing in $APPS"
+# copied beside the old app first, then swapped in: an interrupted or failed copy
+# leaves the old app where it was
+NEW="$APPS/.Kopifund.app.new"
+rm -rf "$NEW"
+ditto "$BUILT" "$NEW" || { rm -rf "$NEW"; fail "could not copy the app into $APPS; the old one is still there"; }
 rm -rf "$APPS/Kopifund.app"
-ditto "$BUILT" "$APPS/Kopifund.app"
+mv "$NEW" "$APPS/Kopifund.app"
 
 # the installed app needs only this build's code and the web app's dist: drop the
 # npm packages, and every older build (no app runs from them any more)

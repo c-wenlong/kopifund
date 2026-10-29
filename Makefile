@@ -4,7 +4,10 @@
 # personal file is in the data folder, $(DATA).
 
 PY      ?= python3
-DATA    ?= $(abspath $(or $(KOPIFUND_DATA),$(HOME)/.kopifund))
+# made absolute in the shell, not with $(abspath), which splits a path at its spaces
+ifndef DATA
+DATA    := $(shell d="$${KOPIFUND_DATA:-$$HOME/.kopifund}"; case "$$d" in (/*) ;; (*) d="$(CURDIR)/$$d" ;; esac; printf '%s' "$$d")
+endif
 CACHE   := $(DATA)/cache
 RULES   := $(CURDIR)/data/rules
 PORT    ?= 8770
@@ -34,13 +37,20 @@ serve: build ## build the app, then serve it and the API at $(URL)
 link: ## the phone link's checklist (G25): tailscale serve must proxy 443 to 127.0.0.1:$(PORT), and the API up
 	$(PY) server/finance.py link --port $(PORT)
 
-APP_BUNDLE = apps/desktop/src-tauri/target/release/bundle/macos/Kopifund.app
+# one Rust build cache for make check, make desktop and build_macos.sh, so a new
+# checkout does not compile the Tauri tree from cold
+CARGO_TARGET = $${CARGO_TARGET_DIR:-$$HOME/Library/Caches/Kopifund/cargo-target}
 
 desktop: build ## build Kopifund.app, the desktop app (G23), and put it in ~/Applications
-	cd apps/desktop && npm ci && npm run tauri -- build --bundles app
-	mkdir -p "$(HOME)/Applications"
-	rm -rf "$(HOME)/Applications/Kopifund.app"
-	cp -R "$(APP_BUNDLE)" "$(HOME)/Applications/"
+	@set -e; export CARGO_TARGET_DIR="$(CARGO_TARGET)"; \
+	  case "$$CARGO_TARGET_DIR" in (/*) ;; (*) CARGO_TARGET_DIR="$(CURDIR)/apps/desktop/src-tauri/$$CARGO_TARGET_DIR" ;; esac; \
+	  built="$$CARGO_TARGET_DIR/release/bundle/macos/Kopifund.app"; \
+	  rm -rf "$$built"; \
+	  (cd apps/desktop && npm ci && npm run tauri -- build --bundles app -- --locked); \
+	  [ -d "$$built" ] || { echo "make desktop: the build finished but $$built is not there" >&2; exit 1; }; \
+	  apps="$(HOME)/Applications"; mkdir -p "$$apps"; \
+	  rm -rf "$$apps/.Kopifund.app.new"; cp -R "$$built" "$$apps/.Kopifund.app.new"; \
+	  rm -rf "$$apps/Kopifund.app"; mv "$$apps/.Kopifund.app.new" "$$apps/Kopifund.app"
 	@echo "Kopifund.app is in ~/Applications: open it from Launchpad or Spotlight, then keep it in the Dock"
 
 app-icon: ## write app-icons/ into the web, iOS and desktop apps; SET=iso makes iso the default first
@@ -49,21 +59,24 @@ app-icon: ## write app-icons/ into the web, iOS and desktop apps; SET=iso makes 
 
 dev: ## the app with hot reload on http://localhost:5173 (port $(PORT) sends you there): the API restarts on a Python change, the page on a web change
 	@$(PY) server/serve.py --reload --port $(PORT) --page http://localhost:5173 & api=$$!; \
-	trap 'kill $$api 2>/dev/null' INT TERM EXIT; \
-	cd apps/web && KOPIFUND_API_PORT=$(PORT) npm run dev -- --port 5173 --strictPort
+	(cd apps/web && KOPIFUND_API_PORT=$(PORT) exec npm run dev -- --port 5173 --strictPort) & web=$$!; \
+	trap 'kill $$api $$web 2>/dev/null' INT TERM EXIT; \
+	while kill -0 $$api 2>/dev/null && kill -0 $$web 2>/dev/null; do sleep 1; done; \
+	if kill -0 $$api 2>/dev/null; then wait $$web; else wait $$api; fi
 
 ## Checks
 test: ## Python tests, then the web tests
 	cd server && $(PY) -m unittest discover tests
 	cd apps/web && npm test
 
-check: test lint ## the tests, the rules lint, the runbook table, the record schema doc, the parsing doc's layouts table, the TypeScript typecheck and the desktop shell's cargo check: run before every push
+check: test lint ## the tests, the rules lint, the runbook table, the record schema doc, the parsing doc's layouts table, the TypeScript typecheck and the desktop shell's Rust tests: run before every push
 	$(PY) docs/gen_runbook.py --check
 	$(PY) -m docs.gen_schema --check
 	$(PY) -m docs.gen_parsing --check
 	cd apps/web && npm run typecheck
-	@if [ "$$(uname)" = Darwin ] && command -v cargo >/dev/null; then cd apps/desktop/src-tauri && cargo check --quiet; \
-	else echo "skipped the desktop shell's cargo check: it runs on a Mac with Rust installed"; fi
+	@if [ "$$(uname)" = Darwin ] && command -v cargo >/dev/null; then \
+	  cd apps/desktop/src-tauri && CARGO_TARGET_DIR="$(CARGO_TARGET)" cargo test --locked --quiet; \
+	else echo "skipped the desktop shell's cargo test: it runs on a Mac with Rust installed"; fi
 
 ## Setup, once
 setup: ## install pdftotext and check the token
