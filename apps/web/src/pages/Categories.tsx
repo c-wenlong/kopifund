@@ -118,6 +118,9 @@ export function Categories() {
   const current = groups.find((g) => g.name === selected)
     ?? (stale ? groups.find((g) => g.name === shown.current) : undefined) ?? groups[0];
   shown.current = current?.name ?? null;
+  // only the shown tab has an add form: one left open on a tab the address moved away from (a link, Back) is
+  // closed, as a tab click closes it, so going back does not reopen it empty
+  if (addingIn && current && addingIn !== current.name) setAddingIn(null);
   const pick = (name: string) => { setStored(name); storeBucket(name); patch({ bucket: name }); setAddingIn(null); };
 
   function send(url: string, body: object, done?: string): Promise<false | Saved> {

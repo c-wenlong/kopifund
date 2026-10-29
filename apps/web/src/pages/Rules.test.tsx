@@ -484,6 +484,23 @@ describe("Rules", () => {
     expect(screen.getByRole("radio", { name: "In order" })).toBeChecked();
   });
 
+  it("opens the page a link names when the link also changes the search", async () => {
+    window.history.replaceState(null, "", "/rules?q=shop&page=2");
+    stubFetch(MANY);
+    render(<Rules />);
+    await waitFor(() => expect(within(pages()).getByText("26 to 50 of 60")).toBeInTheDocument());
+    // another search that also lists every Shop, on the same page number, from a link while the page is open
+    act(() => navigate("/rules?q=s&page=2"));
+    expect(screen.getByRole("searchbox", { name: "Search rules" })).toHaveValue("s");
+    await act(async () => {});
+    expect(within(pages()).getByText("26 to 50 of 60")).toBeInTheDocument();
+    expect(window.location.search).toBe("?q=s&page=2");
+    // a search typed here still starts at page 1
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search rules" }), { target: { value: "sh" } });
+    expect(window.location.search).toBe("?q=sh");
+    expect(within(pages()).getByText("1 to 25 of 60")).toBeInTheDocument();
+  });
+
   it("tells every other reader of the address when a filter changes", async () => {
     stubFetch();
     render(<><Rules /><AddressProbe /></>);

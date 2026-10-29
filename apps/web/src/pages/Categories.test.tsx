@@ -106,6 +106,19 @@ describe("Categories", () => {
     await waitFor(() => expect(screen.getByRole("tab", { name: "Lifestyle 1" })).toHaveAttribute("aria-selected", "true"));
   });
 
+  it("closes an add form when the address moves to another tab, so Back does not reopen it empty", async () => {
+    stubFetch();
+    render(<><Categories /><Toaster /></>);
+    fireEvent.click(await screen.findByRole("button", { name: "Add category" }));
+    fireEvent.change(screen.getByLabelText("New category in Food"), { target: { value: "Snacks" } });
+    act(() => navigate("/categories?bucket=Income"));
+    expect(screen.getByRole("tab", { name: "Income 1" })).toHaveAttribute("aria-selected", "true");
+    act(() => { window.history.back(); });
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Food 2" })).toHaveAttribute("aria-selected", "true"));
+    expect(screen.queryByLabelText(/New category in/)).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Add category" })).toBeInTheDocument();
+  });
+
   it("keeps working when this browser's storage is blocked", async () => {
     stubFetch();
     const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });

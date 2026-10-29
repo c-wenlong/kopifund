@@ -52,10 +52,11 @@ export function Rules() {
   const showParam = params.get("show");
   const show: Show = showParam === "pins" || showParam === "problems" ? showParam : "all";
   const category = params.get("category") ?? "";
-  const setView = (v: "payee" | "order") => patch({ view: v === "order" ? v : null });
-  const setQ = (text: string) => patch({ q: text });
-  const setShow = (v: Show) => patch({ show: v === "all" ? null : v });
-  const setCategory = (c: string) => patch({ category: c });
+  // a filter changed here starts the list at page 1, and the page leaves the address in the same write
+  const setView = (v: "payee" | "order") => patch({ view: v === "order" ? v : null, page: null });
+  const setQ = (text: string) => patch({ q: text, page: null });
+  const setShow = (v: Show) => patch({ show: v === "all" ? null : v, page: null });
+  const setCategory = (c: string) => patch({ category: c, page: null });
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<Editing | null>(null);
   const edits = useRef(0);   // a number for each editor opened, never reused, so a save from a closed one cannot reach a new one
@@ -80,19 +81,21 @@ export function Rules() {
   // G13: pages of groups (by payee) or of rules (in order); a new search, filter or view starts at page 1.
   // The total is unknown until the rules load, so the page read from the address is not clamped to 1 meanwhile.
   const urlPage = Math.max(1, Math.floor(Number(params.get("page"))) || 1);
-  const pager = usePager("rules", s ? shown : undefined, [view, q, show, category].join("\n"), urlPage);
-  // the page and the address follow each other: a click on a page number writes it, an address that
-  // names another page (Back, a link) moves the list there
-  const seenUrlPage = useRef(urlPage);
+  const filters = [view, q, show, category].join("\n");
+  const pager = usePager("rules", s ? shown : undefined, filters, urlPage);
+  // the page and the address follow each other: a click on a page number writes it, an address that names
+  // another page or other filters (Back, a link) moves the list to its page. A filter changed here drops the
+  // page from the address as it writes (above), so new filters with the page unchanged come from a link.
+  const seen = useRef({ page: urlPage, filters });
   useEffect(() => {
-    if (urlPage !== seenUrlPage.current) {
-      seenUrlPage.current = urlPage;
+    if (urlPage !== seen.current.page || filters !== seen.current.filters) {
+      seen.current = { page: urlPage, filters };
       if (urlPage !== pager.page) pager.setPage(urlPage);
     } else if (s && pager.page !== urlPage) {
-      seenUrlPage.current = pager.page;
+      seen.current = { page: pager.page, filters };
       patch({ page: pager.page > 1 ? String(pager.page) : null });
     }
-  }, [urlPage, pager, patch, s]);
+  }, [urlPage, filters, pager, patch, s]);
   // G18 (U4): the payees awaiting a rule page like every other long list
   const needsPager = usePager("rules-needs", s?.needs.length ?? 0);
   // a link to a category that has since been renamed or deleted would filter out every rule behind a dropdown that says "All"
