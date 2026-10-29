@@ -1,10 +1,18 @@
-import { cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Categories } from "./Categories";
 import { leadingIcon } from "../test-icons";
 import { choose } from "../test-select";
 import { Toaster } from "../components/Toast";
 import type { CategoriesState, CategoryEntry, NeedClass } from "../api";
+import { navigate } from "../router";
+import { useUrlParams } from "../useUrlParams";
+
+// another reader of the address, as the copilot panel is
+function AddressProbe() {
+  const [params] = useUrlParams();
+  return <output data-testid="address">{params.toString()}</output>;
+}
 
 // G17: the ids the server sends with each category and bucket; every write names its row by one
 const ID: Record<string, number> = {
@@ -83,6 +91,19 @@ describe("Categories", () => {
     window.history.replaceState(null, "", "/categories");
     render(<><Categories /><Toaster /></>);
     expect(await screen.findByRole("tab", { name: "Lifestyle 1" })).toHaveAttribute("aria-selected", "true");
+  });
+
+  it("follows the address while open: a link to another bucket opens its tab, and every reader of the address hears", async () => {
+    stubFetch();
+    render(<><Categories /><Toaster /><AddressProbe /></>);
+    fireEvent.click(await screen.findByRole("tab", { name: "Lifestyle 1" }));
+    expect(screen.getByTestId("address")).toHaveTextContent("bucket=Lifestyle");
+    act(() => navigate("/categories?bucket=Income"));
+    expect(screen.getByRole("tab", { name: "Income 1" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("Salary")).toBeInTheDocument();
+    // Back returns to the tab the address had
+    act(() => { window.history.back(); });
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Lifestyle 1" })).toHaveAttribute("aria-selected", "true"));
   });
 
   it("keeps working when this browser's storage is blocked", async () => {

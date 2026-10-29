@@ -6,6 +6,14 @@ import { Rules } from "./Rules";
 import { leadingIcon } from "../test-icons";
 import { Toaster } from "../components/Toast";
 import { choose } from "../test-select";
+import { navigate } from "../router";
+import { useUrlParams } from "../useUrlParams";
+
+// another reader of the address, as the copilot panel is: it sends every query parameter as the page's filters
+function AddressProbe() {
+  const [params] = useUrlParams();
+  return <output data-testid="address">{params.toString()}</output>;
+}
 
 // invented rules: one employer pinned row by row, a coffee shop, and a shipped rule
 const pin = (key: string, date: string) => ({ key, date, amount: 250000, currency: "SGD", text: "SALARY PAYMENT" });
@@ -454,6 +462,37 @@ describe("Rules", () => {
     // clearing the search takes it out of the address again
     fireEvent.change(screen.getByRole("searchbox", { name: "Search rules" }), { target: { value: "" } });
     expect(window.location.search).toBe("");
+  });
+
+  it("follows a link to the bare page while open, so the list, the box and the address agree", async () => {
+    window.history.replaceState(null, "", "/rules?q=grab&category=Transport&view=order");
+    stubFetch();
+    render(<><Rules /><AddressProbe /></>);
+    const search = await screen.findByRole("searchbox", { name: "Search rules" });
+    expect(search).toHaveValue("grab");
+    expect(screen.getByRole("button", { name: "Category" })).toHaveTextContent("Transport");
+    // the sidebar's Rules link, or Needs your eye's, pushes the bare path under the open page
+    act(() => navigate("/rules"));
+    expect(search).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Category" })).toHaveTextContent("All categories");
+    expect(screen.getByRole("radio", { name: "By payee" })).toBeChecked();
+    expect(rowsOf()).toHaveLength(3);
+    expect(window.location.search).toBe("");
+    // and Back brings the filtered list back
+    act(() => { window.history.back(); });
+    await waitFor(() => expect(search).toHaveValue("grab"));
+    expect(screen.getByRole("radio", { name: "In order" })).toBeChecked();
+  });
+
+  it("tells every other reader of the address when a filter changes", async () => {
+    stubFetch();
+    render(<><Rules /><AddressProbe /></>);
+    fireEvent.change(await screen.findByRole("searchbox", { name: "Search rules" }), { target: { value: "kopi" } });
+    expect(screen.getByTestId("address")).toHaveTextContent("q=kopi");
+    fireEvent.click(screen.getByRole("radio", { name: "In order" }));
+    expect(screen.getByTestId("address")).toHaveTextContent("q=kopi&view=order");
+    choose(screen.getByRole("button", { name: "Category" }), "Eating out");
+    expect(screen.getByTestId("address")).toHaveTextContent("q=kopi&view=order&category=Eating+out");
   });
 
   it("drops a category from the address that no rule has any more, rather than hide every rule", async () => {
