@@ -458,6 +458,7 @@ def run(sources):
     for b in blocks:
         rs = [r for r in rows if r["source"] == b["source"] and r.get("block") == b["month"]]
         run_, tin, tout = b["opening"], 0.0, 0.0
+        drifts = len(bad)
         for r in rs:
             run_ += r["amount"]
             tin += max(r["amount"], 0)
@@ -469,7 +470,9 @@ def run(sources):
         b.update(computed_closing=round(run_, 2), computed_in=round(tin, 2),
                  computed_out=round(tout, 2), total_in=round(tin, 2), total_out=round(tout, 2),
                  n_txns=len(rs), n_synth=0, balance_state="checked",
-                 ok=abs(run_ - b["closing"]) < 0.005)
+                 # a drift resynced onto the printed balance still fails the
+                 # block, so its CSV's `reconciled` stops a reuse (sync.check_blocks)
+                 ok=abs(run_ - b["closing"]) < 0.005 and len(bad) == drifts)
     add_keys(rows)
     apply_fx(rows, blocks)
     return rows, blocks, stmts, bad, no_amount
