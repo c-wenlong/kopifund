@@ -190,6 +190,7 @@ struct TransactionDetailView: View {
 
     private var centsBinding: Binding<Double> {
         Binding(get: { Double(row.amountCents) / 100 },
-                set: { row.amountCents = Int(($0 * 100).rounded()) })
+                // the same rounding as intake; a figure past counting is ignored
+                set: { if let cents = Cents.from($0) { row.amountCents = cents } })
     }
 }

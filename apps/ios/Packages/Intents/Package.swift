@@ -7,11 +7,10 @@ let package = Package(
     products: [.library(name: "Intents", targets: ["Intents"])],
     dependencies: [
         .package(path: "../Matching"),
-        .package(path: "../YNABClient"),
         .package(path: "../Storage"),
     ],
     targets: [
-        .target(name: "Intents", dependencies: ["Matching", "YNABClient", "Storage"]),
+        .target(name: "Intents", dependencies: ["Matching", "Storage"]),
         .testTarget(name: "IntentsTests", dependencies: ["Intents", "Storage"]),
     ]
 )

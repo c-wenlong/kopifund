@@ -7,10 +7,9 @@ let package = Package(
     products: [.library(name: "Storage", targets: ["Storage"])],
     dependencies: [
         .package(path: "../Matching"),
-        .package(path: "../YNABClient"),
     ],
     targets: [
-        .target(name: "Storage", dependencies: ["Matching", "YNABClient"]),
+        .target(name: "Storage", dependencies: ["Matching"]),
         .testTarget(name: "StorageTests", dependencies: ["Storage", "Matching"]),
     ]
 )

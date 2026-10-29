@@ -2,7 +2,6 @@ import Foundation
 
 /// G24: the one host the app ever calls. Everything hangs off `/v1`.
 public enum YNAB {
-    public static let host = "api.ynab.com"
     public static let base = URL(string: "https://api.ynab.com/v1")!
 }
 
@@ -18,51 +17,36 @@ public struct YNABError: Error, Equatable, Sendable {
     }
     public let kind: Kind
     public let message: String
-}
-
-/// A URLProtocol the tests point URLSession at: `register` a handler per
-/// request and read back the requests the client sent.
-public final class MockProtocol: URLProtocol, @unchecked Sendable {
-    public nonisolated(unsafe) static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
-    public nonisolated(unsafe) static var requests: [URLRequest] = []
-
-    public override class func canInit(with request: URLRequest) -> Bool { true }
-    public override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-    public override func startLoading() {
-        guard let handler = MockProtocol.handler else { return }
-        MockProtocol.requests.append(request)
-        do {
-            let (response, data) = try handler(request)
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: data)
-            client?.urlProtocolDidFinishLoading(self)
-        } catch {
-            client?.urlProtocol(self, didFailWithError: error)
-        }
-    }
-    public override func stopLoading() {}
-
-    public static func session() -> URLSession {
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockProtocol.self]
-        return URLSession(configuration: config)
-    }
+    /// For `.rateLimited`: how long YNAB's `Retry-After` asked the caller to
+    /// wait, in seconds, when it sent one.
+    public var retryAfter: TimeInterval? = nil
 }
 
 public actor YNABClient {
     private let token: String
     private let session: URLSession
     /// Retries a 429 or a network drop this many times, waiting `retryDelay`
-    /// between tries. Injected small in tests.
+    /// between tries, or as long as a 429's `Retry-After` asks. A wait past
+    /// `maxRetryAfter` seconds is not slept through: the call throws
+    /// `.rateLimited` carrying it, so a sync stops instead of hanging.
     private let retries: Int
     private let retryDelay: UInt64
+    private let maxRetryAfter: TimeInterval
+    /// Waits between tries; injected in tests to read the requested waits.
+    /// Throws `CancellationError` when the calling task is cancelled.
+    private let sleep: @Sendable (UInt64) async throws -> Void
 
     public init(token: String, session: URLSession = .shared, retries: Int = 3,
-                retryDelay: UInt64 = 1_000_000_000) {
+                retryDelay: UInt64 = 1_000_000_000, maxRetryAfter: TimeInterval = 30,
+                sleep: @escaping @Sendable (UInt64) async throws -> Void = {
+                    try await Task.sleep(nanoseconds: $0)
+                }) {
         self.token = token
         self.session = session
         self.retries = retries
         self.retryDelay = retryDelay
+        self.maxRetryAfter = maxRetryAfter
+        self.sleep = sleep
     }
 
     public func plans() async throws -> [Plan] {
@@ -76,10 +60,6 @@ public actor YNABClient {
     public func categories(planID: String) async throws -> [CategoryGroup] {
         try await get("plans/\(planID)/categories", as: CategoriesResponse.self)
             .data.categoryGroups.filter { !$0.deleted && !$0.hidden }
-    }
-
-    public func payees(planID: String) async throws -> [Payee] {
-        try await get("plans/\(planID)/payees", as: PayeesResponse.self).data.payees.filter { !$0.deleted }
     }
 
     /// The ISO code of the currency the plan keeps ("SGD"), nil when YNAB
@@ -102,6 +82,20 @@ public actor YNABClient {
 
     // MARK: - transport
 
+    /// Seconds a 429's `Retry-After` asks for: delta-seconds ("120") or an
+    /// HTTP date, never negative; nil when the header is absent or unreadable.
+    static func retryAfter(_ http: HTTPURLResponse, now: Date = Date()) -> TimeInterval? {
+        guard let raw = http.value(forHTTPHeaderField: "Retry-After")?
+            .trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
+        if let seconds = TimeInterval(raw) { return seconds >= 0 ? seconds : nil }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = TimeZone(identifier: "GMT")
+        f.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        guard let date = f.date(from: raw) else { return nil }
+        return max(0, date.timeIntervalSince(now))
+    }
+
     private func get<T: Decodable>(_ path: String, as type: T.Type) async throws -> T {
         try await request(path, method: "GET", body: nil)
     }
@@ -120,9 +114,12 @@ public actor YNABClient {
             do {
                 (data, response) = try await session.data(for: url)
             } catch {
+                // a cancelled sync stops here rather than retrying as if
+                // the network had dropped
+                if Task.isCancelled { throw CancellationError() }
                 attempt += 1
                 if attempt <= retries {
-                    try? await Task.sleep(nanoseconds: retryDelay)
+                    try await sleep(retryDelay)
                     continue
                 }
                 throw YNABError(kind: .network, message: error.localizedDescription)
@@ -142,11 +139,15 @@ public actor YNABClient {
                 throw YNABError(kind: .conflict, message: "import_id already used")
             case 429:
                 attempt += 1
-                if attempt <= retries {
-                    try? await Task.sleep(nanoseconds: retryDelay)
+                let asked = Self.retryAfter(http)
+                if attempt <= retries, (asked ?? 0) <= maxRetryAfter {
+                    try await sleep(asked.map { UInt64($0 * 1_000_000_000) } ?? retryDelay)
                     continue
                 }
-                throw YNABError(kind: .rateLimited, message: "rate limited")
+                throw YNABError(kind: .rateLimited,
+                                message: asked.map { "rate limited: YNAB asks to wait \(Int($0.rounded(.up))) s" }
+                                    ?? "rate limited",
+                                retryAfter: asked)
             default:
                 throw YNABError(kind: .http(http.statusCode), message: "HTTP \(http.statusCode)")
             }
@@ -157,15 +158,15 @@ public actor YNABClient {
 // MARK: - milliunits and import_id
 
 /// YNAB counts money in milliunits: $12.34 is 12340, and outflows are
-/// negative. Money is Decimal everywhere until this conversion at the wire.
+/// negative. The app keeps integer cents (Storage's `Cents` makes them), and
+/// this is the one conversion to the wire.
 public enum Milliunits {
-    public static func from(_ amount: Decimal, outflow: Bool) -> Int {
-        let scaled = amount * 1000
-        var rounded = Decimal()
-        var copy = scaled
-        NSDecimalRound(&rounded, &copy, 0, .plain)
-        let v = NSDecimalNumber(decimal: rounded).intValue
-        return outflow ? -v : v
+    /// `cents` as signed milliunits, nil when the result would not fit an
+    /// Int (a stored row never gets near; the check keeps it from wrapping).
+    public static func from(cents: Int, outflow: Bool) -> Int? {
+        let (milli, overflow) = cents.multipliedReportingOverflow(by: 10)
+        guard !overflow else { return nil }
+        return outflow ? -milli : milli
     }
 }
 
