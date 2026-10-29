@@ -1,5 +1,5 @@
 import { Component, type ReactNode } from "react";
-import { revalidate } from "../api";
+import { reloadViews } from "../api";
 import { buttonClass } from "./Button";
 import { Problem } from "./States";
 
@@ -38,13 +38,17 @@ export class ErrorBoundary extends Component<Props, { failed: boolean }> {
 
 export const PAGE_FAILED = "Something on this page failed to draw.";
 
-/** A page that threw: the shell stays, and Try again asks the figures again before drawing it anew. */
+/**
+ * A page that threw: the shell stays, and Try again draws it anew from the server's answers. The kept
+ * answers are forgotten first, since the one the page threw on would otherwise be read again (the page
+ * is not mounted, so nothing asks for it afresh) and throw again however the server answers now.
+ */
 export function PageBoundary({ path, children }: { path: string; children: ReactNode }) {
   return (
     <ErrorBoundary resetKey={path} fallback={(reset) => (
       <Problem message={PAGE_FAILED} hint="Try again, or open another page."
         onRetry={() => {
-          revalidate();
+          reloadViews();
           reset();
         }} />
     )}>

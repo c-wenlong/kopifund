@@ -655,4 +655,23 @@ describe("an answer the panel cannot draw", () => {
     await waitFor(() => expect(box()).toBeEnabled());
     vi.mocked(console.error).mockRestore();
   });
+
+  // Greptile on #305: one bad answer used to hide every later reply in the thread
+  it("still draws the answers after it", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const odd = { type: "chart", chart: { title: "Odd", result: "not a result" } } as unknown as CopilotEvent;
+    let n = 0;
+    stub(aiOn, (url) => {
+      if (url !== "/api/copilot/ask") return undefined;
+      n += 1;
+      return n === 1 ? lines([odd, { type: "done" }]) : lines([{ type: "text", text: "S$42 on kopi" }, { type: "done" }]);
+    });
+    render(<Panel />);
+    await askIt("Show me something odd");
+    expect(await screen.findByText(ANSWER_FAILED)).toBeInTheDocument();
+    await askIt("And kopi?");
+    expect(await screen.findByText("S$42 on kopi")).toBeInTheDocument();
+    expect(screen.getAllByText(ANSWER_FAILED)).toHaveLength(1);
+    vi.mocked(console.error).mockRestore();
+  });
 });

@@ -5,12 +5,19 @@ import { App } from "./App";
 import { navigate } from "./router";
 import { APP_FAILED, AppBoundary, PAGE_FAILED } from "./components/ErrorBoundary";
 import type { Route } from "./routes";
+import { useApi } from "./api";
 
 // Audit: a page that throws as it draws used to unmount the whole app. Here the
 // "/settings" page throws while `boom` is set; every other page draws as usual.
 let boom = true;
+let reads = false;
 function Exploding(): never {
   throw new Error("a figure in a shape this build does not know");
+}
+/** A page that reads its figure off the server's answer, and throws on an answer without one. */
+function Reads() {
+  const plan = useApi<{ n: number }>("/api/plan");
+  return <p>{plan.data ? `Figure ${plan.data.n.toFixed(0)}` : "Loading"}</p>;
 }
 
 vi.mock("./routes", async (original) => {
@@ -20,7 +27,7 @@ vi.mock("./routes", async (original) => {
     routeFor: (path: string): Route | undefined => {
       const route = real.routeFor(path);
       if (path !== "/settings" || !route) return route;
-      return { ...route, component: (props) => (boom ? <Exploding /> : <route.component {...props} />) };
+      return { ...route, component: (props) => (reads ? <Reads /> : boom ? <Exploding /> : <route.component {...props} />) };
     },
   };
 });
@@ -37,6 +44,7 @@ const original = window.matchMedia;
 
 beforeEach(() => {
   boom = true;
+  reads = false;
   setWide();
   window.history.pushState(null, "", "/settings");
   vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise<Response>(() => {}));
@@ -70,6 +78,21 @@ describe("a page that fails to draw", () => {
     act(() => navigate("/rules"));
     expect(screen.queryByText(PAGE_FAILED)).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { level: 1, name: "Rules" })).toBeInTheDocument();
+  });
+});
+
+describe("Try again after a bad answer", () => {
+  // Greptile on #305: the answer the page threw on stayed in the cache, so Try again threw on it again
+  it("draws the page from the server's new answer, not the kept bad one", async () => {
+    reads = true;
+    let answer: unknown = {};
+    vi.mocked(globalThis.fetch).mockImplementation(async (url) =>
+      String(url).startsWith("/api/plan") ? new Response(JSON.stringify(answer), { status: 200 }) : new Promise<Response>(() => {}));
+    render(<App />);
+    expect(await within(screen.getByRole("main")).findByText(PAGE_FAILED)).toBeInTheDocument();
+    answer = { n: 5 };
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Figure 5")).toBeInTheDocument();
   });
 });
 

@@ -400,6 +400,12 @@ export function prefetch(urls: readonly string[]) {
 // without a browser reload. A reload keeps the old data on screen meanwhile.
 const CHANGED = "kopifund:changed";
 
+/** Audit: forget every kept answer, in memory and on disk, and ask every mounted view again. */
+export function reloadViews() {
+  forget();
+  window.dispatchEvent(new Event(CHANGED));
+}
+
 /** Ask every mounted view again, keeping the cache: the ETags make it cheap. */
 export function revalidate() {
   window.dispatchEvent(new Event(CHANGED));

@@ -148,17 +148,24 @@ type BodyProps = { copilot: Copilot; page: CopilotPage; ai: Loaded<AiSettings>; 
 
 export const ANSWER_FAILED = "This answer failed to draw.";
 
+export const PANEL_FAILED = "The panel failed to draw.";
+
 /**
- * Audit: an answer part the panel cannot draw (a card or chart in a shape it does not know) shows a
- * problem in the panel instead of taking the page down; the box below still asks, and a new
- * answer, another thread or the history list starts clean.
+ * Audit: what the panel cannot draw stays in the panel instead of taking the page down. Each answer
+ * has its own boundary (AnswerTurn), so one bad answer leaves the others and later replies drawn;
+ * this one is the last resort for the rest, and keeps the History button (`extra`, the phone's only
+ * way to another thread) beside its message. Another thread or the history list starts it clean.
  */
 function Body(props: BodyProps) {
-  const { copilot } = props;
-  const last = copilot.turns[copilot.turns.length - 1];
+  const { copilot, extra } = props;
   return (
-    <ErrorBoundary resetKey={`${copilot.thread}:${copilot.history}:${copilot.turns.length}:${last?.status}`}
-      fallback={(reset) => <Problem message={ANSWER_FAILED} onRetry={reset} />}>
+    <ErrorBoundary resetKey={`${copilot.thread}:${copilot.history}`}
+      fallback={(reset) => (
+        <div className="flex flex-col gap-2">
+          {extra && <div className="flex justify-end">{extra}</div>}
+          <Problem message={PANEL_FAILED} onRetry={reset} />
+        </div>
+      )}>
       <Turns {...props} />
     </ErrorBoundary>
   );
@@ -208,7 +215,12 @@ function Turns({ copilot, page, ai, onFollow, extra }: BodyProps) {
       {context}
       {copilot.turns.map((t, i) => t.role === "user"
         ? <UserTurn key={t.id} turn={t} />
-        : <AnswerTurn key={t.id} turn={t} copilot={copilot} page={page} latest={i === copilot.turns.length - 1} onFollow={onFollow} />)}
+        : (
+          <ErrorBoundary key={t.id} resetKey={`${t.status}:${t.charts.length}:${t.cards.length}:${t.links.length}`}
+            fallback={(reset) => <Problem message={ANSWER_FAILED} onRetry={reset} />}>
+            <AnswerTurn turn={t} copilot={copilot} page={page} latest={i === copilot.turns.length - 1} onFollow={onFollow} />
+          </ErrorBoundary>
+        ))}
       <div ref={end} />
     </div>
   );
