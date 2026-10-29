@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { useApi, type RunStatus, type StepName, type StepStatus, type UploadAttempt, type UploadStep, type UploadStepOutline } from "../api";
 import { accounts as folderAccounts } from "../accounts";
@@ -78,6 +78,11 @@ export function PastUploads() {
   const list = useApi<Page>(`/api/uploads?${new URLSearchParams({ limit: String(pager.size), offset: String(pager.offset) })}`);
   const [open, setOpen] = useState<number | null>(null);
   if (list.data && list.data.total !== total) setTotal(list.data.total);
+  // the folders name the account a problem is in: asked once, when an attempt is first opened, for every one
+  const [opened, setOpened] = useState(false);
+  if (open != null && !opened) setOpened(true);
+  const status = useApi<RunStatus>(opened ? "/api/run/status" : null);
+  const accounts = useMemo(() => folderAccounts(Array.isArray(status.data?.folders) ? status.data.folders : []), [status.data]);
 
   if (list.loading) return <Loading what="Loading your past uploads" />;
   if (list.error || !list.data) return <Problem message={list.error ?? "No history"} retry />;
@@ -110,7 +115,7 @@ export function PastUploads() {
                 {counts && <span className="num text-[13px] text-ink-2">{counts}</span>}
                 <span className="ml-auto"><StatusChip tone={end.tone} icon={endIcon(end)}>{end.text}</StatusChip></span>
               </button>
-              {expanded && <AttemptDetail id={a.id} />}
+              {expanded && <AttemptDetail id={a.id} accounts={accounts} />}
             </li>
           );
         })}
@@ -138,12 +143,8 @@ function StepTrail({ steps }: { steps: UploadStepOutline[] }) {
   );
 }
 
-function AttemptDetail({ id }: { id: number }) {
+function AttemptDetail({ id, accounts }: { id: number; accounts: ReturnType<typeof folderAccounts> }) {
   const detail = useApi<UploadAttempt<UploadStep>>(`/api/uploads/${id}`);
-  // the folders name the account a problem is in
-  const status = useApi<RunStatus>("/api/run/status");
-  const folders = Array.isArray(status.data?.folders) ? status.data.folders : [];
-  const accounts = folderAccounts(folders);
   if (detail.loading) return <div className="px-4 pb-3"><Loading what="Loading the steps" /></div>;
   if (detail.error || !detail.data) return <div className="px-4 pb-3"><Problem message={detail.error ?? "Not found"} retry /></div>;
   return (

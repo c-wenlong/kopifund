@@ -59,8 +59,9 @@ type RowNote = { saved?: boolean; error?: string };
 function BudgetEditor({ asOf }: { asOf?: string | null }) {
   const [picked, setMonth] = useState<string | null>(null);
   const month = picked ?? (asOf === undefined ? null : startMonth(asOf));
-  const [version, setVersion] = useState(0);
-  const { data, error, loading } = useApi<Budgets>(month && `/api/budgets?month=${month}&v=${version}`);
+  // a write empties the kept answers and has every view on screen ask again (api.ts), so a save needs no
+  // version in the address to be read back
+  const { data, error, loading } = useApi<Budgets>(month && `/api/budgets?month=${month}`);
   // G22: "this month" in a question here is the budget month on screen
   useCopilotContext({ month });
   const [only, setOnly] = useState(false);
@@ -89,7 +90,6 @@ function BudgetEditor({ asOf }: { asOf?: string | null }) {
     try {
       await postJSON("/api/budgets", JSON.stringify({ category_id: id, category, month, planned: v }));
       note(category, { saved: true });
-      setVersion((x) => x + 1);
     } catch (e) {
       note(category, { error: (e as Error).message });
     }
@@ -99,7 +99,6 @@ function BudgetEditor({ asOf }: { asOf?: string | null }) {
     try {
       await postJSON("/api/budgets/copy", JSON.stringify({ from: src, to: month }));
       setNotes({});
-      setVersion((x) => x + 1);
     } catch (e) {
       showToast({ tone: "error", message: (e as Error).message });
     }
@@ -380,6 +379,9 @@ function PlanEditor() {
   const latest = useRef(plan);
   latest.current = plan;
   useEffect(() => { if (data && !unsaved.current) { setPlan(data.plan); setStored(data.plan); } }, [data]);
+  // the first answer fills the form in this render, not after it: an empty form in between would show
+  // "No plan yet" (an alert) for a frame on every visit
+  if (data && !plan && !stored) { setPlan(data.plan); setStored(data.plan); }
   if (loading && !data) return <Loading what="Loading your plan" />;
   if (error || !data || !plan) return <Problem message={error ?? "No plan yet"} retry />;
 

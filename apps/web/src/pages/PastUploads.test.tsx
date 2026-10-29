@@ -109,6 +109,21 @@ describe("PastUploads", () => {
     expect(screen.getByText("Passed")).toBeInTheDocument();
   });
 
+  it("asks for the run status once, however many attempts are opened one after another", async () => {
+    const spy = serve();
+    render(<PastUploads />);
+    const rows = await screen.findAllByRole("button", { expanded: false });
+    const asked = () => spy.mock.calls.filter(([u]) => String(u) === "/api/run/status").length;
+    // nothing open, nothing asked
+    expect(asked()).toBe(0);
+    fireEvent.click(rows[0]);
+    expect(await screen.findByText("Statement doesn't add up")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { expanded: false })[0]);
+    fireEvent.click(screen.getAllByRole("button", { expanded: false })[0]);
+    expect(await screen.findByText("Statement doesn't add up")).toBeInTheDocument();
+    expect(asked()).toBe(1);
+  });
+
   it("leads each step and status with its icon, and a statement file with its bank's mark (G18)", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       const u = String(url);

@@ -854,6 +854,8 @@ describe("Transactions filters in the address", () => {
     render(<Transactions />);
     await screen.findByText("Shop 1");
     fireEvent.change(screen.getByRole("searchbox", { name: "Search transactions" }), { target: { value: "kopi" } });
+    // the search reaches the address once typing pauses
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get("q")).toBe("kopi"));
     // the category is a combobox: pick from its list
     const box = screen.getByRole("combobox", { name: "Category" });
     expect(box).toHaveValue("All categories");
@@ -873,6 +875,26 @@ describe("Transactions filters in the address", () => {
     fireEvent.click(screen.getByRole("button", { name: "Month" }));
     fireEvent.mouseDown(within(screen.getByRole("listbox", { name: "Month" })).getByRole("option", { name: "All months" }));
     expect(new URLSearchParams(window.location.search).has("month")).toBe(false);
+  });
+
+  it("asks for a search once typing pauses, not once a key, and at once on Enter", async () => {
+    const calls = stubTxns({ rows: [money(1)], total: 1, ...months });
+    render(<Transactions />);
+    await screen.findByText("Shop 1");
+    const box = screen.getByRole("searchbox", { name: "Search transactions" });
+    const asked = () => calls.filter((u) => u.includes("q="));
+    for (const text of ["s", "st", "sta", "star", "starb"]) fireEvent.change(box, { target: { value: text } });
+    // the box shows every key at once; the address and the server wait for the pause
+    expect(box).toHaveValue("starb");
+    expect(new URLSearchParams(window.location.search).has("q")).toBe(false);
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get("q")).toBe("starb"));
+    await waitFor(() => expect(asked()).toHaveLength(1));
+    expect(asked()[0]).toContain("q=starb");
+    // Enter does not wait
+    fireEvent.change(box, { target: { value: "starbucks" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(new URLSearchParams(window.location.search).get("q")).toBe("starbucks");
+    await waitFor(() => expect(asked()).toHaveLength(2));
   });
 
   it("opens on the filters in the address, as Back or a shared link does", async () => {

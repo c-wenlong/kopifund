@@ -103,6 +103,9 @@ export function scopeParts(s: Scope): { text: string; icons: LucideIcon[] }[] {
 // the category box's entry for "no category filter": a Combobox only takes a choice from its list
 const ALL_CATEGORIES = "All categories";
 
+// how long typing in the search box pauses before the search is asked for
+const SEARCH_PAUSE_MS = 250;
+
 // one family: every filter is a 32px box with the same border, fill and 13px text
 const FILTER_BOX = "flex-1 basis-36 sm:flex-none";
 
@@ -115,6 +118,17 @@ export function Transactions() {
   const category = params.get("category") ?? "";
   const account = params.get("account") ?? "";
   const q = params.get("q") ?? "";
+  // the search box shows every key at once, and the address (so the server, and the kept answers) takes the
+  // text once typing pauses or on Enter: "starbucks" is one request, not nine, and no half-typed word's page
+  // pushes another page's answer out of the cache. An address changed from outside (a link, Clear) fills the box.
+  const [box, setBox] = useState({ text: q, from: q });
+  if (box.from !== q) setBox({ text: q, from: q });
+  const typed = box.from !== q ? q : box.text;
+  useEffect(() => {
+    if (typed === q) return;
+    const wait = window.setTimeout(() => patch({ q: typed }), SEARCH_PAUSE_MS);
+    return () => window.clearTimeout(wait);
+  }, [typed, q, patch]);
   // G13: a link from another page lists exactly the rows its figure counts: one payee by its exact
   // name, or particular rows by their keys (comma-separated). Each shows as a chip that clears it.
   const payee = params.get("payee") ?? "";
@@ -241,7 +255,9 @@ export function Transactions() {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2 text-[13px]">
-        <input type="search" placeholder="Search merchant, payee, memo" value={q} onChange={(e) => patch({ q: e.target.value })}
+        <input type="search" placeholder="Search merchant, payee, memo" value={typed}
+          onChange={(e) => setBox({ text: e.target.value, from: q })}
+          onKeyDown={(e) => { if (e.key === "Enter") patch({ q: typed }); }}
           aria-label="Search transactions" className="h-8 min-w-0 basis-full rounded-md border border-line bg-panel px-2.5 sm:min-w-56 sm:flex-1 sm:basis-auto" />
         <Combobox label="Category" value={category || ALL_CATEGORIES} options={[ALL_CATEGORIES, ...(data?.categories ?? [])]}
           className={`${FILTER_BOX} sm:w-48`} onChange={(v) => patch({ category: v === ALL_CATEGORIES ? null : v })} />
