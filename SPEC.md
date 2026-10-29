@@ -641,7 +641,9 @@ changes the record.
   formats are spoken: Anthropic's `tool_use` blocks and the OpenAI-style
   `tool_calls`. The server answers with one line of JSON per event as it
   happens (the thread, each round's steps, then the answer with its charts,
-  links and cards), so the steps show while the model works.
+  links and cards), so the steps show while the model works. A line the app
+  cannot read ends the request there (the app cancels the body and aborts
+  the fetch, so the model stops), and the answer says "The answer came back garbled, so it stopped there."
 - **Steps.** Each answer shows its steps in order above the answer, every
   row collapsed until pressed: "Thought" (a round's summarized thinking,
   quiet, under a rule), "Used 2 tools" (the tools of one round, or of rounds
@@ -1165,9 +1167,13 @@ this, and a figure kept from before a write is never shown after it.
   server is down, or the connection dropped while the answer was coming) keeps the
   kept one and says so in a banner. Memory holds the
   50 most recently read answers. The answers are kept in `localStorage` too, most
-  recently used first up to about 3 million characters, under a key that
-  names the build, so a reload paints from them and a new build never paints
-  an answer shaped for an old one. Every write the app makes (`notifyChanged`)
+  recently used first up to about 1.5 million characters (500,000 for one),
+  under a key that names the build, so a reload paints from them and a new
+  build never paints an answer shaped for an old one. That copy sits in the
+  browser's profile on disk, outside the data folder, so it holds only what a
+  page paints first: never `/api/transactions`, `/api/rules/rows`,
+  `/api/scam-checks` or `/api/profile`, which stay in memory for the visit,
+  and an answer not read for 30 days is dropped as the app starts. Every write the app makes (`notifyChanged`)
   empties both, so a page opened after a write waits for the new figures; a
   view already on screen keeps its figures until the new ones arrive. The end
   of a stats rebuild empties them again, an answer asked for before a write
@@ -1586,7 +1592,11 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
     seconds. A failure to get any answer is one plain message in `api.ts`
     (`OFFLINE`), never the browser's "Failed to fetch"; a gateway that answers
     500 with no body (the dev proxy with `serve.py` stopped) counts as no
-    answer. A page that has its last answer in the cache keeps painting it, and
+    answer, and so does a 502, 503 or 504 whatever its body says. An answer
+    that comes but is not JSON (a proxy's page, a body cut short) says
+    "Kopifund's answer could not be read." rather than the parser's words; for
+    a write it adds that the change should be checked before it is done again,
+    and every view asks again, since the write may have landed. A page that has its last answer in the cache keeps painting it, and
     the banner adds "Showing figures from your last visit"; a card with nothing
     to show is a quiet placeholder, not a repeated error. A write that cannot
     reach the server says it was not saved.
