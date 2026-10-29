@@ -641,7 +641,12 @@ changes the record.
   formats are spoken: Anthropic's `tool_use` blocks and the OpenAI-style
   `tool_calls`. The server answers with one line of JSON per event as it
   happens (the thread, each round's steps, then the answer with its charts,
-  links and cards), so the steps show while the model works.
+  links and cards), so the steps show while the model works. A tool call
+  whose arguments do not fit its schema (a list where a string goes) goes
+  back to the model as a tool error saying so, for it to call again; it never
+  ends the answer. Every stream ends with a `done` line, after an `error`
+  line when anything failed, the record not opening or the turn not saving
+  included.
 - **Steps.** Each answer shows its steps in order above the answer, every
   row collapsed until pressed: "Thought" (a round's summarized thinking,
   quiet, under a rule), "Used 2 tools" (the tools of one round, or of rounds
@@ -736,6 +741,8 @@ changes the record.
 - **Confirm cards** (the last G22 line). The model can suggest a rule, a
   row's category, a budget or a trip. The panel shows it as a card with the
   change and its preview (a rule lists the rows it would change), and the
+  card shows every field Confirm saves (a row's card names the payee it
+  would set, a new trip's card its notes). The
   existing write endpoint saves it only when the owner presses Confirm, with
   an Undo toast. Rules, a row's category and trips already have Undo. A
   budget card carries no undo of its own (`undo` is null), since the amount
