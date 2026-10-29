@@ -2693,8 +2693,9 @@ then the Upload page names its statement as not supported and keeps nothing.
   it (G20). `from_cents` is the exact way back, to a Decimal. A bool, NaN or an
   infinity is refused, and so is text that is not a plain signed decimal:
   thousands commas only between groups of three ("1,234.5" is 123450 cents,
-  "1,2,3" is refused), no currency sign, bracket, trailing minus, CR or
-  exponent. The rounding is exact integer arithmetic whatever the decimal
+  "1,2,3" is refused), no currency sign, bracket, trailing minus or CR, and an
+  exponent only in a Decimal's own text with no commas ("1E+3", as the plan's
+  checked amounts can read). The rounding is exact integer arithmetic whatever the decimal
   context, and 10^26 dollars or more is refused as no amount of money. In the browser, `apps/web/src/money.ts` reads a money box's
   text as cents digit by digit (`parseCents`: "1,234.5" is 123450) and writes
   cents back as box text (`centsText`); nothing in the app multiplies dollars

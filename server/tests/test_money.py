@@ -56,9 +56,9 @@ class ToCentsTest(unittest.TestCase):
 
     def test_text_with_no_number_rules_written_in_is_refused(self):
         """Only a plain signed decimal: no currency, no bracket or trailing sign for
-        a negative, no exponent, no digits outside 0 to 9."""
+        a negative, no digits outside 0 to 9, and an exponent only without commas."""
         for bad in ("$12.00", "S$12.00", "12.00 SGD", "(12.00)", "12.00-", "12.00 CR", "12.00DR", "\u221212.00",
-                    "1E+2", "1e2", "0x10", "--5", "+-5", "- 5", ".", "-", "+", "\u0661\u0662", "\uff11\uff12",
+                    "1,000e2", "1e", "e2", "1e+", "0x10", "--5", "+-5", "- 5", ".", "-", "+", "\u0661\u0662", "\uff11\uff12",
                     "12.5.0", "inf", "-Infinity", "sNaN"):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 money.to_cents(bad)
@@ -77,8 +77,31 @@ class ToCentsTest(unittest.TestCase):
         self.assertEqual(money.to_cents(Decimal("5E-3")), 1)
         self.assertEqual(money.to_cents(Decimal("4.9999E-3")), 0)
         self.assertEqual(money.to_cents(Decimal("1E-999999")), 0)
+        self.assertEqual(money.to_cents("0." + "1" * 5000), 11)
+        self.assertEqual(money.to_cents("0.00" + "5" * 5000), 1)
         self.assertEqual(money.to_cents(10 ** 15), 10 ** 17)
         self.assertEqual(money.to_cents(1e15), 10 ** 17)
+
+    def test_a_decimal_s_own_text_reads_as_the_decimal(self):
+        """str() of a Decimal can carry an exponent ("1E+3", "0E-7"): the plan's
+        checked text is that, so it reads the same as the Decimal itself."""
+        for text, cents in (("1E+3", 100000), ("1e3", 100000), ("-1.5E+2", -15000), ("0E-7", 0), ("2.5e-2", 3),
+                            (".5E1", 500)):
+            with self.subTest(text=text):
+                self.assertEqual(money.to_cents(text), cents)
+        rng = random.Random(41)
+        for _ in range(3000):
+            d = Decimal(rng.randint(-10 ** 9, 10 ** 9)).scaleb(rng.randint(-12, 12))
+            with self.subTest(d=d):
+                self.assertEqual(money.to_cents(str(d)), money.to_cents(d))
+
+    def test_the_plan_s_checked_amounts_all_read(self):
+        from finance import planning
+        plan = planning.clean_plan({"dca": "1e3", "income": [
+            {"name": "Job", "type": "employment", "gross": "1e3", "from": "2026-01-01"}]})
+        out = planning.plan_out(plan)
+        self.assertEqual(out["dca_minor"], 100000)
+        self.assertEqual(out["income"][0]["gross_minor"], 100000)
 
     def test_more_than_two_places_round_exactly_half_up(self):
         for text, cents in (("0.125", 13), ("0.1249999999999999999999999", 12), ("0.1250000000000000000000001", 13),
@@ -94,7 +117,8 @@ class ToCentsTest(unittest.TestCase):
         self.assertEqual(money.to_cents(Decimal("-12345678901234567890123456.785")),
                          -1234567890123456789012345679)
         self.assertEqual(money.to_cents(10 ** 26 - 1), 10 ** 28 - 100)
-        for bad in ("1" + "0" * 26, Decimal("1E+26"), 1e26, 1e300, Decimal("1E+999999999"), 10 ** 26, -10 ** 30):
+        for bad in ("1" + "0" * 26, Decimal("1E+26"), 1e26, 1e300, Decimal("1E+999999999"), 10 ** 26, -10 ** 30,
+                    "1e99999999999999999999999", "1e-99999999999999999999999", "9" * 5000, "99999999999999999999999999.995"):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 money.to_cents(bad)
 
