@@ -94,7 +94,8 @@ download yourself. Nothing leaves the machine unless you switch it on or use it:
   workspace, or export.
 - **AI payee suggestions.** After an upload check, the merchant text of rows no
   rule matched, and a rounded typical amount unless you turn that off, go to
-  the model provider you set in Settings. `[ai] enabled = false` turns it off.
+  the model provider you set in Settings. Turn AI off in Settings to stop it;
+  `[ai] enabled = false` only turns it off while Settings has not picked a provider.
 - **Copilot.** Dates, amounts, payees, categories and account display names of
   the rows a question needs go to that provider, only after you turn on "Send
   matching rows" in Settings (a model on this machine needs no switch).

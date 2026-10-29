@@ -228,13 +228,17 @@ happens. Every problem code and its fix text is listed in
 ## make load
 
 The monthly run without Notion. It runs `python3 server/finance.py load`: parse
-every statement folder, apply the rules, run every `doctor` check, and write
+every statement folder, apply the rules, run the `doctor` checks, and write
 `kopifund.db`, the record. It needs no Notion token and no `[data_sources]` in
 the config. `--dry-run` goes through the same checks and prints how many rows
 from how many statements it would load, then stops.
 
-It refuses, with exit code 1 and nothing written, while `doctor` would report a
-problem, so run `make doctor` first and fix what it names. A clean load prints
+It refuses, with exit code 1 and nothing written, on the problems `doctor` finds
+in the statements, the folders and the balance chains. It skips `doctor`'s
+config coverage check (`unknown-account` and `unknown-card`, which want an
+account or card key under `[accounts]` or `[cards]` in config.toml), so a load
+can succeed where `make doctor` still names those. Run `make doctor` first and
+fix what it names. A clean load prints
 one line, `kopifund.db: N added, N updated, N archived, N rows on a trip`, and
 loading the same statements twice adds nothing. Categories, budgets, trips,
 accounts and the plan are never overwritten by a load: the record keeps what you
