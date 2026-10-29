@@ -70,3 +70,9 @@ def add_months(month, n):
 def months_apart(a, b):
     """How many months b is after a (both YYYY-MM)."""
     return (int(b[:4]) - int(a[:4])) * 12 + int(b[5:7]) - int(a[5:7])
+
+
+def months_between(first, last):
+    """Every month from `first` to `last` (YYYY-MM), both ends included, with no
+    gaps; empty when `last` is before `first`."""
+    return [add_months(first, n) for n in range(months_apart(first, last) + 1)]

@@ -1,0 +1,175 @@
+"""Which months count as full months: the months every open bank account covers.
+
+`common.coverage` decides it once and every average reads it (server/analytics/SPEC.md,
+decision 6). Each case here is one way the rule went wrong on the invented
+fixture (server/tests/analytics_fixture.py): an account that closed, one that prints
+half-yearly, wallet-only months before the first bank statement, and a new
+month that has only just begun.
+"""
+import isolate  # noqa: F401  first: no test writes the real record or cache
+import copy
+import unittest
+
+import analytics_fixture as fx
+from analytics.stats import category_breakdown, common as c, forward_view, monthly_cashflow, savings_runway
+
+OLD = "B2"
+OLD_NAME = "Old Bank · B2"
+
+
+def bank(month, opening, closing, account=OLD, currency="SGD"):
+    """One deposit-account statement block for the second bank account, in cents."""
+    return {"name": f"{account} · {currency} · {month}", "account": OLD_NAME, "account_no": account,
+            "period_end": f"{month}-28", "currency": currency, "opening_minor": opening,
+            "closing_minor": closing, "total_in_minor": 0, "total_out_minor": 0, "fx_to_sgd": None,
+            "closing_sgd_minor": closing, "reconciled": True, "has_balances": True}
+
+
+def with_second_bank(*blocks):
+    """The fixture with a second bank account that printed `blocks`."""
+    s = fx.snapshot()
+    s["periods"] = sorted(s["periods"] + list(blocks), key=lambda b: b["name"])
+    s["accounts"] = s["accounts"] + [{"name": OLD_NAME, "account_no": OLD, "institution": "Old Bank",
+                                      "class": "Asset", "subclass": "Cash", "base_currency": "SGD"}]
+    return s
+
+
+def partial_months(s):
+    cov = c.coverage(s)
+    return [m for m in c.month_range(s) if cov[m]["partial"]]
+
+
+class NoPhases(unittest.TestCase):
+    """Every case runs with no [analytics] phases, the default a new user has."""
+
+    def setUp(self):
+        self.enterContext(fx.settings(""))
+
+
+class AClosedAccount(NoPhases):
+
+    def test_stops_counting_after_its_last_statement(self):
+        s = with_second_bank(bank("2025-01", 0, 50_000), bank("2025-02", 50_000, 50_000),
+                             bank("2025-03", 50_000, 50_000), bank("2025-04", 50_000, 0))
+        self.assertEqual(c.full_months(s), fx.MONTHS)
+        self.assertEqual(c.coverage(s)["2025-06"]["expected"], [fx.MAIN])
+        self.assertEqual(c.coverage(s)["2025-03"]["expected"], [fx.MAIN, OLD])
+        self.assertEqual(monthly_cashflow.run(s)["data"]["totals"]["months"], 12)
+
+    def test_does_not_freeze_the_cash_headline(self):
+        s = with_second_bank(bank("2025-01", 0, 50_000), bank("2025-02", 50_000, 0))
+        summary = savings_runway.run(s)["data"]["summary"]
+        self.assertEqual(summary["as_of_complete"], "2025-12")
+        self.assertEqual(summary["cash_minor"], savings_runway.run(fx.snapshot())["data"]["summary"]["cash_minor"])
+        # an account that closed holds nothing and is not "showing an earlier month's balance"
+        self.assertNotIn(c.account_labels(s).of(OLD), summary["carried"])
+
+    def test_an_account_that_stops_with_money_in_it_is_still_a_hole(self):
+        """No statement after one that leaves money in the account is not a closing: the
+        money there may have moved, so every later month stays partial."""
+        s = with_second_bank(bank("2025-01", 0, 50_000), bank("2025-02", 50_000, 50_000))
+        self.assertEqual(partial_months(s), fx.MONTHS[2:])
+        self.assertEqual(c.coverage(s)["2025-05"]["missing"], [OLD])
+        self.assertEqual(savings_runway.run(s)["data"]["summary"]["as_of_complete"], "2025-02")
+
+
+class AHalfYearlyAccount(NoPhases):
+
+    def test_a_statement_covers_the_months_it_spans(self):
+        s = with_second_bank(bank("2025-01", 0, 50_000), bank("2025-07", 50_000, 50_000))
+        self.assertEqual(c.full_months(s), fx.MONTHS)
+        cov = c.coverage(s)
+        self.assertEqual(cov["2025-04"]["missing"], [])
+        self.assertEqual(cov["2025-04"]["expected"], [fx.MAIN, OLD])
+
+    def test_the_months_before_its_next_statement_is_due_are_covered(self):
+        """Six months between linked statements is a half-yearly account: one with no
+        activity, since a bank prints a month that had any. Until the next one is due
+        (Jan 2026 here) nothing can be missing from it."""
+        s = with_second_bank(bank("2025-01", 0, 50_000), bank("2025-07", 50_000, 50_000))
+        summary = savings_runway.run(s)["data"]["summary"]
+        self.assertEqual(summary["as_of_complete"], "2025-12")
+
+    def test_an_overdue_statement_is_a_hole(self):
+        # every three months: Feb and Mar are spanned, May and Jun not yet due, Jul on overdue
+        s = with_second_bank(bank("2025-01", 0, 50_000), bank("2025-04", 50_000, 50_000))
+        self.assertEqual(partial_months(s), fx.MONTHS[6:])
+
+    def test_a_gap_whose_balances_do_not_meet_is_a_hole(self):
+        """A statement that opens away from the last one's closing is not the next
+        statement: one in between is missing, and the gap says nothing of a cadence."""
+        s = with_second_bank(bank("2025-01", 0, 50_000), bank("2025-07", 40_000, 40_000))
+        self.assertEqual(partial_months(s), fx.MONTHS[1:6] + fx.MONTHS[7:])
+
+
+class WalletOnlyMonths(NoPhases):
+
+    def test_months_only_a_wallet_covers_are_partial(self):
+        """The bank's statements start in June and the wallet's in March: March to May
+        hold no income because no bank statement covers them, not because none came."""
+        s = fx.snapshot()
+        s["periods"] = [b for b in s["periods"]
+                        if not (b["account_no"] == fx.MAIN and c.period_month(b) < "2025-06")]
+        s["transactions"] = [r for r in s["transactions"] if r["account_no"] != fx.MAIN or r["month"] >= "2025-06"] + [
+            fx.txn("2025-03-20", -30.0, "Eating out", "Cafe Z", account=fx.WALLET, currency="NOK", amount=-230.0)]
+        self.assertEqual(c.month_range(s)[0], "2025-03")
+        self.assertEqual(partial_months(s), ["2025-03", "2025-04", "2025-05"])
+        self.assertEqual(c.full_months(s), fx.MONTHS[5:])
+        self.assertEqual(monthly_cashflow.run(s)["data"]["totals"]["months"], 7)
+
+
+class APartialCurrentMonth(NoPhases):
+    """January has begun: two card rows and no bank statement yet."""
+
+    def setUp(self):
+        super().setUp()
+        self.base = fx.snapshot()
+        self.s = copy.deepcopy(self.base)
+        self.s["transactions"] += [fx.txn("2026-01-02", -12.0, "Eating out", "Cafe A"),
+                                   fx.txn("2026-01-03", -60.0, "Groceries", "Market")]
+        self.assertEqual(partial_months(self.s), ["2026-01"])
+
+    def category(self, res, name):
+        return next(x for x in res["data"]["categories"] if x["category"] == name)
+
+    def test_the_category_trend_compares_the_last_three_full_months(self):
+        res = category_breakdown.run(self.s)
+        self.assertEqual(res["params"]["trend_window"],
+                         {"recent": fx.MONTHS[-3:], "prior": fx.MONTHS[-9:-3]})
+        rent = self.category(res, "Rent")
+        self.assertEqual(rent["last3_per_month_minor"], 80_000)
+        self.assertEqual(rent["change_minor"], 0)
+        self.assertFalse([f for f in res["findings"] if f.startswith("Rent fell")])
+
+    def test_the_change_is_a_fraction_under_a_share_name(self):
+        """AGENTS.md: the column name decides the scale, and `_pct` is a percent."""
+        groceries = self.category(category_breakdown.run(self.s), "Groceries")
+        self.assertNotIn("change_pct", groceries)
+        self.assertEqual(groceries["change_share"], 0.0)
+
+    def test_phase_averages_divide_by_full_months(self):
+        before = monthly_cashflow.run(self.base)["data"]["phases"][-1]
+        after = monthly_cashflow.run(self.s)["data"]["phases"][-1]
+        self.assertEqual((after["months"], after["full_months"]), (13, 12))
+        # the phase total keeps every month's money; the average is the full months'
+        self.assertEqual(after["spend_minor"], before["spend_minor"] + 7_200)
+        for key in ("income_per_month_minor", "spend_per_month_minor", "net_per_month_minor",
+                    "investing_per_month_minor", "net_after_investing_per_month_minor"):
+            self.assertEqual(after[key], before[key], key)
+
+    def test_category_phase_averages_divide_by_full_months(self):
+        key = f"{c.phase_key(c.latest_phase())}_per_month_minor"
+        for name in ("Rent", "Groceries"):
+            self.assertEqual(self.category(category_breakdown.run(self.s), name)[key],
+                             self.category(category_breakdown.run(self.base), name)[key], name)
+        phase = category_breakdown.run(self.s)["data"]["phases"][-1]
+        self.assertEqual(phase["per_month_minor"], category_breakdown.run(self.base)["data"]["phases"][-1]["per_month_minor"])
+
+    def test_the_forward_view_phase_rate_is_the_same_figure(self):
+        self.assertEqual(forward_view.phase_rate(self.s), forward_view.phase_rate(self.base))
+        self.assertEqual(forward_view.phase_rate(self.s)[0],
+                         monthly_cashflow.run(self.s)["data"]["phases"][-1]["spend_per_month_minor"])
+
+
+if __name__ == "__main__":
+    unittest.main()

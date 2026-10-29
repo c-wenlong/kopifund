@@ -7,7 +7,7 @@ describe("StatCard", () => {
     const result: StatResult = {
       id: "category-breakdown",
       title: "Categories",
-      data: { categories: [{ category: "Rent", share: 0.3, change_pct: 0.25, gain_pct: 1.2, share_pct: 0.45 }] },
+      data: { categories: [{ category: "Rent", share: 0.3, change_share: 0.25, gain_pct: 1.2, share_pct: 0.45 }] },
     };
     render(<StatCard result={result} />);
     expect(screen.getByText("30%")).toBeInTheDocument();

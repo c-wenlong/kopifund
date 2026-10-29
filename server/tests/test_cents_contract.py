@@ -79,7 +79,7 @@ NOT_MONEY = {
     "accounts", "fix_limit", "fix_list_total", "external", "uncategorised", "no_payee",
     "synthetic", "unconverted", "partial_months", "transfer_bucket_external",
     # spending stats and the recurring detector (line 3)
-    "change_pct", "covered_months", "share_clamped", "per_calendar_week", "per_week", "places",
+    "change_share", "covered_months", "full_months", "share_clamped", "per_calendar_week", "per_week", "places",
     "ratio", "top_n", "weeks", "weeks_with_a_meal", "cumulative_share", "p50", "p80", "p90",
     "payees", "rank", "share_top10", "need_share", "want_share", "savings_share", "want_to_need",
     "days", "limit_days", "long_stay_days", "share_of_all_spend", "trip_days_summed", "trips",

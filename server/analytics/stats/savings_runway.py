@@ -9,10 +9,13 @@ keeps the dollars it printed last month rather than losing them. An account
 with no block at all in a month keeps its last known balance, which is what a
 bank statement means: no statement is not a zero balance.
 
-The headline stops at the last month where every bank account that had started
-printed something; a wallet (PayLah, YouTrip, Revolut, Wise) that printed
-nothing simply carries its last balance, since it is only ever funded from the
-bank accounts and an unused wallet prints no statement. The month after it can be most of a balance five weeks old,
+The headline stops at the last month every open bank account covers
+(`common.coverage`, the one rule for it): an account that closed stops
+counting after its last statement, and one that prints half-yearly covers the
+months its statement spans. A wallet (PayLah, YouTrip, Revolut, Wise) that
+printed nothing simply carries its last balance, since it is only ever funded
+from the bank accounts and an unused wallet prints no statement. The month
+after it can be most of a balance five weeks old,
 and a five-week-old number is not what somebody asking "how much have I got"
 means. The tail is kept, under `provisional`, with the stale amount named.
 
@@ -111,9 +114,11 @@ def run(snapshot, benchmarks=None):
     labels = c.account_labels(snapshot)
     spend_rows = c.spend_rows(snapshot)
     cov = c.coverage(snapshot)
+    # an account that closed holds nothing after its last statement, so it is
+    # not carried (`common.statement_spans`)
+    closed = {a: s["to"] for a, s in c.statement_spans(snapshot).items() if s["to"]}
 
     printed, started = printed_by_month(closings)
-    wallets = c.wallet_accounts(snapshot)
     # each account's name in this stat, from its label: one per account even
     # where two labels meet, and never one of a month row's own fields, so a
     # balance never lands in another account's column or in the cash total
@@ -124,7 +129,8 @@ def run(snapshot, benchmarks=None):
         for key, value in sorted(closings.get(m, {}).items()):
             held[key] = value
         here = printed.get(m, set())
-        carried = sorted(a for a in {k[0] for k in held} if a not in here)
+        carried = sorted(a for a in {k[0] for k in held}
+                         if a not in here and not (a in closed and m > closed[a]))
         by_account = {}
         for (account_no, _currency), value in held.items():
             by_account[account_no] = by_account.get(account_no, 0) + value
@@ -134,18 +140,19 @@ def run(snapshot, benchmarks=None):
                "carried_amount_minor": c.sum_cents(by_account[a] for a in carried),
                "not_started": sorted(name[a] for a, start in started.items()
                                      if m < start),
-               # a carried wallet balance does not make the month incomplete:
-               # a wallet that printed nothing was not used, and the last
-               # balance it printed is the balance it holds
-               "complete": not [a for a in carried if a not in wallets],
+               # a month is complete when no open bank account is missing
+               # from it; a carried wallet balance does not make it
+               # incomplete, since a wallet that printed nothing was not used
+               # and the last balance it printed is the balance it holds
+               "complete": not cov[m]["missing"],
                "partial": cov[m]["partial"]}
         # one column per account, in the order of the names shown
         for account_no, value in sorted(by_account.items(), key=lambda kv: name[kv[0]]):
             row[f"{name[account_no]}_minor"] = value
         rows.append(row)
 
-    # The cash line stops at the last month every bank account that had started
-    # printed something (wallets carry). What follows it is a real number for some accounts and
+    # The cash line stops at the last month every open bank account covers
+    # (wallets carry). What follows it is a real number for some accounts and
     # a five-week-old one for the rest, so it is reported apart.
     complete = [x for x in rows if x["complete"]]
     as_of_complete = complete[-1]["month"] if complete else None
@@ -194,7 +201,7 @@ def run(snapshot, benchmarks=None):
 
     findings = [
         f"Cash across {summary['accounts']} accounts is {c.label(cash)} at "
-        f"{c.month_label(as_of_complete)}, the last month every bank account printed a statement, "
+        f"{c.month_label(as_of_complete)}, the last month every open bank account's statements cover, "
         f"which is {summary['runway_6m']} months at the last six months' spending "
         f"rate of {c.label(rate6)} and {summary['runway_all']} months at the "
         f"{len(counted)}-month rate of {c.label(all_rate)}.",

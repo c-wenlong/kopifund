@@ -62,11 +62,31 @@ class Explorer(unittest.TestCase):
         with self.assertRaises(ValueError):
             api.transactions(self.conn, {"from": "2026-8"})
 
-    def test_averages_stay_in_integer_cents(self):
-        self.assertEqual(spending.per_month(10, 4), 3)          # 2.5 rounds away from zero
-        self.assertEqual(spending.per_month(-10, 4), -3)
-        self.assertEqual(spending.per_month(9, 4), 2)
-        self.assertIsInstance(spending.per_month(10**12 + 1, 3), int)
+    def test_the_monthly_average_counts_only_full_months(self):
+        """The Net worth projection's spending a month: the record's last month is
+        still partial (a bank account has not printed it), so it is left out rather
+        than counted as a whole month of a few days' spending."""
+        everything = spending.monthly_average(self.conn)
+        self.assertEqual(everything, {"per_month": (10000 + 4000 + 1250 - 500 + 1) // 2,
+                                      "from": "2026-07", "to": "2026-08", "months": 2})
+        results = {"monthly-cashflow": {"data": {"months": [
+            {"month": "2026-07", "partial": False}, {"month": "2026-08", "partial": True}]}}}
+        self.assertEqual(spending.monthly_average(self.conn, results=results),
+                         {"per_month": 10000, "from": "2026-07", "to": "2026-07", "months": 1})
+
+    def test_the_monthly_average_skips_a_partial_month_inside_the_window(self):
+        self.conn.execute("UPDATE txn SET txn_date = '2026-09-02' WHERE txn_key = 'k5'")
+        results = {"monthly-cashflow": {"data": {"months": [
+            {"month": "2026-07", "partial": False}, {"month": "2026-08", "partial": True},
+            {"month": "2026-09", "partial": False}]}}}
+        self.assertEqual(spending.monthly_average(self.conn, results=results),
+                         {"per_month": (10000 - 500 + 1) // 2, "from": "2026-07", "to": "2026-09", "months": 2})
+
+    def test_with_no_full_month_the_average_falls_back_to_every_month(self):
+        results = {"monthly-cashflow": {"data": {"months": [
+            {"month": "2026-07", "partial": True}, {"month": "2026-08", "partial": True}]}}}
+        self.assertEqual(spending.monthly_average(self.conn, results=results),
+                         spending.monthly_average(self.conn))
 
     def test_refuses_bad_queries(self):
         for q in ({"by": "account"}, {"scope": "moon"}, {"from": "2026-13"}, {"from": "2026-09", "to": "2026-08"}):

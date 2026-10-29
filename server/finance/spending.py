@@ -14,6 +14,9 @@ once (G13, server/finance/relink.py).
 import json
 from collections import defaultdict
 
+from .dates import add_months, months_between
+from .figures import div_cents
+
 BY = ("bucket", "category", "payee")
 SCOPES = ("sg", "all")
 TOP = 7                     # series drawn in the chart before the rest become "Other"
@@ -47,30 +50,6 @@ class SpendingRefused(ValueError):
     pass
 
 
-def _month_list(first, last):
-    y, m = map(int, first.split("-"))
-    ly, lm = map(int, last.split("-"))
-    out = []
-    while (y, m) <= (ly, lm):
-        out.append(f"{y:04d}-{m:02d}")
-        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
-    return out
-
-
-def _shift(month, n):
-    y, m = map(int, month.split("-"))
-    i = y * 12 + (m - 1) + n
-    return f"{i // 12:04d}-{i % 12 + 1:02d}"
-
-
-def per_month(cents, months):
-    """An average a month in whole cents, rounded half away from zero, in
-    integer arithmetic so no money passes through a float."""
-    q, r = divmod(abs(cents), months)
-    q += 2 * r >= months
-    return q if cents >= 0 else -q
-
-
 def _check_month(v, name):
     if v is None:
         return None
@@ -80,19 +59,39 @@ def _check_month(v, name):
     return s
 
 
-def monthly_average(conn, months=12):
-    """G14: spending a month over the last `months` months the record holds,
-    trips included, in whole cents ({per_month, from, to, months}), or None
-    with no rows. It is the Net worth page's hint for spending a month, and
-    the figure the projection spends when the owner types none."""
+def partial_months(results):
+    """The months the stats call partial, from the monthly-cashflow result
+    (server/analytics/stats/common.py, `coverage`: a month some open bank account's
+    statements do not cover yet, such as the one that has only just begun).
+    Empty before the first analysis."""
+    cashflow = ((results or {}).get("monthly-cashflow") or {}).get("data") or {}
+    return {m.get("month") for m in cashflow.get("months") or () if m.get("partial")}
+
+
+def monthly_average(conn, months=12, results=None):
+    """G14: spending a month, trips included, in whole cents ({per_month, from,
+    to, months}), or None with no rows. It is the Net worth page's hint for
+    spending a month, and the figure the projection spends when the owner
+    types none.
+
+    It averages the full months among the `months` months that end at the
+    record's last full month, the same full months every stat averages over
+    (`partial_months` of the stats' `results`), so a month that has only just
+    begun never counts as a whole month of a few days' spending. `months` in
+    the answer is how many it divided by. With no results yet, or no full
+    month at all, it averages every month of the last `months`."""
     first, last = conn.execute("SELECT MIN(month), MAX(month) FROM v_txn").fetchone()
     if not first:
         return None
-    frm = max(first, _shift(last, -(months - 1)))
-    n = len(_month_list(frm, last))
+    partial = partial_months(results)
+    full = [m for m in months_between(first, last) if m not in partial]
+    if full:
+        used = [m for m in full if m >= add_months(full[-1], -(months - 1))]
+    else:
+        used = months_between(max(first, add_months(last, -(months - 1))), last)
     total = conn.execute("SELECT COALESCE(SUM(-amount_sgd_minor), 0) FROM v_txn WHERE " + SPEND_WHERE
-                         + " AND month BETWEEN ? AND ?", (frm, last)).fetchone()[0]
-    return {"per_month": per_month(total, n), "from": frm, "to": last, "months": n}
+                         + f" AND month IN ({', '.join('?' * len(used))})", used).fetchone()[0]
+    return {"per_month": div_cents(total, len(used)), "from": used[0], "to": used[-1], "months": len(used)}
 
 
 def _category_link(name):
@@ -132,10 +131,10 @@ def explore(conn, query):
     if not first:
         return empty
     to = _check_month(query.get("to"), "to") or last
-    frm = _check_month(query.get("from"), "from") or max(first, _shift(to, -11))
+    frm = _check_month(query.get("from"), "from") or max(first, add_months(to, -11))
     if frm > to:
         raise SpendingRefused("from is after to")
-    months = _month_list(frm, to)
+    months = months_between(frm, to)
     rows = conn.execute(
         """SELECT txn_key, month, txn_date, -amount_sgd_minor AS spend, trip_id IS NOT NULL AS away,
                   COALESCE(category_name, '(uncategorised)') AS category,
@@ -167,15 +166,15 @@ def explore(conn, query):
     n = len(months)
     names = [k for k in shown]
     for s in series:
-        s["per_month"] = per_month(s["total"], n)
+        s["per_month"] = div_cents(s["total"], n)
         s["link"] = _series_link(by, s["name"], names, folded="folded" in s)
 
     # the ranked list: buckets with their categories, whatever the chart is split by
     cats = defaultdict(lambda: defaultdict(int))
     for r in rows:
         cats[r["bucket"]][r["category"]] += r["spend"]
-    buckets = sorted(({"name": b, "total": sum(c.values()), "per_month": per_month(sum(c.values()), n),
-                       "categories": sorted(({"name": k, "total": v, "per_month": per_month(v, n),
+    buckets = sorted(({"name": b, "total": sum(c.values()), "per_month": div_cents(sum(c.values()), n),
+                       "categories": sorted(({"name": k, "total": v, "per_month": div_cents(v, n),
                                               "link": _category_link(k)}
                                              for k, v in c.items()), key=lambda x: -x["total"])}
                       for b, c in cats.items()), key=lambda x: -x["total"])
@@ -205,4 +204,4 @@ def explore(conn, query):
             "scope": scope, "available": {"from": first, "to": last}, "months": months,
             "series": series, "buckets": buckets, "payees": payees, "biggest": biggest,
             "link": {"from": months[0], "to": months[-1], "spend": "1", **({"home": "1"} if scope == "sg" else {})},
-            "totals": {"spend": total, "per_month": per_month(total, n), "overseas": overseas}}
+            "totals": {"spend": total, "per_month": div_cents(total, n), "overseas": overseas}}
