@@ -102,6 +102,45 @@ class AHalfYearlyAccount(NoPhases):
         self.assertEqual(partial_months(s), fx.MONTHS[1:6] + fx.MONTHS[7:])
 
 
+def on_old(day, amount, month):
+    """A row on the second bank account's statement for `month`."""
+    return fx.txn(day, amount, "Groceries", "Market", account=OLD, period=f"{OLD} · SGD · {month}")
+
+
+class StatementsWithRows(NoPhases):
+    """Greptile on #308: balances that meet do not by themselves show a statement
+    spans the months before it. Its own rows do."""
+
+    def test_a_missing_month_whose_money_in_and_out_were_equal_is_still_a_hole(self):
+        # January and March print monthly with activity; February's statement is missing,
+        # and whatever moved in it netted to zero, so March opens at January's closing
+        s = with_second_bank(bank("2025-01", 0, 50_000), bank("2025-03", 50_000, 45_000))
+        s["transactions"] += [on_old("2025-01-10", -10.0, "2025-01"), on_old("2025-03-10", -50.0, "2025-03")]
+        self.assertEqual(partial_months(s), ["2025-02"] + fx.MONTHS[3:])
+
+    def test_a_statement_covers_back_to_its_earliest_row(self):
+        s = with_second_bank(bank("2025-01", 0, 50_000), bank("2025-03", 50_000, 45_000))
+        s["transactions"] += [on_old("2025-02-10", -20.0, "2025-03"), on_old("2025-03-10", -30.0, "2025-03")]
+        self.assertNotIn("2025-02", partial_months(s))
+
+    def test_a_first_statement_that_reaches_back_starts_the_account_there(self):
+        s = with_second_bank(bank("2025-03", 0, 45_000))
+        s["transactions"] += [on_old("2025-01-20", -20.0, "2025-03")]
+        self.assertEqual(c.statement_spans(s)[OLD]["from"], "2025-01")
+
+    def test_a_row_posted_on_the_last_days_of_the_month_before_shows_nothing(self):
+        s = with_second_bank(bank("2025-01", 0, 50_000), bank("2025-03", 50_000, 45_000))
+        s["transactions"] += [on_old("2025-02-27", -20.0, "2025-03"), on_old("2025-03-10", -30.0, "2025-03")]
+        self.assertEqual(partial_months(s), ["2025-02"] + fx.MONTHS[3:])
+
+    def test_a_statement_with_activity_says_nothing_of_the_months_after_it(self):
+        """Greptile on #308: only an idle (empty) statement shows the account idle, so
+        only after one are the months before the next statement due covered."""
+        s = with_second_bank(bank("2025-01", 0, 50_000), bank("2025-07", 50_000, 60_000))
+        s["transactions"] += [on_old(f"2025-{m:02d}-10", -1.0, "2025-07") for m in range(2, 8)]
+        self.assertEqual(partial_months(s), fx.MONTHS[7:])
+
+
 class WalletOnlyMonths(NoPhases):
 
     def test_months_only_a_wallet_covers_are_partial(self):
@@ -169,6 +208,36 @@ class APartialCurrentMonth(NoPhases):
         self.assertEqual(forward_view.phase_rate(self.s), forward_view.phase_rate(self.base))
         self.assertEqual(forward_view.phase_rate(self.s)[0],
                          monthly_cashflow.run(self.s)["data"]["phases"][-1]["spend_per_month_minor"])
+
+
+class ASavedResultFromBeforeTheRename(unittest.TestCase):
+    """Greptile on #308: a category-breakdown result saved before `change_pct` became
+    `change_share` is still served until the stats run again; it must not read 0.5
+    as half a per cent."""
+
+    def test_reads_the_old_field_under_its_new_name(self):
+        from finance import results_cache
+        body = {"data": {"categories": [{"category": "Rent", "change_pct": 0.5}]}}
+        row = results_cache.current_names("category-breakdown", body)["data"]["categories"][0]
+        self.assertEqual(row, {"category": "Rent", "change_share": 0.5})
+        other = {"data": {"rows": [{"gain_pct": 18.7}]}}
+        self.assertEqual(results_cache.current_names("portfolio", other), other)
+
+    def test_the_cache_serves_it_renamed(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from finance import results_cache
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "results").mkdir()
+            old = {"id": "category-breakdown", "chart": {"unit": "sgd_minor"},
+                   "data": {"categories": [{"category": "Rent", "change_pct": 0.25}]}}
+            (root / "results" / "category-breakdown-2026-10-01.json").write_text(json.dumps(old))
+            (root / "latest.json").write_text(json.dumps(
+                {"results": {"category-breakdown": "category-breakdown-2026-10-01.json"}}))
+            got, _ = results_cache.Cache(root).results_all()
+        self.assertEqual(got["category-breakdown"]["data"]["categories"][0]["change_share"], 0.25)
 
 
 if __name__ == "__main__":

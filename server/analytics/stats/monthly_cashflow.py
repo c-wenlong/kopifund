@@ -128,7 +128,8 @@ def run(snapshot, benchmarks=None):
     if partial:
         caveats.append(f"{len(partial)} month(s) have incomplete statement coverage "
                        f"({c.range_label(partial[0], partial[-1])}) and are left out of the "
-                       f"totals and of every figure a month; they are flagged in the table.")
+                       f"totals and of every figure a month (a phase with no full month at all "
+                       f"averages over every one of its months); they are flagged in the table.")
     used = (len(c.income_rows(snapshot)) + len(c.spend_rows(snapshot))
             + len(c.investing_rows(snapshot)))
     return c.result(sys.modules[__name__], snapshot,

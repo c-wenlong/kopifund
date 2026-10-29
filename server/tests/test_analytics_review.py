@@ -127,12 +127,14 @@ def covered_months(snap):
     """The months every open bank account covers, and at least one does
     (decision 6). Wallets (Accounts subclass Wallet) are funded from the bank
     accounts and are never expected, so a wallet that printed nothing leaves
-    the month covered, and a month only a wallet covers is not. A bank account
-    covers each month it printed in, the months between two statements whose
-    balances meet, and after the last of an account printing every k months
-    the next k - 1 (at most 5); it closes at a last statement that leaves 0 in
-    every currency. The months before the first phase are partial: they hold
-    card rows only."""
+    the month covered, and a month only a wallet covers is not. A bank
+    statement covers its month and back to its earliest row (a row in the
+    last three days of the month just before is posting lag); an empty one
+    that opens where the last closed covers the whole gap, and after it the
+    next k - 1 months of its k-month cadence (at most 5). An account closes at
+    a last statement that leaves 0 in every currency. The months before the
+    first phase are partial: they hold card rows only."""
+    import calendar
     from analytics.stats.common import PHASES
     first_phase = PHASES[0]["from"]
     wallets = {a["account_no"] for a in snap["accounts"] if a.get("subclass") == "Wallet"}
@@ -140,24 +142,40 @@ def covered_months(snap):
     for b in snap["periods"]:
         if not b["name"].endswith(" · card") and b["account_no"] not in wallets:
             printed[b["account_no"]][period_month(b)].append(b)
+    own = {b["name"]: m for by_month in printed.values() for m, bs in by_month.items() for b in bs}
+    reach, rows_on = {}, set()
+    for r in snap["transactions"]:
+        name = r.get("period")
+        if name not in own or not r["date"]:
+            continue
+        rows_on.add(name)
+        m = r["date"][:7]
+        before = months_between(m, own[name])
+        last_day = calendar.monthrange(int(m[:4]), int(m[5:7]))[1]
+        if len(before) > 1 and not (len(before) == 2 and int(r["date"][8:10]) > last_day - 3):
+            reach[name] = min(reach.get(name, own[name]), m)
     spans = {}
     for account, by_month in printed.items():
         months = sorted(by_month)
-        cover, held, gap = set(months), {}, 0
+        cover, held, idle = set(), {}, 0
         for before, m in zip([None] + months, months):
-            opens = [b for b in by_month[m] if b["opening_minor"] is not None]
+            blocks = by_month[m]
+            start, idle = min(reach.get(b["name"], m) for b in blocks), 0
             if before:
-                meet = bool(opens) and all(b["opening_minor"] == held.get(b["currency"], 0) for b in opens)
-                between = months_between(before, m)[1:-1]
-                gap = len(between) + 1 if meet else 0
-                cover |= set(between) if meet else set()
-            held.update({b["currency"]: b["closing_minor"] for b in by_month[m]
+                gap = months_between(before, m)[1:]
+                start = max(start, gap[0])
+                opens = [b for b in blocks if b["opening_minor"] is not None]
+                if (not any(b["name"] in rows_on for b in blocks) and opens
+                        and all(b["opening_minor"] == held.get(b["currency"], 0) for b in opens)):
+                    start, idle = gap[0], len(gap)
+            cover |= set(months_between(start, m))
+            held.update({b["currency"]: b["closing_minor"] for b in blocks
                          if b["has_balances"] and b["closing_minor"] is not None})
         closed = bool(held) and not any(held.values())
-        if not closed and gap > 1:
+        if not closed and idle > 1:
             ahead = months_between(months[-1], f"{int(months[-1][:4]) + 1}-{months[-1][5:]}")
-            cover |= set(ahead[1:min(gap, 6)])
-        spans[account] = (months[0], months[-1] if closed else None, cover)
+            cover |= set(ahead[1:min(idle, 6)])
+        spans[account] = (min(cover), months[-1] if closed else None, cover)
     full = []
     for m in every_month(snap):
         expect = {a for a, (start, end, _) in spans.items() if start <= m and (end is None or m <= end)}
