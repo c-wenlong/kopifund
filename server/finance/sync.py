@@ -288,6 +288,12 @@ def write_rules_input(cfg):
     shutil.rmtree(out / "parsed", ignore_errors=True)
     shutil.copytree(parsed.csv_dir, out / "parsed")
     shutil.rmtree(parsed.csv_dir, ignore_errors=True)
+    # a keys.csv rule on a key a row had before matches it in --lint and --why
+    # too: the old keys go in one column, space separated (categorise.tier_values)
+    attach_former_keys(parsed.rows)
+    for r in parsed.rows:
+        if "_former_keys" in r:
+            r["_former_keys"] = " ".join(r["_former_keys"])
     fields = list(dict.fromkeys(k for r in parsed.rows for k in r))
     with (out / "rules-input.csv").open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields)

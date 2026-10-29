@@ -88,7 +88,8 @@ def _run_step(conn, cfg, step, query, body, scrub, parsed):
         def described(r):
             report = r["report"]
             seen = {k: report[k] for k in ("statements", "rows", "to_add_count", "recategorised_count",
-                                           "to_archive_count", "rows_by_statement")}
+                                           "to_archive_count", "rekeyed_count", "rows_by_statement")
+                    if k in report}
             if not r["loaded"]:
                 n = len(monthly.blocking(report))
                 return ("blocked", f"not loaded: {n} problem{'s' * (n != 1)}",
@@ -96,7 +97,8 @@ def _run_step(conn, cfg, step, query, body, scrub, parsed):
             c = r["counts"]
             pending_note = (f"; {c['phone rows matched']} phone row{'s' * (c['phone rows matched'] != 1)} "
                             "matched" if c.get("phone rows matched") else "")
-            return ("ok", f"added {c['inserted']}, updated {c['updated']}, archived {c['archived']}; "
+            return ("ok", f"added {c['inserted']}, updated {c['updated']}, archived {c['archived']}"
+                          + (f", re-keyed {c['rekeyed']}" if c.get("rekeyed") else "") + "; "
                           f"{(r.get('stats') or {}).get('stats', 0)} stats rerun{pending_note}",
                     {"checked": seen, "counts": c, "stats": r.get("stats"), "added": report["to_add"]})
         out = upload_log.logged(conn, attempt, step, {}, lambda: monthly.load(cfg, conn), described,

@@ -12,7 +12,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from finance import db, relink, scam_checks as sc, sync
+from types import SimpleNamespace
+from unittest import mock
+
+from finance import db, local, monthly, relink, rules_app, scam_checks as sc, snapshot as snap, sync
 from finance.parsers import categorise, places, parse_youtrip as yt
 from finance.parsers.parse_statements import add_keys
 from test_db import SNAP, block, parsed, row
@@ -115,6 +118,41 @@ class ReKeyTest(Record):
         self.assertEqual(db.trip_pins(self.conn, tid), [after["txn_key"]])
 
 
+class TheLoadThatReKeysTest(Record):
+    """local.load and the app's check, on the load that re-keys a row."""
+
+    def local_load(self, rows):
+        cfg = SimpleNamespace(root=Path(tempfile.mkdtemp()), folders=[], wallet_accounts=lambda: set())
+        with mock.patch.object(snap, "read_portfolio", return_value=None), \
+                mock.patch.object(snap, "read_cpf", return_value=None):
+            return local.load(cfg, self.conn, parsed([block()], rows))
+
+    def test_a_pinned_row_outside_its_trips_dates_stays_on_the_trip(self):
+        # Trip A runs 2026-08-01 to 05; the pin holds a row from the 20th there
+        self.local_load([row("old", "-12.50", date="2026-08-20")])
+        tid = self.conn.execute("SELECT id FROM trip WHERE name = 'Trip A'").fetchone()[0]
+        db.set_trip_links(self.conn, tid, ["MYS"], ["old"])
+        self.local_load([row("old", "-12.50", date="2026-08-20")])
+        self.assertEqual(self.conn.execute("SELECT trip_id FROM txn").fetchone()[0], tid)
+        counts = self.local_load([row("new", "-12.50", date="2026-08-20", merchant="X")])
+        self.assertEqual(counts["rekeyed"], 1)
+        self.assertEqual(self.conn.execute("SELECT txn_key, trip_id FROM txn").fetchone()[:], ("new", tid))
+
+    def test_the_apps_check_counts_a_re_key_as_neither_added_nor_archived(self):
+        self.load([row("old", "-12.50"), row("k2", "-5.00")])
+        run = parsed([block()], [row("new", "-12.50", merchant="X"), row("k2", "-5.00"), row("k3", "-1.00")])
+        run.rules = []
+        cfg = SimpleNamespace(folders=[], root=Path(tempfile.mkdtemp()), accounts={})
+        with mock.patch.object(sync, "parse", return_value=run), \
+                mock.patch.object(sync, "categorise"), \
+                mock.patch.object(sync, "check_environment", return_value=[]), \
+                mock.patch.object(sync, "check_statements", return_value=[]), \
+                mock.patch.object(sync, "check_statement_files", return_value=[]):
+            _, report = monthly.check(cfg, self.conn)
+        self.assertEqual((report["to_add_count"], report["to_archive_count"], report["rekeyed_count"]),
+                         (1, 0, 1))
+
+
 class KeyRulesFollowTest(Record):
     RULES = [{"match_on": "key", "pattern": "old", "glob": "OLD", "payee": "Grab", "kind": "Merchant",
               "country": "SGP", "category": "Transport", "notes": "", "account_no": "", "recurring": "",
@@ -136,6 +174,18 @@ class KeyRulesFollowTest(Record):
         [r] = relink.record_rows(self.conn)
         self.assertEqual(r["_former_keys"], ["old"])
         self.assertEqual(relink.categorised([r], self.RULES), [("Grab", "Transport", "key:old")])
+
+    def test_the_rules_page_reads_the_record_rows_with_their_old_keys(self):
+        self.load([row("old", "-12.50")])
+        self.load([row("new", "-12.50", merchant="X")])
+        [r] = rules_app.db_rows(self.conn)
+        self.assertEqual(r["_former_keys"], ["old"])
+        self.assertTrue(categorise.Matcher(self.RULES).matches(r)[0][2])
+
+    def test_the_rules_input_csv_keeps_them_in_one_column(self):
+        r = row("new", "-12.50", payee="", category="", rule="", _former_keys="old older")
+        categorise.categorise_rows([r], self.RULES)
+        self.assertEqual(r["rule"], "key:old")
 
     def test_the_lint_does_not_call_the_rule_dead(self):
         r = row("new", "-12.50", _former_keys=["old"])

@@ -309,7 +309,9 @@ def tier_values(row, tier):
     keys.csv rule saved before a re-key still finds its row."""
     vals = [row.get(FIELD[tier])]
     if tier == "key":
-        vals += row.get("_former_keys") or ()
+        former = row.get("_former_keys") or ()
+        # rules-input.csv holds them as one space-separated column
+        vals += former.split() if isinstance(former, str) else former
     return [v for v in map(norm, vals) if v]
 
 

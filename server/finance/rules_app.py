@@ -179,17 +179,25 @@ def commit(conn, files, action, summary):
 
 def db_rows(conn, key=None):
     """The record's live rows in the shape the categoriser reads; with `key`,
-    only that row."""
-    return [{"txn_key": r["txn_key"], "date": r["txn_date"], "currency": r["currency"],
-             "amount": f"{r['amount_minor'] / 100:.2f}", "amount_minor": r["amount_minor"],
-             "amount_sgd_minor": r["amount_sgd_minor"], "account": r["account_name"] or r["account_no"],
-             "merchant": r["merchant_raw"],
-             "counterparty": r["counterparty"], "memo": r["memo"], "reference": r["reference"],
-             "bank_txn_type": r["bank_txn_type"], "flow_class": r["flow_class"],
-             "account_no": r["account_no"], "payee": r["payee_name"] or "",
-             "category": r["category_name"] or "", "rule": r["rule"], "synthetic": r["is_synthetic"]}
-            for r in (conn.execute("SELECT * FROM v_txn WHERE txn_key = ?", (key,)) if key is not None
-                      else conn.execute("SELECT * FROM v_txn"))]
+    only that row. Each carries the keys it was loaded under before
+    (`_former_keys`), so a keys.csv rule on an old key previews as a load
+    applies it."""
+    from . import db
+    former = db.former_keys(conn)
+    out = [{"txn_key": r["txn_key"], "date": r["txn_date"], "currency": r["currency"],
+            "amount": f"{r['amount_minor'] / 100:.2f}", "amount_minor": r["amount_minor"],
+            "amount_sgd_minor": r["amount_sgd_minor"], "account": r["account_name"] or r["account_no"],
+            "merchant": r["merchant_raw"],
+            "counterparty": r["counterparty"], "memo": r["memo"], "reference": r["reference"],
+            "bank_txn_type": r["bank_txn_type"], "flow_class": r["flow_class"],
+            "account_no": r["account_no"], "payee": r["payee_name"] or "",
+            "category": r["category_name"] or "", "rule": r["rule"], "synthetic": r["is_synthetic"]}
+           for r in (conn.execute("SELECT * FROM v_txn WHERE txn_key = ?", (key,)) if key is not None
+                     else conn.execute("SELECT * FROM v_txn"))]
+    for r in out:
+        if r["txn_key"] in former:
+            r["_former_keys"] = former[r["txn_key"]]
+    return out
 
 
 NEEDS_SHOWN = 60   # the needs-a-rule groups GET /api/rules sends, biggest first
