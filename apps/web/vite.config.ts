@@ -19,6 +19,8 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
+      // src/serviceWorker.ts registers it, and skips it inside the desktop window
+      injectRegister: false,
       manifest: {
         name: "Kopifund",
         short_name: "Kopifund",
@@ -35,8 +37,22 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,svg,png,ico,woff2}"],
-        navigateFallbackDenylist: [/^\/api\//],
+        // A page is always asked of the server first, so the first open after a
+        // new build (`make serve`, build_macos.sh) runs that build, and a page asked
+        // of 8770 during `make dev` reaches serve.py's redirect to 5173. The cached
+        // copy answers only when the server does not. So index.html is not
+        // precached, and there is no navigation fallback to answer from the cache.
+        globPatterns: ["**/*.{js,css,svg,png,ico,woff2}"],
+        navigateFallback: null,
+        runtimeCaching: [{
+          urlPattern: ({ request, url }) => request.mode === "navigate" && !url.pathname.startsWith("/api/"),
+          handler: "NetworkFirst",
+          options: { cacheName: "pages", networkTimeoutSeconds: 5 },
+        }],
+        // set by the plugin only when it injects the register script itself:
+        // a new worker takes over at once instead of waiting for every tab to close
+        skipWaiting: true,
+        clientsClaim: true,
       },
     }),
   ],
