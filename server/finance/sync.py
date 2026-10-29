@@ -29,6 +29,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from . import notion
+from .money import fx_minor, rate_e9, to_cents
 from .paths import REPO_RULES, SERVER
 from .model import (ACCOUNT_ROLLUP_TYPES, BUDGET_TYPES, CATEGORY_TYPES, PAYEE_TYPES,
                     PERIOD_TYPES, SELECT_CHECKS, TRIP_TYPES, TXN_TYPES, Problem,
@@ -1249,26 +1250,48 @@ def rollup_trips(cfg, client, parsed, state, dry_run=False, echo=True):
     return counts, per_trip
 
 
+def sgd_minor(r, rate):
+    """A parsed row's amount in SGD cents, by the record's rule (v_txn): an SGD
+    row is its own amount, a foreign row is its amount at the block's FX rate,
+    and a foreign row whose block has no rate has no SGD value (None). SPEC: "A
+    block with no FX rate has no SGD value"; counting it one to one would add
+    NOK or SEK to an SGD total as if it were dollars."""
+    amount = to_cents(r["amount"] or 0)
+    if rate:
+        return fx_minor(amount, rate_e9(rate))
+    return amount if r.get("currency") == "SGD" else None
+
+
+def unpriced_rows(parsed):
+    """The External, categorised rows budget_actuals leaves out because their
+    block has no FX rate to SGD: what a run says it could not count."""
+    fx = {b["period"]: num(b.get("fx_to_sgd")) for b in parsed.blocks}
+    return [r for r in parsed.rows if r.get("flow_class") == "External" and r.get("category")
+            and sgd_minor(r, fx.get(r.get("period"))) is None]
+
+
 def budget_actuals(parsed, income_categories):
     """{(category, month): Actual} for every category and month with External rows.
 
-    Actual is the sum of Amount SGD, computed here the way the Notion formula
-    computes it: Amount times the row's FX rate (the block's fx_to_sgd) when the
-    block prints one, Amount itself when it does not. The sign is flipped so that
-    Planned and Actual compare like for like: on a spending category Actual is
-    positive when money went out, and on an income category (Need class =
-    Income) it is positive when money came in.
+    Actual is the sum of the rows' SGD values (sgd_minor), counted in cents: a
+    row at its block's FX rate, an SGD row as it is, and a foreign row whose
+    block prints no rate not at all (unpriced_rows lists those). The sign is
+    flipped so that Planned and Actual compare like for like: on a spending
+    category Actual is positive when money went out, and on an income category
+    (Need class = Income) it is positive when money came in. Returned in
+    dollars, the unit Notion's number property holds.
     """
     fx = {b["period"]: num(b.get("fx_to_sgd")) for b in parsed.blocks}
-    totals = defaultdict(float)
+    totals = defaultdict(int)
     for r in parsed.rows:
         if r.get("flow_class") != "External" or not r.get("category"):
             continue
-        rate = fx.get(r.get("period"))
-        sgd = float(r["amount"] or 0) * (rate if rate else 1.0)
+        sgd = sgd_minor(r, fx.get(r.get("period")))
+        if sgd is None:
+            continue
         totals[(r["category"], (r["date"] or "")[:7])] += (
             sgd if r["category"] in income_categories else -sgd)
-    return {k: round(v, 2) for k, v in totals.items()}
+    return {k: v / 100 for k, v in totals.items()}
 
 
 def rollup_budgets(cfg, client, parsed, state, dry_run=False, echo=True, today=None):
@@ -1317,6 +1340,11 @@ def rollup_budgets(cfg, client, parsed, state, dry_run=False, echo=True, today=N
                    else client.create(cfg.ds("budgets"), w[1]), writes)
     if stale:
         counts["no rows left"] = len(stale)
+    if unpriced := unpriced_rows(parsed):
+        counts["no SGD value"] = len(unpriced)
+        if echo:
+            print(f"  budgets: {len(unpriced)} row(s) sit in a block with no FX rate to SGD, so "
+                  "their SGD value is unknown and Actual leaves them out")
     if echo and (counts["created"] or counts["updated"]):
         print(f"  budgets: {counts['created']} created, {counts['updated']} refreshed")
     return counts
