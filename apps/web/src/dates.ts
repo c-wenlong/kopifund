@@ -103,7 +103,7 @@ export function isoMonth(d: Date = new Date()): string {
   return isoDay(d).slice(0, 7);
 }
 
-/** An ISO day as a Date at local midnight, built from its parts, or null for anything else. */
+/** An ISO day as a Date at local midnight, built from its parts, or null for anything else. For the day picker only: in a zone that skipped a day, that day has no local midnight, so date arithmetic is done in UTC (`addDays`). */
 export function toLocalDate(iso: string): Date | null {
   const p = isoParts(iso);
   return p ? new Date(p.y, p.m - 1, p.d ?? 1) : null;
@@ -111,11 +111,14 @@ export function toLocalDate(iso: string): Date | null {
 
 /** The ISO day `n` days after (or before, when negative) an ISO day; null for anything else. */
 export function addDays(iso: string, n: number): string | null {
-  const d = toLocalDate(iso);
-  if (!d || isoParts(iso)?.d == null) return null;
-  d.setDate(d.getDate() + n);
-  return isoDay(d);
+  const p = isoParts(iso);
+  if (!p || p.d == null) return null;
+  // Audit: counted in UTC, which has every day, so a zone that skipped one (Kiritimati's 31 Dec 1994) still has it
+  return utcDay(new Date(Date.UTC(p.y, p.m - 1, p.d + n)));
 }
+
+/** The ISO day of a Date read in UTC, for dates built with Date.UTC. */
+const utcDay = (d: Date) => `${String(d.getUTCFullYear()).padStart(4, "0")}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 
 /** The ISO month `n` months after (or before) an ISO month or day; null for anything else. */
 export function shiftMonth(iso: string, n: number): string | null {
@@ -139,8 +142,9 @@ function monthNumber(word: string): number | null {
 
 function realDay(y: number, m: number, d: number): string | null {
   if (y < 1000) return null;
-  const t = new Date(y, m - 1, d);
-  if (t.getFullYear() !== y || t.getMonth() !== m - 1 || t.getDate() !== d) return null;
+  // in UTC, so a day a local zone skipped is still a day (the calendar has it)
+  const t = new Date(Date.UTC(y, m - 1, d));
+  if (t.getUTCFullYear() !== y || t.getUTCMonth() !== m - 1 || t.getUTCDate() !== d) return null;
   return `${y}-${pad(m)}-${pad(d)}`;
 }
 
@@ -195,6 +199,12 @@ export function parseMonth(text: string): string | null {
 export function formatDateTime(stamp: string): string {
   const t = moment(stamp);
   return t ? `${formatDay(isoDay(t))}, ${clock(t)}` : stamp;
+}
+
+/** Only the day of a stamp, in this device's time: "2026-10-03T22:30:00+00:00" reads "4 Oct 2026" in Singapore. */
+export function formatStampDay(stamp: string): string {
+  const t = moment(stamp);
+  return t ? formatDay(isoDay(t)) : stamp;
 }
 
 /** Only the time of a stamp, on a 24-hour clock with seconds: "14:05:09". */
