@@ -897,6 +897,22 @@ describe("Transactions filters in the address", () => {
     await waitFor(() => expect(asked()).toHaveLength(2));
   });
 
+  it("drops a search still waiting for the pause when Clear filters is pressed", async () => {
+    window.history.replaceState(null, "", "/transactions?category=Donations");
+    const calls = stubTxns({ rows: [money(1)], total: 1, ...months });
+    render(<Transactions />);
+    await screen.findByText("Shop 1");
+    const box = screen.getByRole("searchbox", { name: "Search transactions" });
+    fireEvent.change(box, { target: { value: "kop" } });
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(box).toHaveValue("");
+    // well past the pause, the search never comes back
+    await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+    expect(box).toHaveValue("");
+    expect(window.location.search).toBe("");
+    expect(calls.filter((u) => u.includes("q="))).toEqual([]);
+  });
+
   it("opens on the filters in the address, as Back or a shared link does", async () => {
     window.history.replaceState(null, "", "/transactions?q=kopi&category=Donations&month=2026-09&account=7&hide_transfers=1");
     const calls = stubTxns({ rows: [money(1)], total: 1, ...months });

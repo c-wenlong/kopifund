@@ -230,10 +230,11 @@ export function Transactions() {
   };
 
   // every filter off for this view; whether transfers show is left as it is
-  const clearFilters = () => patch({
+  // a search still waiting for the pause goes too, so it cannot come back after the clear
+  const clearFilters = () => { setBox({ text: "", from: "" }); patch({
     q: null, payee: null, named: null, key: null, out: null, month: null, category: null, account: null, page: null, ...NO_SCOPE, synthetic: null,
     flag: null, missing_fx: null,
-  });
+  }); };
   const groups = useMemo(() => (data ? groupByDay(data.rows, data.days) : []), [data]);
   // the whole day's totals the server counted for a day on this page
   const dayOf = (date: string): TxnDay =>
