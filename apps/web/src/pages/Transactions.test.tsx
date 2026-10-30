@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { notifyChanged } from "../api";
+import { navigate } from "../router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HIDE_TRANSFERS_KEY, Transactions } from "./Transactions";
 import { leadingIcon } from "../test-icons";
@@ -911,6 +912,27 @@ describe("Transactions filters in the address", () => {
     expect(box).toHaveValue("");
     expect(window.location.search).toBe("");
     expect(calls.filter((u) => u.includes("q="))).toEqual([]);
+  });
+
+  it("drops a search still waiting for the pause when a link moves the page, and keeps it when a filter changes here", async () => {
+    window.history.replaceState(null, "", "/transactions?category=Donations");
+    const calls = stubTxns({ rows: [money(1)], total: 1, ...months });
+    render(<Transactions />);
+    await screen.findByText("Shop 1");
+    const box = screen.getByRole("searchbox", { name: "Search transactions" });
+    // a filter picked here while the search waits takes the search along
+    fireEvent.change(box, { target: { value: "kop" } });
+    fireEvent.click(screen.getByRole("button", { name: "Month" }));
+    fireEvent.mouseDown(within(screen.getByRole("listbox", { name: "Month" })).getByRole("option", { name: "Aug 2026" }));
+    expect(new URLSearchParams(window.location.search).get("q")).toBe("kop");
+    expect(box).toHaveValue("kop");
+    // the sidebar's link to the bare page, before the pause ends, takes the waiting search away with the filters
+    fireEvent.change(box, { target: { value: "kopi" } });
+    act(() => navigate("/transactions"));
+    expect(box).toHaveValue("");
+    await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+    expect(window.location.search).toBe("");
+    expect(calls.filter((u) => u.includes("q=kopi"))).toEqual([]);
   });
 
   it("opens on the filters in the address, as Back or a shared link does", async () => {
