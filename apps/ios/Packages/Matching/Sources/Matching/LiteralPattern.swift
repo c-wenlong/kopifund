@@ -35,12 +35,10 @@ enum LiteralPattern {
         // the newline itself, so it is horizontal only.
         // the sample printed the next capture glued to this literal (no
         // space between): only then may a digit run here give it characters
-        // A literal that ends its block counts as glued too: the alert may
-        // drop the ignored text and the space after the run ("ref 99End"
-        // for a sample "ref 88 X End"), and the next block then starts
-        // inside it. Nothing in the block follows the run, so ending it
-        // early costs nothing.
-        let glued = !(literal.last?.isWhitespace ?? true) || !trailingSpace
+        // A literal that ends its block does not count as glued: ending
+        // its run early there would let the next block start inside a
+        // reference and read its digits as the amount
+        let glued = !(literal.last?.isWhitespace ?? true)
         let raw = literal.components(separatedBy: "\n")
         let lines = raw.enumerated().map { i, line in
             linePattern(for: line, gluedEnd: glued && i == raw.count - 1)

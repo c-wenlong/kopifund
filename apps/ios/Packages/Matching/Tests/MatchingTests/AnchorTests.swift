@@ -296,26 +296,6 @@ final class AnchorTests: XCTestCase {
         }
     }
 
-    /// Review: a digit run that ends its block must leave the next block's
-    /// words alone when the alert drops the ignored text and the space.
-    func test_a_reference_before_an_ignore_leaves_the_next_word() throws {
-        let mail = "Paid $4.80 ref 88 X End at SHOP"
-        let p = try pattern(from: mail) { i, t in
-            switch t.text {
-            case "$", "4.80": return .amount
-            case "X": return .ignore
-            case "SHOP": return .payee
-            default: return nil
-            }
-        }
-        for next in ["Paid $9.00 ref 99End at CAFE", "Paid $9.00 ref 99 Y End at CAFE"] {
-            switch Matcher.match(text: next, source: "mail", receivedAt: Date(), patterns: [p]) {
-            case .matched(let t): XCTAssertEqual(t.payee, "CAFE", next)
-            case .unmatched(let r): XCTFail("unmatched \(next): \(r)")
-            }
-        }
-    }
-
     /// Review: a reference that ends its block must not hand its digits to
     /// an amount that opens the next block.
     func test_a_reference_before_an_ignore_keeps_its_digits_from_the_amount() throws {
@@ -328,7 +308,8 @@ final class AnchorTests: XCTestCase {
             default: return nil
             }
         }
-        for (text, amount) in [(mail, "4.80"), ("Ref 9911 Q $12.50 Z at CAFE", "12.50")] {
+        for (text, amount) in [(mail, "4.80"), ("Ref 9911 Q $12.50 Z at CAFE", "12.50"),
+                               ("Ref 27/10/2026 Q $3.10 Z at CAFE", "3.10")] {
             switch Matcher.match(text: text, source: "mail", receivedAt: Date(), patterns: [p]) {
             case .matched(let t): XCTAssertEqual(t.amount, Decimal(string: amount), text)
             case .unmatched(let r): XCTFail("unmatched \(text): \(r)")
