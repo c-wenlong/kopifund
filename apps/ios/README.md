@@ -138,3 +138,11 @@ unapproved so YNAB still shows them for review; a setting flips that. Rows
 carry their sync state (pending, approved, syncing, synced, failed,
 duplicate) and a
 deterministic `import_id`, so a retried sync never duplicates a transaction.
+
+A row's date is a calendar day (`CalendarDate`), never a moment: the day
+the alert printed, or the day the Wallet tap or the alert arrived where the
+phone was. It posts to YNAB as that `yyyy-MM-dd` whatever zone the phone is
+in at sync, and dedup compares those days. An alert that prints no year
+(`26 Oct`, `31/12`) takes the latest year that keeps it no later than the
+day after it arrived, so `31 Dec` arriving on 1 January is last year's; a
+day the year lacks (`29 Feb` in 2027) is unreadable rather than 1 March.

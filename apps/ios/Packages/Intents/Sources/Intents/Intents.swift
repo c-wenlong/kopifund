@@ -92,9 +92,9 @@ public enum Ingest {
         for c in existing where c.id != row.id && c.state != "duplicate" {
             guard Dedup.likelyDuplicate(
                 amountCents: row.amountCents, currency: row.currency,
-                date: row.date, payee: row.payee,
+                date: CalendarDate(stored: row.date), payee: row.payee,
                 otherAmountCents: c.amountCents, otherCurrency: c.currency,
-                otherDate: c.date, otherPayee: c.payee) else { continue }
+                otherDate: CalendarDate(stored: c.date), otherPayee: c.payee) else { continue }
             if c.state == "syncing" || c.state == "synced" || c.state == "failed" || c.kopifundID != nil {
                 sent = sent.map { preferred(c, over: $0) } ?? c
             } else {

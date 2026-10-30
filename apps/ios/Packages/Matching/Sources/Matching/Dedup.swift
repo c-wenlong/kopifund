@@ -26,16 +26,15 @@ public enum Dedup {
         return short.count >= 4 && long.contains(short)
     }
 
-    /// The spend is the same when the amount and currency agree, the day
-    /// agrees (a parsed alert date is day-precise while a Wallet tap carries
-    /// a timestamp, so the comparison is on local calendar day), and the
-    /// payees read alike.
+    /// The spend is the same when the amount and currency agree, the
+    /// calendar day agrees (the alert's printed day, or the day a Wallet tap
+    /// happened where the phone was), and the payees read alike.
     public static func likelyDuplicate(amountCents: Int, currency: String,
-                                       date: Date, payee: String,
+                                       date: CalendarDate, payee: String,
                                        otherAmountCents: Int, otherCurrency: String,
-                                       otherDate: Date, otherPayee: String) -> Bool {
+                                       otherDate: CalendarDate, otherPayee: String) -> Bool {
         amountCents == otherAmountCents && currency == otherCurrency
-            && Calendar.current.isDate(date, inSameDayAs: otherDate)
+            && date == otherDate
             && similarPayee(payee, otherPayee)
     }
 

@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import Matching
 import Storage
 import Matching
 import KopifundClient
@@ -9,13 +10,6 @@ import YNABClient
 /// -> synced, or failed with the error kept on the row for a retry.
 @MainActor
 enum SyncService {
-    private static let dateFmt: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
-
     private static var flushing = false
 
     /// Flushes serialize: a second caller returns rather than racing the
@@ -121,13 +115,16 @@ enum SyncService {
             try? context.save()
             let outflow = row.direction == "outflow"
             let milli = Milliunits.from(Decimal(row.amountCents) / 100, outflow: outflow)
+            // the row's calendar day goes to YNAB as printed, with no zone
+            // applied, wherever the phone is when it syncs
+            let day = CalendarDate(stored: row.date)
             // the first send's import_id is saved before posting, so an edit
             // or a lost reply can never mint a second one for the same row
-            let importID = row.importID ?? ImportID.make(date: row.date, milliunits: milli,
+            let importID = row.importID ?? ImportID.make(date: day.storedInstant, milliunits: milli,
                                                          payee: row.payee, source: row.source)
             row.importID = importID
             let txn = NewTransaction(accountID: accountID,
-                                     date: dateFmt.string(from: row.date),
+                                     date: day.iso,
                                      amount: milli, payeeName: row.payee,
                                      categoryID: row.categoryID,
                                      memo: row.memo.isEmpty ? nil : row.memo,

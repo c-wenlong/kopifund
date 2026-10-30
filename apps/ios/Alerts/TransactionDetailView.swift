@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import Matching
 import Storage
 
 struct TransactionDetailView: View {
@@ -23,7 +24,12 @@ struct TransactionDetailView: View {
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
                 }
-                DatePicker("Date", selection: $row.date, displayedComponents: .date)
+                // the picker edits the calendar day in the phone's own
+                // calendar; the row keeps it as a zone-free day
+                DatePicker("Date", selection: Binding(
+                    get: { CalendarDate(stored: row.date).date(in: .current) },
+                    set: { row.date = CalendarDate($0, in: .current).storedInstant }),
+                           displayedComponents: .date)
                 Picker("Direction", selection: $row.direction) {
                     Text("Outflow").tag("outflow")
                     Text("Inflow").tag("inflow")

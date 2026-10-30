@@ -72,6 +72,8 @@ public final class TransactionRecord {
     public var payee: String
     public var amountCents: Int         // money is integer cents, never a float
     public var currency: String         // "SGD"
+    /// A calendar day, written as `CalendarDate.storedInstant` and read
+    /// with `CalendarDate(stored:)`, never through a time zone.
     public var date: Date
     public var direction: String
     public var accountID: String
@@ -109,7 +111,7 @@ public final class TransactionRecord {
         NSDecimalRound(&cents, &scaled, 0, .plain)
         amountCents = NSDecimalNumber(decimal: cents).intValue
         currency = t.currency ?? "SGD"
-        date = t.date
+        date = t.date.storedInstant
         direction = t.direction.rawValue
         self.accountID = accountID
         self.categoryID = categoryID
@@ -133,7 +135,8 @@ public final class TransactionRecord {
         payee = merchant
         amountCents = walletAmountCents
         currency = "SGD"
-        self.date = date
+        // the tap's day where the phone was when it happened
+        self.date = CalendarDate(date, in: .current).storedInstant
         direction = "outflow"
         self.accountID = accountID
         memo = ""
