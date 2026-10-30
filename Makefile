@@ -4,10 +4,12 @@
 # personal file is in the data folder, $(DATA).
 
 PY      ?= python3
-# made absolute in the shell, not with $(abspath), which splits a path at its spaces;
-# Make passes in its own KOPIFUND_DATA, so `make KOPIFUND_DATA=... <target>` counts too
+# KOPIFUND_DATA from the environment or the command line, made absolute with Make's
+# own text functions: $(abspath) would split a path at its spaces, and a shell would
+# run any backticks or $(...) in a folder's name while Make reads this file
 ifndef DATA
-DATA    := $(shell d="$(KOPIFUND_DATA)"; d="$${d:-$$HOME/.kopifund}"; case "$$d" in (/*) ;; (*) d="$(CURDIR)/$$d" ;; esac; printf '%s' "$$d")
+DATA_IN := $(or $(KOPIFUND_DATA),$(HOME)/.kopifund)
+DATA    := $(if $(filter /%,$(firstword $(DATA_IN))),$(DATA_IN),$(CURDIR)/$(DATA_IN))
 endif
 CACHE   := $(DATA)/cache
 RULES   := $(CURDIR)/data/rules

@@ -2,6 +2,7 @@ import isolate  # noqa: F401  first: no test writes the real record or cache
 import os
 import shutil
 import subprocess
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -27,6 +28,12 @@ class DataFolderPathTest(unittest.TestCase):
         out = subprocess.run(["make", "-n", "--no-print-directory", "KOPIFUND_DATA=/tmp/c d/data", "backup"],
                              cwd=ROOT, env=env, capture_output=True, text=True, check=True).stdout
         self.assertIn('mkdir -p "/tmp/c d/data/backups"', out)
+
+    def test_a_folder_name_is_never_run_as_a_command(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            marker = Path(tmp) / "ran"
+            self.planned(f"{tmp}/`touch {marker}`/$$(touch {marker})", target="help")
+            self.assertFalse(marker.exists())
 
     def test_a_relative_path_is_made_absolute(self):
         # recipes `cd server` before reading the data folder
