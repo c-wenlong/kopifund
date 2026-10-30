@@ -3,7 +3,10 @@ import Foundation
 /// G24: what a matched alert becomes before it queues for review.
 public struct ParsedTransaction: Equatable, Sendable {
     public var payee: String
-    /// Absolute amount as printed. `direction` gives it a sign at post time.
+    /// The amount's size, never negative: a minus the alert printed is the
+    /// bank's notation, and the pattern's `direction` alone gives the sign at
+    /// post time. (A kept minus used to be negated again for an outflow, so
+    /// "-S$4.50" posted as money in.)
     public var amount: Decimal
     public var date: Date
     public var direction: AlertPattern.Direction
@@ -133,7 +136,7 @@ public enum Matcher {
                 case .ignore:
                     break
                 case .amount:
-                    pattern += noNumberBefore + #"(?<amount>-?(?:[A-Z]{3}|S\$|US\$|\$)\s*+[0-9][0-9,]*(?:\.\d{1,2})?|-?[0-9][0-9,]*(?:\.\d{1,2})?)"#
+                    pattern += noNumberBefore + "(?<amount>" + Amounts.pattern + ")"
                 case .payee:
                     // a payee never spans lines, so the capture stays inside
                     // its own: it can neither swallow the next line's footer
@@ -242,8 +245,13 @@ public enum Matcher {
                 dateGroup += 1
             }
         }
-        guard let a = amountRaw, let parsed = Amounts.split(a) else {
+        guard let a = amountRaw, let parsed = Amounts.read(a) else {
             return .failure(MatchError("amount not readable"))
+        }
+        // the row keeps cents, so a third decimal (KWD, BHD, OMR fils)
+        // would be cut on the way in: refuse it out loud instead
+        guard parsed.decimals <= 2 else {
+            return .failure(MatchError("amount \(a) has \(parsed.decimals) decimals; the app keeps cents"))
         }
         guard let py = payee?.trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:-")), !py.isEmpty else {
@@ -269,7 +277,7 @@ public enum Matcher {
            let expected = expectedHint(for: p, re: re), trimmedHint != expected {
             return .failure(MatchError("different card or account"))
         }
-        return .success(ParsedTransaction(payee: py, amount: parsed.amount, date: date,
+        return .success(ParsedTransaction(payee: py, amount: parsed.magnitude, date: date,
                                           direction: p.direction, accountHint: trimmedHint,
                                           currency: parsed.currency,
                                           patternID: p.id, patternName: p.name,
@@ -343,40 +351,6 @@ private final class ExpressionCache: @unchecked Sendable {
         if cache.count >= limit { cache.removeAll() }
         cache[key] = re
         return re
-    }
-}
-
-/// Amounts the alerts print: `SGD 4.50`, `S$4.50`, `$4.50`, `4.50`, with
-/// thousands separators and an optional leading minus.
-public enum Amounts {
-    /// The number and the currency symbol it printed, kept apart so the record
-    /// holds the code the bank meant rather than assuming one. `S$` and a bare
-    /// `$` read as SGD (an SG bank alert's dollar is local), `US$` as USD, a
-    /// three-letter code as itself; a bare number reports no currency.
-    public static func split(_ raw: String) -> (amount: Decimal, currency: String?)? {
-        var s = raw.replacingOccurrences(of: ",", with: "")
-            .trimmingCharacters(in: .whitespaces)
-        var sign = ""
-        if s.hasPrefix("-") { sign = "-"; s.removeFirst() }
-        var currency: String? = nil
-        // longest alternatives first so `US$` is not eaten as the letters US
-        if let r = s.range(of: #"^(?:US\$|S\$|[A-Z]{1,3}|\$)\s*"#,
-                           options: .regularExpression) {
-            let sym = s[r].trimmingCharacters(in: .whitespacesAndNewlines)
-            s.removeSubrange(r)
-            currency = switch sym {
-            case "US$": "USD"
-            case "S$", "$": "SGD"
-            default: sym
-            }
-        }
-        guard let d = Decimal(string: sign + s, locale: Locale(identifier: "en_US_POSIX"))
-        else { return nil }
-        return (d, currency)
-    }
-
-    public static func parse(_ raw: String) -> Decimal? {
-        split(raw)?.amount
     }
 }
 
