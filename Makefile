@@ -4,9 +4,10 @@
 # personal file is in the data folder, $(DATA).
 
 PY      ?= python3
-# made absolute in the shell, not with $(abspath), which splits a path at its spaces
+# made absolute in the shell, not with $(abspath), which splits a path at its spaces;
+# Make passes in its own KOPIFUND_DATA, so `make KOPIFUND_DATA=... <target>` counts too
 ifndef DATA
-DATA    := $(shell d="$${KOPIFUND_DATA:-$$HOME/.kopifund}"; case "$$d" in (/*) ;; (*) d="$(CURDIR)/$$d" ;; esac; printf '%s' "$$d")
+DATA    := $(shell d="$(KOPIFUND_DATA)"; d="$${d:-$$HOME/.kopifund}"; case "$$d" in (/*) ;; (*) d="$(CURDIR)/$$d" ;; esac; printf '%s' "$$d")
 endif
 CACHE   := $(DATA)/cache
 RULES   := $(CURDIR)/data/rules

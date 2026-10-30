@@ -22,6 +22,12 @@ class DataFolderPathTest(unittest.TestCase):
     def test_a_space_in_the_path_stays_one_path(self):
         self.assertIn('mkdir -p "/tmp/a b/data/backups"', self.planned("/tmp/a b/data"))
 
+    def test_a_folder_named_on_the_command_line_is_used(self):
+        env = {k: v for k, v in os.environ.items() if k not in ("DATA", "KOPIFUND_DATA")}
+        out = subprocess.run(["make", "-n", "--no-print-directory", "KOPIFUND_DATA=/tmp/c d/data", "backup"],
+                             cwd=ROOT, env=env, capture_output=True, text=True, check=True).stdout
+        self.assertIn('mkdir -p "/tmp/c d/data/backups"', out)
+
     def test_a_relative_path_is_made_absolute(self):
         # recipes `cd server` before reading the data folder
         self.assertIn(f'mkdir -p "{ROOT}/rel/data/backups"', self.planned("rel/data"))
