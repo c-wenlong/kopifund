@@ -91,7 +91,15 @@ flowchart LR
   binds `127.0.0.1:8770` only, serves the built app from `apps/web/dist`, answers
   `/api/*` with JSON. Every write is a POST that must carry the header
   `X-Kopifund: 1` and, when the browser sends one, an Origin on this machine,
-  so a page on another site cannot write. The phone link ("Phone link (G25)"
+  so a page on another site cannot write. The built app carries a
+  Content-Security-Policy in `apps/web/index.html` (a meta tag, so `make serve`
+  and the Mac app's window both get it from the page itself): every
+  script, style, font, image, fetch and worker comes from the app's own origin,
+  with `data:` and `blob:` images allowed, no inline script, no plugin
+  (`object-src 'none'`), no `<base>`, and forms only to itself. Vite's dev
+  server injects inline scripts, so `vite.config.ts` drops the tag under `make
+  dev`. `frame-ancestors` only works as a response header, so it is serve.py's
+  to send. The phone link ("Phone link (G25)"
   below) is the only way a request reaches the API off this machine, and it
   arrives on loopback too, through `tailscale serve`. The routes are listed at the top of
   serve.py, and in it `GET_ROUTES` and `POST_ROUTES` are the one table that
