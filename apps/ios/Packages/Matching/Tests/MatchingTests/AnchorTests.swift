@@ -296,6 +296,26 @@ final class AnchorTests: XCTestCase {
         }
     }
 
+    /// Review: a digit run that ends its block must leave the next block's
+    /// words alone when the alert drops the ignored text and the space.
+    func test_a_reference_before_an_ignore_leaves_the_next_word() throws {
+        let mail = "Paid $4.80 ref 88 X End at SHOP"
+        let p = try pattern(from: mail) { i, t in
+            switch t.text {
+            case "$", "4.80": return .amount
+            case "X": return .ignore
+            case "SHOP": return .payee
+            default: return nil
+            }
+        }
+        for next in ["Paid $9.00 ref 99End at CAFE", "Paid $9.00 ref 99 Y End at CAFE"] {
+            switch Matcher.match(text: next, source: "mail", receivedAt: Date(), patterns: [p]) {
+            case .matched(let t): XCTAssertEqual(t.payee, "CAFE", next)
+            case .unmatched(let r): XCTFail("unmatched \(next): \(r)")
+            }
+        }
+    }
+
     /// Review: a reference glued to the amount ("8842:$4.80") folds to a
     /// wildcard that must leave the amount to its capture.
     func test_a_folded_reference_glued_to_the_amount_leaves_it() throws {
