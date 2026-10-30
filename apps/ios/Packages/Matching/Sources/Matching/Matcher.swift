@@ -133,7 +133,7 @@ public enum Matcher {
                 case .ignore:
                     break
                 case .amount:
-                    pattern += #"(?<amount>-?(?:[A-Z]{3}|S\$|US\$|\$)\s*+[0-9][0-9,]*(?:\.\d{1,2})?|-?[0-9][0-9,]*(?:\.\d{1,2})?)"#
+                    pattern += noNumberBefore + #"(?<amount>-?(?:[A-Z]{3}|S\$|US\$|\$)\s*+[0-9][0-9,]*(?:\.\d{1,2})?|-?[0-9][0-9,]*(?:\.\d{1,2})?)"#
                 case .payee:
                     // a payee never spans lines, so the capture stays inside
                     // its own: it can neither swallow the next line's footer
@@ -143,7 +143,7 @@ public enum Matcher {
                     // the name.
                     pattern += lineCapture("payee", atLineEnd: atLineEnd(p, seg))
                 case .date(let f):
-                    pattern += "(?<date\(dateGroup)>\(f.regex))"
+                    pattern += noNumberBefore + "(?<date\(dateGroup)>\(f.regex))"
                     dateGroup += 1
                 case .accountHint:
                     // the account string prints the same way every alert, so
@@ -157,6 +157,11 @@ public enum Matcher {
         }
         return try NSRegularExpression(pattern: pattern, options: [])
     }
+
+    /// An amount or a date never starts inside a number: a skip or a
+    /// digit run that stops early ("Ref 8|842") must not hand the rest of
+    /// a reference to the capture as the amount.
+    private static let noNumberBefore = #"(?<![0-9])(?<![0-9][.,])"#
 
     /// The longest payee or account a lazy capture reads. YNAB caps a payee
     /// name at 200 characters, so a longer capture could never post; the

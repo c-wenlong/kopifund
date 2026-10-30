@@ -316,6 +316,26 @@ final class AnchorTests: XCTestCase {
         }
     }
 
+    /// Review: a reference that ends its block must not hand its digits to
+    /// an amount that opens the next block.
+    func test_a_reference_before_an_ignore_keeps_its_digits_from_the_amount() throws {
+        let mail = "Ref 8842 X $4.80 Y at SHOP"
+        let p = try pattern(from: mail) { _, t in
+            switch t.text {
+            case "X", "Y": return .ignore
+            case "$", "4.80": return .amount
+            case "SHOP": return .payee
+            default: return nil
+            }
+        }
+        for (text, amount) in [(mail, "4.80"), ("Ref 9911 Q $12.50 Z at CAFE", "12.50")] {
+            switch Matcher.match(text: text, source: "mail", receivedAt: Date(), patterns: [p]) {
+            case .matched(let t): XCTAssertEqual(t.amount, Decimal(string: amount), text)
+            case .unmatched(let r): XCTFail("unmatched \(text): \(r)")
+            }
+        }
+    }
+
     /// Review: a reference glued to the amount ("8842:$4.80") folds to a
     /// wildcard that must leave the amount to its capture.
     func test_a_folded_reference_glued_to_the_amount_leaves_it() throws {
