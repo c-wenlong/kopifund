@@ -2,6 +2,14 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <!--
+      Audit: what the page may load and run. Everything comes from serve.py's own origin (the built
+      app, /api, the service worker); no inline script, no plugin, no other site. The page holds the
+      whole ledger and draws the copilot's answers, so a script slipped into one (a payee name, a
+      model's reply) has nowhere to run from. frame-ancestors only works as a header (serve.py).
+      Vite's dev server injects inline scripts and styles, so vite.config.ts drops this tag in dev.
+    -->
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'none'; form-action 'self'" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <!-- the browser bar and the iPhone status bar take the page colour (--page in src/index.css), light or dark -->
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#f6f5f0" />
