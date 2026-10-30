@@ -30,7 +30,8 @@ reuses it rather than reading the eight databases a second time.
   --archive-orphans  move transactions the parser no longer produces to the
                      trash; without it they are only reported. For load and
                      sync it also archives rows that carry a trip pin, a mark,
-                     a series edit or a key rule (pinned-rows-gone)
+                     a series edit or a key rule (pinned-rows-gone,
+                     pinned-key-reused)
   --rules PATH       rules file or directory (default: the repo's data/rules/, plus
                      the data folder's rules/ when it holds any)
   --csv DIR          reuse an earlier parser run instead of reparsing

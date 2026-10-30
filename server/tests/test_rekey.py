@@ -83,6 +83,50 @@ class ReKeyTest(Record):
         self.assertEqual(counts["rekeyed"], 2)
         self.assertEqual({k: v[0] for k, v in self.ids().items()}, {"b1": first, "b2": second})
 
+    def test_two_different_payments_alike_in_date_and_amount_are_not_guessed(self):
+        # a card statement prints no running balance: these two share all five fields
+        self.load([row("a", "-3.00", merchant="SHOP A"), row("b", "-3.00", merchant="SHOP B")])
+        tid = self.conn.execute("SELECT id FROM trip").fetchone()[0]
+        db.set_trip_links(self.conn, tid, ["MYS"], ["a"])
+        run = parsed([block()], [row("b2", "-3.00", merchant="SHOP B 2"), row("a2", "-3.00", merchant="SHOP A 2")])
+        self.assertEqual(db.rekeys(self.conn, run.rows), [])
+        run.rules = []
+        [p] = sync.check_pinned_rows(self.conn, run)
+        self.assertEqual(p.subject, "1 row(s): a (a trip pin)")
+
+    def test_alike_payments_pair_on_the_details_a_re_key_leaves_alone(self):
+        self.load([row("a", "-3.00", merchant="SHOP A", reference="R1"),
+                   row("b", "-3.00", merchant="SHOP B", reference="R2")])
+        ids = {k: v[0] for k, v in self.ids().items()}
+        counts = self.load([row("b2", "-3.00", merchant="SHOP B 2", reference="R2"),
+                            row("a2", "-3.00", merchant="SHOP A 2", reference="R1")])
+        self.assertEqual(counts["rekeyed"], 2)
+        self.assertEqual({k: v[0] for k, v in self.ids().items()}, {"a2": ids["a"], "b2": ids["b"]})
+
+    def test_a_key_that_returns_unpaired_takes_its_alias_back(self):
+        self.load([row("a", "-12.50")])
+        self.load([row("b", "-12.50", merchant="X")])
+        # "a" comes back on a row the balance now tells apart, so it is not paired
+        self.load([row("a", "-12.50", balance_after="1.00")])
+        self.assertEqual(self.conn.execute("SELECT COUNT(*) FROM txn_key_alias").fetchone()[0], 0)
+        tid = self.conn.execute("SELECT id FROM trip").fetchone()[0]
+        db.set_trip_links(self.conn, tid, ["MYS"], ["a"])
+        self.assertEqual(db.trip_pins(self.conn, tid), ["a"])
+
+    def test_a_row_with_no_account_number_is_never_paired(self):
+        # it could be any account's: pairing would hand its saved edits across accounts
+        self.load([row("a", "-12.50", account_no="")])
+        run = parsed([block()], [row("b", "-12.50", account_no="", merchant="X")])
+        self.assertEqual(db.rekeys(self.conn, run.rows), [])
+
+    def test_former_keys_keep_one_order_before_and_after_the_load(self):
+        self.load([row("a", "-12.50")])
+        self.load([row("b", "-12.50", merchant="X")])
+        pending = [row("c", "-12.50", merchant="Y")]
+        self.assertEqual(db.former_keys(self.conn, pending)["c"], ["a", "b"])
+        self.load(pending)
+        self.assertEqual(db.former_keys(self.conn)["c"], ["a", "b"])
+
     def test_a_different_amount_or_date_is_a_different_row(self):
         self.load([row("a", "-12.50"), row("d", "-1.00")])
         counts = self.load([row("b", "-12.60"), row("e", "-1.00", date="2026-08-04")])
@@ -233,6 +277,24 @@ class PinnedRowsGuardTest(Record):
                                                             rules=[dict(KeyRulesFollowTest.RULES[0], pattern="k2", glob="K2")]))
         self.assertEqual(p.subject, "1 row(s): k2 (a key rule)")
 
+
+    def reused(self):
+        # x was "a" and is now "b"; y is re-keyed to "a" while x stays
+        self.load([row("a", "-3.00", balance_after="10.00"), row("y", "-3.00", balance_after="7.00")])
+        self.load([row("b", "-3.00", balance_after="10.00", merchant="X"),
+                   row("y", "-3.00", balance_after="7.00")])
+        return self.run_of(row("b", "-3.00", balance_after="10.00", merchant="X"),
+                           row("a", "-3.00", balance_after="7.00", merchant="Y"))
+
+    def test_a_saved_key_another_row_would_take_stops_the_load(self):
+        run = self.reused()
+        tid = self.conn.execute("SELECT id FROM trip").fetchone()[0]
+        db.set_trip_links(self.conn, tid, ["MYS"], ["a"])
+        [p] = sync.check_pinned_rows(self.conn, run)
+        self.assertEqual((p.code, p.subject), ("pinned-key-reused", "1 key(s): a (a trip pin)"))
+
+    def test_a_key_another_row_takes_with_nothing_saved_on_it_may_go(self):
+        self.assertEqual(sync.check_pinned_rows(self.conn, self.reused()), [])
 
 class RecordGuardTest(unittest.TestCase):
     def test_the_guard_reads_the_data_folders_record(self):

@@ -239,7 +239,10 @@ with a new key on the same account, currency, date, amount and running balance,
 gives the row the new key in place and writes the old one to `txn_key_alias`
 (`db.rekeys`). Trip pins, rows marked fine, series edits and `keys.csv` rules
 saved on the old key then still find the row. A row that would be archived while
-it carries one of those is the `pinned-rows-gone` problem.
+it carries one of those is the `pinned-rows-gone` problem, and an old key the
+run gives to a different row while one of those is saved on it is
+`pinned-key-reused`. A key the run produces is that row's own, so any alias
+under it is dropped.
 
 ### Synthetic YouTrip rows
 

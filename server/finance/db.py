@@ -1296,6 +1296,36 @@ def _identity(account_no, currency, txn_date, amount_minor, balance_after_minor)
     return (account_no or "", currency, txn_date, amount_minor, balance_after_minor)
 
 
+def _detail(source, reference, card_last4, purchase_date):
+    return (source or "", reference or "", card_last4 or "", purchase_date or "")
+
+
+def _pairs(old, new):
+    """[(txn id, old key, new key)] for one group of rows alike on the five
+    identity fields, or [] when it cannot be paired safely. `old` holds
+    (id, key, detail, text) in id order, `new` (key, detail, text) in parse
+    order. A group of one each pairs. A larger group is split on the details
+    a re-key rarely touches (statement, reference, card, purchase date), and
+    a split part pairs only when it is one each, or when every row on each
+    side prints the same text: rows nothing tells apart (two identical
+    coffees) are interchangeable, but two different payments that share a
+    date and an amount on a card statement (no running balance) are not, and
+    pairing those by id would move a pin to the wrong one."""
+    if len(old) != len(new):
+        return []
+    if len(old) == 1:
+        return [(old[0][0], old[0][1], new[0][0])]
+    out = []
+    for d in {x[2] for x in old} | {x[1] for x in new}:
+        o = [x for x in old if x[2] == d]
+        n = [x for x in new if x[1] == d]
+        if len(o) != len(n):
+            continue
+        if len(o) == 1 or (len({x[3] for x in o}) == 1 and len({x[2] for x in n}) == 1):
+            out += [(tid, ok, nk) for (tid, ok, _, _), (nk, _, _) in zip(o, n)]
+    return out
+
+
 def rekeys(conn, rows):
     """[(txn id, old key, new key)]: the record's live rows this parser run
     gives a new key. `txn_key` hashes parsed text (merchant, reference, type),
@@ -1303,32 +1333,37 @@ def rekeys(conn, rows):
     of a merchant, renames a row the statement prints just as before. A row is
     the same row when its account, currency, date, amount and running balance
     are: a record row no parsed key covers is paired with a parsed key the
-    record has never held on those five. Pairs go in order (record ids, parse
-    order) only where both sides have as many rows; an uneven group is left to
-    archive and insert, and sync.check_pinned_rows says if that drops
-    anything the owner saved on one."""
+    record has never held on those five (_pairs says when a group of several
+    alike can be), and only on a known account number. A row left unpaired is archived and its new key inserted,
+    and sync.check_pinned_rows says if that drops anything the owner saved
+    on one."""
     known = {k for (k,) in conn.execute("SELECT txn_key FROM txn")}
     fresh = {}
     for r in rows:
-        if r["txn_key"] not in known:
+        # a row with no account number could be any account's: never paired
+        if r["txn_key"] not in known and r.get("account_no"):
             ident = _identity(r.get("account_no"), r["currency"], r["date"], to_minor(r["amount"]),
                               to_minor(r.get("balance_after")))
-            fresh.setdefault(ident, []).append(r["txn_key"])
+            detail = _detail(r.get("source"), r.get("reference"), r.get("card_last4"), r.get("purchase_date"))
+            text = (r.get("merchant") or "", r.get("counterparty") or "", r.get("memo") or "")
+            fresh.setdefault(ident, []).append((r["txn_key"], detail, text))
     if not fresh:
         return []
     keys = {r["txn_key"] for r in rows}
     gone = {}
     for t in conn.execute("""SELECT id, txn_key, account_no, currency, txn_date, amount_minor,
-                                    balance_after_minor FROM txn WHERE archived_at IS NULL ORDER BY id"""):
-        if t["txn_key"] not in keys:
+                                    balance_after_minor, source, reference, card_last4, purchase_date,
+                                    merchant_raw, counterparty, memo
+                             FROM txn WHERE archived_at IS NULL ORDER BY id"""):
+        if t["txn_key"] not in keys and t["account_no"]:
             ident = _identity(t["account_no"], t["currency"], t["txn_date"], t["amount_minor"],
                               t["balance_after_minor"])
-            gone.setdefault(ident, []).append((t["id"], t["txn_key"]))
+            detail = _detail(t["source"], t["reference"], t["card_last4"], t["purchase_date"])
+            gone.setdefault(ident, []).append((t["id"], t["txn_key"], detail,
+                                               (t["merchant_raw"], t["counterparty"], t["memo"])))
     out = []
-    for ident, new_keys in fresh.items():
-        old = gone.get(ident, ())
-        if len(old) == len(new_keys):
-            out += [(tid, old_key, new_key) for (tid, old_key), new_key in zip(old, new_keys)]
+    for ident, new in fresh.items():
+        out += _pairs(gone.get(ident, []), new)
     return out
 
 
@@ -1343,7 +1378,8 @@ def former_keys(conn, rows=()):
         out.setdefault(new, []).append(old)
     for _, old, new in rekeys(conn, rows):
         out.setdefault(new, []).extend([old, *out.get(old, ())])
-    return out
+    # one order before and after the aliases are saved, so the same rule wins
+    return {k: sorted(set(v)) for k, v in out.items()}
 
 
 def _apply_rekeys(conn, moved):
@@ -1429,6 +1465,9 @@ def load_parsed(conn, parsed, payees=(), trips_by_key=None, complete=True, kind=
                              (*vals.values(), stamp, r["txn_key"]))
                 upd += int(changed)
             seen_keys.add(r["txn_key"])
+        # a key the run produces is that row's own: an alias left from an
+        # earlier re-key under the same key would send pins to another row
+        conn.executemany("DELETE FROM txn_key_alias WHERE old_key = ?", [(k,) for k in seen_keys])
         if complete:
             gone = [row["txn_key"] for row in conn.execute(
                 "SELECT txn_key FROM txn WHERE archived_at IS NULL")
