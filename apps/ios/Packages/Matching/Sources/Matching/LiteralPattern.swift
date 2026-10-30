@@ -78,6 +78,9 @@ enum LiteralPattern {
         }.joined(separator: #"\s+"#)
     }
 
+    /// A month name the folding treats as a date piece.
+    static func isMonthName(_ word: String) -> Bool { months.contains(word) }
+
     private static let months: Set<String> = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
         "Sep", "Sept", "Oct", "Nov", "Dec",
