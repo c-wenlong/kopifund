@@ -45,7 +45,7 @@ key optional:
      "rent_on_trips":        {"payee": "...", "trip": "...",
                               "trips": ["...", ...], "min_share": 0.2}}
 """
-import isolate  # noqa: F401  first: no test writes the real record or cache
+import isolate  # first: no test writes the real record or cache
 import datetime as dt
 import json
 import statistics
@@ -55,9 +55,12 @@ from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-from finance.paths import data_root  # noqa: E402
 from finance.money import stat_cents  # noqa: E402
-CACHE = data_root() / "cache"     # the real cache, only ever read; tests write elsewhere
+# Audit: the real data folder only when the run asks (KOPIFUND_TEST_REAL_DATA=1, server/tests/isolate.py)
+REAL_DATA = isolate.real_data_folder()
+if REAL_DATA is None:
+    raise unittest.SkipTest("reads the real cache: run with KOPIFUND_TEST_REAL_DATA=1 to include it")
+CACHE = REAL_DATA / "cache"       # the real cache, only ever read; tests write elsewhere
 LATEST = CACHE / "latest.json"
 
 
@@ -79,8 +82,7 @@ SNAP, RESULTS = _load()
 
 def _expectations():
     """The owner's named checks, or {} when the file is not there."""
-    from finance.paths import data_root
-    path = data_root() / "notes" / "review-expectations.json"
+    path = REAL_DATA / "notes" / "review-expectations.json"
     if not path.exists():
         return {}
     return json.loads(path.read_text(encoding="utf-8"))

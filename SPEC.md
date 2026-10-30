@@ -216,8 +216,10 @@ flowchart LR
   and JSON for analysis elsewhere. Two narrower overrides exist for tests and
   tooling: `KOPIFUND_DB` moves the record (default `kopifund.db` in the data
   folder) and `KOPIFUND_CACHE` moves the derived cache (default `cache/` in
-  the data folder). The test suite sets both to a throwaway folder on every
-  run, so no test can write a real record or cache.
+  the data folder). The test suite sets both, and `KOPIFUND_DATA` itself, to a
+  throwaway folder on every run, so no test can write a real data folder,
+  record or cache; the three tests that read real statements see the real
+  folder only under `KOPIFUND_TEST_REAL_DATA=1` (AGENTS.md, "Commands").
 
 ### The data folder
 
