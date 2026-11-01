@@ -1,0 +1,58 @@
+                                                                                                                                                          MEI LING TAN
+                                                                                                                                                              Y-1029384756
+                                                                                                                                                              Y-1029384757
+My SGD Statement                                                                                                                        Issued on 4 Sep 2026, 1:11 AM (SGT)
+1 Oct 2025 to 31 Oct 2025
+
+
+
+
+Transactions¹
+
+   Completed Date²                        Description                                                                         Money Out               Money In    Balance
+   (in SGT)
+
+
+   1 Oct 2025                             Opening Balance                                                                                                         $68.41
+
+
+                                          Grab* A-0MK4POJNM175FO,6
+   1 Oct 2025                             B,Singapor                                                                              $13.90                          $54.51
+   5:05 PM
+
+
+                                          QUICK LAUNDRY - AMK,4001
+   2 Oct 2025                             A,SINGAPOR                                                                                  $1.50                       $53.01
+   2:49 AM
+
+
+                                          QUICK LAUNDRY - AMK,4001
+   2 Oct 2025                             A,SINGAPOR                                                                                  $1.00                       $52.01
+   2:49 AM
+
+
+                                          QUICK LAUNDRY - AMK,4001
+   2 Oct 2025                             A,SINGAPOR                                                                                  $1.00                       $51.01
+   2:49 AM
+
+
+                                          WWW.RAMENY* RDKTRAMENY,9
+   3 Oct 2025                             R,SINGAPOR                                                                              $44.10                           $6.91
+   2:42 AM
+
+
+
+   31 Oct 2025                            Closing Balance                                                                                                          $6.91
+
+
+
+
+Remarks:
+1. Pending transactions are awaiting confirmation from Mastercard, and will not be shown on your statement until they're completed.
+2. Completed date refers to the date that funds from your transaction were released to the merchant, and may not be the date you made your payment.
+
+
+
+
+                                                                                           page 1 of 1
+

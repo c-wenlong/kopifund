@@ -1,0 +1,840 @@
+{
+  "id": "data-quality",
+  "title": "Data quality",
+  "generated_at": "2026-09-04T10:15:36+08:00",
+  "snapshot": "snapshot-2026-09-04.json",
+  "chart": {
+    "type": "bar",
+    "x": "month",
+    "series": [
+      "uncategorised",
+      "synthetic"
+    ],
+    "source": "by_month",
+    "unit": "count"
+  },
+  "sources": [
+    {
+      "database": "Transactions",
+      "rows_used": 4000,
+      "filter": "all"
+    },
+    {
+      "database": "Period balances",
+      "rows_used": 122,
+      "filter": "all"
+    }
+  ],
+  "params": {
+    "fix_limit": 60,
+    "currency": "SGD"
+  },
+  "data": {
+    "counts": {
+      "rows": 4000,
+      "external": 2612,
+      "uncategorised": 46,
+      "no_payee": 88,
+      "synthetic": 31,
+      "unconverted": 12,
+      "partial_months": 2,
+      "transfer_bucket_external": 214,
+      "spend_base_label": "of all-month spending 49,429.97",
+      "uncategorised_out_minor": 184230,
+      "uncategorised_in_minor": 9640,
+      "transfer_bucket_out_minor": 3184000,
+      "spend_base_minor": 4942997
+    },
+    "fix_list": [
+      {
+        "date": "2026-01-09",
+        "currency": "SGD",
+        "account": "POSB Everyday Savings",
+        "bank_txn_type": "GIRO Payment",
+        "merchant_raw": "GIRO BERLITZ COURSE FEES",
+        "counterparty": "BERLITZ LANGUAGE CENTRE",
+        "memo": "",
+        "reason": "no rule matches",
+        "key": "111-11111-1:2026-01-09:03",
+        "amount_sgd_minor": -142000
+      },
+      {
+        "date": "2026-06-14",
+        "currency": "SGD",
+        "account": "DBS Multiplier",
+        "bank_txn_type": "Debit Card Transaction",
+        "merchant_raw": "KLOOK TRAVEL TECHNOLOG SGP",
+        "counterparty": "",
+        "memo": "",
+        "reason": "no rule matches",
+        "key": "072-91883-4:2026-06-14:11",
+        "amount_sgd_minor": -78000
+      },
+      {
+        "date": "2025-11-30",
+        "currency": "EUR",
+        "account": "YouTrip wallet · Y-1029384756",
+        "bank_txn_type": "YouTrip Unprinted",
+        "merchant_raw": "",
+        "counterparty": "",
+        "memo": "balance jump not in the export",
+        "reason": "synthetic balance jump",
+        "key": "Y-1029384756:2025-11-30:00",
+        "amount_sgd_minor": -21255
+      },
+      {
+        "date": "2026-04-22",
+        "currency": "SGD",
+        "account": "DBS Multiplier",
+        "bank_txn_type": "PayNow Transfer",
+        "merchant_raw": "PAYNOW TRANSFER 8412",
+        "counterparty": "8412",
+        "memo": "",
+        "reason": "no rule matches",
+        "key": "072-91883-4:2026-04-22:07",
+        "amount_sgd_minor": -12000
+      },
+      {
+        "date": "2026-03-17",
+        "currency": "SGD",
+        "account": "POSB Everyday Savings",
+        "bank_txn_type": "ATM Withdrawal",
+        "merchant_raw": "",
+        "counterparty": "",
+        "memo": "",
+        "reason": "no merchant text printed",
+        "key": "111-11111-1:2026-03-17:05",
+        "amount_sgd_minor": -10000
+      }
+    ],
+    "fix_list_total": 46,
+    "coverage": [
+      {
+        "month": "2024-12",
+        "accounts": [
+          "111-11111-1"
+        ],
+        "expected": [
+          "111-11111-1"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      },
+      {
+        "month": "2025-01",
+        "accounts": [
+          "111-11111-1"
+        ],
+        "expected": [
+          "111-11111-1"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      },
+      {
+        "month": "2025-02",
+        "accounts": [],
+        "expected": [
+          "111-11111-1"
+        ],
+        "missing": [
+          "111-11111-1"
+        ],
+        "card_only": true,
+        "before_phases": false,
+        "partial": true
+      },
+      {
+        "month": "2025-03",
+        "accounts": [
+          "111-11111-1"
+        ],
+        "expected": [
+          "111-11111-1"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      },
+      {
+        "month": "2025-04",
+        "accounts": [
+          "111-11111-1"
+        ],
+        "expected": [
+          "111-11111-1"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      },
+      {
+        "month": "2025-05",
+        "accounts": [],
+        "expected": [
+          "111-11111-1"
+        ],
+        "missing": [
+          "111-11111-1"
+        ],
+        "card_only": true,
+        "before_phases": false,
+        "partial": true
+      },
+      {
+        "month": "2025-06",
+        "accounts": [
+          "111-11111-1"
+        ],
+        "expected": [
+          "111-11111-1"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      },
+      {
+        "month": "2025-07",
+        "accounts": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "expected": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      },
+      {
+        "month": "2025-08",
+        "accounts": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "expected": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      },
+      {
+        "month": "2025-09",
+        "accounts": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "expected": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      },
+      {
+        "month": "2025-10",
+        "accounts": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "expected": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      },
+      {
+        "month": "2025-11",
+        "accounts": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "expected": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      },
+      {
+        "month": "2025-12",
+        "accounts": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "expected": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      },
+      {
+        "month": "2026-01",
+        "accounts": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "expected": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      },
+      {
+        "month": "2026-02",
+        "accounts": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "expected": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      },
+      {
+        "month": "2026-03",
+        "accounts": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "expected": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      },
+      {
+        "month": "2026-04",
+        "accounts": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "expected": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      },
+      {
+        "month": "2026-05",
+        "accounts": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "expected": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      },
+      {
+        "month": "2026-06",
+        "accounts": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "expected": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      },
+      {
+        "month": "2026-07",
+        "accounts": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "expected": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      },
+      {
+        "month": "2026-08",
+        "accounts": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "expected": [
+          "111-11111-1",
+          "072-91883-4"
+        ],
+        "missing": [],
+        "card_only": false,
+        "before_phases": false,
+        "partial": false
+      }
+    ],
+    "unconverted": [
+      {
+        "period": "Y-1029384756 · JPY · 2025-03",
+        "currency": "JPY",
+        "rows": 12,
+        "amount_minor": 1638000
+      }
+    ],
+    "by_month": [
+      {
+        "month": "2024-12",
+        "rows": 172,
+        "uncategorised": 4,
+        "synthetic": 2,
+        "partial": false
+      },
+      {
+        "month": "2025-01",
+        "rows": 181,
+        "uncategorised": 3,
+        "synthetic": 3,
+        "partial": false
+      },
+      {
+        "month": "2025-02",
+        "rows": 164,
+        "uncategorised": 1,
+        "synthetic": 1,
+        "partial": true
+      },
+      {
+        "month": "2025-03",
+        "rows": 190,
+        "uncategorised": 2,
+        "synthetic": 2,
+        "partial": false
+      },
+      {
+        "month": "2025-04",
+        "rows": 203,
+        "uncategorised": 3,
+        "synthetic": 2,
+        "partial": false
+      },
+      {
+        "month": "2025-05",
+        "rows": 158,
+        "uncategorised": 0,
+        "synthetic": 0,
+        "partial": true
+      },
+      {
+        "month": "2025-06",
+        "rows": 176,
+        "uncategorised": 2,
+        "synthetic": 1,
+        "partial": false
+      },
+      {
+        "month": "2025-07",
+        "rows": 189,
+        "uncategorised": 5,
+        "synthetic": 2,
+        "partial": false
+      },
+      {
+        "month": "2025-08",
+        "rows": 205,
+        "uncategorised": 2,
+        "synthetic": 1,
+        "partial": false
+      },
+      {
+        "month": "2025-09",
+        "rows": 198,
+        "uncategorised": 2,
+        "synthetic": 1,
+        "partial": false
+      },
+      {
+        "month": "2025-10",
+        "rows": 201,
+        "uncategorised": 1,
+        "synthetic": 2,
+        "partial": false
+      },
+      {
+        "month": "2025-11",
+        "rows": 187,
+        "uncategorised": 2,
+        "synthetic": 3,
+        "partial": false
+      },
+      {
+        "month": "2025-12",
+        "rows": 214,
+        "uncategorised": 1,
+        "synthetic": 1,
+        "partial": false
+      },
+      {
+        "month": "2026-01",
+        "rows": 196,
+        "uncategorised": 3,
+        "synthetic": 1,
+        "partial": false
+      },
+      {
+        "month": "2026-02",
+        "rows": 183,
+        "uncategorised": 1,
+        "synthetic": 2,
+        "partial": false
+      },
+      {
+        "month": "2026-03",
+        "rows": 205,
+        "uncategorised": 2,
+        "synthetic": 1,
+        "partial": false
+      },
+      {
+        "month": "2026-04",
+        "rows": 199,
+        "uncategorised": 4,
+        "synthetic": 1,
+        "partial": false
+      },
+      {
+        "month": "2026-05",
+        "rows": 208,
+        "uncategorised": 2,
+        "synthetic": 2,
+        "partial": false
+      },
+      {
+        "month": "2026-06",
+        "rows": 211,
+        "uncategorised": 2,
+        "synthetic": 1,
+        "partial": false
+      },
+      {
+        "month": "2026-07",
+        "rows": 190,
+        "uncategorised": 3,
+        "synthetic": 1,
+        "partial": false
+      },
+      {
+        "month": "2026-08",
+        "rows": 170,
+        "uncategorised": 1,
+        "synthetic": 1,
+        "partial": false
+      }
+    ],
+    "reasons": {
+      "no rule matches": 31,
+      "no merchant text printed": 9,
+      "synthetic balance jump": 6
+    },
+    "synthetic": [
+      {
+        "date": "2024-12-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "EUR",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -21255
+      },
+      {
+        "date": "2024-12-15",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "JPY",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -4820
+      },
+      {
+        "date": "2025-01-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "USD",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -13190
+      },
+      {
+        "date": "2025-01-15",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "MYR",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -2240
+      },
+      {
+        "date": "2025-01-24",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "EUR",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -7635
+      },
+      {
+        "date": "2025-02-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "JPY",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -1990
+      },
+      {
+        "date": "2025-03-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "USD",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -24000
+      },
+      {
+        "date": "2025-03-15",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "MYR",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -3315
+      },
+      {
+        "date": "2025-04-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "EUR",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -5860
+      },
+      {
+        "date": "2025-04-15",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "JPY",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -9000
+      },
+      {
+        "date": "2025-06-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "USD",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -21255
+      },
+      {
+        "date": "2025-07-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "MYR",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -4820
+      },
+      {
+        "date": "2025-07-15",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "EUR",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -13190
+      },
+      {
+        "date": "2025-08-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "JPY",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -2240
+      },
+      {
+        "date": "2025-09-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "USD",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -7635
+      },
+      {
+        "date": "2025-10-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "MYR",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -1990
+      },
+      {
+        "date": "2025-10-15",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "EUR",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -24000
+      },
+      {
+        "date": "2025-11-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "JPY",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -3315
+      },
+      {
+        "date": "2025-11-15",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "USD",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -5860
+      },
+      {
+        "date": "2025-11-24",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "MYR",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -9000
+      },
+      {
+        "date": "2025-12-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "EUR",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -21255
+      },
+      {
+        "date": "2026-01-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "JPY",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -4820
+      },
+      {
+        "date": "2026-02-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "USD",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -13190
+      },
+      {
+        "date": "2026-02-15",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "MYR",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -2240
+      },
+      {
+        "date": "2026-03-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "EUR",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -7635
+      },
+      {
+        "date": "2026-04-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "JPY",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -1990
+      },
+      {
+        "date": "2026-05-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "USD",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -24000
+      },
+      {
+        "date": "2026-05-15",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "MYR",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -3315
+      },
+      {
+        "date": "2026-06-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "EUR",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -5860
+      },
+      {
+        "date": "2026-07-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "JPY",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -9000
+      },
+      {
+        "date": "2026-08-06",
+        "account": "YouTrip wallet · Y-1029384756",
+        "currency": "USD",
+        "flow_class": "External",
+        "memo": "balance jump not in the export",
+        "amount_sgd_minor": -21255
+      }
+    ]
+  },
+  "findings": [
+    "46 of 2612 External rows have no category: SGD 1,842.30 out and 96.40 in, 3.7 per cent of all-month spending 49,429.97.",
+    "31 synthetic YouTrip rows stand in for balance jumps the export omitted; every spend and income figure excludes them.",
+    "12 non-SGD row(s) sit on 1 period block(s) with no FX rate, so they are counted at face value: Y-1029384756 · JPY · 2025-03.",
+    "2 month(s) have incomplete statement coverage, 2025-02 to 2025-05; every average in the other stats leaves them out.",
+    "214 External rows are in a Transfer bucket, SGD 31,840.00 out. A view that filters External and forgets the bucket counts all of it as spending.",
+    "The fix queue splits as 31 no rule matches, 9 no merchant text printed, 6 synthetic balance jump."
+  ],
+  "caveats": [
+    "A row with no merchant text printed can never be fixed by a rule; it needs a category typed in Notion, and the sync will not overwrite one.",
+    "Synthetic rows change whenever a YouTrip month is re-exported, so their count is not stable across re-exports.",
+    "Coverage is judged per account from its own first and last statement, so an account that simply had no activity looks the same as one whose statement is missing."
+  ]
+}

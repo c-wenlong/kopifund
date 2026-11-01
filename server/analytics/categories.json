@@ -1,0 +1,325 @@
+{
+  "note": "The Categories rows, copied out of Notion so a --from-csv snapshot can classify without the network. Refresh it with `python3 finance.py analyse --refresh`. category_groups are the buckets the Categories page shows (kind spend, income or transfer), and each category names its own in category_group. Each bucket names its icon (a lucide icon, one of BUCKET_ICONS in finance/categories.py).",
+  "generated_at": "2026-09-06T23:54:45+08:00",
+  "category_groups": [
+    {
+      "name": "Food",
+      "kind": "spend",
+      "sort_order": 10,
+      "icon": "utensils"
+    },
+    {
+      "name": "Home and bills",
+      "kind": "spend",
+      "sort_order": 20,
+      "icon": "house-plug"
+    },
+    {
+      "name": "Getting around",
+      "kind": "spend",
+      "sort_order": 30,
+      "icon": "bus"
+    },
+    {
+      "name": "Health and fitness",
+      "kind": "spend",
+      "sort_order": 40,
+      "icon": "heart-pulse"
+    },
+    {
+      "name": "Growth",
+      "kind": "spend",
+      "sort_order": 50,
+      "icon": "sprout"
+    },
+    {
+      "name": "Lifestyle",
+      "kind": "spend",
+      "sort_order": 60,
+      "icon": "shopping-bag"
+    },
+    {
+      "name": "Travel",
+      "kind": "spend",
+      "sort_order": 70,
+      "icon": "plane"
+    },
+    {
+      "name": "Giving",
+      "kind": "spend",
+      "sort_order": 80,
+      "icon": "gift"
+    },
+    {
+      "name": "Other",
+      "kind": "spend",
+      "sort_order": 90,
+      "icon": "shapes"
+    },
+    {
+      "name": "Income",
+      "kind": "income",
+      "sort_order": 100,
+      "icon": "wallet"
+    },
+    {
+      "name": "Transfers",
+      "kind": "transfer",
+      "sort_order": 110,
+      "icon": "arrow-up-down"
+    }
+  ],
+  "retired_categories": [
+    {
+      "name": "Transport",
+      "bucket": "Spend",
+      "group": "Variable",
+      "need_class": "Need",
+      "sort_order": 112,
+      "category_group": "Getting around",
+      "note": "split into Transport (public) and Transport (private); a record that still has it keeps it until `python3 finance.py split-transport` and the Categories page empty it"
+    }
+  ],
+  "categories": [
+    {
+      "name": "Salary",
+      "bucket": "Income",
+      "group": "Fixed",
+      "need_class": "Income",
+      "sort_order": 10,
+      "category_group": "Income"
+    },
+    {
+      "name": "Freelance income",
+      "bucket": "Income",
+      "group": "Variable",
+      "need_class": "Income",
+      "sort_order": 20,
+      "category_group": "Income"
+    },
+    {
+      "name": "Grants and awards",
+      "bucket": "Income",
+      "group": "Variable",
+      "need_class": "Income",
+      "sort_order": 30,
+      "category_group": "Income"
+    },
+    {
+      "name": "Financial aid",
+      "bucket": "Income",
+      "group": "Fixed",
+      "need_class": "Income",
+      "sort_order": 40,
+      "category_group": "Income"
+    },
+    {
+      "name": "Family support",
+      "bucket": "Income",
+      "group": "Fixed",
+      "need_class": "Income",
+      "sort_order": 50,
+      "category_group": "Income"
+    },
+    {
+      "name": "Interest",
+      "bucket": "Income",
+      "group": "Variable",
+      "need_class": "Income",
+      "sort_order": 60,
+      "category_group": "Income"
+    },
+    {
+      "name": "Refunds and cashback",
+      "bucket": "Income",
+      "group": "Variable",
+      "need_class": "Income",
+      "sort_order": 70,
+      "category_group": "Income"
+    },
+    {
+      "name": "Rent",
+      "bucket": "Spend",
+      "group": "Fixed",
+      "need_class": "Need",
+      "sort_order": 80,
+      "category_group": "Home and bills"
+    },
+    {
+      "name": "Education",
+      "bucket": "Spend",
+      "group": "Fixed",
+      "need_class": "Need",
+      "sort_order": 90,
+      "category_group": "Growth"
+    },
+    {
+      "name": "Groceries",
+      "bucket": "Spend",
+      "group": "Variable",
+      "need_class": "Need",
+      "sort_order": 100,
+      "category_group": "Food"
+    },
+    {
+      "name": "Transport (public)",
+      "bucket": "Spend",
+      "group": "Variable",
+      "need_class": "Need",
+      "sort_order": 110,
+      "category_group": "Getting around"
+    },
+    {
+      "name": "Transport (private)",
+      "bucket": "Spend",
+      "group": "Variable",
+      "need_class": "Need",
+      "sort_order": 115,
+      "category_group": "Getting around"
+    },
+    {
+      "name": "Phone and utilities",
+      "bucket": "Spend",
+      "group": "Fixed",
+      "need_class": "Need",
+      "sort_order": 120,
+      "category_group": "Home and bills"
+    },
+    {
+      "name": "Health",
+      "bucket": "Spend",
+      "group": "Variable",
+      "need_class": "Need",
+      "sort_order": 130,
+      "category_group": "Health and fitness"
+    },
+    {
+      "name": "Insurance",
+      "bucket": "Spend",
+      "group": "Fixed",
+      "need_class": "Need",
+      "sort_order": 135,
+      "category_group": "Home and bills"
+    },
+    {
+      "name": "Fees and charges",
+      "bucket": "Spend",
+      "group": "Variable",
+      "need_class": "Need",
+      "sort_order": 140,
+      "category_group": "Home and bills"
+    },
+    {
+      "name": "Eating out",
+      "bucket": "Spend",
+      "group": "Variable",
+      "need_class": "Want",
+      "sort_order": 150,
+      "category_group": "Food"
+    },
+    {
+      "name": "Coffee",
+      "bucket": "Spend",
+      "group": "Variable",
+      "need_class": "Want",
+      "sort_order": 160,
+      "category_group": "Food"
+    },
+    {
+      "name": "Shopping",
+      "bucket": "Spend",
+      "group": "Variable",
+      "need_class": "Want",
+      "sort_order": 170,
+      "category_group": "Lifestyle"
+    },
+    {
+      "name": "Entertainment",
+      "bucket": "Spend",
+      "group": "Variable",
+      "need_class": "Want",
+      "sort_order": 180,
+      "category_group": "Lifestyle"
+    },
+    {
+      "name": "Travel",
+      "bucket": "Spend",
+      "group": "Variable",
+      "need_class": "Want",
+      "sort_order": 190,
+      "category_group": "Travel"
+    },
+    {
+      "name": "Fitness",
+      "bucket": "Spend",
+      "group": "Fixed",
+      "need_class": "Want",
+      "sort_order": 200,
+      "category_group": "Health and fitness"
+    },
+    {
+      "name": "Courses and licences",
+      "bucket": "Spend",
+      "group": "Variable",
+      "need_class": "Want",
+      "sort_order": 205,
+      "category_group": "Growth"
+    },
+    {
+      "name": "Software and tools",
+      "bucket": "Spend",
+      "group": "Variable",
+      "need_class": "Want",
+      "sort_order": 210,
+      "category_group": "Growth"
+    },
+    {
+      "name": "Donations",
+      "bucket": "Spend",
+      "group": "Variable",
+      "need_class": "Want",
+      "sort_order": 220,
+      "category_group": "Giving"
+    },
+    {
+      "name": "Unidentified",
+      "bucket": "Spend",
+      "group": "Variable",
+      "need_class": null,
+      "sort_order": 225,
+      "category_group": "Other"
+    },
+    {
+      "name": "Investments",
+      "bucket": "Transfer",
+      "group": "Savings",
+      "need_class": "Investment",
+      "sort_order": 230,
+      "category_group": "Transfers"
+    },
+    {
+      "name": "Wallet top-up",
+      "bucket": "Transfer",
+      "group": "Savings",
+      "need_class": "Transfer",
+      "sort_order": 240,
+      "category_group": "Transfers"
+    },
+    {
+      "name": "Between own accounts",
+      "bucket": "Transfer",
+      "group": "Savings",
+      "need_class": "Transfer",
+      "sort_order": 250,
+      "category_group": "Transfers"
+    },
+    {
+      "name": "Person to person",
+      "bucket": "Transfer",
+      "group": "Variable",
+      "need_class": "Transfer",
+      "sort_order": 260,
+      "category_group": "Transfers"
+    }
+  ]
+}

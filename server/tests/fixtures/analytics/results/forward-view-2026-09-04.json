@@ -1,0 +1,666 @@
+{
+  "id": "forward-view",
+  "title": "Forward view to June 2027",
+  "generated_at": "2026-09-04T10:15:24+08:00",
+  "snapshot": "snapshot-2026-09-04.json",
+  "chart": {
+    "type": "line",
+    "x": "month",
+    "series": [
+      "cash_minor",
+      "net_minor"
+    ],
+    "source": "months",
+    "unit": "sgd_minor"
+  },
+  "sources": [
+    {
+      "database": "Transactions",
+      "rows_used": 1712,
+      "filter": "flow_class = External and bucket = Spend and not synthetic, last 6 covered months"
+    },
+    {
+      "database": "Transactions",
+      "rows_used": 58,
+      "filter": "flow_class = External, outflow, not synthetic, bucket is empty or Transfer other than Investments, split into repayments to the repayment payee and the rest"
+    },
+    {
+      "database": "Trips",
+      "rows_used": 2,
+      "filter": "the trips any window month's rows sit on"
+    },
+    {
+      "database": "Period balances",
+      "rows_used": 1,
+      "filter": "starting cash from the savings-runway stat, at the last month every account printed"
+    }
+  ],
+  "params": {
+    "to": "2027-06",
+    "gross_until": "2027-01",
+    "zero_income_months": [
+      "2027-02"
+    ],
+    "full_time_from": "2027-03",
+    "cpf_employee_rate": 0.2,
+    "cpf_employer_rate": 0.17,
+    "dca": true,
+    "spend_window_months": 6,
+    "trip_months_in_window": [
+      "2026-05",
+      "2026-06",
+      "2026-07"
+    ],
+    "trips_in_window": [
+      "Japan 2026",
+      "Kuala Lumpur 2026"
+    ],
+    "spend_phase_months": 14,
+    "spend_window": [
+      "2026-03",
+      "2026-05",
+      "2026-06",
+      "2026-07",
+      "2026-08"
+    ],
+    "spend_window_restated": [
+      {
+        "month": "2026-04",
+        "restated": true,
+        "basis": "gross charges",
+        "signed_minor": 166182,
+        "gross_minor": 227422,
+        "refunds_minor": 61240,
+        "spend_minor": 227422
+      }
+    ],
+    "spend_window_all": [
+      "2026-03",
+      "2026-04",
+      "2026-05",
+      "2026-06",
+      "2026-07",
+      "2026-08"
+    ],
+    "other_outflow_observed": {
+      "repayments_minor": 25000,
+      "other_minor": 11840,
+      "total_minor": 36840
+    },
+    "starting_month": "2026-08",
+    "spend_rate": "window",
+    "trips": [
+      {
+        "name": "Bangkok 2026",
+        "from": "2026-12-18",
+        "to": "2026-12-24",
+        "flights_month": "2026-11",
+        "note": "year-end break, flights already booked",
+        "per_day_minor": null,
+        "flights_minor": 26000
+      }
+    ],
+    "one_offs": [
+      {
+        "month": "2027-05",
+        "label": "laptop",
+        "amount_minor": 120000
+      }
+    ],
+    "notes": {
+      "gross_full_time": "a placeholder: no offer or payslip is in the record",
+      "insurance_premium": "zero until a policy premium and frequency are set in the plan; nothing in this data sizes it",
+      "cpf_employee_rate": "the employee share for a member aged 55 or under",
+      "cpf_employer_rate": "the employer share for a member aged 55 or under, paid on top of gross rather than out of it, so it never touches the cash line and is savings the cash line never shows",
+      "cpf_ow_ceiling": "the Ordinary Wage ceiling; both salaries modelled here are under it, so the cap never binds",
+      "other_income": "side income is deliberately not assumed; set this to include it",
+      "other_outflow": "everything leaving the bank that is neither spend nor the investing transfer: wallet moves, small person to person payments and rows still in no bucket, at the window's mean, with the repayments to the repayment payee taken out",
+      "repayments": "zero: money to the configured repayment payee is not treated as a monthly cost. Set this to the monthly figure if repayment resumes",
+      "spend": "the median of the window, so one refunded month cannot set the rate",
+      "spend_ex_all_trips": "the same median with every row on a trip removed, which is what a month at home costs",
+      "spend_ex_short_trips": "the same median with only the short trips removed, so a long stay abroad still counts as living"
+    },
+    "currency": "SGD",
+    "gross_now_minor": 340000,
+    "gross_full_time_minor": 500000,
+    "cpf_ow_ceiling_minor": 800000,
+    "dca_amount_minor": 50000,
+    "insurance_premium_minor": 0,
+    "other_income_minor": 0,
+    "other_outflow_minor": 11840,
+    "repayments_minor": 0,
+    "refund_limit_minor": 50000,
+    "spend_minor": 216894,
+    "spend_median_minor": 216894,
+    "spend_mean_minor": 215772,
+    "spend_ex_all_trips_minor": 200415,
+    "spend_ex_short_trips_minor": 200415,
+    "spend_ex_trips_minor": 200415,
+    "spend_phase_rate_minor": 214786,
+    "starting_cash_minor": 1355125,
+    "trip_per_day_minor": 17519,
+    "one_offs_total_minor": 120000,
+    "trips_planned_total_minor": 148633,
+    "cpf_employee_total_minor": 740000,
+    "cpf_employer_total_minor": 629000,
+    "cpf_accrued_total_minor": 1369000
+  },
+  "data": {
+    "months": [
+      {
+        "month": "2026-09",
+        "trip_parts": [],
+        "one_off_parts": [],
+        "gross_minor": 340000,
+        "cpf_employee_minor": 68000,
+        "cpf_employer_minor": 57800,
+        "cpf_total_minor": 125800,
+        "cpf_accrued_minor": 125800,
+        "trips_minor": 0,
+        "one_offs_minor": 0,
+        "take_home_minor": 272000,
+        "other_income_minor": 0,
+        "spend_minor": 216894,
+        "investing_minor": 50000,
+        "insurance_minor": 0,
+        "other_outflow_minor": 11840,
+        "repayments_minor": 0,
+        "net_minor": -6734,
+        "cash_minor": 1348391
+      },
+      {
+        "month": "2026-10",
+        "trip_parts": [],
+        "one_off_parts": [],
+        "gross_minor": 340000,
+        "cpf_employee_minor": 68000,
+        "cpf_employer_minor": 57800,
+        "cpf_total_minor": 125800,
+        "cpf_accrued_minor": 251600,
+        "trips_minor": 0,
+        "one_offs_minor": 0,
+        "take_home_minor": 272000,
+        "other_income_minor": 0,
+        "spend_minor": 216894,
+        "investing_minor": 50000,
+        "insurance_minor": 0,
+        "other_outflow_minor": 11840,
+        "repayments_minor": 0,
+        "net_minor": -6734,
+        "cash_minor": 1341657
+      },
+      {
+        "month": "2026-11",
+        "trip_parts": [
+          [
+            "Bangkok 2026",
+            0,
+            260.0
+          ]
+        ],
+        "one_off_parts": [],
+        "gross_minor": 340000,
+        "cpf_employee_minor": 68000,
+        "cpf_employer_minor": 57800,
+        "cpf_total_minor": 125800,
+        "cpf_accrued_minor": 377400,
+        "trips_minor": 26000,
+        "one_offs_minor": 0,
+        "take_home_minor": 272000,
+        "other_income_minor": 0,
+        "spend_minor": 216894,
+        "investing_minor": 50000,
+        "insurance_minor": 0,
+        "other_outflow_minor": 11840,
+        "repayments_minor": 0,
+        "net_minor": -32734,
+        "cash_minor": 1308923
+      },
+      {
+        "month": "2026-12",
+        "trip_parts": [
+          [
+            "Bangkok 2026",
+            7,
+            1226.33
+          ]
+        ],
+        "one_off_parts": [],
+        "gross_minor": 340000,
+        "cpf_employee_minor": 68000,
+        "cpf_employer_minor": 57800,
+        "cpf_total_minor": 125800,
+        "cpf_accrued_minor": 503200,
+        "trips_minor": 122633,
+        "one_offs_minor": 0,
+        "take_home_minor": 272000,
+        "other_income_minor": 0,
+        "spend_minor": 216894,
+        "investing_minor": 50000,
+        "insurance_minor": 0,
+        "other_outflow_minor": 11840,
+        "repayments_minor": 0,
+        "net_minor": -129367,
+        "cash_minor": 1179556
+      },
+      {
+        "month": "2027-01",
+        "trip_parts": [],
+        "one_off_parts": [],
+        "gross_minor": 340000,
+        "cpf_employee_minor": 68000,
+        "cpf_employer_minor": 57800,
+        "cpf_total_minor": 125800,
+        "cpf_accrued_minor": 629000,
+        "trips_minor": 0,
+        "one_offs_minor": 0,
+        "take_home_minor": 272000,
+        "other_income_minor": 0,
+        "spend_minor": 216894,
+        "investing_minor": 50000,
+        "insurance_minor": 0,
+        "other_outflow_minor": 11840,
+        "repayments_minor": 0,
+        "net_minor": -6734,
+        "cash_minor": 1172822
+      },
+      {
+        "month": "2027-02",
+        "trip_parts": [],
+        "one_off_parts": [],
+        "gross_minor": 0,
+        "cpf_employee_minor": 0,
+        "cpf_employer_minor": 0,
+        "cpf_total_minor": 0,
+        "cpf_accrued_minor": 629000,
+        "trips_minor": 0,
+        "one_offs_minor": 0,
+        "take_home_minor": 0,
+        "other_income_minor": 0,
+        "spend_minor": 216894,
+        "investing_minor": 50000,
+        "insurance_minor": 0,
+        "other_outflow_minor": 11840,
+        "repayments_minor": 0,
+        "net_minor": -278734,
+        "cash_minor": 894088
+      },
+      {
+        "month": "2027-03",
+        "trip_parts": [],
+        "one_off_parts": [],
+        "gross_minor": 500000,
+        "cpf_employee_minor": 100000,
+        "cpf_employer_minor": 85000,
+        "cpf_total_minor": 185000,
+        "cpf_accrued_minor": 814000,
+        "trips_minor": 0,
+        "one_offs_minor": 0,
+        "take_home_minor": 400000,
+        "other_income_minor": 0,
+        "spend_minor": 216894,
+        "investing_minor": 50000,
+        "insurance_minor": 0,
+        "other_outflow_minor": 11840,
+        "repayments_minor": 0,
+        "net_minor": 121266,
+        "cash_minor": 1015354
+      },
+      {
+        "month": "2027-04",
+        "trip_parts": [],
+        "one_off_parts": [],
+        "gross_minor": 500000,
+        "cpf_employee_minor": 100000,
+        "cpf_employer_minor": 85000,
+        "cpf_total_minor": 185000,
+        "cpf_accrued_minor": 999000,
+        "trips_minor": 0,
+        "one_offs_minor": 0,
+        "take_home_minor": 400000,
+        "other_income_minor": 0,
+        "spend_minor": 216894,
+        "investing_minor": 50000,
+        "insurance_minor": 0,
+        "other_outflow_minor": 11840,
+        "repayments_minor": 0,
+        "net_minor": 121266,
+        "cash_minor": 1136620
+      },
+      {
+        "month": "2027-05",
+        "trip_parts": [],
+        "one_off_parts": [
+          [
+            "laptop",
+            1200.0
+          ]
+        ],
+        "gross_minor": 500000,
+        "cpf_employee_minor": 100000,
+        "cpf_employer_minor": 85000,
+        "cpf_total_minor": 185000,
+        "cpf_accrued_minor": 1184000,
+        "trips_minor": 0,
+        "one_offs_minor": 120000,
+        "take_home_minor": 400000,
+        "other_income_minor": 0,
+        "spend_minor": 216894,
+        "investing_minor": 50000,
+        "insurance_minor": 0,
+        "other_outflow_minor": 11840,
+        "repayments_minor": 0,
+        "net_minor": 1266,
+        "cash_minor": 1137886
+      },
+      {
+        "month": "2027-06",
+        "trip_parts": [],
+        "one_off_parts": [],
+        "gross_minor": 500000,
+        "cpf_employee_minor": 100000,
+        "cpf_employer_minor": 85000,
+        "cpf_total_minor": 185000,
+        "cpf_accrued_minor": 1369000,
+        "trips_minor": 0,
+        "one_offs_minor": 0,
+        "take_home_minor": 400000,
+        "other_income_minor": 0,
+        "spend_minor": 216894,
+        "investing_minor": 50000,
+        "insurance_minor": 0,
+        "other_outflow_minor": 11840,
+        "repayments_minor": 0,
+        "net_minor": 121266,
+        "cash_minor": 1259152
+      }
+    ],
+    "scenarios": [
+      {
+        "name": "as stated",
+        "lowest_month": "2027-02",
+        "ending_cash_minor": 1259152,
+        "lowest_cash_minor": 894088
+      },
+      {
+        "name": "without the planned trips",
+        "lowest_month": "2027-02",
+        "ending_cash_minor": 1407785,
+        "lowest_cash_minor": 1042721
+      },
+      {
+        "name": "without the one-off payments",
+        "lowest_month": "2027-02",
+        "ending_cash_minor": 1379152,
+        "lowest_cash_minor": 894088
+      },
+      {
+        "name": "spend at window median",
+        "lowest_month": "2027-02",
+        "ending_cash_minor": 1407785,
+        "lowest_cash_minor": 1042721
+      },
+      {
+        "name": "spend at window mean",
+        "lowest_month": "2027-02",
+        "ending_cash_minor": 1419005,
+        "lowest_cash_minor": 1049453
+      },
+      {
+        "name": "spend excluding trip months' travel rows",
+        "lowest_month": "2027-02",
+        "ending_cash_minor": 1423942,
+        "lowest_cash_minor": 992962
+      },
+      {
+        "name": "spend at the Phase 2 14-month rate",
+        "lowest_month": "2027-02",
+        "ending_cash_minor": 1280232,
+        "lowest_cash_minor": 906736
+      },
+      {
+        "name": "investing paused",
+        "lowest_month": "2027-02",
+        "ending_cash_minor": 1759152,
+        "lowest_cash_minor": 1194088
+      },
+      {
+        "name": "with the repayments resuming",
+        "lowest_month": "2027-02",
+        "ending_cash_minor": 1009152,
+        "lowest_cash_minor": 744088
+      },
+      {
+        "name": "with side income at 400.00 a month",
+        "lowest_month": "2027-02",
+        "ending_cash_minor": 1659152,
+        "lowest_cash_minor": 1134088
+      }
+    ],
+    "spend_by_month": [
+      {
+        "month": "2026-03",
+        "restated": false,
+        "basis": "signed total",
+        "signed_minor": 201579,
+        "gross_minor": 205699,
+        "refunds_minor": 4120,
+        "spend_minor": 201579
+      },
+      {
+        "month": "2026-04",
+        "restated": true,
+        "basis": "gross charges",
+        "signed_minor": 166182,
+        "gross_minor": 227422,
+        "refunds_minor": 61240,
+        "spend_minor": 227422
+      },
+      {
+        "month": "2026-05",
+        "restated": false,
+        "basis": "signed total",
+        "signed_minor": 169660,
+        "gross_minor": 171550,
+        "refunds_minor": 1890,
+        "spend_minor": 169660
+      },
+      {
+        "month": "2026-06",
+        "restated": false,
+        "basis": "signed total",
+        "signed_minor": 248465,
+        "gross_minor": 257200,
+        "refunds_minor": 8735,
+        "spend_minor": 248465
+      },
+      {
+        "month": "2026-07",
+        "restated": false,
+        "basis": "signed total",
+        "signed_minor": 241142,
+        "gross_minor": 242402,
+        "refunds_minor": 1260,
+        "spend_minor": 241142
+      },
+      {
+        "month": "2026-08",
+        "restated": false,
+        "basis": "signed total",
+        "signed_minor": 206367,
+        "gross_minor": 209667,
+        "refunds_minor": 3300,
+        "spend_minor": 206367
+      }
+    ],
+    "spend_rates": [
+      {
+        "name": "window median",
+        "note": "the 6 month window, refunded months restated",
+        "value_minor": 216894
+      },
+      {
+        "name": "window mean",
+        "note": "the same window",
+        "value_minor": 215772
+      },
+      {
+        "name": "window median excluding every trip row",
+        "note": "without the rows on Japan 2026, Kuala Lumpur 2026",
+        "value_minor": 200415
+      },
+      {
+        "name": "window median excluding short trips only",
+        "note": "a stay over 60 days still counts as living",
+        "value_minor": 200415
+      },
+      {
+        "name": "Phase 2 14 month rate",
+        "note": "the whole phase, partial months included",
+        "value_minor": 214786
+      }
+    ],
+    "spend_by_month_ex_all_trips": [
+      {
+        "month": "2026-03",
+        "restated": false,
+        "basis": "signed total",
+        "signed_minor": 201579,
+        "gross_minor": 205699,
+        "refunds_minor": 4120,
+        "spend_minor": 201579
+      },
+      {
+        "month": "2026-04",
+        "restated": true,
+        "basis": "gross charges",
+        "signed_minor": 166182,
+        "gross_minor": 227422,
+        "refunds_minor": 61240,
+        "spend_minor": 227422
+      },
+      {
+        "month": "2026-05",
+        "restated": false,
+        "basis": "signed total",
+        "signed_minor": 51600,
+        "gross_minor": 53490,
+        "refunds_minor": 1890,
+        "spend_minor": 51600
+      },
+      {
+        "month": "2026-06",
+        "restated": false,
+        "basis": "signed total",
+        "signed_minor": 106465,
+        "gross_minor": 115200,
+        "refunds_minor": 8735,
+        "spend_minor": 106465
+      },
+      {
+        "month": "2026-07",
+        "restated": false,
+        "basis": "signed total",
+        "signed_minor": 199252,
+        "gross_minor": 200512,
+        "refunds_minor": 1260,
+        "spend_minor": 199252
+      },
+      {
+        "month": "2026-08",
+        "restated": false,
+        "basis": "signed total",
+        "signed_minor": 206367,
+        "gross_minor": 209667,
+        "refunds_minor": 3300,
+        "spend_minor": 206367
+      }
+    ],
+    "spend_by_month_ex_short_trips": [
+      {
+        "month": "2026-03",
+        "restated": false,
+        "basis": "signed total",
+        "signed_minor": 201579,
+        "gross_minor": 205699,
+        "refunds_minor": 4120,
+        "spend_minor": 201579
+      },
+      {
+        "month": "2026-04",
+        "restated": true,
+        "basis": "gross charges",
+        "signed_minor": 166182,
+        "gross_minor": 227422,
+        "refunds_minor": 61240,
+        "spend_minor": 227422
+      },
+      {
+        "month": "2026-05",
+        "restated": false,
+        "basis": "signed total",
+        "signed_minor": 51600,
+        "gross_minor": 53490,
+        "refunds_minor": 1890,
+        "spend_minor": 51600
+      },
+      {
+        "month": "2026-06",
+        "restated": false,
+        "basis": "signed total",
+        "signed_minor": 106465,
+        "gross_minor": 115200,
+        "refunds_minor": 8735,
+        "spend_minor": 106465
+      },
+      {
+        "month": "2026-07",
+        "restated": false,
+        "basis": "signed total",
+        "signed_minor": 199252,
+        "gross_minor": 200512,
+        "refunds_minor": 1260,
+        "spend_minor": 199252
+      },
+      {
+        "month": "2026-08",
+        "restated": false,
+        "basis": "signed total",
+        "signed_minor": 206367,
+        "gross_minor": 209667,
+        "refunds_minor": 3300,
+        "spend_minor": 206367
+      }
+    ],
+    "starting_month": "2026-08",
+    "low_point": {
+      "month": "2027-02",
+      "cash_minor": 894088
+    },
+    "below_zero": [],
+    "starting_cash_minor": 1355125
+  },
+  "findings": [
+    "Starting from SGD 13,551.25 at 2026-08, cash ends by 2027-06 at SGD 14,239.42 with the trip rows out of the rate (2,004.15 a month), SGD 14,190.05 at the window's mean (2,157.72 a month), SGD 14,077.85 at its median (2,168.94 a month).",
+    "3 of the 6 window months were spent away: 2026-05, 2026-06, 2026-07 carried Japan 2026, Kuala Lumpur 2026. The median of the window is therefore a travelling rate, and the trip-free median is 2,004.15; Phase 2's own 14 month rate is 2,147.86, which is the floor of that range.",
+    "As stated (the window rate of 2,168.94 plus 1 planned trip(s) costing 1,486.33 in all plus 1 one-off payment(s) of 1,200.00 in all) the low point is SGD 8,940.88 in 2027-02 and June 2027 ends at 12,591.52.",
+    "Planned trips, on top of the base rate: Bangkok 2026 2026-12-18 to 2026-12-24 at 175.19 a day plus 260.00 flights in 2026-11.",
+    "One-off payments, on top of the base rate: laptop 1,200.00 in 2027-05.",
+    "In 2026-09, on 3,400.00 gross, the take-home after 20 per cent CPF is SGD 2,720.00, against spending of 2,168.94, 118.40 of other outflow and a 500.00 investing transfer, so the month runs -67.34.",
+    "Over the same months the job puts SGD 13,690.00 into CPF (7,400.00 from pay, 6,290.00 from the employer), savings the cash line never shows.",
+    "The window's non-spend outflow was SGD 368.40 a month, of which 250.00 was paid back to the repayment payee. Only the other 118.40 is projected; resuming the repayments ends at SGD 10,091.52.",
+    "The month with no income costs SGD 2,787.34, which is 21 per cent of the starting buffer.",
+    "Pausing the 500.00 investing transfer ends at SGD 17,591.52 instead, a difference of 5,000.00."
+  ],
+  "caveats": [
+    "A placeholder: no offer or payslip is in the record.",
+    "Insurance is zero here: zero until a policy premium and frequency are set in the plan; nothing in this data sizes it.",
+    "Spending is the median of the 6 month window, not its mean. The mean is 2,157.72 and is kept in the parameters; the two differ because one month in the window carried a large refund.",
+    "Other outflow of SGD 118.40 a month is wallet moves, small person to person payments and rows in no bucket. It is real money leaving the bank, but some of it comes back, so it is the least certain line here. The repayments to the repayment payee are not in it: they are a parameter and default to zero.",
+    "3 of the 6 window months were spent away (2026-05, 2026-06, 2026-07, on Japan 2026, Kuala Lumpur 2026), so the default rate is what living cost while travelling. The next ten months hold no trip anybody has told this record about, which is why the trip-free median and the phase rate are scenarios beside it.",
+    "No side income is assumed, though small freelance payments topped up a few of the last fourteen months.",
+    "Rent is held at its current level for the whole projection; a lease renewal or a move would change the base rate.",
+    "CPF is modelled as flat employee and employer shares of gross with the Ordinary Wage ceiling applied; it assumes the pay is employment income at all, which no payslip in this record confirms.",
+    "The employer's 17 per cent is paid on top of gross rather than out of it, so it is in the CPF columns and in no cash figure on this page. Neither CPF column is spendable money: it is locked for retirement, housing and healthcare."
+  ]
+}

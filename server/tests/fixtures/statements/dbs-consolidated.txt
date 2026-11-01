@@ -1,0 +1,204 @@
+                                                                                                                   S/N: EN48103627905417
+                                                                                                                                                                                                        Consolidated Statement
+                                                                                                                   ,    "%                   %)),
+                                                                                                                   TAN MEI LING
+                                                                                                                   BLK 100A ALPHA RD 1
+                                                                                                                   #01-100
+                                                                                                                   SINGAPORE 100100
+                                                                                                                    ./-0./-0./-0./-0./-0./-0./-0./
+
+
+
+
+                                                                                                            Account Summary as at 31 Jul 2026
+                                                                                                               Deposits
+
+                                                                                                             Current and Savings Account                                                                  Total: SGD Equivalent 5,503.00
+
+
+                                                                                                             Summary of Currency Breakdown:
+
+                                                                                                             SGD        5,503.00        USD          0.00
+
+
+                                                                                                             Account                                              Account No.                                  Balance            Balance
+                                                                                                                                                                                                           (Base Currency)   (SGD Equivalent)
+
+                                                                                                             DBS Multiplier Account                               120-345678-9                      SGD         5,503.00          5,503.00
+                                                                                                                                                                                                    USD             0.00              0.00
+
+
+
+
+SG40020000876 (08/2014) DBS Co. Reg. No. 196800306E GST Reg No: MR-8500180-3 / POSB Biz Reg No. 52880148A
+
+
+
+
+                                                                                                            Account Summary as of 31 Jul 2026                                                                                    Page 1 of 4
+                                                                                                                                                            PDS_MMCON_LOC_ONSH_d19ae54aaef05d56_03655
+                                                                                                            Transaction Details as at 31 Jul 2026
+                                                                                                               Deposits
+
+                                                                                                             DBS Multiplier Account                                                                    Account No. 120-345678-9
+
+                                                                                                             Date           Description                                          Withdrawal (-)      Deposit (+)        Balance
+
+
+                                                                                                              CURRENCY: SINGAPORE DOLLAR
+
+                                                                                                                            Balance Brought Forward                                                                SGD 2,594.69
+
+                                                                                                             01/07/2026     Debit Card Transaction                                        18.00                        2,576.69
+                                                                                                                            AID-SINGAPORE SINGAPORE SGP 29JUN
+                                                                                                                            5100-1234-5678-5454
+                                                                                                             08/07/2026     Advice FAST Payment / Receipt                                999.00                        1,577.69
+                                                                                                                            PAYNOW TRANSFER 4130234
+                                                                                                                            TO: YOU TECHNOLOGIES GROUP PL - CUS
+                                                                                                                            YT3536551153754962
+                                                                                                                            OTHER
+                                                                                                             14/07/2026     Debit Card Transaction                                        29.13                        1,548.56
+                                                                                                                            OPENAI *CHATGPT SUBSCR OP USA 12JUL
+                                                                                                                            4000-1234-5678-4242 USD21.80
+                                                                                                             29/07/2026     Advice Funds Transfer                                                      1,810.93        3,359.49
+                                                                                                                            FT990321IB70462749
+                                                                                                                            120-345678-9:IB
+                                                                                                                            VALUE DATE : 29/07/2026
+                                                                                                             29/07/2026     Advice FAST Payment / Receipt                                200.00                        3,159.49
+                                                                                                                            PAYNOW TRANSFER 3999770
+                                                                                                                            TO: YOU TECHNOLOGIES GROUP (SG) PL
+                                                                                                                            1950275637957978
+                                                                                                                            OTHER
+
+
+
+
+SG40020000876 (08/2014) DBS Co. Reg. No. 196800306E GST Reg No: MR-8500180-3 / POSB Biz Reg No. 52880148A
+                                                                                                             30/07/2026     Debit Card Transaction                                        12.80                        3,146.69
+                                                                                                                            GRAB* A-4M6J4ONCDCFBKG SI SGP 28JUL
+                                                                                                                            5100-1234-5678-5454
+                                                                                                             31/07/2026     GIRO Salary                                                                2,399.00        5,545.69
+                                                                                                                            ACME LABS PTE. LTD.
+                                                                                                                            SGGS208608766247
+                                                                                                                            13243458BB502048
+                                                                                                                            2607
+                                                                                                             31/07/2026     Debit Card Transaction                                         6.10                        5,539.59
+                                                                                                                            STARBUCKS@TEKKA PLC(TK SI SGP 29JUL
+                                                                                                                            5100-1234-5678-5454
+                                                                                                             31/07/2026     Debit Card Transaction                                        18.60                        5,520.99
+                                                                                                                            GOPAY-GOJEK SINGAPORE SGP         28JUL
+                                                                                                                            5100-1234-5678-5454
+                                                                                                             31/07/2026     Debit Card Transaction                                        18.00                        5,502.99
+                                                                                                                            AID-SINGAPORE SINGAPORE SGP 29JUL
+                                                                                                                            5100-1234-5678-5454
+                                                                                                             31/07/2026     Interest Earned                                                                0.01        5,503.00
+
+                                                                                                                            Total Balance Carried Forward in SGD:                      1,301.63        4,209.94        5,503.00
+
+
+
+                                                                                                            Transaction Details as of 31 Jul 2026                                                                      Page 2 of 4
+                                                                                                                                                         PDS_MMCON_LOC_ONSH_d19ae54aaef05d56_03655
+                                                                                                             DBS Multiplier Account                                                                       Account No. 120-345678-9
+
+                                                                                                             Date           Description                                             Withdrawal (-)      Deposit (+)      Balance
+
+
+                                                                                                            CURRENCY: UNITED STATES DOLLAR
+
+                                                                                                                            Balance Brought Forward                                                                     USD 8.98
+
+                                                                                                             16/07/2026     Advice Inward Telegraphic Transfer                                             290.00          298.98
+                                                                                                                            4049803634CA
+                                                                                                                            2247AP4956936
+                                                                                                             16/07/2026     Advice Inward Telegraphic Transfer Comm &                         7.69                         291.29
+                                                                                                                            Charges
+                                                                                                                            4049803634CA
+                                                                                                                            2247AP4956936
+                                                                                                             23/07/2026     Debit Card Transaction                                            3.39                         287.90
+                                                                                                                            BUILDKIT.IO CHESHIRE GBR             21JUL
+                                                                                                                            4000-1234-5678-4242 USD3.39
+                                                                                                             28/07/2026     Debit Card Transaction                                                        1,125.00       1,412.90
+                                                                                                                            QX.COM SINGAPORE SGP         25JUL
+                                                                                                                            4000-1234-5678-4242 USD1125.00
+                                                                                                             29/07/2026     Advice Funds Transfer                                         1,412.90                           0.00
+                                                                                                                            FT990321IB70462749
+                                                                                                                            120-345678-9:IB SGD@1.281713
+
+                                                                                                                            Total Balance Carried Forward in USD:                         1,423.98        1,415.00           0.00
+                                                                                                                            Indicative in SGD @ 1.274493000                                                                  0.00
+
+
+
+
+SG40020000876 (08/2014) DBS Co. Reg. No. 196800306E GST Reg No: MR-8500180-3 / POSB Biz Reg No. 52880148A
+
+
+
+
+                                                                                                            Transaction Details as of 31 Jul 2026                                                                       Page 3 of 4
+                                                                                                                                                            PDS_MMCON_LOC_ONSH_d19ae54aaef05d56_03655
+                                                                                                                     Messages For You
+
+                                                                                                                   l           Best execution policy for handling of customers’ orders
+                                                                                                                               DBS has made available to you our Best Execution Policy that sets out our policies and procedures to place and/or execute
+                                                                                                                               (i) customers’ orders on the best available terms (commonly referred to as “best execution”) and; (ii) comparable customers’
+                                                                                                                               orders in accordance with the time of receipt of such orders.
+
+                                                                                                                               When executing orders on our customers’ behalf, we will consider a range of execution factors. The factors may include
+                                                                                                                               price, costs, speed, likelihood of execution and settlement, size and nature of the order, or any other considerations relevant
+                                                                                                                               to the placement and/or execution of the order.
+
+                                                                                                                               A copy of the DBS Wealth Management & Retail Best Execution Policy is available on our DBS website at
+                                                                                                                               www.dbs.com.sg/bestexecution
+
+                                                                                                                   l           Revision of Terms and Conditions Governing Accounts (Applicable to Individuals)
+                                                                                                                               With effect from 1 August 2026, selected clauses in the Terms and Conditions Governing Accounts will be updated. Please
+                                                                                                                               refer to https://go.dbs.com/sg-1aug26tnc for more details.
+
+                                                                                                                   l           We regularly conduct customer satisfaction surveys to better understand your banking experience with us.
+                                                                                                                               As a valued customer, you may receive a push notification or email invitation to share your feedback via Qualtrics, our
+                                                                                                                               designated digital survey platform. Your response is highly valued and will be treated with absolute confidentiality.
+
+                                                                                                                   l           Update your personal particulars today
+                                                                                                                               Got a new address, passport, mobile number or email? Simply use digibank to update your details. Visit
+                                                                                                                               https://go.dbs.com/sg-ppu to learn more.
+
+
+
+                                                                                                               For Your Information
+                                                                                                            DEPOSIT INSURANCE SCHEME
+                                                                                                            Singapore dollar deposits of non-bank depositors and monies and deposits denominated in Singapore dollars under the
+                                                                                                            Supplementary Retirement Scheme are insured by the Singapore Deposit Insurance Corporation, for up to S$100,000 in aggregate
+                                                                                                            per depositor per Scheme member by law. Monies and deposits denominated in Singapore dollars under the CPF Investment
+                                                                                                            Scheme and CPF Retirement Sum Scheme are aggregated and separately insured up to S$100,000 for each depositor per
+                                                                                                            Scheme member. Foreign currency deposits, dual currency investments, structured deposits and other investment products are not
+                                                                                                            insured.
+
+
+
+
+SG40020000876 (08/2014) DBS Co. Reg. No. 196800306E GST Reg No: MR-8500180-3 / POSB Biz Reg No. 52880148A
+                                                                                                            GENERAL
+                                                                                                            Please examine this statement. Subject to any other applicable terms, please notify us of any error or discrepancy within fourteen
+                                                                                                            (14) days from the date of receipt of this statement.
+
+                                                                                                            Clients Residing in Australia - Limitations to Banking Services and Investment Offering
+                                                                                                            With effect from 6 February 2023, there will be limitations in banking services and investment offerings to our clients whose
+                                                                                                            residential address is in Australia. For more information, please visit our website at http://go.dbs.com/sg-auresident.
+
+                                                                                                            Service Charge for Savings Accounts
+                                                                                                            The service charge for eligible savings accounts is waived for customers below age 21. This service charge will apply once a
+                                                                                                            customer turns 21 and does not meet the average daily balance requirement.
+
+
+
+
+                                                                                                             °rr°1cJ ®Kl5;41°rr°
+                                                                                                             p3Un3j[n{:xH vJªB57bIIW;Zf For Terms and Codes, Product Disclaimers, and
+                                                                                                             5RL=«}W^`oF@8~¨Tjdv©q more information, scan this QR code or visit
+                                                                                                             pQ___Qp1§]bg>6¦_Ue°=Z>­ª
+                                                                                                             qqqqqqq1qq111q1q111qqqq1q11q1 http://go.dbs.com/sg-products-information.                                                             Page 4 of 4
+
+                                                                                                                                                                                PDS_MMCON_LOC_ONSH_d19ae54aaef05d56_03655
+

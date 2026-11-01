@@ -1,0 +1,44 @@
+                                                        STATEMENT OF ACCOUNT
+OCBC Bank
+65 Chulia Street, OCBC Centre, Singapore 049513
+
+TAN MEI LING                                                            1 MAR 2026 TO 31 MAR 2026
+100A ALPHA RD 1
+#01-100 SINGAPORE 100100
+
+360 ACCOUNT
+Account No. 601234567001
+
+Transaction  Value
+Date         Date      Description                                                   Withdrawal        Deposit           Balance
+                       BALANCE B/F                                                                                    4,210.55
+01 MAR       01 MAR    DEBIT PURCHASE                                                  12.40                          4,198.15
+                       xx-4242 GRAB* A-8XYZ123 SINGAPORE SG
+03 MAR       03 MAR    GIRO - SALARY                                                                3,200.00          7,398.15
+                       ACME LABS PTE. LTD.
+                       SALA 0326
+05 MAR       05 MAR    FAST PAYMENT                                                   250.00                          7,148.15
+                       TO: LIM AH KOW
+                       OTHR RENT MAR
+09 MAR       10 MAR    DEBIT PURCHASE                                                  48.95                          7,099.20
+                       xx-4242 NTUC FP-ANG MO KIO SINGAPORE SG
+
+
+                                                        STATEMENT OF ACCOUNT
+360 ACCOUNT
+Account No. 601234567001
+
+Transaction  Value
+Date         Date      Description                                                   Withdrawal        Deposit           Balance
+14 MAR       14 MAR    PAYNOW TRANSFER                                                                 15.00          7,114.20
+                       FROM: NG AH LAN
+                       OTHR DINNER
+21 MAR       21 MAR    DEBIT PURCHASE                                                   6.80                          7,107.40
+                       xx-4242 KOPITIAM 123 SINGAPORE SG
+31 MAR       31 MAR    INTEREST CREDIT                                                                  1.23          7,108.63
+                       BALANCE C/F                                                                                    7,108.63
+
+Total Withdrawals/Deposits                                                            318.15        3,216.23
+
+Total Interest Paid This Year                1.23
+Average Balance                          5,123.45

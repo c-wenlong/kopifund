@@ -1,0 +1,21 @@
+{
+  "generated_at": "2026-09-04T10:15:40+08:00",
+  "snapshot": "snapshot-2026-09-04.json",
+  "results": {
+    "monthly-cashflow": "monthly-cashflow-2026-09-04.json",
+    "needs-wants-savings": "needs-wants-savings-2026-09-04.json",
+    "category-breakdown": "category-breakdown-2026-09-04.json",
+    "recurring-detector": "recurring-detector-2026-09-04.json",
+    "eating-out": "eating-out-2026-09-04.json",
+    "merchant-concentration": "merchant-concentration-2026-09-04.json",
+    "one-offs": "one-offs-2026-09-04.json",
+    "income-stability": "income-stability-2026-09-04.json",
+    "savings-runway": "savings-runway-2026-09-04.json",
+    "portfolio": "portfolio-2026-09-04.json",
+    "cpf": "cpf-2026-09-04.json",
+    "travel": "travel-2026-09-04.json",
+    "benchmarks-sg": "benchmarks-sg-2026-09-04.json",
+    "forward-view": "forward-view-2026-09-04.json",
+    "data-quality": "data-quality-2026-09-04.json"
+  }
+}

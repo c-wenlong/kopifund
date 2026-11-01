@@ -1,0 +1,83 @@
+                                                                      Tiger Brokers (Singapore) PTE.LTD.
+
+                                                                      Address:1 Raffles Place, #35-61 One Raffles Place Tower 2, Singapore 048616.
+                                                                      GST registration number:201810449W
+
+
+TAN MEI LING                                                            Statement Issuance Date:2027-03-31
+                                                                        Statement Period:2027-01-01 - 2027-03-31
+
+  Account Information
+
+ Account                      Address                       Account Category              Base Currency
+
+ 99887766                     SINGAPORE SINGAPORE 100 UNIT    Cash                             USD
+
+  Account Overview
+
+                                              Cash           Stock              Funds in Transit        Interest Accruals       Dividend Accruals       Total
+
+ Beginning Of The Period                     30.00          900.00                          0.00                     0.00                    0.00      930.00
+
+ End Of The Period                          130.00          950.00                          0.00                     0.00                    0.00    1,080.00
+
+  Cash Report
+
+  Currency: Base Currency Summary
+
+                                                       Total               Securities
+
+ Starting Cash                                         30.00                    30.00
+
+ Deposits                                             100.00                   100.00
+
+ Ending Cash                                          130.00                   130.00
+
+
+  Currency: SGD
+
+                                                       Total               Securities
+
+ Deposits                                             130.00                   130.00
+
+
+  Deposits & Withdrawals
+
+ Date                                             Description                             Amount              Currency
+
+ 2027-02-01                                       Deposit                                 130.00                SGD
+
+                                                  Total                                   130.00                SGD
+
+                                                  Total(In Base)                          100.00                USD
+
+  Holdings
+
+  Stock
+
+ Symbol                                 Quantity        Multiplier       Cost Price        Close Price       Value       Unrealized P/L      Initial Margin      Maint Margin      Currency
+
+ SPY                                     0.59000               1.0      652.5000000          760.00000      950.00               165.00                0.00              0.00      USD
+
+ Total                                   0.59000                                                            950.00               165.00                0.00              0.00      USD
+
+ Total(In Base)                          0.59000                                                            950.00               165.00                0.00              0.00      USD
+
+
+Note:
+
+ 1. The multiplier represents the fixed number used to calculate the contract value.
+
+ 2. For certain private funds, the market value includes estimated adjustments.
+
+  Base Currency Exchange Rate
+
+ Date                                                                                                                             2027-03-31
+
+ USD                                                                                                                                       1
+
+ SGD                                                                                                                                 0.79000
+
+
+Note: You can refer to the USD index table for the exchange rates.
+

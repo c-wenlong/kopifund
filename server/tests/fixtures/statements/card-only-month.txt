@@ -1,0 +1,81 @@
+Debit Cards
+Statement of Account
+
+                                                                                                                                                        Page 1 of 1
+
+
+                                                                                         2618349-2336
+
+
+     ,      "%            %                )),
+      NG AH LAN
+      TAN MEI LING
+      BLK 100A ALPHA RD 1
+      #01-100 SINGAPORE 100100
+                                                    ./-0./-0./-0./-0./-0./-0./-0./
+
+
+
+
+                                                                                                                                              for ACCOUNT: 130-24680-5
+                                                                                                                                                      As at 09 Nov 2024
+
+     DATE                         DESCRIPTION - TRANSACTION DATE                                                                                                     AMOUNT(S$)
+
+     DBS VISA DEBIT CARD
+
+     TAN MEI LING 'S CARD NO.: 4000-1234-5678-4242
+
+     10 Oct                       TEMU.COM                        INTERNET              IE 08 OCT                                           $                            46.33
+                                          REF NO.: VT441726871305117380569 NOK 354.77
+
+     10 Oct                       FUNDDIRECT                         KYIV             UA 08 OCT                                             $                              3.27
+                                          REF NO.: VT997015655455850158435 UAH 100.00
+
+     10 Oct                       FUNDDIRECT                         KYIV             UA 08 OCT                                             $                            32.75
+                                          REF NO.: VT406433111449671085537 UAH 1,000.00
+
+     19 Oct                       TICKETOFFICE                        PRAHA 1 - NOV CZ 17 OCT                                               $                            36.06
+                                          REF NO.: VT979652246978886648021 CZK 614.00
+
+     26 Oct                       DBS VISA DEBIT CASHBACK AUG 25 OCT                                                                        $                            13.43 CR
+                                          REF NO.: 96732808854753618751810
+
+     29 Oct                       NORDTEL NORGE AS                      OSLO                     NO 26 OCT                                  $                            18.78
+                                          REF NO.: VT932953034277570285663 NOK 145.00
+
+     29 Oct                       WWW.SIMREFILL.COM                          LONDON                GB 26 OCT                                $                            12.83
+                                          REF NO.: VT441172366328184272489 NOK 99.00
+
+                                                                                                                          TOTAL             $                          136.59
+
+     DBS SAFRA DEBIT CARD
+
+     TAN MEI LING 'S CARD NO.: 5100-1234-5678-5454
+
+     12 Oct                       OPENAI *CHATGPT SUBSCR SAN FRANCISCO CA 10 OCT                                                            $                            27.00
+                                          REF NO.: MT320121113082083092843 USD 20.00
+
+     31 Oct                       AID-SINGAPORE                         SINGAPORE                SGP 29 OCT                                 $                            18.00
+                                          REF NO.: MT033772436710791372185
+
+     03 Nov                       GOOGLE*CLOUD HF1BFF                           CCGOOGLE.COM SGP 01 NOV                                     $                              0.01
+                                          REF NO.: MT157670453493818392898
+
+                                                                                                                          TOTAL             $                            45.01
+
+                                                                                                             GRAND TOTAL                    $                          181.60
+
+    This statement shows the details of all card transactions (as defined in the DBS Debit Card Agreement including applicable fees and charges) effected by you using your DBS/POSB Debit
+    Card and debited from your card account. These transactions are also reflected in your POSB Savings Account Passbook, as the case may be.
+
+    If you find any discrepancies in the entries in this statement, please contact us at 1800 1111 111 within seven (7) days of your receipt of the statement. Otherwise, we will consider the
+    statement as correct.
+
+    As part of our ongoing efforts to Go Green, please read the latest updates and Important Notes on your DBS/POSB Debit Card at www.dbs.com.sg/personal/cards/debit-cards/default.page.
+
+
+
+
+                                                                PDS_DBCRD_E_LOC_ESTMT_985711c53162de05_02336
+

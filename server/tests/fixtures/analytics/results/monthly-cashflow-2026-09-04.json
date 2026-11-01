@@ -1,0 +1,211 @@
+{
+  "id": "monthly-cashflow",
+  "title": "Monthly cash flow",
+  "generated_at": "2026-09-04T10:13:02+08:00",
+  "snapshot": "snapshot-2026-09-04.json",
+  "sources": [
+    {
+      "database": "Transactions",
+      "rows_used": 2030,
+      "filter": "flow_class = External and bucket != Transfer"
+    }
+  ],
+  "params": {
+    "from": "2024-12",
+    "to": "2026-08",
+    "currency": "SGD"
+  },
+  "chart": {
+    "type": "bar",
+    "x": "month",
+    "series": [
+      "income_minor",
+      "spend_minor",
+      "investing_minor",
+      "net_minor"
+    ],
+    "source": "months",
+    "unit": "sgd_minor"
+  },
+  "data": {
+    "months": [
+      {
+        "month": "2024-12",
+        "income_minor": 249535,
+        "spend_minor": 273710,
+        "investing_minor": 0,
+        "net_minor": -24175
+      },
+      {
+        "month": "2025-01",
+        "income_minor": 309151,
+        "spend_minor": 257297,
+        "investing_minor": 0,
+        "net_minor": 51854
+      },
+      {
+        "month": "2025-02",
+        "income_minor": 259703,
+        "spend_minor": 283742,
+        "investing_minor": 0,
+        "net_minor": -24039
+      },
+      {
+        "month": "2025-03",
+        "income_minor": 240657,
+        "spend_minor": 318521,
+        "investing_minor": 0,
+        "net_minor": -77864
+      },
+      {
+        "month": "2025-04",
+        "income_minor": 293971,
+        "spend_minor": 311749,
+        "investing_minor": 0,
+        "net_minor": -17778
+      },
+      {
+        "month": "2025-05",
+        "income_minor": 281385,
+        "spend_minor": 254638,
+        "investing_minor": 0,
+        "net_minor": 26747
+      },
+      {
+        "month": "2025-06",
+        "income_minor": 262005,
+        "spend_minor": 236335,
+        "investing_minor": 0,
+        "net_minor": 25670
+      },
+      {
+        "month": "2025-07",
+        "income_minor": 0,
+        "spend_minor": 229579,
+        "investing_minor": 50000,
+        "net_minor": -279579
+      },
+      {
+        "month": "2025-08",
+        "income_minor": 289428,
+        "spend_minor": 255031,
+        "investing_minor": 50000,
+        "net_minor": -15603
+      },
+      {
+        "month": "2025-09",
+        "income_minor": 300349,
+        "spend_minor": 248107,
+        "investing_minor": 50000,
+        "net_minor": 2242
+      },
+      {
+        "month": "2025-10",
+        "income_minor": 287674,
+        "spend_minor": 230720,
+        "investing_minor": 50000,
+        "net_minor": 6954
+      },
+      {
+        "month": "2025-11",
+        "income_minor": 305507,
+        "spend_minor": 190297,
+        "investing_minor": 50000,
+        "net_minor": 65210
+      },
+      {
+        "month": "2025-12",
+        "income_minor": 293927,
+        "spend_minor": 226297,
+        "investing_minor": 50000,
+        "net_minor": 17630
+      },
+      {
+        "month": "2026-01",
+        "income_minor": 328711,
+        "spend_minor": 220064,
+        "investing_minor": 50000,
+        "net_minor": 58647
+      },
+      {
+        "month": "2026-02",
+        "income_minor": 334967,
+        "spend_minor": 173515,
+        "investing_minor": 50000,
+        "net_minor": 111452
+      },
+      {
+        "month": "2026-03",
+        "income_minor": 322576,
+        "spend_minor": 201579,
+        "investing_minor": 50000,
+        "net_minor": 70997
+      },
+      {
+        "month": "2026-04",
+        "income_minor": 325161,
+        "spend_minor": 166182,
+        "investing_minor": 50000,
+        "net_minor": 108979
+      },
+      {
+        "month": "2026-05",
+        "income_minor": 325223,
+        "spend_minor": 169660,
+        "investing_minor": 50000,
+        "net_minor": 105563
+      },
+      {
+        "month": "2026-06",
+        "income_minor": 327323,
+        "spend_minor": 248465,
+        "investing_minor": 50000,
+        "net_minor": 28858
+      },
+      {
+        "month": "2026-07",
+        "income_minor": 310960,
+        "spend_minor": 241142,
+        "investing_minor": 50000,
+        "net_minor": 19818
+      },
+      {
+        "month": "2026-08",
+        "income_minor": 324976,
+        "spend_minor": 206367,
+        "investing_minor": 50000,
+        "net_minor": 68609
+      }
+    ],
+    "phases": [
+      {
+        "phase": "Phase 1 (Dec 2024 to Jun 2025)",
+        "months": 7,
+        "avg_income_minor": 270915,
+        "avg_spend_minor": 276570,
+        "avg_net_minor": -5655
+      },
+      {
+        "phase": "Phase 2 (Jul 2025 on)",
+        "months": 14,
+        "avg_income_minor": 291199,
+        "avg_spend_minor": 214786,
+        "avg_net_minor": 26413
+      }
+    ],
+    "totals": {
+      "income_minor": 5973189,
+      "spend_minor": 4942997,
+      "net_minor": 330192
+    }
+  },
+  "findings": [
+    "Phase 2 months average 264 SGD net against -57 in Phase 1, a swing of 321 a month.",
+    "July 2025 has no income at all: the contract work ended in June and the first salary landed in August.",
+    "Spend fell from about 2,770 a month in Phase 1 to about 2,150 in Phase 2, almost entirely rent and groceries."
+  ],
+  "caveats": [
+    "Investing is the DCA standing order only; it misses anything bought manually inside the brokerage.",
+    "Income counts money arriving in a tracked account, so anything paid in cash or into the CPF accounts is invisible here."
+  ]
+}

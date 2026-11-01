@@ -1,0 +1,256 @@
+                                                                                                                        Tiger Brokers (Singapore) PTE.LTD.
+
+                                                                                          Address:1 Raffles Place, #35-61 One Raffles Place Tower 2, Singapore 048616.
+
+                                                                                                              GST registration number:201810449W
+
+
+TEST OWNER                                                                                                                                            Statement Issuance Date:2027-06-30
+
+                                                                                                                                                 Statement Period:2027-01-01 - 2027-06-30
+
+
+  Account Information
+
+ Account                                                    Address                                           Account Category                                  Base Currency
+
+ 99001122                                                   SINGAPORE 048616                                       Cash                                                USD
+
+
+  Account Overview
+
+                                                        Cash               Stock              Funds in Transit             Interest Accruals                  Dividend Accruals                    Total
+
+ Beginning Of The Period                               33.85              876.78                          0.00                          0.00                               0.00                   910.63
+
+ End Of The Period                                    720.51            2,279.98                          0.00                          0.00                               6.40                 3,006.89
+
+
+  Cash Report
+
+  Currency: Base Currency Summary
+
+                                                                                     Total                    Securities
+
+ Starting Cash                                                                       33.85                         33.85
+
+ Platform Fees                                                                          -2                            -2
+
+ GST                                                                                 -0.18                         -0.18
+
+ Deposits                                                                         1,140.72                      1,140.72
+
+ Dividends                                                                           25.71                         25.71
+
+ Withholding Tax                                                                     -1.34                         -1.34
+
+ Net Trades (Purchase)                                                             -476.25                       -476.25
+
+ Ending Cash                                                                        720.51                        720.51
+
+This statement also serves as a Tax Invoice for GST purpose.                                                                                                                                         1/5
+
+                                                                                                                        Tiger Brokers (Singapore) PTE.LTD.
+
+  Currency: SGD
+
+                                                                                     Total                    Securities
+
+ Starting Cash                                                                        0.00                          0.00
+
+ Deposits                                                                         1,600.00                      1,600.00
+
+ Custody Fees                                                                        -9.99                         -9.99
+
+ Ending Cash                                                                          0.00                          0.00
+
+Notes:
+
+ 1. Net Trades:
+
+
+  Trades
+
+  Forex
+
+
+ Symbol(Base.Quote)                        Activity Type                Quantity(Base)           Trade Price             Amount(Quote)             Notes                                  Trade Time         Settle Date        Currency
+
+                                                                                                                                                                                          2027-01-05
+ USD.SGD                                             Buy                      990.4762               1.31250                 -1,300.00                                                                        2027-01-05             SGD
+                                                                                                                                                                                13:44:42, US/Eastern
+
+This statement also serves as a Tax Invoice for GST purpose.                                                                                                                                         2/5
+
+                                                                                                                        Tiger Brokers (Singapore) PTE.LTD.
+
+ Symbol(Base.Quote)                        Activity Type                Quantity(Base)           Trade Price             Amount(Quote)             Notes                                  Trade Time         Settle Date        Currency
+
+                                                                                                                                                                                          2027-01-05
+                                                     Buy                      990.4762               1.31250                 -1,300.00                                                                        2027-01-05             SGD
+                                                                                                                                                                                13:44:42, US/Eastern
+
+                                                                                                                                                                                          2027-02-07
+ USD.SGD                                            Sell                       -2.4100               1.33870                      3.23                                                                        2027-02-07             SGD
+                                                                                                                                                                                02:13:27, US/Eastern
+
+                                                                                                                                                                                          2027-02-07
+                                                    Sell                       -2.4100               1.33870                      3.23                                                                        2027-02-07             SGD
+                                                                                                                                                                                02:13:27, US/Eastern
+
+ Total USD.SGD                                                                988.0662                                       -1,296.77                                                                                               SGD
+
+ Total(In Base)                                                                                                                -988.07                                                                                               USD
+
+
+  Stock
+
+
+                                                        Activity                           Trade                     Accrued Interest in                                              Realized P                                      Settle
+ Symbol                     Market      Exchange                        Quantity                          Amount                                          Comm/Fee           GST                       Notes          Trade Time              Currency
+                                                            Type                           Price                                   Trade                                                      /L                                        Date
+
+ SPDR S&P 500 ETF                                                                                                                                                                                                     2027-01-05
+                                                                                                                                                     Platform Fee:                                                                  2027-01-
+ Trust                          US          ARCA            Open         1.38204       694.17000          959.37                    0.00                     -1.00
+                                                                                                                                                                           -0.09            0.00                    13:44:42, US                   USD
+                                                                                                                                                                                                                                          06
+ (SPY)                                                                                                                                                                                                                  /Eastern
+
+                                                                                                                                                                                                                      2027-01-05
+                                                                                                                                                     Platform Fee:                                                                  2027-01-
+                                US          ARCA            Open         1.38204       694.17000          959.37                    0.00                     -1.00
+                                                                                                                                                                           -0.09            0.00                    13:44:42, US                   USD
+                                                                                                                                                                                                                                          06
+                                                                                                                                                                                                                        /Eastern
+
+ Apple                                                                                                                                                                                                                2027-03-02
+                                                                                                                                                     Platform Fee:                                                                  2027-03-
+ Inc                            US          ARCA           Close               2       241.56000          483.12                    0.00                     -1.00
+                                                                                                                                                                           -0.09            0.00                    10:11:12, US                   USD
+                                                                                                                                                                                                                                          03
+ (AAPL)                                                                                                                                                                                                                 /Eastern
+
+                                                                                                                                                                                                                      2027-03-02
+                                                                                                                                                     Platform Fee:                                                                  2027-03-
+                                US          ARCA           Close               2       241.56000          483.12                    0.00                     -1.00
+                                                                                                                                                                           -0.09            0.00                    10:11:12, US                   USD
+                                                                                                                                                                                                                                          03
+                                                                                                                                                                                                                        /Eastern
+
+ Total                                                                   3.38204                        1,442.49                                             -2.00         -0.18            0.00                                                   USD
+
+Note:
+
+ 1. FIFO.
+
+
+  Deposits & Withdrawals
+
+ Date                                                                                                                            Description                                  Amount                                Currency
+
+ 2027-01-05                                                                                                                          Deposit                                1,600.00                                     SGD
+
+ 2027-04-05                                                                                                                         Withdraw                                 -150.00                                     SGD
+
+                                                                                                                                       Total                                1,450.00                                     SGD
+
+                                                                                                                              Total(In Base)                                1,140.72                                     USD
+
+
+  Holdings
+
+  Stock
+
+
+ Symbol                                           Quantity        Multiplier          Cost Price         Close Price               Value        Unrealized P/L        Initial Margin        Maint Margin        Currency
+
+ SIA
+                                                       150               1.0           3.4577333             4.12000              618.00                 99.34                  0.00                0.00             SGD
+ (C6L.SI)
+
+ Total                                                 150                                                                        618.00                 99.34                  0.00                0.00             SGD
+
+ SPDR S&P 500 ETF Trust
+
+This statement also serves as a Tax Invoice for GST purpose.                                                                                                                                         3/5
+
+                                                                                                                        Tiger Brokers (Singapore) PTE.LTD.
+
+ Symbol                                           Quantity        Multiplier          Cost Price         Close Price               Value        Unrealized P/L        Initial Margin        Maint Margin        Currency
+
+ (SPY)
+                                                   2.38204               1.0         589.1840607           753.05000            1,793.80                390.34                  0.00                0.00             USD
+
+ Total                                             2.38204                                                                      1,793.80                390.34                  0.00                0.00             USD
+
+ Total(In Base)                                  152.38204                                                                      2,279.98                468.49                  0.00                0.00             USD
+
+Note:
+
+ 1. The multiplier is a fixed number.
+
+
+  Dividends
+
+                                                                                       Dividend Reinvestment                                                                                      Cash                                              Net Cash
+ Date                  Product                                        Symbol                                                       Quantity/Gross Rate                           Phase                        Shares              Fees & Tax                      Currency
+                                                                                                        Plan                                                                                 Dividends                                                 Value
+
+                                                                                                                                         Quantity: 150
+ 2027-05-                                                                SIA
+                         Stock                                                                                                    Gross Rate: 0.180000                            Paid           27.00             0                                   27.00           SGD
+ 28                                                                 (C6L.SI)
+                                                                                                                                                /Share
+
+                                                                       Total                                                                                             Accruals/Paid                                                            0.00/27.00           SGD
+
+This statement also serves as a Tax Invoice for GST purpose.                                                                                                                                         4/5
+
+                                                                                                                        Tiger Brokers (Singapore) PTE.LTD.
+
+                                                                                       Dividend Reinvestment                                                                                      Cash                                              Net Cash
+ Date                  Product                                        Symbol                                                       Quantity/Gross Rate                           Phase                        Shares              Fees & Tax                      Currency
+                                                                                                        Plan                                                                                 Dividends                                                 Value
+
+                                                                                                                                     Quantity: 2.38204
+ 2027-01-                                             SPDR S&P 500 ETF Trust
+                         Stock                                                                          Cash                      Gross Rate: 1.874512                            Paid            4.47             0      Dividend tax: 1.34            3.13           USD
+ 30                                                                    (SPY)
+                                                                                                                                                /Share
+
+                                                                                                                                     Quantity: 2.38204
+ 2027-01-                                             SPDR S&P 500 ETF Trust
+                         Stock                                                                          Cash                      Gross Rate: 1.874512      Dividend Accruals Increase            4.47             0      Dividend tax: 1.34            3.13           USD
+ 30                                                                    (SPY)
+                                                                                                                                                /Share
+
+                                                                                                                                     Quantity: 2.38204
+ 2027-03-                                             SPDR S&P 500 ETF Trust
+                         Stock                                                                                                    Gross Rate: 1.874512     Dividend Accruals Reduction           -4.47             0     Dividend tax: -1.34           -3.13           USD
+ 02                                                                    (SPY)
+                                                                                                                                                /Share
+
+                                                              Total(In Base)                                                                                             Accruals/Paid                                                            0.00/25.71           USD
+
+Notes: Accrued Dividends refers to cash you will receive.
+
+
+  Base Currency Exchange Rate
+
+ Date                                                                                                                                                                                                                                 2027-06-30
+
+ USD                                                                                                                                                                                                                                           1
+
+ AUD                                                                                                                                                                                                                                     0.71670
+
+This statement also serves as a Tax Invoice for GST purpose.                                                                                                                                         5/5
+
+                                                                                                                        Tiger Brokers (Singapore) PTE.LTD.
+
+ Date                                                                                                                                                                                                                                 2027-06-30
+
+ SGD                                                                                                                                                                                                                                     0.78670
+
+Note: You can refer to the USD index table.
+

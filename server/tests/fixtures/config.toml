@@ -1,0 +1,92 @@
+# The config the tests run against. Every id and every account number here is
+# invented: nothing in this file names a real Notion database or a real bank
+# account. tests/fake_notion.py loads this rather than finance/config.toml, so
+# the suite runs in a fresh clone and does not depend on one machine.
+#
+# The shape must stay identical to finance/config.example.toml: same tables,
+# same keys, same folder list. A test that needs the owner's real config or
+# real statement PDFs skips instead.
+
+[notion]
+version = "2025-09-03"
+token_env = "NOTION_TOKEN"
+token_command = ""
+
+# The eight inline databases, as data-source ids. Distinct so a test can tell
+# which one a write went to.
+[data_sources]
+accounts        = "00000000-0000-4000-8000-000000000001"
+period_balances = "00000000-0000-4000-8000-000000000002"
+transactions    = "00000000-0000-4000-8000-000000000003"
+payees          = "00000000-0000-4000-8000-000000000004"
+categories      = "00000000-0000-4000-8000-000000000005"
+cards           = "00000000-0000-4000-8000-000000000006"
+budgets         = "00000000-0000-4000-8000-000000000007"
+trips           = "00000000-0000-4000-8000-000000000008"
+
+# Accounts rows, keyed by the account number the parsers print.
+[accounts]
+"111-11111-1"      = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa1"   # DBS Multiplier
+"222-22222-2"      = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa2"   # POSB Everyday Savings
+"3333333333333333" = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa3"   # PayLah wallet
+"Y-4444444444"     = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa4"   # YouTrip wallet, all currencies
+"555555555555555"  = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa5"   # Revolut wallet, all currencies
+"666-66666-6"      = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa6"   # Wise wallet, all currencies
+
+# Cards rows, keyed by the last four digits the statements print.
+[cards]
+"1234" = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb1"               # DBS Mastercard Debit
+"5678" = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb2"               # DBS Visa Debit
+
+# The same five folders as the real config, so the doctor's folder checks see
+# the tree they are written for.
+[[folder]]
+path = "data/dbs-statements/dbs-multiplier"
+parser = "dbs"
+account_no = "111-11111-1"
+
+[[folder]]
+path = "data/dbs-statements/posb-everyday"
+parser = "dbs"
+account_no = "222-22222-2"
+
+[[folder]]
+path = "data/dbs-statements/dbs-paylah"
+parser = "dbs"
+account_no = "3333333333333333"
+
+[[folder]]
+path = "data/dbs-statements/dbs-debit-cards"
+parser = "dbs"
+account_no = ""
+
+[[folder]]
+path = "data/youtrip-statements"
+parser = "youtrip"
+account_no = "Y-4444444444"
+per_currency_subfolders = ["sgd-main", "nok", "usd", "eur", "myr", "aud"]
+
+[[folder]]
+path = "data/revolut"
+parser = "revolut"
+account_no = "555555555555555"
+multi_currency = true
+
+[[folder]]
+path = "data/wise"
+parser = "wise"
+account_no = "666-66666-6"
+multi_currency = true
+
+[analytics]
+repayment_payee = ""
+
+# Switched off: no test may call a real model (tests/test_ai.py fakes one).
+[ai]
+provider = "anthropic"
+model = "claude-haiku-5-5"
+key_env = "KOPIFUND_TEST_AI_KEY"
+key_command = ""
+key_file = ""
+send_amounts = true
+enabled = false

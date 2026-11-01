@@ -1,0 +1,359 @@
+{
+  "id": "category-breakdown",
+  "title": "Spend by category",
+  "generated_at": "2026-08-05T09:02:11+08:00",
+  "snapshot": "snapshot-2026-08-05.json",
+  "sources": [
+    {
+      "database": "Transactions",
+      "rows_used": 1712,
+      "filter": "flow_class = External and direction = Out and bucket = Spend"
+    }
+  ],
+  "params": {
+    "from": "2024-12",
+    "to": "2026-08",
+    "top_n": 8
+  },
+  "chart": {
+    "type": "stacked",
+    "x": "month",
+    "series": [
+      "Rent_minor",
+      "Groceries_minor",
+      "Eating out_minor",
+      "Transport_minor",
+      "Utilities_minor",
+      "Shopping_minor",
+      "Health_minor",
+      "Subscriptions_minor"
+    ],
+    "source": "months",
+    "unit": "sgd_minor"
+  },
+  "data": {
+    "months": [
+      {
+        "month": "2024-12",
+        "Rent_minor": 155391,
+        "Groceries_minor": 33954,
+        "Eating out_minor": 27803,
+        "Transport_minor": 16285,
+        "Utilities_minor": 10814,
+        "Shopping_minor": 19490,
+        "Health_minor": 5000,
+        "Subscriptions_minor": 6650
+      },
+      {
+        "month": "2025-01",
+        "Rent_minor": 115249,
+        "Groceries_minor": 48966,
+        "Eating out_minor": 33029,
+        "Transport_minor": 13083,
+        "Utilities_minor": 6910,
+        "Shopping_minor": 20677,
+        "Health_minor": 7164,
+        "Subscriptions_minor": 5714
+      },
+      {
+        "month": "2025-02",
+        "Rent_minor": 159493,
+        "Groceries_minor": 41586,
+        "Eating out_minor": 32945,
+        "Transport_minor": 15771,
+        "Utilities_minor": 10547,
+        "Shopping_minor": 15466,
+        "Health_minor": 7299,
+        "Subscriptions_minor": 5572
+      },
+      {
+        "month": "2025-03",
+        "Rent_minor": 158003,
+        "Groceries_minor": 36083,
+        "Eating out_minor": 25859,
+        "Transport_minor": 15004,
+        "Utilities_minor": 7026,
+        "Shopping_minor": 17269,
+        "Health_minor": 4381,
+        "Subscriptions_minor": 6728
+      },
+      {
+        "month": "2025-04",
+        "Rent_minor": 98027,
+        "Groceries_minor": 47887,
+        "Eating out_minor": 28620,
+        "Transport_minor": 16566,
+        "Utilities_minor": 7420,
+        "Shopping_minor": 17907,
+        "Health_minor": 6162,
+        "Subscriptions_minor": 5356
+      },
+      {
+        "month": "2025-05",
+        "Rent_minor": 148846,
+        "Groceries_minor": 43425,
+        "Eating out_minor": 28626,
+        "Transport_minor": 15276,
+        "Utilities_minor": 10006,
+        "Shopping_minor": 21169,
+        "Health_minor": 4529,
+        "Subscriptions_minor": 5900
+      },
+      {
+        "month": "2025-06",
+        "Rent_minor": 119517,
+        "Groceries_minor": 55857,
+        "Eating out_minor": 26576,
+        "Transport_minor": 16511,
+        "Utilities_minor": 9914,
+        "Shopping_minor": 20170,
+        "Health_minor": 4794,
+        "Subscriptions_minor": 5098
+      },
+      {
+        "month": "2025-07",
+        "Rent_minor": 87401,
+        "Groceries_minor": 38165,
+        "Eating out_minor": 34882,
+        "Transport_minor": 14863,
+        "Utilities_minor": 9104,
+        "Shopping_minor": 16156,
+        "Health_minor": 5688,
+        "Subscriptions_minor": 4191
+      },
+      {
+        "month": "2025-08",
+        "Rent_minor": 101613,
+        "Groceries_minor": 27746,
+        "Eating out_minor": 34232,
+        "Transport_minor": 16228,
+        "Utilities_minor": 8896,
+        "Shopping_minor": 13266,
+        "Health_minor": 4580,
+        "Subscriptions_minor": 6561
+      },
+      {
+        "month": "2025-09",
+        "Rent_minor": 106167,
+        "Groceries_minor": 30471,
+        "Eating out_minor": 28478,
+        "Transport_minor": 10233,
+        "Utilities_minor": 9535,
+        "Shopping_minor": 15414,
+        "Health_minor": 6488,
+        "Subscriptions_minor": 6117
+      },
+      {
+        "month": "2025-10",
+        "Rent_minor": 107638,
+        "Groceries_minor": 29783,
+        "Eating out_minor": 24173,
+        "Transport_minor": 16080,
+        "Utilities_minor": 8032,
+        "Shopping_minor": 20266,
+        "Health_minor": 6977,
+        "Subscriptions_minor": 6081
+      },
+      {
+        "month": "2025-11",
+        "Rent_minor": 118084,
+        "Groceries_minor": 30604,
+        "Eating out_minor": 34730,
+        "Transport_minor": 12203,
+        "Utilities_minor": 7926,
+        "Shopping_minor": 15998,
+        "Health_minor": 6090,
+        "Subscriptions_minor": 6818
+      },
+      {
+        "month": "2025-12",
+        "Rent_minor": 111951,
+        "Groceries_minor": 35451,
+        "Eating out_minor": 35591,
+        "Transport_minor": 13129,
+        "Utilities_minor": 9796,
+        "Shopping_minor": 17761,
+        "Health_minor": 5620,
+        "Subscriptions_minor": 4776
+      },
+      {
+        "month": "2026-01",
+        "Rent_minor": 112649,
+        "Groceries_minor": 39350,
+        "Eating out_minor": 25085,
+        "Transport_minor": 12656,
+        "Utilities_minor": 11421,
+        "Shopping_minor": 21640,
+        "Health_minor": 6369,
+        "Subscriptions_minor": 5726
+      },
+      {
+        "month": "2026-02",
+        "Rent_minor": 79967,
+        "Groceries_minor": 27874,
+        "Eating out_minor": 28164,
+        "Transport_minor": 12286,
+        "Utilities_minor": 7188,
+        "Shopping_minor": 13291,
+        "Health_minor": 7675,
+        "Subscriptions_minor": 5204
+      },
+      {
+        "month": "2026-03",
+        "Rent_minor": 84440,
+        "Groceries_minor": 32129,
+        "Eating out_minor": 36107,
+        "Transport_minor": 10351,
+        "Utilities_minor": 7476,
+        "Shopping_minor": 18273,
+        "Health_minor": 5127,
+        "Subscriptions_minor": 6583
+      },
+      {
+        "month": "2026-04",
+        "Rent_minor": 77086,
+        "Groceries_minor": 39435,
+        "Eating out_minor": 28470,
+        "Transport_minor": 9503,
+        "Utilities_minor": 9931,
+        "Shopping_minor": 18342,
+        "Health_minor": 6070,
+        "Subscriptions_minor": 4743
+      },
+      {
+        "month": "2026-05",
+        "Rent_minor": 78921,
+        "Groceries_minor": 39177,
+        "Eating out_minor": 36195,
+        "Transport_minor": 11192,
+        "Utilities_minor": 7985,
+        "Shopping_minor": 22959,
+        "Health_minor": 5118,
+        "Subscriptions_minor": 4962
+      },
+      {
+        "month": "2026-06",
+        "Rent_minor": 105878,
+        "Groceries_minor": 42934,
+        "Eating out_minor": 24847,
+        "Transport_minor": 10847,
+        "Utilities_minor": 11316,
+        "Shopping_minor": 18701,
+        "Health_minor": 4470,
+        "Subscriptions_minor": 4351
+      },
+      {
+        "month": "2026-07",
+        "Rent_minor": 74209,
+        "Groceries_minor": 37706,
+        "Eating out_minor": 27520,
+        "Transport_minor": 16049,
+        "Utilities_minor": 10924,
+        "Shopping_minor": 13078,
+        "Health_minor": 4977,
+        "Subscriptions_minor": 4956
+      }
+    ],
+    "categories": [
+      {
+        "category": "Rent",
+        "share_pct": 47.86,
+        "trend_pct": 5.84,
+        "total_minor": 2308859,
+        "monthly_avg_minor": 109946,
+        "last3_avg_minor": 96139,
+        "prior6_avg_minor": 90836
+      },
+      {
+        "category": "Groceries",
+        "share_pct": 16.48,
+        "trend_pct": 9.9,
+        "total_minor": 795214,
+        "monthly_avg_minor": 37867,
+        "last3_avg_minor": 39090,
+        "prior6_avg_minor": 35569
+      },
+      {
+        "category": "Eating out",
+        "share_pct": 13.0,
+        "trend_pct": -18.19,
+        "total_minor": 627128,
+        "monthly_avg_minor": 29863,
+        "last3_avg_minor": 25854,
+        "prior6_avg_minor": 31602
+      },
+      {
+        "category": "Shopping",
+        "share_pct": 7.77,
+        "trend_pct": -11.81,
+        "total_minor": 375020,
+        "monthly_avg_minor": 17858,
+        "last3_avg_minor": 16502,
+        "prior6_avg_minor": 18711
+      },
+      {
+        "category": "Transport",
+        "share_pct": 5.98,
+        "trend_pct": 19.52,
+        "total_minor": 288525,
+        "monthly_avg_minor": 13739,
+        "last3_avg_minor": 13768,
+        "prior6_avg_minor": 11519
+      },
+      {
+        "category": "Utilities",
+        "share_pct": 4.0,
+        "trend_pct": 22.36,
+        "total_minor": 192840,
+        "monthly_avg_minor": 9183,
+        "last3_avg_minor": 10971,
+        "prior6_avg_minor": 8966
+      },
+      {
+        "category": "Health",
+        "share_pct": 2.47,
+        "trend_pct": -22.97,
+        "total_minor": 118988,
+        "monthly_avg_minor": 5666,
+        "last3_avg_minor": 4619,
+        "prior6_avg_minor": 5997
+      },
+      {
+        "category": "Subscriptions",
+        "share_pct": 2.44,
+        "trend_pct": -6.66,
+        "total_minor": 117711,
+        "monthly_avg_minor": 5605,
+        "last3_avg_minor": 4977,
+        "prior6_avg_minor": 5332
+      }
+    ],
+    "phases": [
+      {
+        "phase": "Phase 1",
+        "top": [
+          "Rent",
+          "Groceries",
+          "Eating out"
+        ]
+      },
+      {
+        "phase": "Phase 2",
+        "top": [
+          "Rent",
+          "Eating out",
+          "Groceries"
+        ]
+      }
+    ]
+  },
+  "findings": [
+    "Run against the 2026-08-05 snapshot, before the 2026-08 statements were loaded.",
+    "Eating out is up on the prior six months while groceries are flat, so the two have swapped rank since Phase 2 began.",
+    "The eight categories shown are 91 percent of spend; the remaining 33 categories share the other 9."
+  ],
+  "caveats": [
+    "A category is whatever the rules file assigned, so a mis-mapped payee moves money between two bars rather than losing it.",
+    "Phase 1 rent included a share of the utilities, so the Rent and Utilities bars do not compare cleanly across the two phases."
+  ]
+}

@@ -1,0 +1,704 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kopifund Alerts · match flow mockup</title>
+<style>
+  /* Kopifund dark tokens (apps/web/src/index.css) */
+  :root {
+    --app: #1f1e1d;
+    --panel: #262624;
+    --tile: #30302d;
+    --line: rgb(255 255 255 / 0.1);
+    --edge: rgb(255 255 255 / 0.3);
+    --ink: #f0eee6;
+    --ink-2: #b4b2a9;
+    --ink-3: #9e9d96;
+    --hover: rgb(255 255 255 / 0.06);
+    --warn: #ef9f27;
+    --danger: #f07a6c;
+    --good: #97c459;
+    /* field tints = chart series, dark variants */
+    --amt: #5dcaa5;
+    --pay: #85b7eb;
+    --dat: #afa9ec;
+    --crd: #ef9f27;
+    --ign: #908f88;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html { background: #131211; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", Inter, ui-sans-serif, sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+    padding: 48px 32px 72px;
+  }
+  .num { font-variant-numeric: tabular-nums; }
+
+  header.board {
+    max-width: 1800px; margin: 0 auto 40px;
+    display: flex; align-items: baseline; gap: 16px; flex-wrap: wrap;
+  }
+  header.board h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.01em; }
+  header.board p { color: var(--ink-3); font-size: 13.5px; }
+  header.board .hint {
+    margin-left: auto; font-size: 12.5px; color: var(--ink-3);
+    border: 1px solid var(--line); border-radius: 99px; padding: 5px 12px;
+  }
+  header.board .hint b { color: var(--amt); font-weight: 600; }
+
+  .frames {
+    display: flex; gap: 44px; justify-content: center; align-items: flex-start;
+    flex-wrap: wrap; max-width: 1900px; margin: 0 auto;
+  }
+  .step { display: flex; flex-direction: column; gap: 14px; width: 420px; }
+  .step > .label {
+    display: flex; align-items: baseline; gap: 10px; padding: 0 4px;
+  }
+  .step > .label .n {
+    font-size: 12px; font-weight: 700; color: #131211;
+    background: var(--ink-3); border-radius: 99px; width: 20px; height: 20px;
+    display: inline-flex; align-items: center; justify-content: center;
+  }
+  .step > .label .t { font-size: 14.5px; font-weight: 600; }
+  .step > .label .s { font-size: 12.5px; color: var(--ink-3); }
+  .notes { list-style: none; padding: 0 6px; display: flex; flex-direction: column; gap: 7px; }
+  .notes li { font-size: 12.5px; line-height: 1.45; color: var(--ink-3); padding-left: 14px; position: relative; }
+  .notes li::before { content: ""; position: absolute; left: 0; top: 7px; width: 6px; height: 6px; border-radius: 2px; background: var(--tile); }
+  .notes li b { color: var(--ink-2); font-weight: 600; }
+
+  /* ---------- iPhone frame ---------- */
+  .phone {
+    width: 400px; height: 800px; border-radius: 58px;
+    background: #000;
+    padding: 11px;
+    box-shadow: 0 0 0 1.5px #3a3a38, 0 30px 80px -20px rgb(0 0 0 / 0.8);
+    position: relative;
+  }
+  .screen {
+    width: 100%; height: 100%; border-radius: 48px; overflow: hidden;
+    background: var(--app);
+    display: flex; flex-direction: column;
+    position: relative;
+  }
+  .island {
+    position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+    width: 118px; height: 34px; background: #000; border-radius: 20px; z-index: 30;
+  }
+  .statusbar {
+    height: 54px; flex: none; display: flex; align-items: flex-end; justify-content: space-between;
+    padding: 0 30px 4px; font-size: 15px; font-weight: 600; z-index: 20;
+  }
+  .statusbar .r { display: flex; gap: 6px; align-items: center; }
+  .statusbar svg { display: block; }
+
+  .nav {
+    flex: none; display: flex; align-items: center; gap: 12px;
+    padding: 6px 18px 12px; z-index: 20;
+  }
+  .nav .back {
+    width: 34px; height: 34px; border-radius: 99px; background: var(--tile);
+    display: flex; align-items: center; justify-content: center; color: var(--ink-2); flex: none;
+  }
+  .nav .title { font-size: 30px; font-weight: 700; letter-spacing: -0.02em; }
+  .nav .title.small { font-size: 17px; font-weight: 650; letter-spacing: 0; }
+  .nav .spacer { flex: 1; }
+  .nav .pillbtn {
+    background: var(--tile); border-radius: 99px; padding: 8px 14px;
+    font-size: 14.5px; font-weight: 550; color: var(--ink); display: flex; gap: 7px; align-items: center;
+  }
+  .nav .pillbtn.hot { color: var(--ink); }
+  .nav .pillbtn svg { flex: none; }
+  .nav .progress {
+    font-size: 12px; font-weight: 600; color: var(--amt);
+    background: rgb(93 202 165 / 0.14); border-radius: 99px; padding: 5px 10px;
+  }
+
+  .scroll { flex: 1; overflow-y: auto; scrollbar-width: none; padding: 0 18px 20px; }
+  .scroll::-webkit-scrollbar { display: none; }
+
+  .dock {
+    flex: none; padding: 12px 16px 10px;
+    background: linear-gradient(rgb(31 30 29 / 0), var(--app) 30%);
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .homebar { flex: none; height: 18px; display: flex; align-items: center; justify-content: center; }
+  .homebar::after { content: ""; width: 130px; height: 5px; border-radius: 3px; background: rgb(255 255 255 / 0.35); }
+
+  /* ---------- lists ---------- */
+  .sect { font-size: 12.5px; font-weight: 600; color: var(--ink-3); margin: 18px 4px 8px; }
+  .card {
+    background: var(--panel); border-radius: 16px; border: 1px solid var(--line);
+    overflow: hidden;
+  }
+  .row {
+    display: flex; align-items: center; gap: 10px; padding: 13px 14px;
+    border-bottom: 1px solid var(--line); position: relative; background: var(--panel);
+  }
+  .row:last-child { border-bottom: 0; }
+  .row .txt { flex: 1; min-width: 0; }
+  .row .h { font-size: 15px; font-weight: 550; line-height: 1.3;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .row .c { font-size: 12.5px; color: var(--ink-3); margin-top: 3px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .chev { color: var(--ink-3); flex: none; }
+  .row .amtchip {
+    font-size: 11.5px; font-weight: 600; color: var(--amt);
+    background: rgb(93 202 165 / 0.14); border-radius: 6px; padding: 2.5px 7px;
+    margin-left: 6px; vertical-align: 2px; white-space: nowrap;
+  }
+  .row .none { font-size: 11.5px; color: var(--ink-3); font-style: italic; }
+
+  /* swipe reveal */
+  .swipewrap { position: relative; overflow: hidden; }
+  .swipeactions { position: absolute; inset: 0; display: flex; justify-content: flex-end; }
+  .swipeactions .act {
+    width: 88px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px;
+    font-size: 11px; font-weight: 600; color: #131211;
+  }
+  .act.mut { background: var(--ign); color: #1f1e1d; }
+  .act.ign { background: #57564f; color: var(--ink); }
+  .swipewrap > .row { position: relative; transform: translateX(-140px); border-bottom: 0; }
+
+  /* ---------- alert reading view ---------- */
+  .mailhead { padding: 6px 2px 14px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+  .mailhead .from { font-size: 15px; font-weight: 600; }
+  .mailhead .meta { font-size: 12.5px; color: var(--ink-3); margin-top: 3px; }
+  .mailbody { font-size: 15px; line-height: 1.62; color: var(--ink-2); }
+  .mailbody .subj { font-size: 17px; font-weight: 650; color: var(--ink); margin-bottom: 10px; }
+  .mailbody p { margin-bottom: 12px; }
+  .mailbody .dim { color: var(--ink-3); font-size: 13px; line-height: 1.5; }
+  .mailbody .u-amt { box-shadow: 0 2px 0 0 rgb(93 202 165 / 0.55); }
+  .mailbody .u-dat { box-shadow: 0 2px 0 0 rgb(175 169 236 / 0.55); }
+  .foundline {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13px; color: var(--ink-2); padding: 2px 4px 4px; line-height: 1.4;
+  }
+  .foundline > span:last-child { flex: 1; }
+  .foundline b { color: var(--ink); }
+  .foundline .dot { width: 7px; height: 7px; border-radius: 99px; background: var(--amt); flex: none; }
+  .cta {
+    display: block; width: 100%; border: 0; border-radius: 14px; padding: 14px;
+    font: inherit; font-size: 15.5px; font-weight: 650; cursor: pointer;
+  }
+  .cta.pri { background: var(--ink); color: var(--app); }
+  .cta.sec { background: var(--tile); color: var(--ink); }
+  .quietlink {
+    background: none; border: 0; font: inherit; font-size: 13px; color: var(--ink-3);
+    cursor: pointer; padding: 2px 8px; align-self: center;
+  }
+
+  /* ---------- builder ---------- */
+  .hintline {
+    font-size: 13px; color: var(--ink-2); padding: 0 4px; min-height: 20px; line-height: 1.4;
+  }
+  .hintline b { color: var(--ink); font-weight: 600; }
+  .doctext {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+    padding: 15px 15px; font-size: 14px; line-height: 1.95; color: var(--ink-2);
+    margin-top: 8px; user-select: none;
+  }
+  .doctext .subj { color: var(--ink); font-weight: 650; font-size: 15px; }
+  .tk {
+    padding: 1.5px 2px; border-radius: 4.5px; cursor: pointer;
+    transition: background 120ms ease, color 120ms ease;
+    box-shadow: 0 0 0 0 transparent;
+  }
+  .tk:hover { background: var(--hover); }
+  .tk.dim { color: var(--ink-3); font-size: 12.5px; }
+  .sp { padding: 1.5px 0; border-radius: 0; transition: background 120ms ease; }
+  .tk.sug {
+    box-shadow: inset 0 -1.5px 0 0 currentColor;
+    border-radius: 2px;
+  }
+  .tk.sug[data-sug="amount"] { color: var(--amt); }
+  .tk.sug[data-sug="payee"] { color: var(--pay); }
+  .tk.sug[data-sug="date"] { color: var(--dat); }
+  .tk.sug[data-sug="card"] { color: var(--crd); }
+  /* tagged runs */
+  .tk[data-f="amount"], .sp[data-f="amount"] { background: rgb(93 202 165 / 0.22); color: var(--ink); }
+  .tk[data-f="payee"], .sp[data-f="payee"] { background: rgb(133 183 235 / 0.22); color: var(--ink); }
+  .tk[data-f="date"], .sp[data-f="date"] { background: rgb(175 169 236 / 0.24); color: var(--ink); }
+  .tk[data-f="card"], .sp[data-f="card"] { background: rgb(239 159 39 / 0.22); color: var(--ink); }
+  .tk[data-f="ignore"], .sp[data-f="ignore"] { background: rgb(144 143 136 / 0.18); color: var(--ink-3); }
+  .tk.rs { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+  .tk.re { border-top-left-radius: 0; border-bottom-left-radius: 0; }
+
+  .chips { display: flex; gap: 7px; }
+  .chip {
+    flex: 1; border: 1px solid var(--line); background: var(--panel); border-radius: 11px;
+    padding: 8px 2px 7px; font: inherit; font-size: 12px; font-weight: 600; color: var(--ink-2);
+    cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    transition: transform 120ms ease, background 120ms ease;
+  }
+  .chip .d { width: 8px; height: 8px; border-radius: 99px; }
+  .chip[data-k="amount"] .d { background: var(--amt); }
+  .chip[data-k="payee"] .d { background: var(--pay); }
+  .chip[data-k="date"] .d { background: var(--dat); }
+  .chip[data-k="card"] .d { background: var(--crd); }
+  .chip[data-k="ignore"] .d { background: var(--ign); }
+  .chip .cnt { font-size: 10.5px; font-weight: 500; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+  .chip.on { background: var(--tile); border-color: var(--edge); color: var(--ink); transform: translateY(-1px); }
+  .chip.need .d { box-shadow: 0 0 0 4px rgb(239 159 39 / 0.18); }
+
+  .capture {
+    margin-top: 14px; border-radius: 16px; overflow: hidden;
+    border: 1px solid rgb(93 202 165 / 0.3);
+  }
+  .capture .caphead {
+    background: rgb(93 202 165 / 0.12); color: var(--amt);
+    font-size: 12px; font-weight: 700; padding: 9px 14px; letter-spacing: 0.02em;
+    display: flex; align-items: center; gap: 7px;
+  }
+  .capture .capbody { background: var(--panel); padding: 4px 14px 10px; }
+  .capline { display: flex; justify-content: space-between; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .capline:last-child { border-bottom: 0; }
+  .capline .k { font-size: 13.5px; color: var(--ink-3); flex: none; }
+  .capline .v { font-size: 13.5px; font-weight: 550; text-align: right;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .capline .v.miss { color: var(--ink-3); font-style: italic; font-weight: 400; }
+  .capline .v .fdot { display: inline-block; width: 7px; height: 7px; border-radius: 99px; margin-right: 6px; }
+
+  .formrow {
+    display: flex; align-items: center; gap: 10px; padding: 12px 14px;
+    border-bottom: 1px solid var(--line); font-size: 14.5px;
+  }
+  .formrow:last-child { border-bottom: 0; }
+  .formrow .k { color: var(--ink-3); flex: none; width: 88px; font-size: 13.5px; }
+  .formrow input {
+    flex: 1; min-width: 0; background: none; border: 0; font: inherit; color: var(--ink);
+    font-size: 14.5px; outline: none;
+  }
+  .seg { display: flex; background: var(--tile); border-radius: 9px; padding: 2.5px; gap: 2px; }
+  .seg span { font-size: 12.5px; font-weight: 600; padding: 5px 12px; border-radius: 7px; color: var(--ink-3); }
+  .seg span.on { background: var(--app); color: var(--ink); box-shadow: 0 1px 3px rgb(0 0 0 / 0.35); }
+  .val { color: var(--ink); font-size: 14px; display: flex; align-items: center; gap: 6px; }
+  .val .chev { color: var(--ink-3); }
+  .tgl { width: 46px; height: 28px; border-radius: 99px; background: var(--tile); position: relative; flex: none; }
+  .tgl::after {
+    content: ""; position: absolute; top: 2.5px; left: 3px; width: 23px; height: 23px;
+    border-radius: 99px; background: var(--ink);
+  }
+  .savewhy { text-align: center; font-size: 12px; color: var(--ink-3); }
+
+  .savebar { display: flex; flex-direction: column; gap: 6px; padding-top: 2px; }
+  .cta:disabled { opacity: 0.35; cursor: default; }
+
+  /* ---------- toast ---------- */
+  .toast {
+    position: absolute; top: 118px; left: 50%; transform: translateX(-50%);
+    background: var(--tip, #34332f); color: var(--ink); border: 1px solid var(--line);
+    font-size: 13px; font-weight: 550; border-radius: 99px; padding: 9px 16px;
+    display: flex; gap: 8px; align-items: center; z-index: 40; white-space: nowrap;
+    box-shadow: 0 8px 30px rgb(0 0 0 / 0.45);
+  }
+  .toast .ok { color: var(--amt); }
+
+  /* ---------- inbox ---------- */
+  .txnrow .amt { font-size: 15px; font-weight: 550; font-variant-numeric: tabular-nums; }
+  .txnrow .state { font-size: 11.5px; margin-top: 3px; font-weight: 600; }
+  .txnrow .state.pending { color: var(--warn); }
+  .txnrow .state.synced { color: var(--good); }
+  .tabbar {
+    flex: none; margin: 6px 10px 6px; background: rgb(48 48 45 / 0.92);
+    border-radius: 99px; display: flex; padding: 6px; gap: 4px;
+    backdrop-filter: blur(20px);
+  }
+  .tabbar .tb {
+    flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+    font-size: 10px; font-weight: 550; color: var(--ink-3); padding: 6px 0 5px; border-radius: 99px;
+  }
+  .tabbar .tb.on { color: var(--ink); background: rgb(255 255 255 / 0.08); }
+  .tabbar svg { display: block; }
+</style>
+</head>
+<body>
+
+<header class="board">
+  <h1>Kopifund Alerts · the match flow</h1>
+  <p>redesign mockup · same data as today, re-ordered around one job: confirm, don't construct</p>
+  <span class="hint">frame <b>3</b> is live · tap a field chip, then tap words</span>
+</header>
+
+<div class="frames">
+
+  <!-- ============ FRAME 1 · UNMATCHED ============ -->
+  <section class="step">
+    <div class="label"><span class="n">1</span><span class="t">Unmatched</span><span class="s">triage, not a junk drawer</span></div>
+    <div class="phone">
+      <div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span class="num">17:32</span><span class="r">
+          <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2.5" width="3" height="9.5" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+          <svg width="17" height="12" viewBox="0 0 17 12" fill="currentColor"><path d="M8.5 9.6a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2zM8.5 5.5c2 0 3.8.8 5.1 2.1l-1.5 1.5a5.2 5.2 0 0 0-7.2 0L3.4 7.6A7.3 7.3 0 0 1 8.5 5.5zM8.5 1c3.2 0 6.1 1.3 8.2 3.4l-1.5 1.5A9.3 9.3 0 0 0 8.5 3.2c-2.6 0-4.9 1-6.7 2.7L.3 4.4A11.5 11.5 0 0 1 8.5 1z"/></svg>
+          <svg width="27" height="13" viewBox="0 0 27 13"><rect x="0.5" y="0.5" width="22" height="12" rx="3.5" fill="none" stroke="currentColor" opacity="0.4"/><rect x="2" y="2" width="17" height="9" rx="2" fill="#ef9f27"/><rect x="24" y="4" width="2.5" height="5" rx="1.2" fill="currentColor" opacity="0.4"/></svg>
+        </span></div>
+        <div class="nav"><span class="title">Unmatched</span><span class="spacer"></span>
+          <span class="pillbtn num">7</span>
+        </div>
+        <div class="scroll">
+          <div class="card">
+            <div class="row"><div class="txt">
+              <div class="h">Your PayLah! Transfer dated 27 Oct<span class="amtchip num">SGD 4.80?</span></div>
+              <div class="c">DBS Transaction Alerts · email · 27 Oct</div>
+            </div><svg class="chev" width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+            <div class="swipewrap">
+              <div class="swipeactions">
+                <div class="act mut"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><path d="M3 8.5l3 3 6-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Not an alert</div>
+                <div class="act ign"><svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor"><path d="M7 0a7 7 0 1 0 0 14A7 7 0 0 0 7 0zm0 2a5 5 0 0 1 3.9 8.1L4 3.2A5 5 0 0 1 7 2zM2 7a5 5 0 0 1 1-3l6.9 6.8A5 5 0 0 1 2 7z"/></svg>Ignore sender</div>
+              </div>
+              <div class="row"><div class="txt">
+                <div class="h">Your PayLah! Transfer dated 26 Oct<span class="amtchip num">SGD 12.40?</span></div>
+                <div class="c">DBS Transaction Alerts · email · 26 Oct</div>
+              </div><svg class="chev" width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+            </div>
+            <div class="row"><div class="txt">
+              <div class="h">Your PayLah! Transfer dated 24 Oct<span class="amtchip num">SGD 6.50?</span></div>
+              <div class="c">DBS Transaction Alerts · email · 24 Oct</div>
+            </div><svg class="chev" width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+            <div class="row"><div class="txt">
+              <div class="h">Production deployment failed · kopifund-api<span class="none"> · no amount found</span></div>
+              <div class="c">Vercel · email · 27 Oct</div>
+            </div><svg class="chev" width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+            <div class="row"><div class="txt">
+              <div class="h">New sign-in detected on your account<span class="none"> · no amount found</span></div>
+              <div class="c">GitHub · email · 27 Oct</div>
+            </div><svg class="chev" width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+            <div class="row"><div class="txt">
+              <div class="h">Last call · FoxNXT animation submissions<span class="none"> · no amount found</span></div>
+              <div class="c">Motion Weekly · email · 26 Oct</div>
+            </div><svg class="chev" width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+            <div class="row"><div class="txt">
+              <div class="h">Confirmed: order #4471 has shipped<span class="amtchip num">SGD 89.00?</span></div>
+              <div class="c">Shopline · email · 25 Oct</div>
+            </div><svg class="chev" width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+          </div>
+          <div style="height:24px"></div>
+        </div>
+        <div class="tabbar">
+          <span class="tb"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 8l7-5 7 5v8a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 16V8z" stroke="currentColor" stroke-width="1.6"/></svg>Inbox</span>
+          <span class="tb on"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 2a7 7 0 1 0 0 14A7 7 0 0 0 10 2z" stroke="currentColor" stroke-width="1.6"/><path d="M7.8 7.2a2.3 2.3 0 1 1 3.2 2.8c-.6.4-1 .7-1 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="10" cy="14.6" r="0.9" fill="currentColor"/></svg>Unmatched</span>
+          <span class="tb"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 6h14M3 10h14M3 14h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="7" cy="6" r="1.8" fill="currentColor"/><circle cx="13" cy="10" r="1.8" fill="currentColor"/><circle cx="9" cy="14" r="1.8" fill="currentColor"/></svg>Patterns</span>
+          <span class="tb"><svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path d="M10 1.8l1.4 2.1 2.5-.3.7 2.4 2.3 1-.6 2.4 1.5 2-1.9 1.7.2 2.5-2.4.5-1.2 2.2-2.5-.8-2.5.8-1.2-2.2-2.4-.5.2-2.5-1.9-1.7 1.5-2L2.4 7l2.3-1 .7-2.4 2.5.3L10 1.8z" transform="scale(0.9) translate(1,1)"/><circle cx="10" cy="10" r="2.6" fill="var(--app)"/></svg>Settings</span>
+        </div>
+        <div class="homebar"></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li><b>Rows lead with the first meaningful line</b>, not the boilerplate every bank email shares. Sender + date sit in the caption.</li>
+      <li><b>A detected-amount chip</b> ("SGD 4.80?") separates likely-money mail from noise at a glance · the same detection the builder already does.</li>
+      <li><b>Swipe reveals "Not an alert" and "Ignore sender"</b> · noise leaves the queue instead of piling up forever. Shown mid-swipe on row 2.</li>
+    </ul>
+  </section>
+
+  <!-- ============ FRAME 2 · ALERT (read first) ============ -->
+  <section class="step">
+    <div class="label"><span class="n">2</span><span class="t">Alert</span><span class="s">new step: read before you teach</span></div>
+    <div class="phone">
+      <div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span class="num">17:32</span><span class="r">
+          <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2.5" width="3" height="9.5" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+          <svg width="17" height="12" viewBox="0 0 17 12" fill="currentColor"><path d="M8.5 9.6a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2zM8.5 5.5c2 0 3.8.8 5.1 2.1l-1.5 1.5a5.2 5.2 0 0 0-7.2 0L3.4 7.6A7.3 7.3 0 0 1 8.5 5.5zM8.5 1c3.2 0 6.1 1.3 8.2 3.4l-1.5 1.5A9.3 9.3 0 0 0 8.5 3.2c-2.6 0-4.9 1-6.7 2.7L.3 4.4A11.5 11.5 0 0 1 8.5 1z"/></svg>
+          <svg width="27" height="13" viewBox="0 0 27 13"><rect x="0.5" y="0.5" width="22" height="12" rx="3.5" fill="none" stroke="currentColor" opacity="0.4"/><rect x="2" y="2" width="17" height="9" rx="2" fill="#ef9f27"/><rect x="24" y="4" width="2.5" height="5" rx="1.2" fill="currentColor" opacity="0.4"/></svg>
+        </span></div>
+        <div class="nav">
+          <span class="back"><svg width="10" height="16" viewBox="0 0 10 16" fill="none"><path d="M8.5 1.5L2 8l6.5 6.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></span>
+          <span class="title small">Alert</span><span class="spacer"></span>
+          <span class="pillbtn"><svg width="15" height="15" viewBox="0 0 15 15" fill="currentColor"><circle cx="2.5" cy="7.5" r="1.6"/><circle cx="7.5" cy="7.5" r="1.6"/><circle cx="12.5" cy="7.5" r="1.6"/></svg></span>
+        </div>
+        <div class="scroll">
+          <div class="mailhead">
+            <div class="from">DBS Transaction Alerts</div>
+            <div class="meta">email · 27 Oct 2026, 5:02 PM</div>
+          </div>
+          <div class="mailbody">
+            <div class="subj">Transaction Alerts</div>
+            <p class="dim">Problems viewing this email? Select "display images" always. Ref TXN-8842-1027.</p>
+            <p>Dear Sir/Madam,</p>
+            <p>We refer to your <b>PayLah!</b> Transfer dated <span class="u-dat">27 Oct 2026</span>. We are pleased to confirm that the transaction was completed.</p>
+            <p>Date&nbsp;&nbsp;&nbsp;&nbsp;<span class="u-dat">27 Oct 2026</span><br>
+               Amount&nbsp;&nbsp;<span class="u-amt">SGD 4.80</span><br>
+               To&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Ah Ma Fishball Noodles</p>
+            <p class="dim">Please call 1800 111 2222 if you did not make this transaction. This is an auto-generated email, please do not reply.</p>
+          </div>
+          <div style="height:30px"></div>
+        </div>
+        <div class="dock">
+          <div class="foundline"><span class="dot"></span><span>This looks like a payment alert · <b class="num">1 amount, 1 date</b> found</span></div>
+          <button class="cta pri">Teach a pattern</button>
+          <button class="cta sec">Not an alert</button>
+          <button class="quietlink">Always ignore alerts from this sender</button>
+        </div>
+        <div class="homebar"></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li><b>The email is an email again.</b> You read it before you teach anything · the current app skips straight to the token wall.</li>
+      <li><b>The detector speaks first:</b> "1 amount, 1 date found" · candidates get faint underlines so you can see the machine's guess before committing.</li>
+      <li><b>Three honest exits:</b> teach a pattern, dismiss as noise, or silence the sender. Every unmatched row gets a way out, not just a way in.</li>
+    </ul>
+  </section>
+
+  <!-- ============ FRAME 3 · NEW PATTERN ============ -->
+  <section class="step">
+    <div class="label"><span class="n">3</span><span class="t">New pattern</span><span class="s">confirm, don't construct</span></div>
+    <div class="phone">
+      <div class="screen">
+        <div class="island"></div>
+        <div class="statusbar"><span class="num">17:32</span><span class="r">
+          <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2.5" width="3" height="9.5" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+          <svg width="17" height="12" viewBox="0 0 17 12" fill="currentColor"><path d="M8.5 9.6a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2zM8.5 5.5c2 0 3.8.8 5.1 2.1l-1.5 1.5a5.2 5.2 0 0 0-7.2 0L3.4 7.6A7.3 7.3 0 0 1 8.5 5.5zM8.5 1c3.2 0 6.1 1.3 8.2 3.4l-1.5 1.5A9.3 9.3 0 0 0 8.5 3.2c-2.6 0-4.9 1-6.7 2.7L.3 4.4A11.5 11.5 0 0 1 8.5 1z"/></svg>
+          <svg width="27" height="13" viewBox="0 0 27 13"><rect x="0.5" y="0.5" width="22" height="12" rx="3.5" fill="none" stroke="currentColor" opacity="0.4"/><rect x="2" y="2" width="17" height="9" rx="2" fill="#ef9f27"/><rect x="24" y="4" width="2.5" height="5" rx="1.2" fill="currentColor" opacity="0.4"/></svg>
+        </span></div>
+        <div class="nav">
+          <span class="back"><svg width="10" height="16" viewBox="0 0 10 16" fill="none"><path d="M8.5 1.5L2 8l6.5 6.5" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></span>
+          <span class="title small">New pattern</span><span class="spacer"></span>
+          <span class="progress" id="prog">3 of 3 found</span>
+        </div>
+        <div class="scroll" id="pscroll">
+          <div class="doctext" id="doc"><span class="subj">Transaction Alerts</span><br><span class="tk dim">Problems</span><span class="sp dim"> </span><span class="tk dim">viewing</span><span class="sp dim"> </span><span class="tk dim">this</span><span class="sp dim"> </span><span class="tk dim">email?</span><span class="sp dim"> </span><span class="tk dim">Select</span><span class="sp dim"> </span><span class="tk dim">"display</span><span class="sp dim"> </span><span class="tk dim">images"</span><span class="sp dim"> </span><span class="tk dim">always.</span><span class="sp dim"> </span><span class="tk dim">Ref</span><span class="sp dim"> </span><span class="tk dim">TXN-8842-1027.</span><br><span class="tk">Dear</span><span class="sp"> </span><span class="tk">Sir/Madam,</span><br><span class="tk">We</span><span class="sp"> </span><span class="tk">refer</span><span class="sp"> </span><span class="tk">to</span><span class="sp"> </span><span class="tk">your</span><span class="sp"> </span><span class="tk" data-sug="payee">PayLah</span><span class="tk">!</span><span class="sp"> </span><span class="tk">Transfer</span><span class="sp"> </span><span class="tk">dated</span><span class="sp"> </span><span class="tk" data-sug="date">27</span><span class="sp"> </span><span class="tk" data-sug="date">Oct</span><span class="sp"> </span><span class="tk" data-sug="date">2026.</span><br><br><span class="tk">Date</span><span class="sp">      </span><span class="tk" data-f="date">27</span><span class="sp" data-f="date"> </span><span class="tk" data-f="date">Oct</span><span class="sp" data-f="date"> </span><span class="tk" data-f="date">2026</span><br><span class="tk">Amount</span><span class="sp">    </span><span class="tk" data-f="amount">SGD</span><span class="sp" data-f="amount"> </span><span class="tk" data-f="amount">4.80</span><br><span class="tk">To</span><span class="sp">        </span><span class="tk" data-f="payee">Ah</span><span class="sp" data-f="payee"> </span><span class="tk" data-f="payee">Ma</span><span class="sp" data-f="payee"> </span><span class="tk" data-f="payee">Fishball</span><span class="sp" data-f="payee"> </span><span class="tk" data-f="payee">Noodles</span><br><br><span class="tk dim">Please</span><span class="sp dim"> </span><span class="tk dim">call</span><span class="sp dim"> </span><span class="tk dim" data-sug="amount">1800</span><span class="sp dim"> </span><span class="tk dim" data-sug="amount">111</span><span class="sp dim"> </span><span class="tk dim" data-sug="amount">2222</span><span class="sp dim"> </span><span class="tk dim">if</span><span class="sp dim"> </span><span class="tk dim">you</span><span class="sp dim"> </span><span class="tk dim">did</span><span class="sp dim"> </span><span class="tk dim">not</span><span class="sp dim"> </span><span class="tk dim">make</span><span class="sp dim"> </span><span class="tk dim">this</span><span class="sp dim"> </span><span class="tk dim">transaction.</span><span class="sp dim"> </span><span class="tk dim">This</span><span class="sp dim"> </span><span class="tk dim">is</span><span class="sp dim"> </span><span class="tk dim">an</span><span class="sp dim"> </span><span class="tk dim">auto-generated</span><span class="sp dim"> </span><span class="tk dim">email,</span><span class="sp dim"> </span><span class="tk dim">please</span><span class="sp dim"> </span><span class="tk dim">do</span><span class="sp dim"> </span><span class="tk dim">not</span><span class="sp dim"> </span><span class="tk dim">reply.</span></div>
+
+          <div class="capture">
+            <div class="caphead">
+              <svg width="13" height="13" viewBox="0 0 13 13" fill="none"><path d="M6.5 1l1.2 3.4L11 4.5 8.4 6.8l.9 3.7L6.5 8.3 3.7 10.5l.9-3.7L2 4.5l3.3-.1L6.5 1z" stroke="currentColor" stroke-width="1.1" stroke-linejoin="round"/></svg>
+              THIS PATTERN READS
+            </div>
+            <div class="capbody" id="capbody"></div>
+          </div>
+
+          <div class="sect">About this pattern</div>
+          <div class="card">
+            <div class="formrow"><span class="k">Name</span><input value="PayLah! Transfer"></div>
+            <div class="formrow"><span class="k">Direction</span>
+              <div class="seg"><span class="on">Outflow</span><span>Inflow</span></div>
+            </div>
+            <div class="formrow"><span class="k">Account</span>
+              <span class="val">DBS Everyday<svg class="chev" width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+            </div>
+            <div class="formrow"><span class="k">Category</span>
+              <span class="val" style="color:var(--ink-3)">Dining · Hawker<svg class="chev" width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></span>
+            </div>
+            <div class="formrow"><span class="k" style="width:auto;flex:1;color:var(--ink)">Auto-approve matches</span><span class="tgl"></span></div>
+          </div>
+          <div style="height:26px"></div>
+        </div>
+        <div class="dock">
+          <div class="hintline" id="hint"></div>
+          <div class="chips" id="chips">
+            <button class="chip" data-k="amount"><span class="d"></span>Amount<span class="cnt">·</span></button>
+            <button class="chip" data-k="payee"><span class="d"></span>Payee<span class="cnt">·</span></button>
+            <button class="chip" data-k="date"><span class="d"></span>Date<span class="cnt">·</span></button>
+            <button class="chip" data-k="card"><span class="d"></span>Card<span class="cnt">·</span></button>
+            <button class="chip" data-k="ignore"><span class="d"></span>Ignore<span class="cnt">·</span></button>
+          </div>
+          <div class="savebar">
+            <button class="cta pri" id="save">Save pattern</button>
+            <div class="savewhy" id="savewhy"></div>
+          </div>
+        </div>
+        <div class="homebar"></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li><b>Highlights live in the text.</b> Same-field neighbours merge into one tinted span · "SGD 4.80" reads as a unit, not two chips.</li>
+      <li><b>The machine guesses first:</b> dashed marks are unconfirmed candidates ("1800 111 2222" guessed as amount is wrong · tap to fix or leave it).</li>
+      <li><b>"This pattern reads" is the live test</b>, moved above the fold. It shows what extraction produces before you save · the aha the current screen buries.</li>
+      <li><b>Save explains itself.</b> Disabled state says why; the chips pulse on whatever is still missing.</li>
+    </ul>
+  </section>
+
+  <!-- ============ FRAME 4 · INBOX (loop closed) ============ -->
+  <section class="step">
+    <div class="label"><span class="n">4</span><span class="t">Inbox</span><span class="s">the loop closes visibly</span></div>
+    <div class="phone">
+      <div class="screen">
+        <div class="island"></div>
+        <div class="toast"><svg class="ok" width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7.5l3 3 6-7" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>Pattern saved · 1 alert matched</div>
+        <div class="statusbar"><span class="num">17:33</span><span class="r">
+          <svg width="18" height="12" viewBox="0 0 18 12" fill="currentColor"><rect x="0" y="7" width="3" height="5" rx="1"/><rect x="4.5" y="5" width="3" height="7" rx="1"/><rect x="9" y="2.5" width="3" height="9.5" rx="1"/><rect x="13.5" y="0" width="3" height="12" rx="1"/></svg>
+          <svg width="17" height="12" viewBox="0 0 17 12" fill="currentColor"><path d="M8.5 9.6a1.6 1.6 0 1 1 0 3.2 1.6 1.6 0 0 1 0-3.2zM8.5 5.5c2 0 3.8.8 5.1 2.1l-1.5 1.5a5.2 5.2 0 0 0-7.2 0L3.4 7.6A7.3 7.3 0 0 1 8.5 5.5zM8.5 1c3.2 0 6.1 1.3 8.2 3.4l-1.5 1.5A9.3 9.3 0 0 0 8.5 3.2c-2.6 0-4.9 1-6.7 2.7L.3 4.4A11.5 11.5 0 0 1 8.5 1z"/></svg>
+          <svg width="27" height="13" viewBox="0 0 27 13"><rect x="0.5" y="0.5" width="22" height="12" rx="3.5" fill="none" stroke="currentColor" opacity="0.4"/><rect x="2" y="2" width="17" height="9" rx="2" fill="#ef9f27"/><rect x="24" y="4" width="2.5" height="5" rx="1.2" fill="currentColor" opacity="0.4"/></svg>
+        </span></div>
+        <div class="nav"><span class="title">Inbox</span><span class="spacer"></span>
+          <span class="pillbtn">Approve all</span>
+          <span class="pillbtn" style="padding:8px 10px"><svg width="15" height="15" viewBox="0 0 15 15" fill="none"><rect x="4.5" y="1.5" width="9" height="12" rx="2" stroke="currentColor" stroke-width="1.5"/><path d="M2 11V3.5A1.5 1.5 0 0 1 3.5 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg></span>
+        </div>
+        <div class="scroll">
+          <div class="sect">Pending</div>
+          <div class="card">
+            <div class="row txnrow"><div class="txt">
+              <div class="h">Ah Ma Fishball Noodles</div>
+              <div class="c">27 Oct · DBS Everyday · via email</div>
+            </div>
+            <div style="text-align:right">
+              <div class="amt num">−SGD 4.80</div>
+              <div class="state pending">pending</div>
+            </div>
+            <svg class="chev" width="7" height="12" viewBox="0 0 7 12" fill="none"><path d="M1 1l5 5-5 5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg></div>
+          </div>
+          <div class="sect">History</div>
+          <div class="card">
+            <div class="row txnrow"><div class="txt">
+              <div class="h">Grab Holdings</div>
+              <div class="c">26 Oct · GrabPay · via wallet</div>
+            </div>
+            <div style="text-align:right">
+              <div class="amt num">−SGD 14.20</div>
+              <div class="state synced">synced</div>
+            </div></div>
+            <div class="row txnrow"><div class="txt">
+              <div class="h">Salary · November</div>
+              <div class="c">25 Oct · DBS Everyday · via sms</div>
+            </div>
+            <div style="text-align:right">
+              <div class="amt num" style="color:var(--good)">+SGD 5,200.00</div>
+              <div class="state synced">synced</div>
+            </div></div>
+          </div>
+          <div style="height:24px"></div>
+        </div>
+        <div class="tabbar">
+          <span class="tb on"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 8l7-5 7 5v8a1.5 1.5 0 0 1-1.5 1.5h-11A1.5 1.5 0 0 1 3 16V8z" stroke="currentColor" stroke-width="1.6"/></svg>Inbox</span>
+          <span class="tb"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 2a7 7 0 1 0 0 14A7 7 0 0 0 10 2z" stroke="currentColor" stroke-width="1.6"/><path d="M7.8 7.2a2.3 2.3 0 1 1 3.2 2.8c-.6.4-1 .7-1 1.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="10" cy="14.6" r="0.9" fill="currentColor"/></svg>Unmatched</span>
+          <span class="tb"><svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M3 6h14M3 10h14M3 14h14" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><circle cx="7" cy="6" r="1.8" fill="currentColor"/><circle cx="13" cy="10" r="1.8" fill="currentColor"/><circle cx="9" cy="14" r="1.8" fill="currentColor"/></svg>Patterns</span>
+          <span class="tb"><svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor"><path d="M10 1.8l1.4 2.1 2.5-.3.7 2.4 2.3 1-.6 2.4 1.5 2-1.9 1.7.2 2.5-2.4.5-1.2 2.2-2.5-.8-2.5.8-1.2-2.2-2.4-.5.2-2.5-1.9-1.7 1.5-2L2.4 7l2.3-1 .7-2.4 2.5.3L10 1.8z" transform="scale(0.9) translate(1,1)"/><circle cx="10" cy="10" r="2.6" fill="var(--app)"/></svg>Settings</span>
+        </div>
+        <div class="homebar"></div>
+      </div>
+    </div>
+    <ul class="notes">
+      <li><b>The payoff is visible:</b> saving a pattern re-ingests that alert, and the toast says the loop worked · "1 alert matched".</li>
+      <li><b>Inbox rows gain account context</b> ("DBS Everyday · via email") so a pending item answers "which card, which channel" without opening it.</li>
+      <li><b>History shows inflow in green.</b> State captions only appear where they add information · "pending" under Pending is dropped from the sectioned row's own line.</li>
+    </ul>
+  </section>
+
+</div>
+
+<script>
+/* Frame 3: tap-to-tag interaction.
+   .tk = tappable token, .sp = whitespace (merges highlight between same-field
+   neighbours), [data-f] = tagged field, [data-sug] = detector suggestion. */
+(function () {
+  const doc = document.getElementById('doc');
+  const chips = [...document.querySelectorAll('#chips .chip')];
+  const hint = document.getElementById('hint');
+  const prog = document.getElementById('prog');
+  const capbody = document.getElementById('capbody');
+  const save = document.getElementById('save');
+  const savewhy = document.getElementById('savewhy');
+  const ORDER = ['amount', 'payee', 'date'];
+  const LABEL = { amount: 'Amount', payee: 'Payee', date: 'Date', card: 'Card', ignore: 'Ignore' };
+  const NEED = { amount: 'the money figure', payee: 'the merchant or person', date: 'when it happened' };
+  let active = 'amount';
+
+  const toks = () => [...doc.querySelectorAll('.tk')];
+
+  // pick the armed field: first still-missing one in ORDER, else stay
+  function autoActive() {
+    for (const f of ORDER) if (!toks().some(t => t.dataset.f === f)) { active = f; return; }
+  }
+
+  doc.addEventListener('click', e => {
+    const tk = e.target.closest('.tk');
+    if (!tk) return;
+    if (tk.dataset.f === active) delete tk.dataset.f;
+    else { tk.dataset.f = active; delete tk.dataset.sug; }
+    update();
+  });
+
+  chips.forEach(c => c.addEventListener('click', () => { active = c.dataset.k; update(); }));
+
+  save.addEventListener('click', () => {
+    if (save.disabled) return;
+    save.textContent = 'Saved ✓';
+    save.style.background = 'var(--amt)';
+    setTimeout(() => { save.textContent = 'Save pattern'; save.style.background = ''; }, 1600);
+  });
+
+  function taggedSpans() {
+    // merge consecutive same-field tokens into capture strings
+    const out = [];
+    const seq = [...doc.querySelectorAll('.tk,.sp,br')];
+    let cur = null;
+    for (const el of seq) {
+      if (el.classList.contains('tk') && el.dataset.f) {
+        if (cur && cur.f === el.dataset.f) cur.text += el.textContent;
+        else { cur = { f: el.dataset.f, text: el.textContent }; out.push(cur); }
+      } else if (el.classList.contains('sp') && cur) {
+        cur.text += el.textContent;
+        cur.tail = true; // whitespace joins same-field runs only when the next token matches
+      } else if (el.tagName === 'BR') { cur = null; }
+      else { cur = null; }
+    }
+    // trim: whitespace should only join when the run continued
+    return out.map(s => ({ f: s.f, text: s.text.trimEnd() }));
+  }
+
+  function update() {
+    const spans = taggedSpans();
+    const byField = {};
+    for (const s of spans) (byField[s.f] = byField[s.f] || []).push(s.text);
+    const have = f => !!byField[f];
+
+    // merge whitespace + radius for continuous highlights
+    const seq = [...doc.querySelectorAll('.tk,.sp')];
+    seq.forEach(el => { if (el.classList.contains('sp')) delete el.dataset.f; });
+    for (let i = 0; i < seq.length; i++) {
+      const el = seq[i];
+      if (!el.classList.contains('sp')) continue;
+      const p = prevTk(seq, i), n = nextTk(seq, i);
+      if (p && n && p.dataset.f && p.dataset.f === n.dataset.f) el.dataset.f = p.dataset.f;
+    }
+    toks().forEach(t => t.classList.remove('rs', 're'));
+    const tkseq = toks();
+    tkseq.forEach((t, i) => {
+      if (!t.dataset.f) return;
+      const p = tkseq[i - 1], n = tkseq[i + 1];
+      if (p && p.dataset.f === t.dataset.f) t.classList.add('re');
+      if (n && n.dataset.f === t.dataset.f) t.classList.add('rs');
+    });
+
+    // progress + hint
+    const found = ORDER.filter(have).length;
+    prog.textContent = found === 3 ? '3 of 3 found' : `${found} of 3 found`;
+    prog.style.color = found === 3 ? 'var(--amt)' : 'var(--warn)';
+    prog.style.background = found === 3 ? 'rgb(93 202 165 / 0.14)' : 'rgb(239 159 39 / 0.14)';
+
+    if (!have('amount')) hint.innerHTML = 'Tap the <b>amount</b> · ' + NEED.amount;
+    else if (!have('payee')) hint.innerHTML = 'Now tap the <b>payee</b> · ' + NEED.payee;
+    else if (!have('date')) hint.innerHTML = 'And the <b>date</b> · ' + NEED.date;
+    else hint.innerHTML = '<b>Looks good.</b> Wrong guess? Pick a field below, then tap the words to fix it.';
+    autoActive();
+    chips.forEach(c => {
+      const k = c.dataset.k;
+      c.classList.toggle('on', k === active);
+      c.classList.toggle('need', ORDER.includes(k) && !have(k));
+      c.querySelector('.cnt').textContent = (byField[k] || []).length || '·';
+    });
+
+    // capture card = live Matcher.test output
+    const line = (k, label, fmt) => {
+      const v = byField[k];
+      return `<div class="capline"><span class="k">${label}</span>` +
+        (v ? `<span class="v"><span class="fdot" style="background:var(--${{amount:'amt',payee:'pay',date:'dat',card:'crd'}[k]})"></span>${v.join(' + ')}</span>`
+           : `<span class="v miss">not tagged yet</span>`) + `</div>`;
+    };
+    capbody.innerHTML =
+      line('payee', 'Payee') + line('amount', 'Amount') + line('date', 'Date') +
+      `<div class="capline"><span class="k">Direction</span><span class="v">outflow → DBS Everyday</span></div>`;
+
+    const ok = have('amount') && have('payee');
+    save.disabled = !ok;
+    savewhy.textContent = ok ? '' : 'needs an amount and a payee to save';
+  }
+  function prevTk(seq, i) { for (let j = i - 1; j >= 0; j--) { if (seq[j].classList.contains('tk')) return seq[j]; if (seq[j].tagName === 'BR' || seq[j].nodeName === 'BR') return null; } return null; }
+  function nextTk(seq, i) { for (let j = i + 1; j < seq.length; j++) { if (seq[j].classList.contains('tk')) return seq[j]; if (seq[j].tagName === 'BR') return null; } return null; }
+  update();
+})();
+</script>
+</body>
+</html>

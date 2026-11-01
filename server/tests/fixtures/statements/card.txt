@@ -1,0 +1,60 @@
+Debit Cards
+Statement of Account
+
+                                                                                                                                                        Page 1 of 1
+
+
+                                                                                         2618349-1836
+
+
+     ,      "%            %                )),
+      TAN MEI LING
+      BLK 100A ALPHA RD 1
+      #01-100
+      SINGAPORE 100100
+                                                    ./-0./-0./-0./-0./-0./-0./-0./
+
+
+
+
+                                                                                                                                              for ACCOUNT: 130-24680-5
+                                                                                                                                                      As at 09 Dec 2024
+
+     DATE                         DESCRIPTION - TRANSACTION DATE                                                                                                     AMOUNT(S$)
+
+     DBS VISA DEBIT CARD
+
+     TAN MEI LING 'S CARD NO.: 4000-1234-5678-4242
+
+     13 Nov                       REVOLUT**0000*                     SINGAPORE                SG 11 NOV                                     $                          128.89
+                                          REF NO.: VT404858201856712475743
+
+                                                                                                                          TOTAL             $                          128.89
+
+     DBS SAFRA DEBIT CARD
+
+     TAN MEI LING 'S CARD NO.: 5100-1234-5678-5454
+
+     12 Nov                       OPENAI *CHATGPT SUBSCR SAN FRANCISCO CA 10 NOV                                                            $                            27.43
+                                          REF NO.: MT341733331566495439961 USD 20.00
+
+     01 Dec                       AID-SINGAPORE                         SINGAPORE                SGP 29 NOV                                 $                            18.00
+                                          REF NO.: MT378774718509399609992
+
+                                                                                                                          TOTAL             $                            45.43
+
+                                                                                                             GRAND TOTAL                    $                          174.32
+
+    This statement shows the details of all card transactions (as defined in the DBS Debit Card Agreement including applicable fees and charges) effected by you using your DBS/POSB Debit
+    Card and debited from your card account. These transactions are also reflected in your POSB Savings Account Passbook, as the case may be.
+
+    If you find any discrepancies in the entries in this statement, please contact us at 1800 1111 111 within seven (7) days of your receipt of the statement. Otherwise, we will consider the
+    statement as correct.
+
+    As part of our ongoing efforts to Go Green, please read the latest updates and Important Notes on your DBS/POSB Debit Card at www.dbs.com.sg/personal/cards/debit-cards/default.page.
+
+
+
+
+                                                                PDS_DBCRD_E_LOC_ESTMT_5624dc147cc7a339_01836
+

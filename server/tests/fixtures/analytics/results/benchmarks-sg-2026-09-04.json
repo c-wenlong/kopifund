@@ -1,0 +1,121 @@
+{
+  "id": "benchmarks-sg",
+  "title": "Against Singapore references",
+  "generated_at": "2026-09-04T10:15:11+08:00",
+  "snapshot": "snapshot-2026-09-04.json",
+  "sources": [
+    {
+      "database": "Transactions",
+      "rows_used": 1712,
+      "filter": "flow_class = External, last 12 months"
+    },
+    {
+      "database": "Period balances",
+      "rows_used": 122,
+      "filter": "month ends"
+    }
+  ],
+  "params": {
+    "age_band": "30 to 34",
+    "status": "salaried",
+    "window_months": 12
+  },
+  "chart": {
+    "type": "bar",
+    "x": "metric",
+    "series": [
+      "you",
+      "benchmark"
+    ],
+    "source": "comparisons",
+    "unit": "sgd_minor"
+  },
+  "data": {
+    "comparisons": [
+      {
+        "metric": "Monthly spend",
+        "unit": "sgd",
+        "benchmark_id": "hes-2023-age-25-34-monthly-expenditure",
+        "note": "The benchmark is a whole household; a single-person share is nearer 1,900.",
+        "source": "SingStat Household Expenditure Survey 2023",
+        "url": "https://www.singstat.gov.sg/publications/households/household-expenditure-survey",
+        "as_of": "2023",
+        "you_minor": 214800,
+        "benchmark_minor": 432200
+      },
+      {
+        "metric": "Gross monthly income",
+        "unit": "sgd",
+        "benchmark_id": "mom-2024-median-gross-fresh-graduate",
+        "note": "A rough guide only: the benchmark is a graduate's first full-time salary.",
+        "source": "MOM Graduate Employment Survey 2024",
+        "url": "https://stats.mom.gov.sg/",
+        "as_of": "2024",
+        "you_minor": 340000,
+        "benchmark_minor": 450000
+      },
+      {
+        "metric": "Emergency fund (months)",
+        "you": 8.7,
+        "benchmark": 6.0,
+        "unit": "months",
+        "benchmark_id": "moneysense-emergency-fund-months",
+        "note": "Above the guidance on the current, low, spend.",
+        "source": "MoneySense emergency fund guidance",
+        "url": "https://www.moneysense.gov.sg/",
+        "as_of": "2024"
+      }
+    ]
+  },
+  "findings": [
+    "Monthly spend of 2,148 SGD is half the 4,322 a 25 to 34 household spends, but that benchmark counts a whole household.",
+    "The emergency fund covers 8.7 months against the 3 to 6 MoneySense suggests, so the cash pile is ahead of guidance.",
+    "Gross income is 3,400 against a 4,500 median for fresh graduates, a rough guide only since the benchmark is a first full-time salary."
+  ],
+  "caveats": [
+    "Every benchmark is a population median or a household average, and a single person renting alone is neither.",
+    "The reference years differ (2023 to 2025), so none of these is inflation adjusted to today."
+  ],
+  "benchmarks": [
+    {
+      "id": "hes-2023-age-25-34-monthly-expenditure",
+      "value": 4322,
+      "unit": "SGD per household per month",
+      "population": "households headed by 25 to 34 year olds",
+      "as_of": "2023",
+      "source": "SingStat Household Expenditure Survey 2023",
+      "url": "https://www.singstat.gov.sg/publications/households/household-expenditure-survey",
+      "notes": "Household, not person; a one-person household is lower."
+    },
+    {
+      "id": "mom-2024-median-gross-fresh-graduate",
+      "value": 4500,
+      "unit": "SGD gross per month",
+      "population": "fresh university graduates in full-time employment",
+      "as_of": "2024",
+      "source": "MOM Graduate Employment Survey 2024",
+      "url": "https://stats.mom.gov.sg/",
+      "notes": "Gross, before CPF."
+    },
+    {
+      "id": "cpf-2025-employee-contribution-rate",
+      "value": 20,
+      "unit": "percent of ordinary wages",
+      "population": "employees aged 55 and below",
+      "as_of": "2025",
+      "source": "CPF Board contribution rates",
+      "url": "https://www.cpf.gov.sg/employer/employer-obligations/how-much-cpf-contributions-to-pay",
+      "notes": "Employer adds a further 17 percent."
+    },
+    {
+      "id": "moneysense-emergency-fund-months",
+      "value": 6,
+      "unit": "months of expenses",
+      "population": "general guidance",
+      "as_of": "2024",
+      "source": "MoneySense emergency fund guidance",
+      "url": "https://www.moneysense.gov.sg/",
+      "notes": "Three to six months is the range."
+    }
+  ]
+}

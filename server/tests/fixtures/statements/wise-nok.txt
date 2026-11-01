@@ -1,0 +1,51 @@
+  Wise Asia-Pacific Pte Ltd.
+  2 Tanjong Katong Road, #07-01, PLQ3
+  Singapore
+  437161
+  Singapore
+
+
+
+
+  NOK statement
+  6 July 2024 [GMT+08:00] - 6 September 2026 [GMT+08:00]
+
+  Generated on: 6 September 2026
+
+
+   Account Holder                                                        IBAN                               Swift/BIC
+   Mei Ling Tan                                                          GB00 TRWI 0000 1111 2222 33        TRWIGB2LXXX
+   100A ALPHA RD 1 #1-100
+   Singapore
+   100100
+   Singapore
+
+
+
+   NOK on 6 September 2026 [GMT+08:00]                                                                                           0.00 NOK
+
+  Description                                                                                   Incoming          Outgoing            Amount
+
+
+  Converted 140.00 NOK to 18.67 SGD (fee: 0.62 NOK)                                                                -139.38               0.00
+  14 July 2025 | Transaction: BALANCE-0272333191
+
+  Wise Charges for: BALANCE-0272333191                                                                                -0.62            139.38
+  14 July 2025 | Transaction: FEE-BALANCE-0272333191
+
+  Received money from Amita Roy with reference                                                    140.00                               140.00
+  2 June 2025 | Transaction: TRANSFER-2622102049
+
+
+
+
+   Wise Asia-Pacific Pte. Ltd. is a company incorporated under the laws of Singapore with Unique Entity Number 201422384R. We are licensed by
+   the Monetary Authority of Singapore ("MAS") as a major payment institution under the Payment Service Act ("PSA").
+
+   Need help? Visit wise.com/help
+
+
+
+
+ref:a0a0a0a0-0000-4000-8000-000000000000                                                                                                   1/1
+

@@ -1,0 +1,1 @@
+mark-transparent.svg skipped: riso is raster-first; the paper, halftone and misregistration are the style and the cup is printed into the paper, so there is no clean transparent mark. Use logo-rounded/-square on light grounds.

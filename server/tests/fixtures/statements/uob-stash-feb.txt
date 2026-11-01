@@ -1,0 +1,53 @@
+                                                                                                           Page 1 of 2
+
+TAN MEI LING                                                          Contact Us
+100A ALPHA RD 1                                                       Call our hotline
+#01-100 SINGAPORE 100100                                              uob.com.sg
+
+Statement of Account
+Period: 01 Feb 2026 to 28 Feb 2026
+
+Account Overview as at 28 Feb 2026
+                                                                                                          Amount (SGD)
+Deposits                                                                                                     12,925.41
+
+Deposits
+                                            Currency     Credit Line    Interest Earned* Interest Charged*     Balance
+Stash Account
+987-654-321-0                                    SGD               -                0.00                 -   12,925.41
+                                                                                         Total (SGD)         12,925.41
+                                                                        Grand Total (SGD Equivalent)         12,925.41
+* Interest Earned/Charged for 2026
+
+-------------------------------------------------- End of Summary ----------------------------------------------------
+
+
+                                                                 United Overseas Bank Limited  Co. Reg. No. 193500026Z
+
+                                                                                                           Page 2 of 2
+
+Account Transaction Details
+Stash Account 987-654-321-0
+
+Date          Description                                              Withdrawals          Deposits           Balance
+                                                                               SGD               SGD               SGD
+01 Feb        BALANCE B/F                                                                                    12,500.00
+02 Feb        Funds Transfer                                                                  500.00         13,000.00
+              mBK-0098765432
+              TAN MEI LING
+16 Feb        Cash Withdrawal                                               100.00                           12,900.00
+              ATM UOB PLAZA
+16 Feb        Funds Transfer                                                                   25.00         12,925.00
+              mBK-0098765433
+              ANG BEE HOON
+28 Feb        Interest Credit                                                                   0.41         12,925.41
+              BALANCE C/F                                                                                    12,925.41
+
+              Total                                                         100.00            525.41
+
+-------------------------------------------- End of Transaction Details ----------------------------------------------
+
+
+                                                                 United Overseas Bank Limited  Co. Reg. No. 193500026Z
+
+

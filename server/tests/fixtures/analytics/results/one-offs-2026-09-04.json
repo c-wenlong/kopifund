@@ -1,0 +1,123 @@
+{
+  "id": "one-offs",
+  "title": "One-off spikes",
+  "generated_at": "2026-09-04T10:14:22+08:00",
+  "snapshot": "snapshot-2026-09-04.json",
+  "sources": [
+    {
+      "database": "Transactions",
+      "rows_used": 1712,
+      "filter": "flow_class = External and direction = Out and amount > 5 x the category median"
+    }
+  ],
+  "params": {
+    "threshold_multiple": 5,
+    "min_amount_minor": 10000
+  },
+  "chart": {
+    "type": "scatter",
+    "x": "multiple_of_median",
+    "series": [
+      "amount_minor"
+    ],
+    "source": "items",
+    "unit": "sgd_minor",
+    "label": "label"
+  },
+  "data": {
+    "items": [
+      {
+        "date": "2026-01-09",
+        "payee": "Berlitz",
+        "category": "Education",
+        "multiple_of_median": 11.83,
+        "memo": "Term fee for an evening language course",
+        "label": "Berlitz 2026-01-09",
+        "amount_minor": 142000,
+        "category_median_minor": 12000
+      },
+      {
+        "date": "2026-06-14",
+        "payee": "Klook",
+        "category": "Travel",
+        "multiple_of_median": 12.48,
+        "memo": "Phuket flights, split with a friend",
+        "label": "Klook 2026-06-14",
+        "amount_minor": 78000,
+        "category_median_minor": 6250
+      },
+      {
+        "date": "2026-05-18",
+        "payee": "AirAsia",
+        "category": "Travel",
+        "multiple_of_median": 9.79,
+        "memo": "Osaka leg, booked late",
+        "label": "AirAsia 2026-05-18",
+        "amount_minor": 61200,
+        "category_median_minor": 6250
+      },
+      {
+        "date": "2026-03-02",
+        "payee": "Apple",
+        "category": "Shopping",
+        "multiple_of_median": 11.54,
+        "memo": "iPad Air, replaced the 2019 one",
+        "label": "Apple 2026-03-02",
+        "amount_minor": 44900,
+        "category_median_minor": 3890
+      },
+      {
+        "date": "2025-11-04",
+        "payee": "IKEA",
+        "category": "Shopping",
+        "multiple_of_median": 8.78,
+        "memo": "Desk and chair for the new room",
+        "label": "IKEA 2025-11-04",
+        "amount_minor": 34170,
+        "category_median_minor": 3890
+      },
+      {
+        "date": "2026-02-11",
+        "payee": "Raffles Medical",
+        "category": "Health",
+        "multiple_of_median": 12.18,
+        "memo": "Dental, not claimable",
+        "label": "Raffles Medical 2026-02-11",
+        "amount_minor": 26800,
+        "category_median_minor": 2200
+      },
+      {
+        "date": "2025-10-30",
+        "payee": "Decathlon",
+        "category": "Shopping",
+        "multiple_of_median": 5.51,
+        "memo": "Bike and lock",
+        "label": "Decathlon 2025-10-30",
+        "amount_minor": 21440,
+        "category_median_minor": 3890
+      },
+      {
+        "date": "2025-12-21",
+        "payee": "Hai Di Lao",
+        "category": "Eating out",
+        "multiple_of_median": 12.57,
+        "memo": "Birthday dinner, 6 people",
+        "label": "Hai Di Lao 2025-12-21",
+        "amount_minor": 18600,
+        "category_median_minor": 1480
+      }
+    ],
+    "threshold_multiple": 5,
+    "share_of_spend_pct": 8.4,
+    "total_minor": 427110
+  },
+  "findings": [
+    "Eight charges above five times their category median add up to 4,271 SGD, 8.4 percent of all spend.",
+    "The language course fee is the largest at 1,420 SGD and 12 times the Education median.",
+    "Six of the eight are one-time equipment or travel; only the dental visit is likely to repeat."
+  ],
+  "caveats": [
+    "A median over a thin category is unstable, so a category with four rows can throw up a spike that is really just normal.",
+    "A charge later split with a friend still shows at its full amount, because the repayment arrives as a separate transfer row."
+  ]
+}

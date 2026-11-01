@@ -1,0 +1,250 @@
+{
+  "id": "income-stability",
+  "title": "Income and how steady it is",
+  "generated_at": "2026-09-04T10:14:35+08:00",
+  "snapshot": "snapshot-2026-09-04.json",
+  "sources": [
+    {
+      "database": "Transactions",
+      "rows_used": 146,
+      "filter": "direction = In and flow_class = External and bucket = Income"
+    }
+  ],
+  "params": {
+    "from": "2024-12",
+    "to": "2026-08",
+    "cpf_employee_rate": 0.2
+  },
+  "chart": {
+    "type": "stacked",
+    "x": "month",
+    "series": [
+      "Salary_minor",
+      "Contract income_minor",
+      "Reimbursement_minor",
+      "Interest_minor"
+    ],
+    "source": "months",
+    "unit": "sgd_minor"
+  },
+  "data": {
+    "months": [
+      {
+        "month": "2024-12",
+        "Salary_minor": 0,
+        "Contract income_minor": 269916,
+        "Reimbursement_minor": 30919,
+        "Interest_minor": 802,
+        "total_minor": 301637
+      },
+      {
+        "month": "2025-01",
+        "Salary_minor": 0,
+        "Contract income_minor": 276743,
+        "Reimbursement_minor": 5609,
+        "Interest_minor": 703,
+        "total_minor": 283055
+      },
+      {
+        "month": "2025-02",
+        "Salary_minor": 0,
+        "Contract income_minor": 236632,
+        "Reimbursement_minor": 21342,
+        "Interest_minor": 1148,
+        "total_minor": 259122
+      },
+      {
+        "month": "2025-03",
+        "Salary_minor": 0,
+        "Contract income_minor": 289379,
+        "Reimbursement_minor": 26839,
+        "Interest_minor": 309,
+        "total_minor": 316527
+      },
+      {
+        "month": "2025-04",
+        "Salary_minor": 0,
+        "Contract income_minor": 289107,
+        "Reimbursement_minor": 1220,
+        "Interest_minor": 749,
+        "total_minor": 291076
+      },
+      {
+        "month": "2025-05",
+        "Salary_minor": 0,
+        "Contract income_minor": 260650,
+        "Reimbursement_minor": 5911,
+        "Interest_minor": 537,
+        "total_minor": 267098
+      },
+      {
+        "month": "2025-06",
+        "Salary_minor": 0,
+        "Contract income_minor": 264523,
+        "Reimbursement_minor": 5229,
+        "Interest_minor": 1009,
+        "total_minor": 270761
+      },
+      {
+        "month": "2025-07",
+        "Salary_minor": 0,
+        "Contract income_minor": 0,
+        "Reimbursement_minor": 8390,
+        "Interest_minor": 1431,
+        "total_minor": 9821
+      },
+      {
+        "month": "2025-08",
+        "Salary_minor": 272000,
+        "Contract income_minor": 0,
+        "Reimbursement_minor": 14577,
+        "Interest_minor": 808,
+        "total_minor": 287385
+      },
+      {
+        "month": "2025-09",
+        "Salary_minor": 272000,
+        "Contract income_minor": 0,
+        "Reimbursement_minor": 19332,
+        "Interest_minor": 1699,
+        "total_minor": 293031
+      },
+      {
+        "month": "2025-10",
+        "Salary_minor": 272000,
+        "Contract income_minor": 0,
+        "Reimbursement_minor": 6560,
+        "Interest_minor": 1635,
+        "total_minor": 280195
+      },
+      {
+        "month": "2025-11",
+        "Salary_minor": 272000,
+        "Contract income_minor": 0,
+        "Reimbursement_minor": 1410,
+        "Interest_minor": 1101,
+        "total_minor": 274511
+      },
+      {
+        "month": "2025-12",
+        "Salary_minor": 272000,
+        "Contract income_minor": 0,
+        "Reimbursement_minor": 25703,
+        "Interest_minor": 1475,
+        "total_minor": 299178
+      },
+      {
+        "month": "2026-01",
+        "Salary_minor": 272000,
+        "Contract income_minor": 0,
+        "Reimbursement_minor": 3279,
+        "Interest_minor": 1619,
+        "total_minor": 276898
+      },
+      {
+        "month": "2026-02",
+        "Salary_minor": 272000,
+        "Contract income_minor": 0,
+        "Reimbursement_minor": 11728,
+        "Interest_minor": 1619,
+        "total_minor": 285347
+      },
+      {
+        "month": "2026-03",
+        "Salary_minor": 272000,
+        "Contract income_minor": 0,
+        "Reimbursement_minor": 12667,
+        "Interest_minor": 678,
+        "total_minor": 285345
+      },
+      {
+        "month": "2026-04",
+        "Salary_minor": 272000,
+        "Contract income_minor": 0,
+        "Reimbursement_minor": 10039,
+        "Interest_minor": 1746,
+        "total_minor": 283785
+      },
+      {
+        "month": "2026-05",
+        "Salary_minor": 272000,
+        "Contract income_minor": 0,
+        "Reimbursement_minor": 28331,
+        "Interest_minor": 424,
+        "total_minor": 300755
+      },
+      {
+        "month": "2026-06",
+        "Salary_minor": 272000,
+        "Contract income_minor": 0,
+        "Reimbursement_minor": 28655,
+        "Interest_minor": 856,
+        "total_minor": 301511
+      },
+      {
+        "month": "2026-07",
+        "Salary_minor": 272000,
+        "Contract income_minor": 0,
+        "Reimbursement_minor": 32094,
+        "Interest_minor": 679,
+        "total_minor": 304773
+      },
+      {
+        "month": "2026-08",
+        "Salary_minor": 272000,
+        "Contract income_minor": 0,
+        "Reimbursement_minor": 11189,
+        "Interest_minor": 553,
+        "total_minor": 283742
+      }
+    ],
+    "sources": [
+      {
+        "source": "Salary",
+        "months_present": 13,
+        "total_minor": 3536000
+      },
+      {
+        "source": "Contract income",
+        "months_present": 7,
+        "total_minor": 1886950
+      },
+      {
+        "source": "Reimbursement",
+        "months_present": 21,
+        "total_minor": 311023
+      },
+      {
+        "source": "Interest",
+        "months_present": 21,
+        "total_minor": 21580
+      }
+    ],
+    "volatility": {
+      "cv": 0.23,
+      "mean_minor": 274074,
+      "stdev_minor": 62091,
+      "min_minor": 9821,
+      "max_minor": 316527
+    },
+    "months_without_salary": [
+      "2024-12",
+      "2025-01",
+      "2025-02",
+      "2025-03",
+      "2025-04",
+      "2025-05",
+      "2025-06",
+      "2025-07"
+    ]
+  },
+  "findings": [
+    "Income averages 2,741 SGD a month with a standard deviation of 621, a coefficient of variation of 0.23.",
+    "Eight months have no salary line at all: the seven months of contract work, plus the July 2025 gap between the contract and the job.",
+    "Take-home is 2,720 on a 3,400 gross once the 20 percent employee CPF contribution comes out, and that holds until January 2027."
+  ],
+  "caveats": [
+    "CPF employer contributions never touch a bank account, so this understates total compensation by roughly 17 percent.",
+    "A reimbursement from a friend looks identical to income unless the rules file classified it as a transfer."
+  ]
+}

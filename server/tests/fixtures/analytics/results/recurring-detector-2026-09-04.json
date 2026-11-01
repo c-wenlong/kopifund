@@ -1,0 +1,196 @@
+{
+  "id": "recurring-detector",
+  "title": "Recurring charges",
+  "generated_at": "2026-09-04T10:13:44+08:00",
+  "snapshot": "snapshot-2026-09-04.json",
+  "sources": [
+    {
+      "database": "Transactions",
+      "rows_used": 486,
+      "filter": "flow_class = External grouped by payee with 3 or more charges"
+    },
+    {
+      "database": "Payees",
+      "rows_used": 214,
+      "filter": "all"
+    }
+  ],
+  "params": {
+    "tolerance_days": 3,
+    "min_occurrences": 3,
+    "cadences": [
+      "weekly",
+      "monthly",
+      "yearly"
+    ]
+  },
+  "chart": {
+    "type": "bar",
+    "x": "payee",
+    "series": [
+      "monthly_cost_minor"
+    ],
+    "source": "active",
+    "unit": "sgd_minor"
+  },
+  "data": {
+    "active": [
+      {
+        "payee": "Landlord (Tiong Bahru)",
+        "category": "Rent",
+        "cadence": "monthly",
+        "first_seen": "2025-07-01",
+        "last_seen": "2026-08-01",
+        "occurrences": 14,
+        "flagged_recurring": true,
+        "spacing_days_median": 30,
+        "tolerance_days": 3,
+        "amount_minor": 115000,
+        "monthly_cost_minor": 115000
+      },
+      {
+        "payee": "Endowus DCA",
+        "category": "Investing",
+        "cadence": "monthly",
+        "first_seen": "2025-08-25",
+        "last_seen": "2026-08-25",
+        "occurrences": 13,
+        "flagged_recurring": true,
+        "spacing_days_median": 30,
+        "tolerance_days": 3,
+        "amount_minor": 50000,
+        "monthly_cost_minor": 50000
+      },
+      {
+        "payee": "SP Group",
+        "category": "Utilities",
+        "cadence": "monthly",
+        "first_seen": "2025-08-05",
+        "last_seen": "2026-08-05",
+        "occurrences": 13,
+        "flagged_recurring": false,
+        "spacing_days_median": 30,
+        "tolerance_days": 3,
+        "amount_minor": 7840,
+        "monthly_cost_minor": 7840
+      },
+      {
+        "payee": "Gym (ActiveSG)",
+        "category": "Health",
+        "cadence": "monthly",
+        "first_seen": "2025-09-02",
+        "last_seen": "2026-08-02",
+        "occurrences": 12,
+        "flagged_recurring": true,
+        "spacing_days_median": 30,
+        "tolerance_days": 3,
+        "amount_minor": 4500,
+        "monthly_cost_minor": 4500
+      },
+      {
+        "payee": "Singtel",
+        "category": "Utilities",
+        "cadence": "monthly",
+        "first_seen": "2025-07-19",
+        "last_seen": "2026-08-19",
+        "occurrences": 14,
+        "flagged_recurring": true,
+        "spacing_days_median": 30,
+        "tolerance_days": 3,
+        "amount_minor": 3200,
+        "monthly_cost_minor": 3200
+      },
+      {
+        "payee": "Netflix",
+        "category": "Subscriptions",
+        "cadence": "monthly",
+        "first_seen": "2025-08-14",
+        "last_seen": "2026-08-14",
+        "occurrences": 13,
+        "flagged_recurring": true,
+        "spacing_days_median": 30,
+        "tolerance_days": 3,
+        "amount_minor": 1998,
+        "monthly_cost_minor": 1998
+      },
+      {
+        "payee": "Spotify",
+        "category": "Subscriptions",
+        "cadence": "monthly",
+        "first_seen": "2024-12-03",
+        "last_seen": "2026-08-03",
+        "occurrences": 21,
+        "flagged_recurring": true,
+        "spacing_days_median": 30,
+        "tolerance_days": 3,
+        "amount_minor": 1690,
+        "monthly_cost_minor": 1690
+      },
+      {
+        "payee": "iCloud+",
+        "category": "Subscriptions",
+        "cadence": "monthly",
+        "first_seen": "2024-12-11",
+        "last_seen": "2026-08-11",
+        "occurrences": 21,
+        "flagged_recurring": false,
+        "spacing_days_median": 30,
+        "tolerance_days": 3,
+        "amount_minor": 498,
+        "monthly_cost_minor": 498
+      },
+      {
+        "payee": "Domain renewal",
+        "category": "Subscriptions",
+        "cadence": "yearly",
+        "first_seen": "2024-12-19",
+        "last_seen": "2025-12-19",
+        "occurrences": 2,
+        "flagged_recurring": false,
+        "spacing_days_median": 365,
+        "tolerance_days": 3,
+        "amount_minor": 2150,
+        "monthly_cost_minor": 179
+      }
+    ],
+    "stopped": [
+      {
+        "payee": "Monthly transit pass",
+        "category": "Transport",
+        "cadence": "monthly",
+        "first_seen": "2024-12-04",
+        "last_seen": "2025-06-04",
+        "occurrences": 7,
+        "stopped_after": "2025-06",
+        "flagged_recurring": false,
+        "amount_minor": 13200
+      },
+      {
+        "payee": "Disney+",
+        "category": "Subscriptions",
+        "cadence": "monthly",
+        "first_seen": "2025-01-22",
+        "last_seen": "2025-10-22",
+        "occurrences": 10,
+        "stopped_after": "2025-10",
+        "flagged_recurring": true,
+        "amount_minor": 1198
+      }
+    ],
+    "not_flagged_in_notion": [
+      "SP Group",
+      "iCloud+",
+      "Domain renewal"
+    ],
+    "total_monthly_fixed_minor": 184905
+  },
+  "findings": [
+    "Fixed monthly cost is 1,849 SGD across nine payees, of which rent is 1,150.",
+    "Three charges repeat on a schedule but are not marked recurring: SP Group, iCloud+ and the domain renewal.",
+    "Disney+ stopped after October 2025 and the monthly transit pass after June 2025, together 144 SGD a month that is no longer going out."
+  ],
+  "caveats": [
+    "A charge that changes name between months (a merchant string with a store number in it) looks like two payees and may be missed.",
+    "Yearly charges are divided by twelve to sit next to the monthly ones, which flatters any month the renewal does not fall in."
+  ]
+}

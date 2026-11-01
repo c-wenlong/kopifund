@@ -1,0 +1,258 @@
+import { useEffect, useRef, useState } from "react";
+import { Download, FileJson, FileSpreadsheet, FileText } from "lucide-react";
+import { useSidebarMode, type SidebarMode } from "../components/sidebarMode";
+import { checkServer, postJSON, useApi, useLink, type ExportDone, type Exports, type ScamChecks, type ScamSettings } from "../api";
+import { centsText, formatSgd, parseCents } from "../money";
+import { formatDay } from "../dates";
+import { MoneyInput } from "../components/MoneyInput";
+import { SaveBar } from "../components/SaveBar";
+import { Button, buttonClass } from "../components/Button";
+import { Card } from "../components/Card";
+import { StatusChip } from "../components/StatusChip";
+import { COLLAPSED_ROWS, CollapsibleRows } from "../components/CollapsibleRows";
+import { PageActions } from "../components/PageActions";
+import { useWide } from "../components/useWide";
+import { SERVER_ICON, type ServerState } from "../icons";
+import { useUnsavedGuard } from "../router";
+import { AiCard } from "./AiCard";
+import { AppIconCard } from "./AppIconCard";
+import { LinkCard } from "./LinkCard";
+
+const options: { value: SidebarMode; label: string }[] = [
+  { value: "open", label: "Keep open" },
+  { value: "hover", label: "Expand on hover" },
+];
+
+export function Settings() {
+  const [mode, setMode] = useSidebarMode();
+  const wide = useWide();
+  // G19: one check as the page opens, then the shared link state (api.ts), which the offline
+  // banner reads and keeps asking while the server is down: the chip follows it, so it never
+  // says "offline" after the banner has gone
+  const { down } = useLink();
+  const [checked, setChecked] = useState(false);
+  const backend: ServerState = !checked ? "checking" : down ? "offline" : "connected";
+
+  useEffect(() => {
+    let live = true;
+    void checkServer().then(() => live && setChecked(true));
+    return () => { live = false; };
+  }, []);
+
+  return (
+    <div className="flex flex-col gap-3">
+      {/* G13: the local server's state is a chip in the page header, not a card of its own */}
+      <PageActions>
+        <StatusChip tone={backend === "connected" ? "good" : backend === "offline" ? "danger" : "neutral"}
+          icon={SERVER_ICON[backend]} spin={backend === "checking"}>
+          {backend === "connected" ? "Server connected" : backend === "offline" ? "Server offline" : "Checking the server"}
+        </StatusChip>
+      </PageActions>
+      {/* under 768px the sidebar is a drawer, so keep-open and hover mean nothing there */}
+      {wide && (
+        <Card title="Sidebar">
+          <fieldset className="m-0 flex flex-col gap-1 border-0 p-0">
+            <legend className="sr-only">Sidebar behaviour</legend>
+            {options.map((o) => (
+              <label key={o.value} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-[14px] hover:bg-hover">
+                <input type="radio" name="sidebar" value={o.value} checked={mode === o.value} onChange={() => setMode(o.value)} />
+                {o.label}
+              </label>
+            ))}
+          </fieldset>
+        </Card>
+      )}
+      <AppIconCard />
+      {/* G22: the provider, its models and key, and the copilot's consent */}
+      <AiCard />
+      {/* G25: pair a phone over tailscale serve, and revoke one that is lost */}
+      <LinkCard />
+      <ScamChecksCard />
+      <ExportCard />
+    </div>
+  );
+}
+
+// one icon for each kind of file the export writes
+function FileIcon({ name }: { name: string }) {
+  const ext = name.split(".").pop()?.toLowerCase();
+  const Icon = ext === "csv" ? FileSpreadsheet : ext === "json" ? FileJson : FileText;
+  return <Icon size={16} aria-hidden className="shrink-0 text-ink-3" />;
+}
+
+function ExportCard() {
+  const [version, setVersion] = useState(0);
+  const list = useApi<Exports>(`/api/exports?v=${version}`);
+  const [busy, setBusy] = useState(false);
+  const [done, setDone] = useState<ExportDone | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  async function run() {
+    setBusy(true);
+    setError(null);
+    try {
+      setDone(await postJSON<ExportDone>("/api/export"));
+      setVersion((v) => v + 1);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const latest = list.data?.exports[0];
+  return (
+    <Card title="Export" actions={
+      <Button variant="primary" onClick={run} disabled={busy}>
+        {busy ? "Exporting…" : "Export everything"}
+      </Button>}>
+      {done && <p className="m-0 mt-2 text-[13px] text-good" role="status">Exported {done.transactions.toLocaleString("en-SG")} transactions to {done.folder}.</p>}
+      {error && <p className="m-0 mt-2 text-[13px] text-warn" role="alert">{error}</p>}
+      {latest && (
+        <ul aria-label={`Files exported ${latest.stamp}`} className="m-0 mt-3 list-none rounded-lg border border-line p-0 text-[13px]">
+          <CollapsibleRows rows={latest.files} limit={COLLAPSED_ROWS.thin} keyOf={(f) => f} render={(f) => (
+            <li className="flex items-center gap-2 border-t border-line px-3 py-1.5 first:border-t-0">
+              <FileIcon name={f} />
+              <span className="min-w-0 flex-1 truncate">{f}</span>
+              <a href={`/api/exports/${latest.stamp}/${f}`} download aria-label={`Download ${f}`}
+                className={buttonClass("secondary", "sm")}>
+                <Download size={13} aria-hidden /> Download
+              </a>
+            </li>
+          )} />
+        </ul>
+      )}
+    </Card>
+  );
+}
+
+// G15: the scam checks' thresholds as one compact form, and the rows marked
+// fine on Transactions, each of which can be flagged again
+type ScamKey = keyof ScamSettings;
+type ScamDraft = Record<ScamKey, string>;
+// the thresholds in cents, typed in dollars (read and shown by money.ts, G17); the rest are whole counts of days or payments
+const MONEY: ScamKey[] = ["big_transfer", "abroad_min", "test_max", "twice_min"];
+const isMoney = (k: ScamKey) => MONEY.includes(k);
+const draftOf = (v: ScamSettings): ScamDraft =>
+  Object.fromEntries((Object.keys(v) as ScamKey[]).map((k) => [k, isMoney(k) ? centsText(v[k]) : String(v[k])])) as ScamDraft;
+const WHOLE = /^\d+$/;
+const DOLLARS = /^\d+(\.\d{1,2})?$/;
+
+export function ScamChecksCard() {
+  const { data, error } = useApi<ScamChecks>("/api/scam-checks");
+  // G18: only the boxes typed in, so a save from another tab still shows in every box left alone
+  const [draft, setDraft] = useState<Partial<ScamDraft> | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+  // a save on its way: what is typed meanwhile is an edit, even back to the old saved value
+  const inFlight = useRef(false);
+  const saved = data ? draftOf(data.settings) : null;
+  const keys = saved ? Object.keys(saved) as ScamKey[] : [];
+  const d = { ...saved, ...draft } as ScamDraft;
+  const dirty = !!saved && keys.some((k) => d[k] !== saved[k]);
+  // G18: leaving the page with a threshold typed and not saved asks first
+  useUnsavedGuard(dirty);
+  if (error) return <Card title="Scam checks"><p className="m-0 text-[13px] text-warn">{error}</p></Card>;
+  if (!data || !saved) return null;
+  const bad = (k: ScamKey) => !(isMoney(k) ? DOLLARS : WHOLE).test(d[k]);
+  const set = (k: ScamKey) => (v: string) => {
+    // a box typed back to its saved value is no longer an edit, unless that value is about to change
+    const rest = { ...draft };
+    delete rest[k];
+    setDraft(v === saved[k] && !inFlight.current ? rest : { ...rest, [k]: v });
+    setProblem(null);
+  };
+
+  async function save() {
+    if (keys.some(bad)) {
+      setProblem("Each box takes a whole number; an amount can have cents.");
+      return;
+    }
+    setSaving(true);
+    inFlight.current = true;
+    const sent = { ...d };
+    try {
+      await postJSON("/api/scam-checks/settings", JSON.stringify(Object.fromEntries(
+        keys.map((k) => [k, isMoney(k) ? parseCents(sent[k]) : Number(sent[k])]))));
+      // G18: the boxes the save covered are saved; one typed in while it was on its way stays an edit
+      setDraft((now) => {
+        const left = Object.fromEntries(Object.entries(now ?? {}).filter(([k, v]) => v !== sent[k as ScamKey]));
+        return Object.keys(left).length ? left : null;
+      });
+    } catch (e) {
+      setProblem((e as Error).message);
+    } finally {
+      inFlight.current = false;
+      setSaving(false);
+    }
+  }
+
+  const field = (k: ScamKey, label: string, opts: { before?: string; after?: string; group?: boolean }) => (
+    // the box at the foot of its cell, so a label that wraps never pushes it out of line
+    <label className="flex min-w-0 flex-col justify-end gap-1 text-[12px] text-ink-2">
+      {label}
+      <MoneyInput label={label} value={d[k]} onChange={set(k)} invalid={bad(k)} {...opts} />
+    </label>
+  );
+  return (
+    <Card title="Scam checks" actions={<SaveBar dirty={dirty} saving={saving} onSave={() => void save()} onDiscard={() => { setDraft(null); setProblem(null); }} />}>
+      <form onSubmit={(e) => { e.preventDefault(); void save(); }} aria-label="Scam check thresholds"
+        className="mt-2 flex flex-col gap-3">
+        <section aria-label="Transfers" className="flex flex-col gap-1.5">
+          <h3 className="m-0 text-[13px] font-semibold">Transfers</h3>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {field("big_transfer", "Big transfer", { before: "S$" })}
+            {field("new_payee_days", "Payee counts as new for", { after: "days", group: false })}
+            {field("repeat_count", "Repeated transfers", { after: "or more", group: false })}
+            {field("repeat_days", "Repeated within", { after: "days", group: false })}
+          </div>
+        </section>
+        <section aria-label="Card and shop payments" className="flex flex-col gap-1.5">
+          <h3 className="m-0 text-[13px] font-semibold">Card and shop payments</h3>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
+            {field("abroad_min", "Abroad, no trip, from", { before: "S$" })}
+            {field("test_max", "Test charge up to", { before: "S$" })}
+            {field("test_days", "Then larger within", { after: "days", group: false })}
+            {field("twice_min", "Charged twice from", { before: "S$" })}
+            {field("new_sub_days", "New subscription for", { after: "days", group: false })}
+          </div>
+        </section>
+      </form>
+      {problem && <p role="alert" className="m-0 mt-2 text-[13px] text-danger">{problem}</p>}
+      {data.marked_fine.length > 0 && <MarkedFine rows={data.marked_fine} />}
+    </Card>
+  );
+}
+
+function MarkedFine({ rows }: { rows: ScamChecks["marked_fine"] }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [failed, setFailed] = useState<{ key: string; message: string } | null>(null);
+  async function again(key: string) {
+    setBusy(key);
+    setFailed(null);
+    try {
+      await postJSON("/api/scam-checks/fine", JSON.stringify({ key, fine: false }));
+    } catch (e) {
+      setFailed({ key, message: (e as Error).message });
+    } finally {
+      setBusy(null);
+    }
+  }
+  return (
+    <section aria-label="Marked fine" className="mt-3">
+      <h3 className="m-0 mb-1.5 text-[13px] font-semibold">Marked fine</h3>
+      <ul className="m-0 list-none rounded-lg border border-line p-0 text-[13px]">
+        <CollapsibleRows rows={rows} limit={COLLAPSED_ROWS.thin} keyOf={(r) => r.key} render={(r) => (
+          <li className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line px-3 py-1.5 first:border-t-0">
+            <span className="num shrink-0 text-ink-2">{formatDay(r.date)}</span>
+            <span className="min-w-0 flex-1 truncate">{r.payee}</span>
+            <span className="num shrink-0">{formatSgd(r.amount, { decimals: true })}</span>
+            <Button size="sm" disabled={busy === r.key} onClick={() => void again(r.key)}
+              aria-label={`Flag again: ${r.payee} on ${formatDay(r.date)}`}>Flag again</Button>
+            {failed?.key === r.key && <span role="alert" className="basis-full text-[12px] text-danger">{failed.message}</span>}
+          </li>
+        )} />
+      </ul>
+    </section>
+  );
+}

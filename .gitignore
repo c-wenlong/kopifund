@@ -1,0 +1,56 @@
+.DS_Store
+
+# Real statements and exports. Never commit these. The only tracked files
+# under data/ are the shipped rules in data/rules/; everything else is local.
+data/*
+!data/rules/
+!data/rules/**
+
+.env
+.env.*
+!.env.example
+
+node_modules
+build/
+dist/
+*.xcuserstate
+xcuserdata/
+__pycache__/
+*.tsbuildinfo
+
+# Claude Code worktrees
+.claude/worktrees/
+
+# Playwright MCP output (snapshots, screenshots, console logs)
+.playwright-mcp/
+
+# Loose screenshots at the root show the live app, which means real figures.
+/*.jpg
+/*.jpeg
+/*.png
+
+# Personal files from the old finance-tracking layout. They belong in the data
+# folder (~/.kopifund); these lines stop a stray copy landing in git.
+server/finance/config.toml
+data/rules/00-keys.csv
+data/rules/20-people.csv
+data/rules/keys.csv
+data/rules/people.csv
+data/rules/merchants.csv
+data/rules/types.csv
+
+# The same files in a checkout from before the apps/, server/, data/ move: a
+# pull leaves ignored files where they were, so they keep their cover.
+finance/config.toml
+rules/00-keys.csv
+rules/20-people.csv
+rules/keys.csv
+rules/people.csv
+rules/merchants.csv
+rules/types.csv
+notes/
+*.db
+*.db-wal
+*.db-shm
+apps/ios/Alerts.xcodeproj/
+**/.build/

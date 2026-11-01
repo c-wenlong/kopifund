@@ -1,0 +1,8 @@
+{
+  "default": "sticker",
+  "sets": [
+    {"name": "sticker", "label": "Sticker", "about": "Kopi in a tied bag with a coin, on yellow"},
+    {"name": "iso", "label": "Iso", "about": "A cup on a stack of coins, on green"},
+    {"name": "riso", "label": "Riso", "about": "A printed cup before a pink sun"}
+  ]
+}

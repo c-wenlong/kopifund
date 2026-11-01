@@ -1,0 +1,268 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "react-day-picker/style.css";
+
+/* One sans face everywhere. Figures line up through tabular numerals, never a mono font. */
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: var(--font-sans);
+  --color-page: var(--page);
+  --color-panel: var(--panel);
+  --color-tile: var(--tile);
+  --color-line: var(--line);
+  --color-edge: var(--edge);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-hover: var(--hover);
+  --color-warn: var(--warn);
+  --color-warn-bg: var(--warn-bg);
+  --color-danger: var(--danger);
+  --color-danger-bg: var(--danger-bg);
+  --color-good: var(--good);
+  --color-good-bg: var(--good-bg);
+  --color-info: var(--info);
+  --color-info-bg: var(--info-bg);
+  --color-bar: var(--bar);
+  --color-tip: var(--tip);
+  --color-scrim: var(--scrim);
+}
+
+:root {
+  color-scheme: light;
+  /* radios, checkboxes and ranges follow the ink instead of the browser's blue */
+  accent-color: var(--ink);
+  --page: #f6f5f0;
+  --panel: #ffffff;
+  --tile: #efeee8;
+  --line: rgb(31 30 29 / 0.12);
+  /* the edge of a panel floating over the page, which a shadow alone does not show in the dark */
+  --edge: rgb(31 30 29 / 0.2);
+  --ink: #1f1e1d;
+  --ink-2: #55544f;
+  /* quiet text: 4.7:1 or better on page, panel and tile (it was 3.0 to 3.5:1) */
+  --ink-3: #6b6a65;
+  --hover: rgb(31 30 29 / 0.06);
+  --warn: #8a5a0b;
+  --warn-bg: #faeeda;
+  /* a figure on the wrong side of its reference (G13: months of cash below the typical buffer) */
+  --danger: #c0392b;
+  --danger-bg: #fbe9e6;
+  --good: #3b6d11;
+  --good-bg: #eaf3de;
+  /* a neutral flag that is not a warning: a recurring payment that came in at a different amount */
+  --info: #185fa5;
+  --info-bg: #e6f1fb;
+  --bar: #cfcdc3;
+  /* the keyboard focus ring on buttons, links and custom controls */
+  --focus: #185fa5;
+  /* chart hover cards: a step off the panel they float over, so they read in both themes */
+  --tip: #ffffff;
+  /* G18: the dimmed page behind the phone menu and a Sheet */
+  --scrim: rgb(0 0 0 / 0.4);
+  /* G18: twelve series colours, 3:1 or better on the panel and told apart by eye (foundations.css.test.ts checks both), in both themes */
+  --c1: #378add;
+  --c2: #d85a30;
+  --c3: #1d9e75;
+  --c4: #ba7517;
+  --c5: #7f77dd;
+  --c6: #d4537e;
+  --c7: #639922;
+  --c8: #0f8fa6;
+  --c9: #8a5a3c;
+  --c10: #a64ca6;
+  --c11: #b3303f;
+  --c12: #9a8b00;
+  /* the folded "others" of a chart: neutral, so it never reads as one more series */
+  --rest: #5f5e5a;
+  --grid: rgb(31 30 29 / 0.1);
+  /* bank tiles on the upload picker, for banks with no logo file: each bank's own colour, the same in both themes */
+  --bank-ocbc: #d4202c;
+  --bank-uob: #0b3a8c;
+  --bank-ink: #ffffff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --page: #1f1e1d;
+    --panel: #262624;
+    --tile: #30302d;
+    --line: rgb(255 255 255 / 0.1);
+    --edge: rgb(255 255 255 / 0.3);
+    --ink: #f0eee6;
+    --ink-2: #b4b2a9;
+    --ink-3: #9e9d96;
+    --hover: rgb(255 255 255 / 0.06);
+    --warn: #ef9f27;
+    --warn-bg: #412402;
+    --danger: #f07a6c;
+    --danger-bg: #4a1d17;
+    --good: #97c459;
+    --good-bg: #173404;
+    --info: #85b7eb;
+    --info-bg: #0c2d4d;
+    --bar: #3d3d3a;
+    --focus: #85b7eb;
+    --tip: #34332f;
+    --scrim: rgb(0 0 0 / 0.6);
+    --c1: #85b7eb;
+    --c2: #f0997b;
+    --c3: #5dcaa5;
+    --c4: #ef9f27;
+    --c5: #afa9ec;
+    --c6: #ed93b1;
+    --c7: #97c459;
+    --c8: #4ec3d6;
+    --c9: #c9ab8c;
+    --c10: #d58ad5;
+    --c11: #e8636f;
+    --c12: #d6c84a;
+    --rest: #908f88;
+    --grid: rgb(255 255 255 / 0.1);
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* G13: the installed app on an iPhone draws under the notch and the home bar
+   (viewport-fit=cover in index.html); the shell keeps its content inside. Every
+   inset is 0 on a desktop browser, so nothing moves there. */
+.safe-area {
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* G13: the calendar under a date field (react-day-picker), drawn in the app's
+   tokens so light and dark follow the page. The library's stylesheet lays the
+   month out; these variables and rules only colour and size it. */
+.kf-cal.rdp-root {
+  --rdp-accent-color: var(--ink);
+  --rdp-accent-background-color: var(--tile);
+  --rdp-day-height: 34px;
+  --rdp-day-width: 36px;
+  --rdp-day_button-height: 34px;
+  --rdp-day_button-width: 36px;
+  --rdp-day_button-border-radius: 6px;
+  --rdp-day_button-border: 0 solid transparent;
+  --rdp-selected-border: 0 solid transparent;
+  --rdp-today-color: var(--ink);
+  --rdp-outside-opacity: 0.4;
+  --rdp-disabled-opacity: 0.3;
+  --rdp-nav-height: 2rem;
+  --rdp-nav_button-height: 2rem;
+  --rdp-nav_button-width: 2rem;
+  --rdp-weekday-opacity: 1;
+  --rdp-weekday-padding: 0.25rem 0;
+  --rdp-range_middle-background-color: var(--tile);
+  --rdp-range_start-color: var(--page);
+  --rdp-range_end-color: var(--page);
+  --rdp-range_start-date-background-color: var(--ink);
+  --rdp-range_end-date-background-color: var(--ink);
+  font-size: 13px;
+  color: var(--ink);
+}
+.kf-cal .rdp-month_caption { font-size: 13px; font-weight: 600; }
+.kf-cal .rdp-weekday { font-size: 12px; font-weight: 500; color: var(--ink-3); }
+.kf-cal .rdp-chevron { fill: var(--ink-2); }
+.kf-cal .rdp-button_previous,
+.kf-cal .rdp-button_next { border-radius: 6px; }
+.kf-cal .rdp-button_previous:hover,
+.kf-cal .rdp-button_next:hover { background: var(--hover); }
+.kf-cal .rdp-dropdown_root { border-radius: 6px; padding: 0 0.25rem; }
+.kf-cal .rdp-dropdown_root:hover { background: var(--hover); }
+.kf-cal .rdp-dropdown { color: var(--ink); background: var(--panel); }
+.kf-cal .rdp-selected { font-size: inherit; font-weight: 600; }
+.kf-cal .rdp-day_button:hover:not(:disabled) { background: var(--hover); }
+.kf-cal .rdp-day_button:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
+.kf-cal .rdp-today:not(.rdp-outside) .rdp-day_button { font-weight: 700; box-shadow: inset 0 0 0 1px var(--line); }
+.kf-cal .rdp-selected:not(.rdp-range_middle) .rdp-day_button {
+  background: var(--ink);
+  color: var(--page);
+  box-shadow: none;
+}
+.kf-cal .rdp-range_middle .rdp-day_button:hover { background: var(--hover); }
+/* G13: foundations. In the base layer, so a page's own utility still wins. */
+@layer base {
+  /* a ring on whatever takes the keyboard; inputs keep their own focus ring */
+  :where(button, a[href], summary, [role="button"], [role="radio"], [role="tab"], [role="switch"], [tabindex]:not([tabindex="-1"])):focus-visible {
+    outline: 2px solid var(--focus);
+    outline-offset: 2px;
+  }
+
+  /* a finger needs 40px: icon buttons grow to a 40px square, other buttons to 40px tall.
+     A mouse pointer sees none of this. */
+  @media (pointer: coarse) {
+    button,
+    select,
+    input:not([type="checkbox"], [type="radio"], [type="range"], [type="file"]) {
+      min-height: 40px;
+    }
+    /* icon-only: a label on the button and an icon as its one child. A text node is not a
+       child for :only-child, so the label is what tells an icon-only button from a text one. */
+    button[aria-label]:has(> svg:only-child) {
+      min-width: 40px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+  }
+}
+
+/* G13: the strip under a running step (BusyStrip): a bar sliding along a track */
+@keyframes kf-slide {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(300%); }
+}
+.kf-slide {
+  animation: kf-slide 1.4s ease-in-out infinite;
+}
+
+/* G18: a Sheet rises from the foot on a phone and fades in on a wider screen */
+@keyframes kf-rise {
+  from { transform: translateY(100%); }
+  to { transform: none; }
+}
+@keyframes kf-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.kf-sheet {
+  animation: kf-rise 200ms ease-out;
+}
+.kf-scrim {
+  animation: kf-fade 200ms ease-out;
+}
+@media (min-width: 48rem) {
+  .kf-sheet {
+    animation: kf-fade 150ms ease-out;
+  }
+}
+
+/* G13: no spinning and no sliding for a visitor who asked for less motion */
+@media (prefers-reduced-motion: reduce) {
+  .animate-spin {
+    animation: none;
+  }
+  /* G18: the Sheet and its backdrop are simply there */
+  .kf-sheet,
+  .kf-scrim {
+    animation: none;
+  }
+  .kf-slide {
+    animation: none;
+    transform: translateX(100%);
+  }
+  *, ::before, ::after {
+    transition: none;
+  }
+}

@@ -1,0 +1,235 @@
+                                                                      Tiger Brokers (Singapore) PTE.LTD.
+
+                                                                      Address:1 Raffles Place, #35-61 One Raffles Place Tower 2, Singapore 048616.
+                                                                      GST registration number:201810449W
+
+
+TAN MEI LING                                                            Statement Issuance Date:2024-12-31
+                                                                        Statement Period:2024-01-01 - 2024-12-31
+
+  Account Information
+
+ Account                      Address                       Account Category              Base Currency
+
+ 99887766                     SINGAPORE SINGAPORE 100 UNIT    Cash                             USD
+
+  Account Overview
+
+                                              Cash           Stock              Funds in Transit        Interest Accruals       Dividend Accruals       Total
+
+ Beginning Of The Period                     10.00          100.00                          0.00                     0.00                    1.00      111.00
+
+ End Of The Period                           20.50          300.00                          0.00                     0.00                    2.00      322.50
+
+  Cash Report
+
+  Currency: Base Currency Summary
+
+                                                       Total               Securities
+
+ Starting Cash                                         10.00                    10.00
+
+ FOREX Gain&Loss                                        0.05                     0.05
+
+ Commissions                                           -1.20                    -1.20
+
+ Platform Fees                                         -2.00                    -2.00
+
+ GST                                                   -0.30                    -0.30
+
+ Deposits                                             300.25                   300.25
+
+ Dividends                                             12.34                    12.34
+
+ Net Trades (Sales)                                    65.00                    65.00
+
+ Net Trades (Purchase)                               -600.00                  -600.00
+
+ Other                                                 -0.50                    -0.50
+
+ Settlement Fees                                       -0.02                    -0.02
+
+ Clearing Fees                                         -0.13                    -0.13
+
+ Withholding Tax                                       -1.85                    -1.85
+
+ Allowance                                              1.20                     1.20
+
+ Ending Cash                                           20.50                    20.50
+
+ Ending Settled Cash                                   20.50                    20.50
+
+
+  Currency: USD
+
+                                                       Total               Securities
+
+ Starting Cash                                          5.00                     5.00
+
+ Dividends                                              5.00                     5.00
+
+ Ending Cash                                            9.00                     9.00
+
+
+  Currency: SGD
+
+                                                       Total               Securities
+
+ Starting Cash                                          6.75                     6.75
+
+ Deposits                                             400.00                   400.00
+
+ Ending Cash                                           15.50                    15.50
+
+
+  Trades
+
+  Forex
+
+ Symbol(Base.Quote)      Activity Type       Quantity(Base)      Trade Price      Amount(Quote)     Notes       Trade Time        Settle Date       Currency
+
+                                                                                                                2024-03-01
+ USD.SGD                                           400.0000          1.32500            -530.00                                   2024-03-05        SGD
+                                                                                                                13:44:42, US/Eastern
+
+                                                                                                                2024-03-01
+                                                   400.0000          1.32500            -530.00                                   2024-03-05        SGD
+                                                                                                                13:44:42, US/Eastern
+
+                                                                                                                2024-06-10
+ USD.SGD                                           -50.0000          1.30000              65.00                                   2024-06-12        SGD
+                                                                                                                13:44:42, US/Eastern
+
+ Total USD.SGD                                     350.0000                             -465.00                                                     SGD
+
+ Total                                                                                  -465.00                                                     SGD
+
+ Total(In Base)                                                                         -350.75                                                     USD
+
+  Stock
+
+                                      Activity                  Trade                   Accrued Interest in                                         Realized P                                  Settle
+ Symbol         Market    Exchange                Quantity                  Amount                              Comm/Fee              GST                           Notes       Trade Time                  Currency
+                                        Type                    Price                         Trade                                                         /L                                  Date
+
+                                                                                                                                                                                2024-03-01
+                                                                                                             Commission: -0.99                                                                  2024-03-
+ SPY            US        ARCA                           2  250.00000       500.00                     0.00
+                                                                                                                                    -0.16                 0.00                    13:44:42                   USD
+                                                                                                                                                                                                    05
+                                                                                                           Platform Fee: -1.00
+                                                                                                                                                                                  /Eastern
+
+
+This statement also serves as a Tax Invoice for GST purpose.                                                                                                    2/3
+
+                                                                      Tiger Brokers (Singapore) PTE.LTD.
+
+                                      Activity                  Trade                   Accrued Interest in                                         Realized P                                  Settle
+ Symbol         Market    Exchange                Quantity                  Amount                              Comm/Fee              GST                           Notes       Trade Time                  Currency
+                                        Type                    Price                         Trade                                                         /L                                  Date
+
+                                                                                                                                                                                2024-03-01
+                                                                                                             Commission: -0.99                                                                  2024-03-
+                US        ARCA                           2  250.00000       500.00                     0.00
+                                                                                                                                    -0.16                 0.00                    13:44:42                   USD
+                                                                                                                                                                                                    05
+                                                                                                           Platform Fee: -1.00
+                                                                                                                                                                                  /Eastern
+
+                                                                                                                                                                                2024-06-10
+                                                                                                             Commission: -0.50                                                                  2024-06-
+ C6L.SI         SG                                     100    5.00000       500.00                     0.00
+                                                                                                                                    -0.05                 0.00                    13:44:42                   SGD
+                                                                                                                                                                                                    12
+                                                                                                                                                                                  /Eastern
+
+ Total SPY                                               2                  500.00                                       -1.99      -0.16                 0.00                                               USD
+
+ Total                                                   2                  500.00                                       -1.99      -0.16                 0.00                                               USD
+
+
+Note:
+
+ 1. We calculate realized P&L using the FIFO method.
+
+  Deposits & Withdrawals
+
+ Date                                             Description                             Amount              Currency
+
+ 2024-02-01                                       Deposit                                 500.00                SGD
+
+
+This statement also serves as a Tax Invoice for GST purpose.                                                                                                    2/3
+
+                                                                      Tiger Brokers (Singapore) PTE.LTD.
+
+ Date                                             Description                             Amount              Currency
+
+ 2024-09-01                                       Withdrawal                             -100.00                SGD
+
+                                                  Total                                   400.00                SGD
+
+                                                  Total(In Base)                          300.25                USD
+
+  Holdings
+
+  Stock
+
+ Symbol                                 Quantity        Multiplier       Cost Price        Close Price       Value       Unrealized P/L      Initial Margin      Maint Margin      Currency
+
+ C6L.SI                                      100               1.0        5.0000000            6.00000      600.00               100.00                0.00              0.00      SGD
+
+ Total                                       100                                                            600.00               100.00                0.00              0.00      SGD
+
+ SPY                                           2               1.0      250.0000000          260.00000      520.00                20.00                0.00              0.00      USD
+
+ Total                                         2                                                            520.00                20.00                0.00              0.00      USD
+
+ Total(In Base)                              102                                                            963.00               115.00                0.00              0.00      USD
+
+
+Note:
+
+ 1. The multiplier represents the fixed number used to calculate the contract value.
+
+ 2. For certain private funds, the market value includes estimated adjustments.
+
+  Withholding Tax
+
+ Date                                             Description                             Amount              Currency
+
+ 2024-07-01                                                                                -1.85                USD
+
+                                                  Total(In Base)                           -1.85                USD
+
+  Dividends
+
+ Date             Product         Symbol            Dividend Reinvestment Plan      Quantity/Gross Rate       Phase     Cash Dividends      Shares      Fees & Tax      Net Cash Value      Currency
+
+ 2024-05-01                       C6L.SI                                                                      Paid                8.00           0                                8.00      SGD
+
+                                  Total                                                                       Accruals/Paid                                                  0.00/8.00      SGD
+
+ 2024-07-01                       SPY                                                                         Paid                5.00           0                                5.00      USD
+
+                                  Total                                                                       Accruals/Paid                                                  0.00/5.00      USD
+
+                                  Total(In Base)                                                              Accruals/Paid                                                 0.00/12.34      USD
+
+
+Notes: Accrued Dividends refers to the expected amount of cash you will receive.
+
+  Base Currency Exchange Rate
+
+ Date                                                                                                                             2024-12-31
+
+ USD                                                                                                                                       1
+
+ AUD                                                                                                                                 0.62000
+
+ SGD                                                                                                                                 0.75000
+
+
+Note: You can refer to the USD index table for the exchange rates.
+

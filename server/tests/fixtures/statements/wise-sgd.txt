@@ -1,0 +1,53 @@
+  Wise Asia-Pacific Pte Ltd.
+  2 Tanjong Katong Road, #07-01, PLQ3
+  Singapore
+  437161
+  Singapore
+
+
+
+
+  SGD statement
+  6 July 2024 [GMT+08:00] - 6 September 2026 [GMT+08:00]
+
+  Generated on: 6 September 2026
+
+
+   Account Holder                                                        Account number                     Bank code
+   Mei Ling Tan                                                          150-246-80                         0516
+   100A ALPHA RD 1 #1-100
+                                                                                                            Swift/BIC
+   Singapore
+                                                                                                            TRWISGSGXXX
+   100100
+   Singapore
+
+
+
+   SGD on 6 September 2026 [GMT+08:00]                                                                                           0.00 SGD
+
+  Description                                                                                   Incoming           Outgoing           Amount
+
+
+  Sent money to 80000001                                                                                             -48.67              0.00
+  14 July 2025 | Transaction: TRANSFER-4163248355
+
+  Converted 140.00 NOK to 18.67 SGD                                                                18.67                                48.67
+  14 July 2025 | Transaction: BALANCE-0272333191
+
+  Topped up account                                                                                30.00                                30.00
+  6 July 2024 | Transaction: TRANSFER-5012495484
+
+
+
+
+   Wise Asia-Pacific Pte. Ltd. is a company incorporated under the laws of Singapore with Unique Entity Number 201422384R. We are licensed by
+   the Monetary Authority of Singapore ("MAS") as a major payment institution under the Payment Service Act ("PSA").
+
+   Need help? Visit wise.com/help
+
+
+
+
+ref:a0a0a0a0-0000-4000-8000-000000000000                                                                                                   1/1
+

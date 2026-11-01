@@ -1,0 +1,316 @@
+{
+  "id": "merchant-concentration",
+  "title": "Where the money goes",
+  "generated_at": "2026-09-04T10:14:11+08:00",
+  "snapshot": "snapshot-2026-09-04.json",
+  "sources": [
+    {
+      "database": "Transactions",
+      "rows_used": 1712,
+      "filter": "flow_class = External and direction = Out"
+    },
+    {
+      "database": "Payees",
+      "rows_used": 214,
+      "filter": "all"
+    }
+  ],
+  "params": {
+    "top_n": 20,
+    "pareto_target_pct": 80
+  },
+  "chart": {
+    "type": "bar",
+    "x": "payee",
+    "series": [
+      "spend_minor"
+    ],
+    "source": "top_by_spend",
+    "unit": "sgd_minor"
+  },
+  "data": {
+    "top_by_spend": [
+      {
+        "payee": "Landlord (Tiong Bahru)",
+        "count": 14,
+        "share_pct": 36.41,
+        "cumulative_share_pct": 36.41,
+        "spend_minor": 1610000
+      },
+      {
+        "payee": "Endowus",
+        "count": 13,
+        "share_pct": 14.7,
+        "cumulative_share_pct": 51.11,
+        "spend_minor": 650000
+      },
+      {
+        "payee": "NTUC FairPrice",
+        "count": 168,
+        "share_pct": 9.0,
+        "cumulative_share_pct": 60.11,
+        "spend_minor": 398050
+      },
+      {
+        "payee": "Grab",
+        "count": 141,
+        "share_pct": 3.35,
+        "cumulative_share_pct": 63.46,
+        "spend_minor": 148290
+      },
+      {
+        "payee": "Cold Storage",
+        "count": 52,
+        "share_pct": 2.72,
+        "cumulative_share_pct": 66.19,
+        "spend_minor": 120470
+      },
+      {
+        "payee": "Klook",
+        "count": 9,
+        "share_pct": 2.67,
+        "cumulative_share_pct": 68.85,
+        "spend_minor": 118000
+      },
+      {
+        "payee": "SP Group",
+        "count": 13,
+        "share_pct": 2.3,
+        "cumulative_share_pct": 71.16,
+        "spend_minor": 101920
+      },
+      {
+        "payee": "Shopee",
+        "count": 37,
+        "share_pct": 2.02,
+        "cumulative_share_pct": 73.18,
+        "spend_minor": 89230
+      },
+      {
+        "payee": "Amazon SG",
+        "count": 21,
+        "share_pct": 1.66,
+        "cumulative_share_pct": 74.83,
+        "spend_minor": 73310
+      },
+      {
+        "payee": "Apple",
+        "count": 19,
+        "share_pct": 1.38,
+        "cumulative_share_pct": 76.22,
+        "spend_minor": 61240
+      },
+      {
+        "payee": "SimplyGo",
+        "count": 96,
+        "share_pct": 1.37,
+        "cumulative_share_pct": 77.59,
+        "spend_minor": 60420
+      },
+      {
+        "payee": "Food Republic",
+        "count": 61,
+        "share_pct": 1.16,
+        "cumulative_share_pct": 78.74,
+        "spend_minor": 51240
+      },
+      {
+        "payee": "Uniqlo",
+        "count": 8,
+        "share_pct": 1.1,
+        "cumulative_share_pct": 79.84,
+        "spend_minor": 48600
+      },
+      {
+        "payee": "Singtel",
+        "count": 14,
+        "share_pct": 1.01,
+        "cumulative_share_pct": 80.86,
+        "spend_minor": 44800
+      },
+      {
+        "payee": "Food Junction",
+        "count": 38,
+        "share_pct": 0.91,
+        "cumulative_share_pct": 81.76,
+        "spend_minor": 40150
+      },
+      {
+        "payee": "Watsons",
+        "count": 24,
+        "share_pct": 0.71,
+        "cumulative_share_pct": 82.47,
+        "spend_minor": 31280
+      },
+      {
+        "payee": "Decathlon",
+        "count": 6,
+        "share_pct": 0.66,
+        "cumulative_share_pct": 83.13,
+        "spend_minor": 28990
+      },
+      {
+        "payee": "Din Tai Fung",
+        "count": 7,
+        "share_pct": 0.62,
+        "cumulative_share_pct": 83.75,
+        "spend_minor": 27450
+      },
+      {
+        "payee": "Ya Kun Kaya Toast",
+        "count": 29,
+        "share_pct": 0.55,
+        "cumulative_share_pct": 84.3,
+        "spend_minor": 24310
+      },
+      {
+        "payee": "Guardian",
+        "count": 17,
+        "share_pct": 0.45,
+        "cumulative_share_pct": 84.75,
+        "spend_minor": 19840
+      }
+    ],
+    "top_by_count": [
+      {
+        "payee": "NTUC FairPrice",
+        "count": 168,
+        "spend_minor": 398050,
+        "avg_ticket_minor": 2369
+      },
+      {
+        "payee": "Grab",
+        "count": 141,
+        "spend_minor": 148290,
+        "avg_ticket_minor": 1052
+      },
+      {
+        "payee": "SimplyGo",
+        "count": 96,
+        "spend_minor": 60420,
+        "avg_ticket_minor": 629
+      },
+      {
+        "payee": "Food Republic",
+        "count": 61,
+        "spend_minor": 51240,
+        "avg_ticket_minor": 840
+      },
+      {
+        "payee": "Cold Storage",
+        "count": 52,
+        "spend_minor": 120470,
+        "avg_ticket_minor": 2317
+      },
+      {
+        "payee": "Food Junction",
+        "count": 38,
+        "spend_minor": 40150,
+        "avg_ticket_minor": 1057
+      },
+      {
+        "payee": "Shopee",
+        "count": 37,
+        "spend_minor": 89230,
+        "avg_ticket_minor": 2412
+      },
+      {
+        "payee": "Ya Kun Kaya Toast",
+        "count": 29,
+        "spend_minor": 24310,
+        "avg_ticket_minor": 838
+      },
+      {
+        "payee": "Watsons",
+        "count": 24,
+        "spend_minor": 31280,
+        "avg_ticket_minor": 1303
+      },
+      {
+        "payee": "Amazon SG",
+        "count": 21,
+        "spend_minor": 73310,
+        "avg_ticket_minor": 3491
+      },
+      {
+        "payee": "Apple",
+        "count": 19,
+        "spend_minor": 61240,
+        "avg_ticket_minor": 3223
+      },
+      {
+        "payee": "Guardian",
+        "count": 17,
+        "spend_minor": 19840,
+        "avg_ticket_minor": 1167
+      },
+      {
+        "payee": "Landlord (Tiong Bahru)",
+        "count": 14,
+        "spend_minor": 1610000,
+        "avg_ticket_minor": 115000
+      },
+      {
+        "payee": "Singtel",
+        "count": 14,
+        "spend_minor": 44800,
+        "avg_ticket_minor": 3200
+      },
+      {
+        "payee": "Endowus",
+        "count": 13,
+        "spend_minor": 650000,
+        "avg_ticket_minor": 50000
+      },
+      {
+        "payee": "SP Group",
+        "count": 13,
+        "spend_minor": 101920,
+        "avg_ticket_minor": 7840
+      },
+      {
+        "payee": "Klook",
+        "count": 9,
+        "spend_minor": 118000,
+        "avg_ticket_minor": 13111
+      },
+      {
+        "payee": "Uniqlo",
+        "count": 8,
+        "spend_minor": 48600,
+        "avg_ticket_minor": 6075
+      },
+      {
+        "payee": "Din Tai Fung",
+        "count": 7,
+        "spend_minor": 27450,
+        "avg_ticket_minor": 3921
+      },
+      {
+        "payee": "Decathlon",
+        "count": 6,
+        "spend_minor": 28990,
+        "avg_ticket_minor": 4832
+      }
+    ],
+    "pareto": {
+      "payees_for_80pct": 11,
+      "total_payees": 214,
+      "share_of_payees_pct": 5.1,
+      "total_spend_minor": 4422156
+    },
+    "long_tail": {
+      "payees": 203,
+      "spend_minor": 795988
+    }
+  },
+  "findings": [
+    "Eleven payees out of 214 account for 80 percent of everything spent, so five percent of the list is four fifths of the money.",
+    "The landlord alone is a third of it; the next largest, Endowus, is a standing order rather than a purchase.",
+    "By count the picture is different: SimplyGo and NTUC FairPrice are 264 charges between them for under 4,600 SGD."
+  ],
+  "caveats": [
+    "Payees are matched by the rules file, so an unmatched merchant string sits in the long tail as its own payee and dilutes the concentration.",
+    "Refunds are netted against the payee, which can make a heavily returned shop look smaller than the shopping actually was."
+  ]
+}

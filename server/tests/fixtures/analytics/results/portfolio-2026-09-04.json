@@ -1,0 +1,309 @@
+{
+  "id": "portfolio",
+  "title": "Investments at Tiger Brokers",
+  "generated_at": "2026-09-04T10:15:31+08:00",
+  "snapshot": "snapshot-2026-09-04.json",
+  "sources": [
+    {
+      "database": "Tiger Brokers statements",
+      "rows_used": 5,
+      "filter": "annual exports in data/tiger-brokers"
+    },
+    {
+      "database": "Transactions",
+      "rows_used": 14,
+      "filter": "payee = Tiger Brokers, to match each deposit to a bank row"
+    }
+  ],
+  "params": {
+    "folder": "data/tiger-brokers",
+    "payee": "Tiger Brokers",
+    "match_days": 3,
+    "stale_months": 4,
+    "currency": "SGD"
+  },
+  "chart": {
+    "type": "line",
+    "x": "period_to",
+    "series": [
+      "contributed_sgd_minor",
+      "value_sgd_minor"
+    ],
+    "source": "periods",
+    "unit": "sgd_minor"
+  },
+  "data": {
+    "periods": [
+      {
+        "period_from": "2022-03-08",
+        "period_to": "2022-12-31",
+        "sgd_per_base": 1.3412,
+        "deposits_sgd_minor": 400000,
+        "deposits_base_minor": 298240,
+        "contributed_sgd_minor": 400000,
+        "value_base_minor": 275118,
+        "value_sgd_minor": 368988,
+        "cash_base_minor": 9640,
+        "holdings_base_minor": 265478,
+        "dividends_base_minor": 985,
+        "fees_base_minor": -400,
+        "withholding_base_minor": -148,
+        "gain_sgd_minor": -31012
+      },
+      {
+        "period_from": "2023-01-01",
+        "period_to": "2023-12-31",
+        "sgd_per_base": 1.3197,
+        "deposits_sgd_minor": 180000,
+        "deposits_base_minor": 136395,
+        "contributed_sgd_minor": 580000,
+        "value_base_minor": 442037,
+        "value_sgd_minor": 583356,
+        "cash_base_minor": 5822,
+        "holdings_base_minor": 436215,
+        "dividends_base_minor": 3160,
+        "fees_base_minor": -400,
+        "withholding_base_minor": -474,
+        "gain_sgd_minor": 3356
+      },
+      {
+        "period_from": "2024-01-01",
+        "period_to": "2024-12-31",
+        "sgd_per_base": 1.3605,
+        "deposits_sgd_minor": 220000,
+        "deposits_base_minor": 161705,
+        "contributed_sgd_minor": 800000,
+        "value_base_minor": 669084,
+        "value_sgd_minor": 910289,
+        "cash_base_minor": 21105,
+        "holdings_base_minor": 647979,
+        "dividends_base_minor": 5831,
+        "fees_base_minor": -600,
+        "withholding_base_minor": -875,
+        "gain_sgd_minor": 110289
+      },
+      {
+        "period_from": "2025-01-01",
+        "period_to": "2025-12-31",
+        "sgd_per_base": 1.2878,
+        "deposits_sgd_minor": 350000,
+        "deposits_base_minor": 271781,
+        "contributed_sgd_minor": 1150000,
+        "value_base_minor": 998245,
+        "value_sgd_minor": 1285540,
+        "cash_base_minor": 18766,
+        "holdings_base_minor": 979479,
+        "dividends_base_minor": 9612,
+        "fees_base_minor": -600,
+        "withholding_base_minor": -1442,
+        "gain_sgd_minor": 135540
+      },
+      {
+        "period_from": "2026-01-01",
+        "period_to": "2026-08-31",
+        "sgd_per_base": 1.2804,
+        "deposits_sgd_minor": 400000,
+        "deposits_base_minor": 312402,
+        "contributed_sgd_minor": 1550000,
+        "value_base_minor": 1437000,
+        "value_sgd_minor": 1839935,
+        "cash_base_minor": 16372,
+        "holdings_base_minor": 1420628,
+        "dividends_base_minor": 11890,
+        "fees_base_minor": -640,
+        "withholding_base_minor": -2133,
+        "gain_sgd_minor": 289935
+      }
+    ],
+    "holdings": [
+      {
+        "symbol": "VT",
+        "name": "Vanguard Total World Stock ETF",
+        "quantity": 96.5,
+        "cost_price": 109.62,
+        "close_price": 128.4,
+        "currency": "USD",
+        "value_minor": 1239060,
+        "unrealized_pl_minor": 181227,
+        "value_sgd_minor": 1586492
+      },
+      {
+        "symbol": "MSFT",
+        "name": "Microsoft",
+        "quantity": 3.0,
+        "cost_price": 401.15,
+        "close_price": 452.1,
+        "currency": "USD",
+        "value_minor": 135630,
+        "unrealized_pl_minor": 15285,
+        "value_sgd_minor": 173661
+      },
+      {
+        "symbol": "ES3.SI",
+        "name": "SPDR Straits Times Index ETF",
+        "quantity": 150.0,
+        "cost_price": 3.41,
+        "close_price": 3.92,
+        "currency": "SGD",
+        "value_minor": 58800,
+        "unrealized_pl_minor": 7650,
+        "value_sgd_minor": 58800
+      }
+    ],
+    "deposits": [
+      {
+        "date": "2022-03-10",
+        "currency": "SGD",
+        "matched": null,
+        "amount_minor": 150000
+      },
+      {
+        "date": "2022-07-04",
+        "currency": "SGD",
+        "matched": null,
+        "amount_minor": 150000
+      },
+      {
+        "date": "2022-10-17",
+        "currency": "SGD",
+        "matched": null,
+        "amount_minor": 100000
+      },
+      {
+        "date": "2023-04-12",
+        "currency": "SGD",
+        "matched": null,
+        "amount_minor": 100000
+      },
+      {
+        "date": "2023-11-02",
+        "currency": "SGD",
+        "matched": null,
+        "amount_minor": 80000
+      },
+      {
+        "date": "2024-06-18",
+        "currency": "SGD",
+        "matched": null,
+        "amount_minor": 120000
+      },
+      {
+        "date": "2024-12-09",
+        "currency": "SGD",
+        "matched": true,
+        "amount_minor": 100000
+      },
+      {
+        "date": "2025-02-11",
+        "currency": "SGD",
+        "matched": true,
+        "amount_minor": 100000
+      },
+      {
+        "date": "2025-08-04",
+        "currency": "SGD",
+        "matched": true,
+        "amount_minor": 50000
+      },
+      {
+        "date": "2025-09-02",
+        "currency": "SGD",
+        "matched": true,
+        "amount_minor": 50000
+      },
+      {
+        "date": "2025-10-02",
+        "currency": "SGD",
+        "matched": true,
+        "amount_minor": 50000
+      },
+      {
+        "date": "2025-11-04",
+        "currency": "SGD",
+        "matched": true,
+        "amount_minor": 50000
+      },
+      {
+        "date": "2025-12-02",
+        "currency": "SGD",
+        "matched": true,
+        "amount_minor": 50000
+      },
+      {
+        "date": "2026-01-05",
+        "currency": "SGD",
+        "matched": true,
+        "amount_minor": 50000
+      },
+      {
+        "date": "2026-02-03",
+        "currency": "SGD",
+        "matched": true,
+        "amount_minor": 50000
+      },
+      {
+        "date": "2026-03-04",
+        "currency": "SGD",
+        "matched": false,
+        "amount_minor": 50000
+      },
+      {
+        "date": "2026-04-02",
+        "currency": "SGD",
+        "matched": true,
+        "amount_minor": 50000
+      },
+      {
+        "date": "2026-05-05",
+        "currency": "SGD",
+        "matched": true,
+        "amount_minor": 50000
+      },
+      {
+        "date": "2026-06-02",
+        "currency": "SGD",
+        "matched": true,
+        "amount_minor": 50000
+      },
+      {
+        "date": "2026-07-02",
+        "currency": "SGD",
+        "matched": true,
+        "amount_minor": 50000
+      },
+      {
+        "date": "2026-08-04",
+        "currency": "SGD",
+        "matched": true,
+        "amount_minor": 50000
+      }
+    ],
+    "summary": {
+      "as_of": "2026-08-31",
+      "gain_pct": 18.7,
+      "statements": 5,
+      "cash_as_of": "2026-08",
+      "unmatched_deposits": 1,
+      "value_sgd_minor": 1839935,
+      "value_base_minor": 1437000,
+      "contributed_sgd_minor": 1550000,
+      "gain_sgd_minor": 289935,
+      "dividends_base_latest_minor": 11890,
+      "cash_sgd_minor": 1355125,
+      "net_worth_sgd_minor": 3195060
+    }
+  },
+  "findings": [
+    "Tiger Brokers held SGD 18,399.35 at 2026-08-31, against SGD 15,500.00 paid in over 21 deposits and 5 statements, so the gain is SGD 2,899.35, 18.7 per cent of what went in.",
+    "Cash of SGD 13,551.25 at 2026-08 plus investments of SGD 18,399.35 at 2026-08-31 is a net worth of SGD 31,950.60, the two dates being what each side was last measured on.",
+    "The largest position is VT at SGD 15,864.92, 86 per cent of the portfolio, across 3 holdings.",
+    "1 of the 15 deposits the bank statements could cover has no Tiger Brokers row within 3 days of it for the same amount: SGD 500.00 on 2026-03-04. Either the money came from an account this record does not hold, or the rules gave that row another payee."
+  ],
+  "caveats": [
+    "The value is the statement's own closing valuation on its last day, not a live price, so it is as old as the last export.",
+    "Every figure is converted at the exchange rate that statement printed for its own period end, not at today's rate, so a period is compared with itself rather than restated.",
+    "Contributions are the deposits the statements list, and nothing has been withdrawn; a withdrawal would have to be taken off before the gain means anything.",
+    "Dividends, fees and withholding tax stay in the account's base currency, US dollars, because that is how the statement reports them.",
+    "Deposits made before the bank statements begin cannot be matched either way and are neither counted as matched nor as missing."
+  ]
+}

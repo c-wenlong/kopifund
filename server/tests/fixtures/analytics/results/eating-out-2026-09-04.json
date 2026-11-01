@@ -1,0 +1,462 @@
+{
+  "id": "eating-out",
+  "title": "Eating out",
+  "generated_at": "2026-09-04T10:13:58+08:00",
+  "snapshot": "snapshot-2026-09-04.json",
+  "sources": [
+    {
+      "database": "Transactions",
+      "rows_used": 742,
+      "filter": "category in (Eating out, Coffee) and flow_class = External"
+    },
+    {
+      "database": "Transactions",
+      "rows_used": 198,
+      "filter": "category = Groceries, for the comparison line"
+    }
+  ],
+  "params": {
+    "from": "2025-09",
+    "to": "2026-08",
+    "week_starts": "Monday"
+  },
+  "chart": {
+    "type": "line",
+    "x": "week",
+    "series": [
+      "spend_minor",
+      "groceries_spend_minor"
+    ],
+    "source": "weeks",
+    "unit": "sgd_minor"
+  },
+  "data": {
+    "weeks": [
+      {
+        "week": "2025-W35",
+        "count": 8,
+        "spend_minor": 20009,
+        "groceries_spend_minor": 12033
+      },
+      {
+        "week": "2025-W36",
+        "count": 4,
+        "spend_minor": 3995,
+        "groceries_spend_minor": 8332
+      },
+      {
+        "week": "2025-W37",
+        "count": 5,
+        "spend_minor": 6179,
+        "groceries_spend_minor": 4693
+      },
+      {
+        "week": "2025-W38",
+        "count": 2,
+        "spend_minor": 3003,
+        "groceries_spend_minor": 10493
+      },
+      {
+        "week": "2025-W39",
+        "count": 2,
+        "spend_minor": 3753,
+        "groceries_spend_minor": 8016
+      },
+      {
+        "week": "2025-W40",
+        "count": 9,
+        "spend_minor": 10319,
+        "groceries_spend_minor": 10561
+      },
+      {
+        "week": "2025-W41",
+        "count": 4,
+        "spend_minor": 5911,
+        "groceries_spend_minor": 11458
+      },
+      {
+        "week": "2025-W42",
+        "count": 3,
+        "spend_minor": 3455,
+        "groceries_spend_minor": 9254
+      },
+      {
+        "week": "2025-W43",
+        "count": 9,
+        "spend_minor": 9580,
+        "groceries_spend_minor": 7005
+      },
+      {
+        "week": "2025-W44",
+        "count": 5,
+        "spend_minor": 9723,
+        "groceries_spend_minor": 6178
+      },
+      {
+        "week": "2025-W45",
+        "count": 3,
+        "spend_minor": 6030,
+        "groceries_spend_minor": 6052
+      },
+      {
+        "week": "2025-W46",
+        "count": 3,
+        "spend_minor": 6351,
+        "groceries_spend_minor": 6653
+      },
+      {
+        "week": "2025-W47",
+        "count": 6,
+        "spend_minor": 11979,
+        "groceries_spend_minor": 6005
+      },
+      {
+        "week": "2025-W48",
+        "count": 2,
+        "spend_minor": 2679,
+        "groceries_spend_minor": 9972
+      },
+      {
+        "week": "2025-W49",
+        "count": 5,
+        "spend_minor": 8894,
+        "groceries_spend_minor": 5040
+      },
+      {
+        "week": "2025-W50",
+        "count": 4,
+        "spend_minor": 5001,
+        "groceries_spend_minor": 12117
+      },
+      {
+        "week": "2025-W51",
+        "count": 6,
+        "spend_minor": 10341,
+        "groceries_spend_minor": 12906
+      },
+      {
+        "week": "2026-W01",
+        "count": 5,
+        "spend_minor": 11332,
+        "groceries_spend_minor": 8459
+      },
+      {
+        "week": "2026-W02",
+        "count": 5,
+        "spend_minor": 5759,
+        "groceries_spend_minor": 6478
+      },
+      {
+        "week": "2026-W03",
+        "count": 9,
+        "spend_minor": 21213,
+        "groceries_spend_minor": 10266
+      },
+      {
+        "week": "2026-W04",
+        "count": 9,
+        "spend_minor": 20304,
+        "groceries_spend_minor": 9217
+      },
+      {
+        "week": "2026-W05",
+        "count": 5,
+        "spend_minor": 10840,
+        "groceries_spend_minor": 11423
+      },
+      {
+        "week": "2026-W06",
+        "count": 3,
+        "spend_minor": 7022,
+        "groceries_spend_minor": 6894
+      },
+      {
+        "week": "2026-W07",
+        "count": 4,
+        "spend_minor": 3893,
+        "groceries_spend_minor": 9881
+      },
+      {
+        "week": "2026-W08",
+        "count": 9,
+        "spend_minor": 17976,
+        "groceries_spend_minor": 10515
+      },
+      {
+        "week": "2026-W09",
+        "count": 8,
+        "spend_minor": 12872,
+        "groceries_spend_minor": 7726
+      },
+      {
+        "week": "2026-W10",
+        "count": 3,
+        "spend_minor": 7779,
+        "groceries_spend_minor": 10364
+      },
+      {
+        "week": "2026-W11",
+        "count": 4,
+        "spend_minor": 4884,
+        "groceries_spend_minor": 6052
+      },
+      {
+        "week": "2026-W12",
+        "count": 8,
+        "spend_minor": 12044,
+        "groceries_spend_minor": 9078
+      },
+      {
+        "week": "2026-W13",
+        "count": 6,
+        "spend_minor": 5829,
+        "groceries_spend_minor": 9336
+      },
+      {
+        "week": "2026-W14",
+        "count": 9,
+        "spend_minor": 11353,
+        "groceries_spend_minor": 9051
+      },
+      {
+        "week": "2026-W15",
+        "count": 2,
+        "spend_minor": 4128,
+        "groceries_spend_minor": 4728
+      },
+      {
+        "week": "2026-W16",
+        "count": 7,
+        "spend_minor": 13989,
+        "groceries_spend_minor": 9537
+      },
+      {
+        "week": "2026-W17",
+        "count": 6,
+        "spend_minor": 9880,
+        "groceries_spend_minor": 9753
+      },
+      {
+        "week": "2026-W18",
+        "count": 3,
+        "spend_minor": 4358,
+        "groceries_spend_minor": 4688
+      },
+      {
+        "week": "2026-W19",
+        "count": 3,
+        "spend_minor": 4097,
+        "groceries_spend_minor": 5673
+      },
+      {
+        "week": "2026-W20",
+        "count": 3,
+        "spend_minor": 4476,
+        "groceries_spend_minor": 7985
+      },
+      {
+        "week": "2026-W21",
+        "count": 2,
+        "spend_minor": 2755,
+        "groceries_spend_minor": 8875
+      },
+      {
+        "week": "2026-W22",
+        "count": 6,
+        "spend_minor": 12105,
+        "groceries_spend_minor": 10710
+      },
+      {
+        "week": "2026-W23",
+        "count": 7,
+        "spend_minor": 16122,
+        "groceries_spend_minor": 12376
+      },
+      {
+        "week": "2026-W24",
+        "count": 2,
+        "spend_minor": 4834,
+        "groceries_spend_minor": 4907
+      },
+      {
+        "week": "2026-W25",
+        "count": 8,
+        "spend_minor": 19384,
+        "groceries_spend_minor": 10663
+      },
+      {
+        "week": "2026-W26",
+        "count": 7,
+        "spend_minor": 14399,
+        "groceries_spend_minor": 6139
+      },
+      {
+        "week": "2026-W27",
+        "count": 5,
+        "spend_minor": 10229,
+        "groceries_spend_minor": 7391
+      },
+      {
+        "week": "2026-W28",
+        "count": 7,
+        "spend_minor": 7794,
+        "groceries_spend_minor": 11684
+      },
+      {
+        "week": "2026-W29",
+        "count": 6,
+        "spend_minor": 7489,
+        "groceries_spend_minor": 5765
+      },
+      {
+        "week": "2026-W30",
+        "count": 5,
+        "spend_minor": 8800,
+        "groceries_spend_minor": 7911
+      },
+      {
+        "week": "2026-W31",
+        "count": 5,
+        "spend_minor": 12016,
+        "groceries_spend_minor": 10464
+      },
+      {
+        "week": "2026-W32",
+        "count": 2,
+        "spend_minor": 3902,
+        "groceries_spend_minor": 5545
+      },
+      {
+        "week": "2026-W33",
+        "count": 6,
+        "spend_minor": 14220,
+        "groceries_spend_minor": 8830
+      },
+      {
+        "week": "2026-W34",
+        "count": 8,
+        "spend_minor": 19488,
+        "groceries_spend_minor": 12268
+      },
+      {
+        "week": "2026-W35",
+        "count": 2,
+        "spend_minor": 3688,
+        "groceries_spend_minor": 12157
+      }
+    ],
+    "top_places": [
+      {
+        "payee": "Food Republic",
+        "visits": 61,
+        "spend_minor": 51240,
+        "avg_ticket_minor": 840
+      },
+      {
+        "payee": "Food Junction",
+        "visits": 38,
+        "spend_minor": 40150,
+        "avg_ticket_minor": 1057
+      },
+      {
+        "payee": "Hai Di Lao",
+        "visits": 5,
+        "spend_minor": 34100,
+        "avg_ticket_minor": 6820
+      },
+      {
+        "payee": "Mr Bean",
+        "visits": 44,
+        "spend_minor": 29620,
+        "avg_ticket_minor": 673
+      },
+      {
+        "payee": "Ya Kun Kaya Toast",
+        "visits": 29,
+        "spend_minor": 24310,
+        "avg_ticket_minor": 838
+      },
+      {
+        "payee": "Sarnies",
+        "visits": 17,
+        "spend_minor": 21940,
+        "avg_ticket_minor": 1291
+      },
+      {
+        "payee": "Tim Ho Wan",
+        "visits": 9,
+        "spend_minor": 18720,
+        "avg_ticket_minor": 2080
+      },
+      {
+        "payee": "Astons",
+        "visits": 8,
+        "spend_minor": 17840,
+        "avg_ticket_minor": 2230
+      },
+      {
+        "payee": "Guzman y Gomez",
+        "visits": 11,
+        "spend_minor": 16830,
+        "avg_ticket_minor": 1530
+      },
+      {
+        "payee": "Toast Box",
+        "visits": 22,
+        "spend_minor": 16480,
+        "avg_ticket_minor": 749
+      },
+      {
+        "payee": "Swee Choon",
+        "visits": 6,
+        "spend_minor": 15400,
+        "avg_ticket_minor": 2567
+      },
+      {
+        "payee": "Subway",
+        "visits": 14,
+        "spend_minor": 14190,
+        "avg_ticket_minor": 1014
+      },
+      {
+        "payee": "Luckin Coffee",
+        "visits": 26,
+        "spend_minor": 11960,
+        "avg_ticket_minor": 460
+      },
+      {
+        "payee": "Nasi Lemak Ayam Taliwang",
+        "visits": 13,
+        "spend_minor": 11150,
+        "avg_ticket_minor": 858
+      },
+      {
+        "payee": "Old Chang Kee",
+        "visits": 19,
+        "spend_minor": 9270,
+        "avg_ticket_minor": 488
+      }
+    ],
+    "weekday_vs_weekend": {
+      "weekday_count": 190,
+      "weekend_count": 79,
+      "weekday_avg_ticket_minor": 1420,
+      "weekend_avg_ticket_minor": 2680
+    },
+    "totals": {
+      "meals": 269,
+      "spend_minor": 478455,
+      "groceries_minor": 449557
+    },
+    "average_ticket_minor": 1779
+  },
+  "findings": [
+    "269 meals out over 52 weeks at an average ticket of 17.79 SGD, 4,785 in total.",
+    "Weekend meals cost nearly twice a weekday one, 26.80 against 14.20, on a third of the visits.",
+    "Eating out is running slightly ahead of groceries across the year, which is the reverse of the year before."
+  ],
+  "caveats": [
+    "A shared bill paid by the owner counts in full, so a group dinner looks like one very expensive meal.",
+    "Food courts often appear under the operator rather than the stall, so the top-places list is coarser than it looks."
+  ]
+}

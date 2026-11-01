@@ -1,0 +1,124 @@
+{
+  "id": "travel",
+  "title": "Trips",
+  "generated_at": "2026-09-04T10:14:59+08:00",
+  "snapshot": "snapshot-2026-09-04.json",
+  "sources": [
+    {
+      "database": "Transactions",
+      "rows_used": 214,
+      "filter": "trip is set"
+    },
+    {
+      "database": "Trips",
+      "rows_used": 4,
+      "filter": "all"
+    }
+  ],
+  "params": {
+    "currency": "SGD",
+    "days_rule": "inclusive of both end dates"
+  },
+  "chart": {
+    "type": "bar",
+    "x": "trip",
+    "series": [
+      "spend_sgd_minor",
+      "spend_per_day_minor"
+    ],
+    "source": "trips",
+    "unit": "sgd_minor",
+    "units": {
+      "spend_sgd_minor": "sgd",
+      "spend_per_day_minor": "sgd"
+    }
+  },
+  "data": {
+    "trips": [
+      {
+        "trip": "Taipei 2025",
+        "start": "2025-02-14",
+        "end": "2025-02-20",
+        "days": 7,
+        "countries": [
+          "Taiwan"
+        ],
+        "by_category": {
+          "Travel_minor": 61200,
+          "Accommodation_minor": 38050,
+          "Eating out_minor": 19610,
+          "Shopping_minor": 9600
+        },
+        "spend_sgd_minor": 128460,
+        "spend_per_day_minor": 18351
+      },
+      {
+        "trip": "Seoul 2025",
+        "start": "2025-04-03",
+        "end": "2025-04-08",
+        "days": 6,
+        "countries": [
+          "South Korea"
+        ],
+        "by_category": {
+          "Travel_minor": 29800,
+          "Accommodation_minor": 26430,
+          "Eating out_minor": 21800,
+          "Shopping_minor": 6200
+        },
+        "spend_sgd_minor": 84230,
+        "spend_per_day_minor": 14038
+      },
+      {
+        "trip": "Japan 2026",
+        "start": "2026-05-16",
+        "end": "2026-06-01",
+        "days": 17,
+        "countries": [
+          "Japan"
+        ],
+        "by_category": {
+          "Travel_minor": 142000,
+          "Accommodation_minor": 110580,
+          "Eating out_minor": 61200,
+          "Transport_minor": 17300,
+          "Shopping_minor": 10000
+        },
+        "spend_sgd_minor": 341080,
+        "spend_per_day_minor": 20064
+      },
+      {
+        "trip": "Kuala Lumpur 2026",
+        "start": "2026-07-11",
+        "end": "2026-07-14",
+        "days": 4,
+        "countries": [
+          "Malaysia"
+        ],
+        "by_category": {
+          "Travel_minor": 14800,
+          "Accommodation_minor": 13240,
+          "Eating out_minor": 10850,
+          "Shopping_minor": 3000
+        },
+        "spend_sgd_minor": 41890,
+        "spend_per_day_minor": 10472
+      }
+    ],
+    "totals": {
+      "trips": 4,
+      "days": 34,
+      "spend_sgd_minor": 595660,
+      "spend_per_day_minor": 17519
+    }
+  },
+  "findings": [
+    "Four trips over 34 days cost 5,957 SGD, an average of 175 a day.",
+    "The Japan trip is 57 percent of all travel spend and the most expensive per day at 201.",
+    "Kuala Lumpur at 105 a day is the only trip that cost less per day than an ordinary month at home."
+  ],
+  "caveats": [
+    "A trip only picks up charges made on a tracked card, so anything paid in cash withdrawn beforehand lands in the withdrawal month instead.",
+    "Flights booked months ahead sit in the booking month, not the trip, unless the Trip relation was set by hand."
+  ]
+}

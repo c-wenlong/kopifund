@@ -1,0 +1,37 @@
+{
+  "name": "kopifund-web",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "test": "vitest run",
+    "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "5.2.5",
+    "lucide-react": "0.511.0",
+    "react": "19.1.0",
+    "react-day-picker": "9.14.0",
+    "react-dom": "19.1.0",
+    "react-qr-code": "2.2.0",
+    "recharts": "2.15.3"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "4.1.8",
+    "@testing-library/jest-dom": "6.6.3",
+    "@testing-library/react": "16.3.0",
+    "@testing-library/user-event": "14.6.1",
+    "@types/react": "19.1.6",
+    "@types/react-dom": "19.1.5",
+    "@vitejs/plugin-react": "4.5.0",
+    "jsdom": "26.1.0",
+    "tailwindcss": "4.1.8",
+    "typescript": "5.8.3",
+    "vite": "6.3.5",
+    "vite-plugin-pwa": "1.0.0",
+    "vitest": "3.2.2"
+  },
+  "license": "MIT"
+}

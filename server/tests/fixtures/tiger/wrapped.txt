@@ -1,0 +1,219 @@
+                                                                      Tiger Brokers (Singapore) PTE.LTD.
+
+                                                                      Address:1 Raffles Place, #35-61 One Raffles Place Tower 2, Singapore 048616.
+                                                                      GST registration number:201810449W
+
+
+TAN MEI LING                                                            Statement Issuance Date:2026-06-30
+                                                                        Statement Period:2026-01-01 - 2026-06-30
+
+  Account Information
+
+ Account                      Address                       Account Category              Base Currency
+
+ 99887766                     SINGAPORE SINGAPORE 100 UNIT    Cash                             USD
+
+  Account Overview
+
+                                              Cash           Stock              Funds in Transit        Interest Accruals       Dividend Accruals       Total
+
+ Beginning Of The Period                     20.50          300.00                          0.00                     0.00                    2.00      322.50
+
+ End Of The Period                           30.00          900.00                          0.00                     0.00                    0.00      930.00
+
+  Cash Report
+
+  Currency: Base Currency Summary
+
+                                                       Total               Securities
+
+ Starting Cash                                         20.50                    20.50
+
+ Platform Fees                                         -2.00                    -2.00
+
+ GST                                                   -0.18                    -0.18
+
+ Deposits                                             310.00                   310.00
+
+ Dividends                                             25.00                    25.00
+
+ Net Trades (Purchase)                               -384.95                  -384.95
+
+ Withholding Tax                                       -6.00                    -6.00
+
+ Ending Cash                                           30.00                    30.00
+
+ Ending Settled Cash                                   30.00                    30.00
+
+
+  Currency: USD
+
+                                                       Total               Securities
+
+ Starting Cash                                          9.00                     9.00
+
+ Dividends                                             20.00                    20.00
+
+ Ending Cash                                           12.00                    12.00
+
+
+  Trades
+
+  Forex
+
+ Symbol(Base.Quote)      Activity Type       Quantity(Base)      Trade Price      Amount(Quote)     Notes       Trade Time        Settle Date       Currency
+
+                                                                                                                2026-01-05
+ USD.SGD                 Buy                       155.0000          1.29000            -200.00                                   2026-01-05        SGD
+                                                                                                                13:44:42, US/Eastern
+
+                                                                                                                2026-01-05
+                         Buy                       155.0000          1.29000            -200.00                                   2026-01-05        SGD
+                                                                                                                13:44:42, US/Eastern
+
+                                                                                                                2026-02-03
+ USD.SGD                 Buy                       156.0000          1.28200            -200.00                                   2026-02-03        SGD
+                                                                                                                13:44:42, US/Eastern
+
+                                                                                                                2026-02-03
+                         Buy                       156.0000          1.28200            -200.00                                   2026-02-03        SGD
+                                                                                                                13:44:42, US/Eastern
+
+ Total USD.SGD                                     311.0000                             -400.00                                                     SGD
+
+ Total(In Base)                                                                         -310.00                                                     USD
+
+  Stock
+
+                                      Activity                  Trade                   Accrued Interest in                                         Realized P                                  Settle
+ Symbol         Market    Exchange                Quantity                  Amount                              Comm/Fee              GST                           Notes       Trade Time                  Currency
+                                        Type                    Price                         Trade                                                         /L                                  Date
+
+ SPDR S&P 500 ETF                                                                                                                                                               2026-01-05
+                                                                                                           Platform Fee: -1.00                                                                  2026-01-
+ Trust          US        ARCA          Open       0.30000  650.00000       195.00                     0.00
+                                                                                                                                    -0.09                 0.00                    13:44:42                   USD
+                                                                                                                                                                                                    06
+ (SPY)                                                                                                                                                                            /Eastern
+
+                                                                                                                                                                                2026-01-05
+                                                                                                           Platform Fee: -1.00                                                                  2026-01-
+                US        ARCA          Open       0.30000  650.00000       195.00                     0.00
+                                                                                                                                    -0.09                 0.00                    13:44:42                   USD
+                                                                                                                                                                                                    06
+                                                                                                                                                                                  /Eastern
+
+ SPDR S&P 500 ETF                                                                                                                                                               2026-02-03
+
+
+This statement also serves as a Tax Invoice for GST purpose.                                                                                                    2/3
+
+                                                                      Tiger Brokers (Singapore) PTE.LTD.
+
+                                      Activity                  Trade                   Accrued Interest in                                         Realized P                                  Settle
+ Symbol         Market    Exchange                Quantity                  Amount                              Comm/Fee              GST                           Notes       Trade Time                  Currency
+                                        Type                    Price                         Trade                                                         /L                                  Date
+
+                                                                                                           Platform Fee: -1.00                                                                  2026-02-
+ Trust          US        ARCA          Open       0.29000  655.00000       189.95                     0.00
+                                                                                                                                    -0.09                 0.00                    13:44:42                   USD
+                                                                                                                                                                                                    04
+ (SPY)                                                                                                                                                                            /Eastern
+
+                                                                                                                                                                                2026-02-03
+                                                                                                           Platform Fee: -1.00                                                                  2026-02-
+                US        ARCA          Open       0.29000  655.00000       189.95                     0.00
+                                                                                                                                    -0.09                 0.00                    13:44:42                   USD
+                                                                                                                                                                                                    04
+                                                                                                                                                                                  /Eastern
+
+ Total SPY                                         0.59000                  384.95                                       -2.00      -0.18                 0.00                                               USD
+
+
+Note:
+
+ 1. We calculate realized P&L using the FIFO method.
+
+  Deposits & Withdrawals
+
+ Date                                             Description                             Amount              Currency
+
+ 2026-01-05                                       Deposit                                 200.00                SGD
+
+ 2026-02-03                                       Deposit                                 200.00                SGD
+
+                                                  Total                                   400.00                SGD
+
+                                                  Total(In Base)                          310.00                USD
+
+  Holdings
+
+  Stock
+
+ Symbol                                 Quantity        Multiplier       Cost Price        Close Price       Value       Unrealized P/L      Initial Margin      Maint Margin      Currency
+
+ SIA
+                                             100               1.0        5.0000000            6.50000      650.00               150.00                0.00              0.00      SGD
+ (C6L.SI)
+
+ Total                                       100                                                            650.00               150.00                0.00              0.00      SGD
+
+ SPDR S&P 500 ETF Trust
+                                         0.59000               1.0      652.5000000          700.00000      413.00                28.03                0.00              0.00      USD
+ (SPY)
+
+ Total                                   0.59000                                                            413.00                28.03                0.00              0.00      USD
+
+ Total(In Base)                        100.59000                                                            900.00               185.00                0.00              0.00      USD
+
+
+Note:
+
+ 1. The multiplier represents the fixed number used to calculate the contract value.
+
+ 2. For certain private funds, the market value includes estimated adjustments.
+
+  Dividends
+
+                                                    Dividend Reinvestment                                                         Cash                                        Net Cash
+ Date             Product         Symbol                                            Quantity/Gross Rate       Phase                         Shares      Fees & Tax                          Currency
+                                                          Plan                                                               Dividends                                          Value
+
+                                                                                    Quantity: 100
+ 2026-05-                         SIA                                                                         Paid
+                  Stock                                                             Gross Rate: 0.090000                          9.00           0                                9.00      SGD
+ 20                               (C6L.SI)
+                                                                                                 /Share
+
+                                  Total                                                                       Accruals/Paid                                                  0.00/9.00      SGD
+
+                                                                                    Quantity: 100
+ 2026-03-                         SPDR S&P 500 ETF                                                            Paid
+                  Stock                                                             Gross Rate: 1.000000                         20.00           0                               16.00      USD
+ 15                               (SPY)                                                                                                         Dividend tax: 4.00
+                                                                                                 /Share
+
+                                                                                    Quantity: 100
+ 2026-03-                         SPDR S&P 500 ETF                                                            Dividend Accruals
+                  Stock                                                             Gross Rate: 1.000000      Increase           20.00           0                               16.00      USD
+ 15                               (SPY)                                                                                                         Dividend tax: 4.00
+                                                                                                 /Share
+
+                                  Total                                                                       Accruals/Paid                                                 0.00/16.00      USD
+
+                                  Total(In Base)                                                              Accruals/Paid                                                 0.00/25.00      USD
+
+
+Notes: Accrued Dividends refers to the expected amount of cash you will receive.
+
+  Base Currency Exchange Rate
+
+ Date                                                                                                                             2026-06-30
+
+ USD                                                                                                                                       1
+
+ SGD                                                                                                                                 0.78000
+
+
+Note: You can refer to the USD index table for the exchange rates.
+

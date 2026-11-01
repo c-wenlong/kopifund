@@ -1,0 +1,122 @@
+# G24: generated with `xcodegen` (brew install xcodegen). Edit this file and
+# rerun `xcodegen` in apps/ios/ instead of editing Alerts.xcodeproj by hand.
+name: Alerts
+options:
+  bundleIdPrefix: com.kopifund
+  deploymentTarget:
+    iOS: "17.0"
+packages:
+  Matching:
+    path: Packages/Matching
+  YNABClient:
+    path: Packages/YNABClient
+  KopifundClient:
+    path: Packages/KopifundClient
+  Storage:
+    path: Packages/Storage
+  Intents:
+    path: Packages/Intents
+settings:
+  SWIFT_VERSION: "6.0"
+  CURRENT_PROJECT_VERSION: "1"
+  MARKETING_VERSION: "0.1"
+  DEVELOPMENT_TEAM: XXXXXXXXXX
+  CODE_SIGN_STYLE: Automatic
+targets:
+  Alerts:
+    type: application
+    platform: iOS
+    sources: [Alerts]
+    dependencies:
+      - package: Matching
+      - package: YNABClient
+      - package: KopifundClient
+      - package: Storage
+      - package: Intents
+    entitlements:
+      path: Alerts/Alerts.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.kopifund.alerts]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kopifund.alerts
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # every AppIcon-<set> in the catalog ships as an alternate icon, for
+        # setAlternateIconName; app-icons/apply.py writes them
+        ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        INFOPLIST_KEY_UIApplicationSceneManifest_Generation: YES
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        INFOPLIST_KEY_CFBundleDisplayName: Kopifund
+    info:
+      path: Alerts/Info.plist
+      properties:
+        CFBundleDisplayName: Kopifund
+        # G25: the pairing QR; and kopifund://pair links so the Camera's own
+        # scan can hand the payload straight to the app
+        NSCameraUsageDescription: The camera reads the pairing code Settings shows.
+        CFBundleURLTypes:
+          - CFBundleURLSchemes: [kopifund]
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: false
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations: {}
+        UISupportedInterfaceOrientations: [UIInterfaceOrientationPortrait]
+  ShareExtension:
+    type: app-extension
+    platform: iOS
+    sources: [ShareExtension]
+    dependencies:
+      - package: Matching
+      - package: Storage
+      - package: Intents
+    entitlements:
+      path: ShareExtension/ShareExtension.entitlements
+      properties:
+        com.apple.security.application-groups: [group.com.kopifund.alerts]
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.kopifund.alerts.ShareExtension
+        TARGETED_DEVICE_FAMILY: "1"
+        APPLICATION_EXTENSION_API_ONLY: YES
+    info:
+      path: ShareExtension/Info.plist
+      properties:
+        CFBundleDisplayName: Send to Kopifund
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 0
+              NSExtensionActivationSupportsWebPageWithMaxCount: 0
+              NSExtensionActivationSupportsImageWithMaxCount: 0
+              NSExtensionActivationSupportsMovieWithMaxCount: 0
+              NSExtensionActivationSupportsFileWithMaxCount: 0
+  AlertsUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    sources: [AlertsUITests]
+    dependencies:
+      - target: Alerts
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.kopifund.alerts.uitests
+        TARGETED_DEVICE_FAMILY: "1"
+        TEST_TARGET_NAME: Alerts
+schemes:
+  Alerts:
+    build:
+      targets:
+        Alerts: all
+        ShareExtension: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets: [AlertsUITests]

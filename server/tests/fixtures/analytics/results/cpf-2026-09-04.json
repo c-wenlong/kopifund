@@ -1,0 +1,223 @@
+{
+  "id": "cpf",
+  "title": "CPF savings",
+  "generated_at": "2026-09-04T10:15:33+08:00",
+  "snapshot": "snapshot-2026-09-04.json",
+  "chart": {
+    "type": "stacked",
+    "x": "year",
+    "series": [
+      "oa_minor",
+      "sa_minor",
+      "ma_minor"
+    ],
+    "source": "years",
+    "unit": "sgd_minor"
+  },
+  "sources": [
+    {
+      "database": "CPF yearly statements",
+      "rows_used": 10,
+      "filter": "one statement of account per year in data/cpf-statements"
+    }
+  ],
+  "params": {
+    "folder": "data/cpf-statements",
+    "accounts": [
+      "oa",
+      "sa",
+      "ma"
+    ],
+    "stale_months": 15,
+    "currency": "SGD",
+    "net_worth_as_of": "2026-08-31"
+  },
+  "data": {
+    "years": [
+      {
+        "year": 2016,
+        "as_of": "2016-12-31",
+        "employee": null,
+        "employer": null,
+        "oa_minor": 19894,
+        "sa_minor": 5187,
+        "ma_minor": 6919,
+        "total_minor": 32000,
+        "employment_minor": 32000,
+        "government_minor": 0,
+        "interest_minor": 0,
+        "outflow_minor": 0,
+        "growth_minor": 32000
+      },
+      {
+        "year": 2017,
+        "as_of": "2017-12-31",
+        "employee": null,
+        "employer": null,
+        "oa_minor": 46080,
+        "sa_minor": 12092,
+        "ma_minor": 16129,
+        "total_minor": 74301,
+        "employment_minor": 41000,
+        "government_minor": 1301,
+        "interest_minor": 1301,
+        "outflow_minor": 0,
+        "growth_minor": 42301
+      },
+      {
+        "year": 2018,
+        "as_of": "2018-12-31",
+        "employee": null,
+        "employer": null,
+        "oa_minor": 47693,
+        "sa_minor": 12697,
+        "ma_minor": 16935,
+        "total_minor": 77325,
+        "employment_minor": 0,
+        "government_minor": 3024,
+        "interest_minor": 3024,
+        "outflow_minor": 0,
+        "growth_minor": 3024
+      },
+      {
+        "year": 2019,
+        "as_of": "2019-12-31",
+        "employee": null,
+        "employer": null,
+        "oa_minor": 49362,
+        "sa_minor": 13332,
+        "ma_minor": 17782,
+        "total_minor": 80476,
+        "employment_minor": 0,
+        "government_minor": 3151,
+        "interest_minor": 3151,
+        "outflow_minor": 0,
+        "growth_minor": 3151
+      },
+      {
+        "year": 2020,
+        "as_of": "2020-12-31",
+        "oa_minor": 51090,
+        "sa_minor": 13999,
+        "ma_minor": 18671,
+        "total_minor": 83760,
+        "employee_minor": 0,
+        "employer_minor": 0,
+        "employment_minor": 0,
+        "government_minor": 3284,
+        "interest_minor": 3284,
+        "outflow_minor": 0,
+        "growth_minor": 3284
+      },
+      {
+        "year": 2021,
+        "as_of": "2021-12-31",
+        "oa_minor": 52878,
+        "sa_minor": 14699,
+        "ma_minor": 29605,
+        "total_minor": 97182,
+        "employee_minor": 0,
+        "employer_minor": 0,
+        "employment_minor": 0,
+        "government_minor": 13422,
+        "interest_minor": 3422,
+        "outflow_minor": 0,
+        "growth_minor": 13422
+      },
+      {
+        "year": 2022,
+        "as_of": "2022-12-31",
+        "oa_minor": 174344,
+        "sa_minor": 46622,
+        "ma_minor": 72682,
+        "total_minor": 293648,
+        "employee_minor": 104000,
+        "employer_minor": 88400,
+        "employment_minor": 192400,
+        "government_minor": 4066,
+        "interest_minor": 4066,
+        "outflow_minor": 0,
+        "growth_minor": 196466
+      },
+      {
+        "year": 2023,
+        "as_of": "2023-12-31",
+        "oa_minor": 539291,
+        "sa_minor": 142517,
+        "ma_minor": 201107,
+        "total_minor": 882915,
+        "employee_minor": 312000,
+        "employer_minor": 265200,
+        "employment_minor": 577200,
+        "government_minor": 12067,
+        "interest_minor": 12067,
+        "outflow_minor": 0,
+        "growth_minor": 589267
+      },
+      {
+        "year": 2024,
+        "as_of": "2024-12-31",
+        "oa_minor": 1213649,
+        "sa_minor": 321177,
+        "ma_minor": 439945,
+        "total_minor": 1974771,
+        "employee_minor": 572000,
+        "employer_minor": 486200,
+        "employment_minor": 1058200,
+        "government_minor": 36056,
+        "interest_minor": 36056,
+        "outflow_minor": 2400,
+        "growth_minor": 1091856
+      },
+      {
+        "year": 2025,
+        "as_of": "2025-12-31",
+        "oa_minor": 1658678,
+        "sa_minor": 442196,
+        "ma_minor": 601931,
+        "total_minor": 2702805,
+        "employee_minor": 350000,
+        "employer_minor": 297500,
+        "employment_minor": 647500,
+        "government_minor": 80534,
+        "interest_minor": 80534,
+        "outflow_minor": 0,
+        "growth_minor": 728034
+      }
+    ],
+    "summary": {
+      "as_of": "2025-12-31",
+      "years": 10,
+      "employer_share_last": 0.4595,
+      "cash_as_of": "2026-08",
+      "investments_as_of": "2026-08-31",
+      "locked_share": 0.4583,
+      "total_minor": 2702805,
+      "oa_minor": 1658678,
+      "sa_minor": 442196,
+      "ma_minor": 601931,
+      "contributed_employee_all_minor": 1338000,
+      "contributed_employer_all_minor": 1137300,
+      "interest_all_minor": 146905,
+      "government_all_minor": 156905,
+      "growth_last_minor": 728034,
+      "cash_sgd_minor": 1355125,
+      "investments_sgd_minor": 1839935,
+      "net_worth_total_minor": 5897865
+    }
+  },
+  "findings": [
+    "CPF held SGD 27,028.05 at 2025-12-31, split into OA 16,586.78 for housing and education, SA 4,421.96 for retirement and MA 6,019.31 for healthcare, over 10 yearly statements.",
+    "In 2025 SGD 6,475.00 of wages went in, 3,500.00 out of the member's pay and 2,975.00 added by the employer on top, the employer's share being 46 per cent, and the Government credited SGD 805.34 of interest and no support scheme paid in. The balance grew by SGD 7,280.34 over the year.",
+    "Across the whole record SGD 25,483.00 came in as wages and SGD 1,569.05 from the Government, of which 1,469.05 was interest. The wages that are split name 13,380.00 from the member and 11,373.00 from the employer. Wages have been the larger half from the first statement on.",
+    "Cash of SGD 13,551.25 at 2026-08, investments of SGD 18,399.35 at 2026-08-31 and CPF of SGD 27,028.05 at 2025-12-31 is a net worth of SGD 58,978.65, of which 45.8 per cent is the CPF: savings that are real but locked for retirement, housing and healthcare, on three dates that are each the last time that side was measured."
+  ],
+  "caveats": [
+    "CPF is mandated savings rather than a liability: 20 per cent of gross pay is deducted and the employer adds 17 per cent on top, and the money sits in the member's own three accounts. It is counted apart from cash because it cannot be spent on daily life, not because it is owed to anybody.",
+    "The balance is the one printed on 31 December of the statement's year, so it is as old as the newest statement: everything contributed since is real and is not in this figure.",
+    "The three accounts are not one pot. OA can go to housing and education, MA only to healthcare and SA only to retirement, so the total overstates what any single need can draw on.",
+    "The Government figure is its support schemes plus the interest it credited. A 2020-onwards statement prints those in one column and a 2016 to 2019 one prints the interest outside it, so the interest is added back here and the column means the same thing in every year; interest is also reported on its own, and the two are never added together.",
+    "The 2016 to 2019 statements print one combined employment figure, so the employee and employer halves are unknown in those years rather than zero.",
+    "Nothing here projects the interest ahead, the Retirement Account that is formed at 55, or any withdrawal, and no housing or MediSave claim in the record is netted off."
+  ]
+}

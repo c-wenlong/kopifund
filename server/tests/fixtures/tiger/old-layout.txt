@@ -1,0 +1,190 @@
+                                                                                                                        Tiger Brokers (Singapore) PTE.LTD.
+
+                                                                                          Address:1 Raffles Place, #35-61 One Raffles Place Tower 2, Singapore 048616.
+
+                                                                                                              GST registration number:201810449W
+
+
+TEST OWNER                                                                                                                                            Statement Issuance Date:2021-12-31
+
+                                                                                                                                                 Statement Period:2021-03-08 - 2021-12-31
+
+
+  Account Information
+
+ Account                                                    Address                                           Account Category                                  Base Currency
+
+ 99001122                                                   SINGAPORE 048616                                       Cash                                                USD
+
+
+  Account Overview
+
+                                                        Cash               Stock              Funds in Transit             Interest Accruals                  Dividend Accruals                    Total
+
+ Beginning Of The Period                               10.00                0.00                          0.00                          0.00                               0.00                    10.00
+
+ End Of The Period                                     33.85              876.78                          0.00                          0.00                               0.00                   910.63
+
+
+  Cash Report
+
+  Currency: Base Currency Summary
+
+                                                                                     Total                    Securities
+
+ Starting Cash                                                                       10.00                         10.00
+
+ Commissions                                                                         -1.72                         -1.72
+
+ Platform Fees                                                                          -1                            -1
+
+ GST                                                                                 -0.25                         -0.25
+
+ Settlement Fees                                                                     -0.13                         -0.13
+
+ Deposits                                                                           851.00                        851.00
+
+ Net Trades (Purchase)                                                             -824.05                       -824.05
+
+ Ending Cash                                                                         33.85                         33.85
+
+This statement also serves as a Tax Invoice for GST purpose.                                                                                                                                         1/4
+
+                                                                                                                        Tiger Brokers (Singapore) PTE.LTD.
+
+  Currency: SGD
+
+                                                                                     Total                    Securities
+
+ Starting Cash                                                                        0.00                          0.00
+
+ Deposits                                                                         1,150.00                      1,150.00
+
+ Custody Fees                                                                        -9.99                         -9.99
+
+ Ending Cash                                                                          0.00                          0.00
+
+Notes:
+
+ 1. Net Trades:
+
+   Sales: Cash received from selling securities
+
+
+  Trades
+
+  Forex
+
+
+ Symbol(Base.Quote)                        Activity Type                Quantity(Base)           Trade Price             Amount(Quote)             Notes                                  Trade Time         Settle Date        Currency
+
+                                                                                                                                                                                          2021-03-09
+ USD.SGD                                                                      833.3333               1.38000                 -1,150.00                                                                        2021-03-11             SGD
+                                                                                                                                                                                09:19:34, US/Eastern
+
+                                                                                                                                                                                          2021-03-09
+                                                                              833.3333               1.38000                 -1,150.00                                                                        2021-03-11             SGD
+                                                                                                                                                                                09:19:34, US/Eastern
+
+ Total USD.SGD                                                                833.3333                                       -1,150.00                                                                                               SGD
+
+ Total                                                                                                                       -1,150.00                                                                                               SGD
+
+ Total(In Base)                                                                                                                -833.33                                                                                               USD
+
+
+  Stock
+
+
+                                                        Activity                           Trade                     Accrued Interest in                                              Realized P                                      Settle
+ Symbol                     Market      Exchange                        Quantity                          Amount                                          Comm/Fee           GST                       Notes          Trade Time              Currency
+                                                            Type                           Price                                   Trade                                                      /L                                        Date
+
+                                                                                                                                                 Commission: -0.99
+ SPY                            US          ARCA                               1       441.10000          441.10                    0.00       Platform Fee: -1.00                                                    2021-05-12
+                                                                                                                                                                           -0.14            0.00                    04:00:09, US    2021-05-       USD
+                                                                                                                                                                                                                                          13
+
+                                                                                                                                                 Commission: -0.99
+                                US          ARCA                               1       441.10000          441.10                    0.00       Platform Fee: -1.00                                                    2021-05-12
+                                                                                                                                                                           -0.14            0.00                    04:00:09, US    2021-05-       USD
+                                                                                                                                                                                                                                          13
+
+This statement also serves as a Tax Invoice for GST purpose.                                                                                                                                         2/4
+
+                                                                                                                        Tiger Brokers (Singapore) PTE.LTD.
+
+                                                        Activity                           Trade                     Accrued Interest in                                              Realized P                                      Settle
+ Symbol                     Market      Exchange                        Quantity                          Amount                                          Comm/Fee           GST                       Notes          Trade Time              Currency
+                                                            Type                           Price                                   Trade                                                      /L                                        Date
+
+                                                                                                                                               Clearing Fee: -0.17
+ C6L.SI                         US          ARCA                             150         3.45000          517.50                    0.00         Commission: -0.99                                                    2021-03-16
+                                                                                                                                                                           -0.15            0.00                 08:58:45, GMT+8    2021-03-       SGD
+                                                                                                                                                                                                                                          18
+
+                                                                                                                                               Clearing Fee: -0.17
+                                US          ARCA                             150         3.45000          517.50                    0.00         Commission: -0.99                                                    2021-03-16
+                                                                                                                                                                           -0.15            0.00                 08:58:45, GMT+8    2021-03-       SGD
+                                                                                                                                                                                                                                          18
+
+ Total                                                                       151                          958.60                                             -3.15         -0.29            0.00                                                   USD
+
+Note:
+
+ 1. We calculate realized P&L using FIFO.
+
+
+  Deposits & Withdrawals
+
+ Date                                                                                                                            Description                                  Amount                                Currency
+
+ 2021-03-08                                                                                                                          Deposit                                1,150.00                                     SGD
+
+This statement also serves as a Tax Invoice for GST purpose.                                                                                                                                         3/4
+
+                                                                                                                        Tiger Brokers (Singapore) PTE.LTD.
+
+ Date                                                                                                                            Description                                  Amount                                Currency
+
+                                                                                                                                       Total                                1,150.00                                     SGD
+
+                                                                                                                              Total(In Base)                                  851.00                                     USD
+
+
+  Holdings
+
+  Stock
+
+
+ Symbol                                           Quantity        Multiplier          Cost Price         Close Price               Value        Unrealized P/L        Initial Margin        Maint Margin        Currency
+
+ C6L.SI                                                150               1.0           3.4577333             3.62000              543.00                 24.34                  0.00                0.00             SGD
+
+ Total                                                 150                                                                        543.00                 24.34                  0.00                0.00             SGD
+
+ SPY                                                     1               1.0         443.0900000           474.96000              474.96                 31.87                  0.00                0.00             USD
+
+ Total                                                   1                                                                        474.96                 31.87                  0.00                0.00             USD
+
+ Total(In Base)                                        151                                                                        876.78                 49.88                  0.00                0.00             USD
+
+Note:
+
+ 1. The multiplier is a fixed number.
+
+
+  Base Currency Exchange Rate
+
+ Date                                                                                                                                                                                                                                 2021-12-31
+
+ USD                                                                                                                                                                                                                                           1
+
+ EUR                                                                                                                                                                                                                                     1.10000
+
+ SGD                                                                                                                                                                                                                                     0.74000
+
+This statement also serves as a Tax Invoice for GST purpose.                                                                                                                                         4/4
+
+                                                                                                                        Tiger Brokers (Singapore) PTE.LTD.
+

@@ -1,0 +1,372 @@
+{
+  "id": "savings-runway",
+  "title": "Cash and runway",
+  "generated_at": "2026-09-04T10:14:47+08:00",
+  "snapshot": "snapshot-2026-09-04.json",
+  "chart": {
+    "type": "line",
+    "x": "month",
+    "series": [
+      "cash_minor",
+      "runway_months"
+    ],
+    "source": "months",
+    "unit": "sgd_minor",
+    "units": {
+      "runway_months": "months"
+    }
+  },
+  "sources": [
+    {
+      "database": "Period balances",
+      "rows_used": 122,
+      "filter": "closing balances in SGD, deposit blocks only"
+    },
+    {
+      "database": "Transactions",
+      "rows_used": 2030,
+      "filter": "flow_class = External and bucket = Spend and not synthetic"
+    }
+  ],
+  "params": {
+    "rule_low": 3,
+    "rule_high": 6,
+    "rate_window_months": 6,
+    "as_of_complete": "2026-08",
+    "currency": "SGD"
+  },
+  "data": {
+    "months": [
+      {
+        "month": "2024-12",
+        "carried": [],
+        "not_started": [
+          "DBS Multiplier"
+        ],
+        "complete": true,
+        "partial": false,
+        "runway_months": 4.4,
+        "cash_minor": 910173,
+        "spend_minor": 273710,
+        "carried_amount_minor": 0,
+        "POSB Everyday Savings_minor": 910173
+      },
+      {
+        "month": "2025-01",
+        "carried": [],
+        "not_started": [
+          "DBS Multiplier"
+        ],
+        "complete": true,
+        "partial": false,
+        "runway_months": 4.7,
+        "cash_minor": 971922,
+        "spend_minor": 257297,
+        "carried_amount_minor": 0,
+        "POSB Everyday Savings_minor": 971922
+      },
+      {
+        "month": "2025-02",
+        "carried": [
+          "POSB Everyday Savings"
+        ],
+        "not_started": [
+          "DBS Multiplier"
+        ],
+        "complete": false,
+        "partial": true,
+        "runway_months": 4.7,
+        "cash_minor": 971922,
+        "spend_minor": 283742,
+        "carried_amount_minor": 971922,
+        "POSB Everyday Savings_minor": 971922
+      },
+      {
+        "month": "2025-03",
+        "carried": [],
+        "not_started": [
+          "DBS Multiplier"
+        ],
+        "complete": true,
+        "partial": false,
+        "runway_months": 4.2,
+        "cash_minor": 873609,
+        "spend_minor": 318521,
+        "carried_amount_minor": 0,
+        "POSB Everyday Savings_minor": 873609
+      },
+      {
+        "month": "2025-04",
+        "carried": [],
+        "not_started": [
+          "DBS Multiplier"
+        ],
+        "complete": true,
+        "partial": false,
+        "runway_months": 4.1,
+        "cash_minor": 852050,
+        "spend_minor": 311749,
+        "carried_amount_minor": 0,
+        "POSB Everyday Savings_minor": 852050
+      },
+      {
+        "month": "2025-05",
+        "carried": [
+          "POSB Everyday Savings"
+        ],
+        "not_started": [
+          "DBS Multiplier"
+        ],
+        "complete": false,
+        "partial": true,
+        "runway_months": 4.1,
+        "cash_minor": 852050,
+        "spend_minor": 254638,
+        "carried_amount_minor": 852050,
+        "POSB Everyday Savings_minor": 852050
+      },
+      {
+        "month": "2025-06",
+        "carried": [],
+        "not_started": [
+          "DBS Multiplier"
+        ],
+        "complete": true,
+        "partial": false,
+        "runway_months": 4.4,
+        "cash_minor": 898203,
+        "spend_minor": 236335,
+        "carried_amount_minor": 0,
+        "POSB Everyday Savings_minor": 898203
+      },
+      {
+        "month": "2025-07",
+        "carried": [],
+        "not_started": [],
+        "complete": true,
+        "partial": false,
+        "runway_months": 3.0,
+        "cash_minor": 623509,
+        "spend_minor": 229579,
+        "carried_amount_minor": 0,
+        "DBS Multiplier_minor": 187053,
+        "POSB Everyday Savings_minor": 436456
+      },
+      {
+        "month": "2025-08",
+        "carried": [],
+        "not_started": [],
+        "complete": true,
+        "partial": false,
+        "runway_months": 3.0,
+        "cash_minor": 612601,
+        "spend_minor": 255031,
+        "carried_amount_minor": 0,
+        "DBS Multiplier_minor": 199095,
+        "POSB Everyday Savings_minor": 413506
+      },
+      {
+        "month": "2025-09",
+        "carried": [],
+        "not_started": [],
+        "complete": true,
+        "partial": false,
+        "runway_months": 3.0,
+        "cash_minor": 621775,
+        "spend_minor": 248107,
+        "carried_amount_minor": 0,
+        "DBS Multiplier_minor": 217621,
+        "POSB Everyday Savings_minor": 404154
+      },
+      {
+        "month": "2025-10",
+        "carried": [],
+        "not_started": [],
+        "complete": true,
+        "partial": false,
+        "runway_months": 3.1,
+        "cash_minor": 640700,
+        "spend_minor": 230720,
+        "carried_amount_minor": 0,
+        "DBS Multiplier_minor": 240263,
+        "POSB Everyday Savings_minor": 400437
+      },
+      {
+        "month": "2025-11",
+        "carried": [],
+        "not_started": [],
+        "complete": true,
+        "partial": false,
+        "runway_months": 3.4,
+        "cash_minor": 709049,
+        "spend_minor": 190297,
+        "carried_amount_minor": 0,
+        "DBS Multiplier_minor": 283620,
+        "POSB Everyday Savings_minor": 425429
+      },
+      {
+        "month": "2025-12",
+        "carried": [],
+        "not_started": [],
+        "complete": true,
+        "partial": false,
+        "runway_months": 3.6,
+        "cash_minor": 734723,
+        "spend_minor": 226297,
+        "carried_amount_minor": 0,
+        "DBS Multiplier_minor": 312257,
+        "POSB Everyday Savings_minor": 422466
+      },
+      {
+        "month": "2026-01",
+        "carried": [],
+        "not_started": [],
+        "complete": true,
+        "partial": false,
+        "runway_months": 3.9,
+        "cash_minor": 803330,
+        "spend_minor": 220064,
+        "carried_amount_minor": 0,
+        "DBS Multiplier_minor": 361499,
+        "POSB Everyday Savings_minor": 441831
+      },
+      {
+        "month": "2026-02",
+        "carried": [],
+        "not_started": [],
+        "complete": true,
+        "partial": false,
+        "runway_months": 4.5,
+        "cash_minor": 926419,
+        "spend_minor": 173515,
+        "carried_amount_minor": 0,
+        "DBS Multiplier_minor": 440049,
+        "POSB Everyday Savings_minor": 486370
+      },
+      {
+        "month": "2026-03",
+        "carried": [],
+        "not_started": [],
+        "complete": true,
+        "partial": false,
+        "runway_months": 4.9,
+        "cash_minor": 1005176,
+        "spend_minor": 201579,
+        "carried_amount_minor": 0,
+        "DBS Multiplier_minor": 502588,
+        "POSB Everyday Savings_minor": 502588
+      },
+      {
+        "month": "2026-04",
+        "carried": [],
+        "not_started": [],
+        "complete": true,
+        "partial": false,
+        "runway_months": 5.4,
+        "cash_minor": 1118858,
+        "spend_minor": 166182,
+        "carried_amount_minor": 0,
+        "DBS Multiplier_minor": 587400,
+        "POSB Everyday Savings_minor": 531458
+      },
+      {
+        "month": "2026-05",
+        "carried": [],
+        "not_started": [],
+        "complete": true,
+        "partial": false,
+        "runway_months": 6.0,
+        "cash_minor": 1235393,
+        "spend_minor": 169660,
+        "carried_amount_minor": 0,
+        "DBS Multiplier_minor": 679466,
+        "POSB Everyday Savings_minor": 555927
+      },
+      {
+        "month": "2026-06",
+        "carried": [],
+        "not_started": [],
+        "complete": true,
+        "partial": false,
+        "runway_months": 6.2,
+        "cash_minor": 1277665,
+        "spend_minor": 248465,
+        "carried_amount_minor": 0,
+        "DBS Multiplier_minor": 734657,
+        "POSB Everyday Savings_minor": 543008
+      },
+      {
+        "month": "2026-07",
+        "carried": [],
+        "not_started": [],
+        "complete": true,
+        "partial": false,
+        "runway_months": 6.3,
+        "cash_minor": 1291724,
+        "spend_minor": 241142,
+        "carried_amount_minor": 0,
+        "DBS Multiplier_minor": 775034,
+        "POSB Everyday Savings_minor": 516690
+      },
+      {
+        "month": "2026-08",
+        "carried": [],
+        "not_started": [],
+        "complete": true,
+        "partial": false,
+        "runway_months": 6.6,
+        "cash_minor": 1355125,
+        "spend_minor": 206367,
+        "carried_amount_minor": 0,
+        "DBS Multiplier_minor": 840177,
+        "POSB Everyday Savings_minor": 514948
+      }
+    ],
+    "provisional": [],
+    "accounts": [
+      {
+        "account": "DBS Multiplier",
+        "account_no": "072-91883-4",
+        "as_of": "2026-08",
+        "last_balance_minor": 840177
+      },
+      {
+        "account": "POSB Everyday Savings",
+        "account_no": "111-11111-1",
+        "as_of": "2026-08",
+        "last_balance_minor": 514948
+      }
+    ],
+    "summary": {
+      "as_of": "2026-08",
+      "as_of_complete": "2026-08",
+      "carried": [],
+      "latest_month": "2026-08",
+      "runway_all": 5.8,
+      "runway_6m": 6.6,
+      "rule_low": 3,
+      "rule_high": 6,
+      "accounts": 2,
+      "cash_minor": 1355125,
+      "carried_amount_minor": 0,
+      "latest_cash_minor": 1355125,
+      "spend_avg_all_minor": 231822,
+      "spend_avg_6m_minor": 205566,
+      "trend_6m_minor": 428706
+    }
+  },
+  "findings": [
+    "Cash across 2 accounts is SGD 13,551.25 at 2026-08, the last month every account printed a statement, which is 6.6 months at the last six months' spending rate of 2,055.66 and 5.8 months at the 19-month rate of 2,318.22.",
+    "That is above the usual 3 to 6 month emergency-fund range.",
+    "Cash has risen by SGD 4,287.06 over the last six months.",
+    "DBS Multiplier holds the most at SGD 8,401.77, as at 2026-08."
+  ],
+  "caveats": [
+    "Balances are statement closing figures, so an account whose statement stops early keeps its last printed balance rather than dropping to zero.",
+    "A balance is carried per account and currency, so a wallet that printed only some of its currencies this month keeps the rest of its pockets rather than losing them.",
+    "The months before an account's first statement are marked: the cash line is lower there because that account did not exist in this record yet, not because the money was not held.",
+    "Investments held at Tiger Brokers are not cash and are not counted here; the money that went into them left this balance.",
+    "Runway divides cash by spending only, so it assumes no income at all, which is the point of the measure and not a forecast.",
+    "Amount SGD uses the period's FX rate to SGD (latest exchange seen in that wallet); approximate for non-SGD wallets"
+  ]
+}

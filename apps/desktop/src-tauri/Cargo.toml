@@ -1,0 +1,24 @@
+[package]
+name = "kopifund-desktop"
+version = "0.1.0"
+description = "Kopifund in a Mac window (G23)"
+edition = "2021"
+publish = false
+
+[build-dependencies]
+tauri-build = { version = "=2.7.1", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.1", features = [] }
+tauri-plugin-single-instance = "=2.5.2"
+tauri-plugin-window-state = "=2.5.0"
+serde = { version = "1", features = ["derive"] }
+
+# the Dock icon (main.rs, set_dock_icon); the versions tauri already builds
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "=0.6.5"
+objc2-app-kit = { version = "=0.3.2", default-features = false, features = ["std", "NSApplication", "NSImage", "NSResponder"] }
+objc2-foundation = { version = "=0.3.2", default-features = false, features = ["std", "NSString"] }
+
+[profile.release]
+strip = true

@@ -1,0 +1,248 @@
+# The data folder's config.toml (~/.kopifund/config.toml, or $KOPIFUND_DATA/config.toml).
+# The app's first-run setup writes one for you; this file shows every setting.
+# Everything here is a fact about one person's accounts rather than about the
+# code, so it lives in the data folder and never in the repo. Folder paths are
+# relative to the data folder. Read with tomllib by finance/model.py.
+#
+# Notion is optional. `finance.py load` writes the local record without it;
+# doctor and sync read and write Notion, so they need [data_sources] and a token.
+
+[notion]
+# API version pinned; the data-source query endpoints below are 2025-09-03.
+version = "2025-09-03"
+
+# The integration token is looked up in this order:
+#   1. the real environment, under the variable named by token_env
+#   2. .env in the data folder (mode 600), under that same name
+#   3. the standard output of token_command (macOS keychain)
+token_env = "NOTION_TOKEN"
+token_command = "security find-generic-password -s notion-finances -w"
+
+# Request pacing. pace is the minimum gap in seconds between any two requests,
+# counted across every thread (0.35 is about Notion's 3 requests a second);
+# workers is how many independent calls run at once. workers = 1 is sequential.
+pace = 0.35
+workers = 4
+
+# Every database the loader reads or writes, as data-source ids. The first
+# eight sit on the Expenses page and are the record itself; the two after
+# them are the hub page's tables, and trip_plans is the owner's planner.
+[data_sources]
+accounts = "<data-source-uuid>"
+period_balances = "<data-source-uuid>"
+transactions = "<data-source-uuid>"
+payees = "<data-source-uuid>"
+categories = "<data-source-uuid>"
+cards = "<data-source-uuid>"
+# Written by the rollup step: one Budgets row per category and month, one Trips
+# row per trip. Both were created by POST /databases with is_inline = true.
+budgets = "<data-source-uuid>"
+trips = "<data-source-uuid>"
+# Optional: the hub page's Metrics and Months tables, written by finance.py
+# analyse. Leave them out and analyse writes nothing to Notion.
+metrics = "<data-source-uuid>"
+months = "<data-source-uuid>"
+# Optional: the owner's trip planner that Trips Expenses.Trip plan points at.
+# When set, the rollup copies each expense trip's Dates from its planner rows.
+trip_plans = "<data-source-uuid>"
+
+# Accounts rows, keyed by the account number the parsers print.
+[accounts]
+"<multiplier account number>" = "<32-hex page or data source id>"   # DBS Multiplier
+"<posb account number>"       = "<32-hex page or data source id>"   # POSB Everyday Savings
+"<paylah wallet number>"      = "<32-hex page or data source id>"   # PayLah wallet
+"<youtrip account id>"        = "<32-hex page or data source id>"   # YouTrip wallet, all currencies
+"<revolut account number>"    = "<32-hex page or data source id>"   # Revolut wallet, all currencies
+"<wise sgd account number>"   = "<32-hex page or data source id>"   # Wise wallet, all currencies
+
+# Cards rows, keyed by the last four digits the statements print.
+[cards]
+"<mastercard last four>" = "<32-hex page or data source id>"        # a DBS debit card (Mastercard)
+"<visa last four>"       = "<32-hex page or data source id>"        # another DBS debit card (Visa)
+"<revolut last four>"    = "<32-hex page or data source id>"        # Revolut card
+
+# Statement folders, one per account under statements/, one folder per year
+# inside each. Every folder of one parser is passed to that parser in a single
+# run: the DBS parser can only drop duplicate card rows when the card
+# statements and the account statements are parsed together.
+[[folder]]
+path = "statements/dbs-multiplier"
+parser = "dbs"
+account_no = "<multiplier account number>"
+
+[[folder]]
+path = "statements/posb-everyday"
+parser = "dbs"
+account_no = "<posb account number>"
+
+[[folder]]
+path = "statements/dbs-paylah"
+parser = "dbs"
+account_no = "<paylah wallet number>"
+
+[[folder]]
+path = "statements/dbs-debit-cards"
+parser = "dbs"
+# Card statements carry the funding account, which is not always the same one,
+# so the account number comes from the rows rather than from this entry.
+account_no = ""
+
+# YouTrip: one folder per currency wallet, each naming its currency.
+[[folder]]
+path = "statements/youtrip-sgd"
+parser = "youtrip"
+account_no = "<youtrip account id>"
+wallet = "SGD"
+
+[[folder]]
+path = "statements/youtrip-usd"
+parser = "youtrip"
+account_no = "<youtrip account id>"
+wallet = "USD"
+
+[[folder]]
+path = "statements/revolut"
+parser = "revolut"
+account_no = "<revolut account number>"
+# One "Export all accounts", "All time" PDF holding every currency wallet as
+# its own section, saved as <year>/export-<date>.pdf; only the newest export is
+# read. multi_currency marks the account as a wallet whose non-SGD rows were
+# spent abroad.
+multi_currency = true
+
+# Wise: one folder per currency balance, each holding <year>/export-<date>.pdf;
+# only the newest export in each folder is read. Only the SGD file prints the
+# account number.
+[[folder]]
+path = "statements/wise-sgd"
+parser = "wise"
+account_no = "<wise sgd account number>"
+wallet = "SGD"
+
+[[folder]]
+path = "statements/wise-usd"
+parser = "wise"
+account_no = "<wise sgd account number>"
+wallet = "USD"
+
+# Optional: AI suggestions for the payees no rule names (G12). Leave the
+# section out and the app never calls a model. Only the merchant text and,
+# with send_amounts, a rounded typical amount are sent; never dates, exact
+# amounts, account numbers or people's names.
+#
+# provider = "auto" (the default) picks the first provider whose key it finds
+# and that has a default model: anthropic (claude-haiku-5-5), then deepseek
+# (deepseek-chat). Or name one: anthropic, openai, xai, gemini, deepseek,
+# qwen, moonshot, zhipu, zai, mistral, groq, together, fireworks, cerebras,
+# openrouter, ollama; any other OpenAI-style endpoint works with base_url and
+# model set. A provider without a default model needs model.
+#
+# The key is found without being named: the provider's usual variable
+# (ANTHROPIC_API_KEY, OPENAI_API_KEY, XAI_API_KEY, GEMINI_API_KEY, KIMI_API_KEY,
+# ZAI_API_KEY, ...) or <PROVIDER>_API_KEY, from the environment, then .env in
+# the data folder, then key_file. key_env names a different variable, and
+# key_command runs a keychain lookup instead.
+[ai]
+provider = "auto"
+key_file = "~/.api_keys"         # optional: the file your shell profile sources
+send_amounts = true
+# model = "deepseek-chat"        # needed when the provider has no default
+# key_env = "MY_CLAUDE_KEY"
+# key_command = "security find-generic-password -s kopifund-ai -w"
+# workspace_id = "wrkspc_..."    # Anthropic keys not scoped to one workspace; or export ANTHROPIC_WORKSPACE_ID
+# base_url = "https://my-llm.example/v1"   # only for a provider not listed above
+# enabled = false                          # keep the settings, stop asking
+
+# Analytics settings: facts about one person's life, kept out of code and read
+# by finance/settings.py settings(). Every key below the two folders is
+# optional; leave one out (or empty) and the stats fall back to a neutral
+# default that says nothing about anybody (analytics/SPEC.md, "Settings").
+# The commented values are invented examples.
+[analytics]
+tiger_folder = "statements/tiger"     # Tiger Brokers annual exports, read straight off disk into the snapshot; empty string switches the portfolio off
+cpf_folder = "statements/cpf"             # CPF yearly statements of account, read the same way; empty string switches the CPF stat off
+
+# Rows to this payee are loan repayments, not a standing cost. Default: none,
+# so nothing is split out and the "repayments resuming" scenario is not offered.
+# repayment_payee = "Sam Lee"
+# Optional: only rows in this category count as repayments.
+# repayment_category = "Person to person"
+
+# A trip longer than this many days is a place lived in rather than a holiday.
+# Default: 60.
+# long_stay_days = 45
+
+# The age band whose household-spending reference benchmarks-sg prefers,
+# spelled as the reference ids spell it. Default: none preferred.
+# age_band = "30-34"
+
+# Named stretches of time, oldest first; `to` may be left out for a phase that
+# runs on. Default: the whole record is one phase.
+# phases = [
+#   { name = "Working in Penang", from = "2023-03", to = "2023-11" },
+#   { name = "Back home", from = "2023-12" },
+# ]
+
+# What-if extra monthly income, each priced as its own forward-view scenario.
+# Default: none.
+# income_scenarios = [
+#   { label = "a weekend tutoring job", monthly = 400.0 },
+# ]
+
+# What the forward view assumes about the months ahead. Dated pay segments,
+# inclusive both ends; a month is prorated by calendar days when a segment
+# starts or ends inside it, and a month no segment covers earns nothing.
+# Leave the whole section out to fall back to the stat's own defaults.
+[plan]
+to = "2026-12"                  # last month projected
+dca = 500                       # the monthly investing transfer; 0 to pause it
+insurance = 0                   # the monthly premium; an annual policy goes in as a twelfth of it
+other_income = 0                # irregular income such as gifts or allowances: not assumed
+repayments = 0                  # monthly loan repayments if they resume
+cpf_employer_rate = 0.17        # the employer CPF share, paid on top of gross; accrued beside the employee 20 per cent, never off the cash line
+
+# Which observed rate is the base monthly spending: "home" (the median of the
+# last six months spent mostly at home, with every trip row and Travel booking
+# out), "window" (plain median), "mean" or "phase".
+spend_rate = "home"
+
+# Rows to leave out of every spending rate: a single large purchase makes a
+# month say that living costs more than it does. Txn key first, then a note.
+spend_exclude_keys = []
+
+# Trips ahead, costed on top of the base rate: days x per_day spread over the
+# months the trip touches, plus flights as a one-off in flights_month (default:
+# the month the trip starts). per_day defaults to the record's short-trip rate.
+[[plan.trips]]
+name = "<trip>"
+from = "2026-11-02"
+to = "2026-11-06"
+per_day = 80
+flights = 300
+flights_month = "2026-09"
+
+# One-off payments ahead that are neither the base rate nor a trip: a course
+# fee, a deposit, a purchase. Subtracted in the month named.
+[[plan.one_offs]]
+month = "2026-10"
+amount = 1200.00
+label = "<what the payment is>"
+
+[[plan.income]]
+from = "2026-01-01"
+to = "2026-06-30"
+gross = 5000
+cpf = true                      # take the 20 per cent employee CPF share off gross
+note = "current salary"
+
+[[plan.income]]
+from = "2026-07-01"
+to = "2026-12-31"
+gross = 5500
+cpf = true
+note = "after a raise"
+
+# Optional: the hub page. status_block is the id of the callout block that
+# finance.py sync rewrites with the run's one-line status.
+[hub]
+status_block = "<block-uuid>"

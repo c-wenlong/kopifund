@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "The starting page only. The app's own page, served by serve.py, gets no Tauri API.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

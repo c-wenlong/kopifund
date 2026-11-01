@@ -1,0 +1,60 @@
+Debit Cards
+Statement of Account
+
+                                                                                                                                                        Page 1 of 1
+
+
+                                                                                         2618349-6837
+
+
+     ,      "%            %                )),
+      TAN MEI LING
+      BLK 100A ALPHA RD 1
+      #01-100
+      SINGAPORE 100100
+                                                    ./-0./-0./-0./-0./-0./-0./-0./
+
+
+
+
+                                                                                                                                              for ACCOUNT: 130-24680-5
+                                                                                                                                                      As at 09 Feb 2025
+
+     DATE                         DESCRIPTION - TRANSACTION DATE                                                                                                     AMOUNT(S$)
+
+     DBS SAFRA DEBIT CARD
+
+     TAN MEI LING 'S CARD NO.: 5100-1234-5678-5454
+
+     12 Jan                       OPENAI                      SAN FRANCISCO CA 10 JAN                                                       $                            15.45
+                                          REF NO.: MT531417377579845727409 USD 10.90
+
+     12 Jan                       OPENAI *CHATGPT SUBSCR SAN FRANCISCO CA 10 JAN                                                            $                            30.88
+                                          REF NO.: MT293050556615280550317 USD 21.80
+
+     14 Jan                       KIOSK NORD CITY                       OSLO                      NOR 12 JAN                                $                            28.07
+                                          REF NO.: MT225829612519381863095 NOK 220.00
+
+     22 Jan                       PADDLE.NET* TOOLBOX.IO LISBOA                                       PRT 20 JAN                            $                            58.63
+                                          REF NO.: MT191175944137978890006 NOK 460.42
+
+     01 Feb                       AID-SINGAPORE                         SINGAPORE                SGP 29 JAN                                 $                            18.00
+                                          REF NO.: MT916081232906369921707
+
+                                                                                                                          TOTAL             $                          151.03
+
+                                                                                                             GRAND TOTAL                    $                          151.03
+
+    This statement shows the details of all card transactions (as defined in the DBS Debit Card Agreement including applicable fees and charges) effected by you using your DBS/POSB Debit
+    Card and debited from your card account. These transactions are also reflected in your POSB Savings Account Passbook, as the case may be.
+
+    If you find any discrepancies in the entries in this statement, please contact us at 1800 1111 111 within seven (7) days of your receipt of the statement. Otherwise, we will consider the
+    statement as correct.
+
+    As part of our ongoing efforts to Go Green, please read the latest updates and Important Notes on your DBS/POSB Debit Card at www.dbs.com.sg/personal/cards/debit-cards/default.page.
+
+
+
+
+                                                                PDS_DBCRD_E_LOC_ESTMT_02429fd7fc26e4f3_06837
+

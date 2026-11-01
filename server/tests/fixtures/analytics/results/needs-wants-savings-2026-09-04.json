@@ -1,0 +1,346 @@
+{
+  "id": "needs-wants-savings",
+  "title": "Needs, wants and savings",
+  "generated_at": "2026-09-04T10:13:19+08:00",
+  "snapshot": "snapshot-2026-09-04.json",
+  "chart": {
+    "type": "stacked",
+    "x": "month",
+    "series": [
+      "need_minor",
+      "want_minor",
+      "savings_minor"
+    ],
+    "source": "months",
+    "unit": "sgd_minor"
+  },
+  "sources": [
+    {
+      "database": "Transactions",
+      "rows_used": 1884,
+      "filter": "flow_class = External, split by the category's Need class"
+    }
+  ],
+  "params": {
+    "from": "2024-12",
+    "to": "2026-08",
+    "rule": "50/30/20",
+    "currency": "SGD"
+  },
+  "data": {
+    "months": [
+      {
+        "month": "2024-12",
+        "unclassified": 0.0,
+        "need_share": 0.5815,
+        "want_share": 0.2996,
+        "savings_share": 0.2158,
+        "partial": false,
+        "income_minor": 249535,
+        "need_minor": 145100,
+        "want_minor": 74760,
+        "savings_minor": 53850,
+        "transfer_minor": 85639
+      },
+      {
+        "month": "2025-01",
+        "unclassified": 0.0,
+        "need_share": 0.4258,
+        "want_share": 0.2273,
+        "savings_share": 0.1791,
+        "partial": false,
+        "income_minor": 309151,
+        "need_minor": 131643,
+        "want_minor": 70274,
+        "savings_minor": 55380,
+        "transfer_minor": 30490
+      },
+      {
+        "month": "2025-02",
+        "unclassified": 0.0,
+        "need_share": 0.6071,
+        "want_share": 0.3278,
+        "savings_share": 0.1577,
+        "partial": true,
+        "income_minor": 259703,
+        "need_minor": 157664,
+        "want_minor": 85126,
+        "savings_minor": 40952,
+        "transfer_minor": 30594
+      },
+      {
+        "month": "2025-03",
+        "unclassified": 0.0,
+        "need_share": 0.8108,
+        "want_share": 0.3864,
+        "savings_share": 0.1264,
+        "partial": false,
+        "income_minor": 240657,
+        "need_minor": 195117,
+        "want_minor": 92987,
+        "savings_minor": 30417,
+        "transfer_minor": 62261
+      },
+      {
+        "month": "2025-04",
+        "unclassified": 0.0,
+        "need_share": 0.5757,
+        "want_share": 0.2798,
+        "savings_share": 0.205,
+        "partial": false,
+        "income_minor": 293971,
+        "need_minor": 169232,
+        "want_minor": 82250,
+        "savings_minor": 60267,
+        "transfer_minor": 49992
+      },
+      {
+        "month": "2025-05",
+        "unclassified": 0.0,
+        "need_share": 0.4789,
+        "want_share": 0.2305,
+        "savings_share": 0.1956,
+        "partial": true,
+        "income_minor": 281385,
+        "need_minor": 134746,
+        "want_minor": 64855,
+        "savings_minor": 55037,
+        "transfer_minor": 6562
+      },
+      {
+        "month": "2025-06",
+        "unclassified": 0.0,
+        "need_share": 0.4825,
+        "want_share": 0.2585,
+        "savings_share": 0.161,
+        "partial": false,
+        "income_minor": 262005,
+        "need_minor": 126414,
+        "want_minor": 67740,
+        "savings_minor": 42181,
+        "transfer_minor": 2572
+      },
+      {
+        "month": "2025-07",
+        "unclassified": 0.0,
+        "need_share": 0.0,
+        "want_share": 0.0,
+        "savings_share": 0.0,
+        "partial": false,
+        "income_minor": 0,
+        "need_minor": 171180,
+        "want_minor": 89682,
+        "savings_minor": 68717,
+        "transfer_minor": 79509
+      },
+      {
+        "month": "2025-08",
+        "unclassified": 0.0,
+        "need_share": 0.5981,
+        "want_share": 0.3167,
+        "savings_share": 0.3119,
+        "partial": false,
+        "income_minor": 289428,
+        "need_minor": 173096,
+        "want_minor": 91666,
+        "savings_minor": 90269,
+        "transfer_minor": 69029
+      },
+      {
+        "month": "2025-09",
+        "unclassified": 0.0,
+        "need_share": 0.586,
+        "want_share": 0.3395,
+        "savings_share": 0.2335,
+        "partial": false,
+        "income_minor": 300349,
+        "need_minor": 176007,
+        "want_minor": 101967,
+        "savings_minor": 70133,
+        "transfer_minor": 12061
+      },
+      {
+        "month": "2025-10",
+        "unclassified": 0.0,
+        "need_share": 0.584,
+        "want_share": 0.286,
+        "savings_share": 0.2797,
+        "partial": false,
+        "income_minor": 287674,
+        "need_minor": 167991,
+        "want_minor": 82269,
+        "savings_minor": 80460,
+        "transfer_minor": 2824
+      },
+      {
+        "month": "2025-11",
+        "unclassified": 0.0,
+        "need_share": 0.4216,
+        "want_share": 0.2795,
+        "savings_share": 0.2491,
+        "partial": false,
+        "income_minor": 305507,
+        "need_minor": 128804,
+        "want_minor": 85387,
+        "savings_minor": 76106,
+        "transfer_minor": 50546
+      },
+      {
+        "month": "2025-12",
+        "unclassified": 0.0,
+        "need_share": 0.5565,
+        "want_share": 0.3221,
+        "savings_share": 0.2315,
+        "partial": false,
+        "income_minor": 293927,
+        "need_minor": 163563,
+        "want_minor": 94687,
+        "savings_minor": 68047,
+        "transfer_minor": 16805
+      },
+      {
+        "month": "2026-01",
+        "unclassified": 0.0,
+        "need_share": 0.454,
+        "want_share": 0.2427,
+        "savings_share": 0.277,
+        "partial": false,
+        "income_minor": 328711,
+        "need_minor": 149247,
+        "want_minor": 79778,
+        "savings_minor": 91039,
+        "transfer_minor": 74391
+      },
+      {
+        "month": "2026-02",
+        "unclassified": 0.0,
+        "need_share": 0.3469,
+        "want_share": 0.1667,
+        "savings_share": 0.303,
+        "partial": false,
+        "income_minor": 334967,
+        "need_minor": 116196,
+        "want_minor": 55831,
+        "savings_minor": 101488,
+        "transfer_minor": 4647
+      },
+      {
+        "month": "2026-03",
+        "unclassified": 0.0,
+        "need_share": 0.4073,
+        "want_share": 0.189,
+        "savings_share": 0.3386,
+        "partial": false,
+        "income_minor": 322576,
+        "need_minor": 131393,
+        "want_minor": 60964,
+        "savings_minor": 109222,
+        "transfer_minor": 20602
+      },
+      {
+        "month": "2026-04",
+        "unclassified": 0.0,
+        "need_share": 0.4028,
+        "want_share": 0.1688,
+        "savings_share": 0.2471,
+        "partial": false,
+        "income_minor": 325161,
+        "need_minor": 130962,
+        "want_minor": 54872,
+        "savings_minor": 80348,
+        "transfer_minor": 75049
+      },
+      {
+        "month": "2026-05",
+        "unclassified": 0.0,
+        "need_share": 0.3697,
+        "want_share": 0.1915,
+        "savings_share": 0.2679,
+        "partial": false,
+        "income_minor": 325223,
+        "need_minor": 120241,
+        "want_minor": 62280,
+        "savings_minor": 87139,
+        "transfer_minor": 813
+      },
+      {
+        "month": "2026-06",
+        "unclassified": 0.0,
+        "need_share": 0.5366,
+        "want_share": 0.3242,
+        "savings_share": 0.2038,
+        "partial": false,
+        "income_minor": 327323,
+        "need_minor": 175629,
+        "want_minor": 106132,
+        "savings_minor": 66704,
+        "transfer_minor": 11467
+      },
+      {
+        "month": "2026-07",
+        "unclassified": 0.0,
+        "need_share": 0.4945,
+        "want_share": 0.3272,
+        "savings_share": 0.2754,
+        "partial": false,
+        "income_minor": 310960,
+        "need_minor": 153775,
+        "want_minor": 101742,
+        "savings_minor": 85625,
+        "transfer_minor": 15418
+      },
+      {
+        "month": "2026-08",
+        "unclassified": 0.0,
+        "need_share": 0.4574,
+        "want_share": 0.236,
+        "savings_share": 0.2493,
+        "partial": false,
+        "income_minor": 324976,
+        "need_minor": 148635,
+        "want_minor": 76700,
+        "savings_minor": 81032,
+        "transfer_minor": 25551
+      }
+    ],
+    "summary": {
+      "months": 19,
+      "unclassified": 0.0,
+      "need_share": 0.5291,
+      "want_share": 0.282,
+      "savings_share": 0.2574,
+      "targets": {
+        "need": 0.5,
+        "want": 0.3,
+        "savings": 0.2
+      },
+      "gaps": {
+        "need": 0.0291,
+        "want": -0.018,
+        "savings": 0.0574
+      },
+      "want_to_need": 0.53,
+      "income_minor": 5432101,
+      "need_minor": 2874225,
+      "want_minor": 1531968,
+      "savings_minor": 1398424,
+      "transfer_minor": 689666,
+      "need_per_month_minor": 151275,
+      "want_per_month_minor": 80630,
+      "savings_per_month_minor": 73601,
+      "income_per_month_minor": 285900
+    }
+  },
+  "findings": [
+    "Over 19 covered months the split of income is 53 per cent needs, 28 per cent wants and 26 per cent savings, against the 50/30/20 rule.",
+    "Wants run SGD 806.30 a month against 1,512.75 of billed needs, a ratio of 0.53 to 1.",
+    "Above the rule: savings."
+  ],
+  "caveats": [
+    "The three shares are of income and do not add to one: what is left is what stayed in the bank. Wants are 28 per cent of income and 35 per cent of spending, and only the second is a split of what was spent.",
+    "Every Spend category carries a Need class, so `unclassified` is zero; it is kept in the table because a new category with no Need class would land there rather than quietly joining needs.",
+    "Shares are of income, not of take-home pay: the record has no payslip in it, so gross and net cannot be told apart.",
+    "Needs read low in any month a bill was paid from an account this record does not hold, so a dip in the needs share is worth checking against the statements before it is read as saving.",
+    "Savings is the Investment and Savings need classes on Transfer-bucket categories, which is the Tiger Brokers DCA; money simply left in the bank is not counted as saved."
+  ]
+}

@@ -1,0 +1,45 @@
+                                                                                                                                                           MEI LING TAN
+                                                                                                                                                               Y-1029384756
+                                                                                                                                                               Y-1029384757
+My NOK Statement                                                                                                                         Issued on 4 Sep 2026, 1:45 AM (SGT)
+1 Jul 2025 to 31 Jul 2025
+
+
+
+
+Transactions¹
+
+   Completed Date²                        Description                                                                         Money Out               Money In     Balance
+   (in SGT)
+
+
+   1 Jul 2025                             Opening Balance                                                                                                         kr88.00
+
+
+                                          SmartExchange™
+   18 Jul 2025                                                                                                                   kr80.59                           kr7.41
+   9:11 PM                                kr80.59 NOK to $10.70 SGD
+                                          FX rate: kr1 NOK = $0.13277 SGD
+
+
+                                          SmartExchange™
+   19 Jul 2025                                                                                                                        kr7.41                       kr0.00
+   4:17 PM                                kr7.41 NOK to $0.98 SGD
+                                          FX rate: kr1 NOK = $0.132253 SGD
+
+
+
+   31 Jul 2025                            Closing Balance                                                                                                          kr0.00
+
+
+
+
+Remarks:
+1. Pending transactions are awaiting confirmation from Mastercard, and will not be shown on your statement until they're completed.
+2. Completed date refers to the date that funds from your transaction were released to the merchant, and may not be the date you made your payment.
+
+
+
+
+                                                                                           page 1 of 1
+
