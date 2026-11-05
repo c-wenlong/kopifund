@@ -2,6 +2,12 @@ import SwiftUI
 import SwiftData
 import Storage
 import Matching
+import os
+
+/// "Open builder" in Instruments' os_signpost track: from the first
+/// tokenize to the first laid-out document, so a slow open on a long alert
+/// is a number, not a feeling.
+private let signposter = OSSignposter(subsystem: "com.kopifund.alerts", category: "PatternBuilder")
 
 /// G24: the key screen, rebuilt around confirmation. The alert stays a
 /// readable document; detected fields arrive pre-tagged, weaker guesses stay
@@ -35,7 +41,12 @@ struct PatternBuilderView: View {
     @State private var accountOptions: [(String, String)] = []
     @State private var categoryOptions: [(String, String)] = []
 
-    private var tokens: [Token] { Tokenizer.tokenize(sampleText) }
+    // tokenized once per alert text, not per access: as a computed property
+    // every render re-tokenized the alert once per word, so a 4 KB email
+    // froze for many seconds on open and on every tap
+    @State private var tokens: [Token] = []
+    @State private var preparedText: String?
+    @State private var openInterval: OSSignpostIntervalState?
     private var spans: [PatternBuilder.Span] { PatternBuilder.spans(from: tags, tokens: tokens) }
     private var built: AlertPattern? { try? builtPattern() }
 
@@ -106,6 +117,21 @@ struct PatternBuilderView: View {
         selected = nextMissingField() ?? .amount
     }
 
+    /// The work that depends only on the alert text runs once per text.
+    /// `onAppear` fires again on every return to the tab, and re-running
+    /// detection there would restore pre-tags the user had removed.
+    private func prepare() {
+        guard preparedText != sampleText else { return }
+        preparedText = sampleText
+        openInterval = signposter.beginInterval("Open builder", id: signposter.makeSignpostID(),
+                                                "\(sampleText.count) chars")
+        tokens = Tokenizer.tokenize(sampleText)
+        tags = [:]
+        suggestions = [:]
+        applyCandidates()
+        dimmed = AlertText.boilerplateTokenIndexes(in: sampleText, tokens: tokens)
+    }
+
     private func spanText(for indexes: [Int]) -> String {
         guard let lo = indexes.min(), let hi = indexes.max() else { return "" }
         return String(sampleText[tokens[lo].range.lowerBound..<tokens[hi].range.upperBound])
@@ -169,9 +195,9 @@ struct PatternBuilderView: View {
             runTest()
         }
         .onChange(of: testText) { runTest() }
+        .onChange(of: sampleText) { prepare() }
         .onAppear {
-            applyCandidates()
-            dimmed = AlertText.boilerplateTokenIndexes(in: sampleText, tokens: tokens)
+            prepare()
             loadAccounts()
             loadCategories()
             if sourceMatch.isEmpty, let s = source { sourceMatch = s }
@@ -223,7 +249,13 @@ struct PatternBuilderView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .coordinateSpace(name: "doc")
         .simultaneousGesture(dragToTag)
-        .onPreferenceChange(AtomFramesKey.self) { atomFrames = $0 }
+        .onPreferenceChange(AtomFramesKey.self) { frames in
+            atomFrames = frames
+            if !frames.isEmpty, let open = openInterval {
+                signposter.endInterval("Open builder", open, "\(frames.count) atoms")
+                openInterval = nil
+            }
+        }
     }
 
     /// Each atom reports its frame keyed by its FIRST token index. Token
