@@ -246,13 +246,22 @@ final class HubLane {
         record += await LinkDedupe.recordSpends(client: link, months: [month])
     }
 
-    /// kopifundError/kopifundID widen the net past YNAB's own states: a
-    /// synced row whose hub post failed or never got its reply is fetched
-    /// for the hub send alone.
+    /// The rows that can still owe the hub a send, so a run's work stays
+    /// with the queue rather than growing with every row ever posted:
+    /// - rows in the YNAB lane (a first send, or an interrupted one);
+    /// - any row whose last hub post failed or was held (`kopifundError`
+    ///   stays set until a post succeeds, so a synced row's failed post is
+    ///   retried too);
+    /// - a posted row with no accepted copy on record (`kopifundSent` nil):
+    ///   a send whose reply never came, or an edit since, which clears it
+    ///   (TransactionDetailView). A row the hub holds as it reads now is
+    ///   never fetched again.
     private static func owedRows(_ context: ModelContext) -> [TransactionRecord] {
         (try? context.fetch(FetchDescriptor<TransactionRecord>(predicate: #Predicate {
             $0.state == "approved" || $0.state == "failed" || $0.state == "syncing"
-                || $0.kopifundError != nil || $0.kopifundID != nil }))) ?? []
+                || $0.kopifundError != nil
+                || ($0.kopifundID != nil && $0.kopifundSent == nil)
+        }))) ?? []
     }
 
     /// Every row the hub is owed, before the YNAB run starts. The candidates
@@ -278,6 +287,15 @@ final class HubLane {
         }
     }
 
+    /// What the hub is sent for `row`: its day, signed amount, currency (the
+    /// plan's when it printed none) and payee. `kopifundSent` keeps the last
+    /// one the hub accepted.
+    private func signature(_ row: TransactionRecord) -> String {
+        let signed = row.direction == "outflow" ? -row.amountCents : row.amountCents
+        let currency = row.currency.isEmpty ? planCurrency : row.currency
+        return "\(row.day.iso)|\(signed)|\(currency ?? "")|\(row.payee)"
+    }
+
     /// Post `row` to the hub when it owes a send, then park it as "kopifund"
     /// when the record covers it. Once per row per run.
     func prepare(_ row: TransactionRecord, context: ModelContext) async {
@@ -298,7 +316,7 @@ final class HubLane {
         let day = row.day.iso
         let signed = row.direction == "outflow" ? -row.amountCents : row.amountCents
         let currency = row.currency.isEmpty ? planCurrency : row.currency
-        let sent = "\(day)|\(signed)|\(currency ?? "")|\(row.payee)"
+        let sent = signature(row)
         guard checked[row.id] != sent else { return }
         checked[row.id] = sent
         let inLane = row.state == "approved" || row.state == "failed" || row.state == "syncing"
@@ -316,7 +334,9 @@ final class HubLane {
             do {
                 _ = try await link.postPending(post)
                 if row.isDeleted || row.modelContext == nil { return }
-                row.kopifundSent = sent
+                // an edit made while the post was out was not in it: the row
+                // stays owed (no accepted copy), so the next pass sends it
+                row.kopifundSent = signature(row) == sent ? sent : nil
                 row.kopifundError = nil
             } catch {
                 if row.isDeleted || row.modelContext == nil { return }
