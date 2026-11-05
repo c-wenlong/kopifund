@@ -113,6 +113,30 @@ class ReKeyTest(Record):
         db.set_trip_links(self.conn, tid, ["MYS"], ["a"])
         self.assertEqual(db.trip_pins(self.conn, tid), ["a"])
 
+    def test_one_each_whose_details_disagree_is_not_paired(self):
+        # a replaced card statement: one payment left, another came, same day and amount
+        for was, now in ((dict(reference="R1"), dict(reference="R2")),
+                         (dict(card_last4="1111"), dict(card_last4="2222")),
+                         (dict(purchase_date="2026-08-01"), dict(purchase_date="2026-08-02")),
+                         (dict(), dict(source="statements/posb/2026/2026-08 (2).pdf"))):
+            with self.subTest(now):
+                self.conn.execute("DELETE FROM txn_key_alias")
+                self.conn.execute("DELETE FROM txn")
+                self.load([row("a", "-3.00", merchant="SHOP A", **was)])
+                run = parsed([block()], [row("b", "-3.00", merchant="SHOP B", **{**was, **now})])
+                self.assertEqual(db.rekeys(self.conn, run.rows), [])
+
+    def test_a_running_balance_vouches_for_a_moved_file(self):
+        self.load([row("a", "-3.00", balance_after="7.00")])
+        run = parsed([block()], [row("b", "-3.00", merchant="X", balance_after="7.00",
+                                     source="statements/posb/2026/moved.pdf")])
+        self.assertEqual([(old, new) for _, old, new in db.rekeys(self.conn, run.rows)], [("a", "b")])
+
+    def test_a_detail_one_side_does_not_print_is_no_conflict(self):
+        self.load([row("a", "-3.00")])
+        run = parsed([block()], [row("b", "-3.00", merchant="X", reference="R9")])
+        self.assertEqual([(old, new) for _, old, new in db.rekeys(self.conn, run.rows)], [("a", "b")])
+
     def test_a_row_with_no_account_number_is_never_paired(self):
         # it could be any account's: pairing would hand its saved edits across accounts
         self.load([row("a", "-12.50", account_no="")])

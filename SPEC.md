@@ -333,9 +333,11 @@ shipped table, so a shipped city wins a prefix both could match
   trips never detach. A load writes it: a live row no parsed key covers is the
   same row as a parsed key the record has never held when its account,
   currency, date, amount and running balance match (`db.rekeys`; a row with no
-  account number never pairs, and several alike pair only when their statement,
-  reference, card and purchase date tell them apart or nothing does, so an
-  uneven or ambiguous group is not guessed). The row keeps its id and
+  account number never pairs; one each pairs only when no reference, card or
+  purchase date both print disagrees, and, with no running balance to vouch
+  for it, the statement file is the same; several alike pair only when their
+  statement, reference, card and purchase date tell them apart or nothing does,
+  so an uneven or ambiguous group is not guessed). The row keeps its id and
   takes the new key, and the old key goes into `txn_key_alias`, so trip pins,
   rows marked fine, series edits, matched phone rows (G25) and `keys.csv` rules
   on the old key follow it. A row that would still be archived while it carries

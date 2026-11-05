@@ -1300,11 +1300,20 @@ def _detail(source, reference, card_last4, purchase_date):
     return (source or "", reference or "", card_last4 or "", purchase_date or "")
 
 
-def _pairs(old, new):
+def _agree(a, b, balanced):
+    """Two rows' details (_detail) name the same payment: the reference, card
+    and purchase date agree wherever both print one, and without a running
+    balance to vouch for the row, the statement file is the same too."""
+    fields = range(1, 4) if balanced else range(4)
+    return all(not a[i] or not b[i] or a[i] == b[i] for i in fields)
+
+
+def _pairs(old, new, balanced=True):
     """[(txn id, old key, new key)] for one group of rows alike on the five
     identity fields, or [] when it cannot be paired safely. `old` holds
     (id, key, detail, text) in id order, `new` (key, detail, text) in parse
-    order. A group of one each pairs. A larger group is split on the details
+    order. A group of one each pairs unless their details disagree (_agree).
+    A larger group is split on the details
     a re-key rarely touches (statement, reference, card, purchase date), and
     a split part pairs only when it is one each, or when every row on each
     side prints the same text: rows nothing tells apart (two identical
@@ -1314,7 +1323,10 @@ def _pairs(old, new):
     if len(old) != len(new):
         return []
     if len(old) == 1:
-        return [(old[0][0], old[0][1], new[0][0])]
+        # one each is the same row only when nothing that names a payment
+        # disagrees: a replaced card statement (no running balance) can drop
+        # one payment and bring another on the same day at the same amount
+        return [(old[0][0], old[0][1], new[0][0])] if _agree(old[0][2], new[0][1], balanced) else []
     out = []
     for d in {x[2] for x in old} | {x[1] for x in new}:
         o = [x for x in old if x[2] == d]
@@ -1363,7 +1375,7 @@ def rekeys(conn, rows):
                                                (t["merchant_raw"], t["counterparty"], t["memo"])))
     out = []
     for ident, new in fresh.items():
-        out += _pairs(gone.get(ident, []), new)
+        out += _pairs(gone.get(ident, []), new, balanced=ident[4] is not None)
     return out
 
 
