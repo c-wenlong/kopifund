@@ -18,6 +18,8 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: apps/web/package-lock.json
+      # poppler gives `pdftotext`, so the one test that reads a real PDF runs
+      - run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - run: make install
       - run: make check
       - run: make build
@@ -43,3 +45,19 @@ jobs:
           restore-keys: cargo-${{ runner.os }}-
       - run: cargo check --locked
       - run: cargo test --locked
+
+  # The iOS app's Swift packages (G24, G25), each in its own step so a failure names its package
+  swift:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: swift test Matching
+        run: cd apps/ios/Packages/Matching && swift test
+      - name: swift test YNABClient
+        run: cd apps/ios/Packages/YNABClient && swift test
+      - name: swift test Intents
+        run: cd apps/ios/Packages/Intents && swift test
+      - name: swift test KopifundClient
+        run: cd apps/ios/Packages/KopifundClient && swift test
+      - name: swift test Storage
+        run: cd apps/ios/Packages/Storage && swift test
