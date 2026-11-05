@@ -109,6 +109,24 @@ final class CalendarDateTests: XCTestCase {
             }
             XCTAssertEqual(t.date.iso, "2026-12-31", zone.identifier)
         }
+        // review on #50: a saved alert re-read after travel keeps the day it
+        // arrived. Arriving on 1 Jan 2027 in Kiritimati is 31 Dec 2026 in Los
+        // Angeles. A bank a day ahead may print "2 Jan": against the saved
+        // day it is 2027; against Los Angeles' day it would roll to 2026
+        let la = TimeZone(identifier: "America/Los_Angeles")!
+        let arrived = Date(timeIntervalSince1970: 1_798_711_500)   // 2026-12-31T10:05Z
+        let jan = "Card txn SGD 4.80 at KOPITIAM on 2 Jan 00:02"
+        guard case .matched(let t) = Matcher.match(
+            text: jan, source: nil, receivedAt: arrived, zone: la,
+            arrivedOn: CalendarDate(year: 2027, month: 1, day: 1)!, patterns: [p]) else {
+            return XCTFail("no match")
+        }
+        XCTAssertEqual(t.date.iso, "2027-01-02")
+        guard case .matched(let u) = Matcher.match(
+            text: jan, source: nil, receivedAt: arrived, zone: la, patterns: [p]) else {
+            return XCTFail("no match")
+        }
+        XCTAssertEqual(u.date.iso, "2026-01-02", "without the saved day the year rolls back")
     }
 
     /// A row an earlier build wrote (midnight in the phone's zone then) reads

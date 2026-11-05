@@ -143,6 +143,7 @@ struct AlertView: View {
         if let container = try? Store.container() {
             outcome = (try? await Ingest.alert(text: record.text, source: record.source,
                                                receivedAt: record.receivedAt,
+                                               arrivedOn: record.arrivedOn,
                                                container: container)) ?? "unmatched"
         }
         context.delete(record)

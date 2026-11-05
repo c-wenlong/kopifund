@@ -137,4 +137,20 @@ final class ImportIDTests: XCTestCase {
         let c = ImportID.make(date: d, milliunits: -4500, payee: "Other", source: "sms")
         XCTAssertNotEqual(a, c)
     }
+
+    /// Review on #50: two real Wallet purchases of one amount at one merchant
+    /// on one day get different ids once each carries its capture moment;
+    /// without one, the id is the old build's, so a legacy retry matches.
+    func test_capture_moment_separates_same_day_purchases() {
+        let day = Date(timeIntervalSince1970: 1_800_000_000)
+        let morning = ImportID.make(date: day, milliunits: -4500, payee: "Kopitiam",
+                                    source: "wallet", capturedAt: day.addingTimeInterval(7 * 3600))
+        let evening = ImportID.make(date: day, milliunits: -4500, payee: "Kopitiam",
+                                    source: "wallet", capturedAt: day.addingTimeInterval(17 * 3600))
+        XCTAssertNotEqual(morning, evening)
+        XCTAssertLessThanOrEqual(morning.count, 36)
+        XCTAssertEqual(ImportID.make(date: day, milliunits: -4500, payee: "Kopitiam", source: "wallet"),
+                       ImportID.make(date: day, milliunits: -4500, payee: "Kopitiam", source: "wallet",
+                                     capturedAt: nil))
+    }
 }

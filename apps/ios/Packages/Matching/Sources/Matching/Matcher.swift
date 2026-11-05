@@ -55,9 +55,10 @@ public enum Matcher {
     /// Highest priority pattern wins. Rejections are listed in priority order
     /// too, so the most likely pattern's reason reads first. `zone` is where
     /// the phone was when the alert arrived: it decides which day `receivedAt`
-    /// falls on, for an alert that prints no date or no year.
+    /// falls on, for an alert that prints no date or no year. `arrivedOn`,
+    /// when known (a re-read of a saved alert), is that day already and wins.
     public static func match(text: String, source: String?, receivedAt: Date,
-                             zone: TimeZone = .current,
+                             zone: TimeZone = .current, arrivedOn: CalendarDate? = nil,
                              patterns: [AlertPattern]) -> MatchOutcome {
         var rejections: [Rejection] = []
         for p in patterns.sorted(by: { $0.priority > $1.priority }) {
@@ -67,7 +68,7 @@ public enum Matcher {
                                             reason: #"source "\#(source ?? "")" lacks "\#(s)""#))
                 continue
             }
-            switch apply(p, to: text, receivedAt: receivedAt, zone: zone) {
+            switch apply(p, to: text, receivedAt: receivedAt, zone: zone, arrivedOn: arrivedOn) {
             case .success(let parsed):
                 var txn = parsed
                 txn.source = source
@@ -84,7 +85,7 @@ public enum Matcher {
     public static func test(_ pattern: AlertPattern, text: String,
                             receivedAt: Date = Date(),
                             zone: TimeZone = .current) -> Result<ParsedTransaction, MatchError> {
-        apply(pattern, to: text, receivedAt: receivedAt, zone: zone)
+        apply(pattern, to: text, receivedAt: receivedAt, zone: zone, arrivedOn: nil)
     }
 
     // MARK: - regex
@@ -229,7 +230,8 @@ public enum Matcher {
     }
 
     private static func apply(_ p: AlertPattern, to text: String, receivedAt: Date,
-                              zone: TimeZone) -> Result<ParsedTransaction, MatchError> {
+                              zone: TimeZone, arrivedOn known: CalendarDate?)
+        -> Result<ParsedTransaction, MatchError> {
         let re: NSRegularExpression
         do { re = try cachedExpression(for: p) } catch { return .failure(MatchError("pattern builds a bad regex")) }
         let ns = text as NSString
@@ -263,7 +265,7 @@ public enum Matcher {
             .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:-")), !py.isEmpty else {
             return .failure(MatchError("payee not readable"))
         }
-        let arrivedOn = CalendarDate(receivedAt, in: zone)
+        let arrivedOn = known ?? CalendarDate(receivedAt, in: zone)
         let date: CalendarDate
         if let raw = dateRaw, let f = dateFmt {
             guard let d = Dates.parse(raw.trimmingCharacters(in: .whitespaces), as: f,

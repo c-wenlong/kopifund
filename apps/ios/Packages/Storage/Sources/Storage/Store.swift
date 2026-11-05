@@ -177,15 +177,15 @@ public final class UnmatchedRecord {
     /// build wrote. Read it through `arrivedOn`.
     public var receivedDay: Date?
 
-    public init(text: String, source: String?, receivedAt: Date, reasons: String,
-                zone: TimeZone = .current) {
+    public init(text: String, source: String?, receivedAt: Date,
+                arrivedOn: CalendarDate? = nil, reasons: String, zone: TimeZone = .current) {
         id = UUID()
         self.text = text
         self.source = source
         self.receivedAt = receivedAt
         self.reasons = reasons
         inKopifund = false
-        receivedDay = CalendarDate(receivedAt, in: zone).storedInstant
+        receivedDay = (arrivedOn ?? CalendarDate(receivedAt, in: zone)).storedInstant
     }
 
     /// The day the alert arrived: the saved one, or for an older row the

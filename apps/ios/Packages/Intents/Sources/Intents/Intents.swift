@@ -17,8 +17,12 @@ public enum Ingest {
     /// runs on a detached task: a pattern can spend up to its budget on a
     /// long alert, and a phone with many patterns would otherwise hold the
     /// main thread, and a share extension's UI, for all of them.
+    /// `arrivedOn` is the day a saved alert first arrived (Unmatched's
+    /// re-read after teaching a pattern), so a yearless date reads against
+    /// where the phone was then, not where it is now.
     @MainActor
     public static func alert(text: String, source: String?, receivedAt: Date,
+                             arrivedOn: CalendarDate? = nil,
                              container: ModelContainer) async throws -> String {
         let context = ModelContext(container)
         // a shape the user dismissed as noise never reaches the queue, even
@@ -29,8 +33,10 @@ public enum Ingest {
         }
         let patterns = try context.fetch(FetchDescriptor<PatternRecord>())
             .compactMap { $0.pattern }
+        let arrived = arrivedOn ?? CalendarDate(receivedAt, in: .current)
         let outcome = await Task.detached(priority: .userInitiated) {
-            Matcher.match(text: text, source: source, receivedAt: receivedAt, patterns: patterns)
+            Matcher.match(text: text, source: source, receivedAt: receivedAt,
+                          arrivedOn: arrived, patterns: patterns)
         }.value
         switch outcome {
         case .matched(let t):
@@ -44,6 +50,7 @@ public enum Ingest {
             return "queued"
         case .unmatched(let rejections):
             context.insert(UnmatchedRecord(text: text, source: source, receivedAt: receivedAt,
+                                           arrivedOn: arrived,
                                            reasons: rejections.map { "\($0.patternName): \($0.reason)" }
                                                .joined(separator: "\n")))
             try context.save()

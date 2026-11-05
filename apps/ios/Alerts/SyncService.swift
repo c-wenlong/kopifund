@@ -125,10 +125,14 @@ enum SyncService {
             // or a lost reply can never mint a second one for the same row
             // a row an earlier build wrote keeps that build's hash input,
             // its raw date, so a send it began and never recorded gets the
-            // same import_id on retry and YNAB refuses the duplicate
-            let importID = row.importID ?? ImportID.make(
-                date: row.dateIsDay == true ? postDay.storedInstant : row.date,
-                milliunits: milli, payee: row.payee, source: row.source)
+            // same import_id on retry and YNAB refuses the duplicate. A new
+            // row adds the moment it was captured, so two real purchases of
+            // one amount at one merchant on one day never share an id
+            let importID = row.importID ?? (row.dateIsDay == true
+                ? ImportID.make(date: postDay.storedInstant, milliunits: milli,
+                                payee: row.payee, source: row.source, capturedAt: row.receivedAt)
+                : ImportID.make(date: row.date, milliunits: milli,
+                                payee: row.payee, source: row.source))
             row.importID = importID
             let txn = NewTransaction(accountID: accountID,
                                      date: postDay.iso,
