@@ -96,6 +96,30 @@ describe("useApi", () => {
     expect(renderHook(() => useApi<{ n: number }>("/api/dashboard/query?q=1")).result.current.data).toEqual(widgetBefore);
   });
 
+  it("tells the app's other tabs to ask again for the layouts after a save, and asks when another tab says so", async () => {
+    const asked: string[] = [];
+    let n = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") return new Response("{}", { status: 200 });
+      asked.push(url);
+      return new Response(JSON.stringify({ n: ++n }), { status: 200 });
+    }));
+    await act(async () => { await postJSON("/api/dashboard/layouts/main", "{}"); });
+    expect(JSON.parse(window.localStorage.getItem("kopifund:api-refresh")!).paths).toEqual(["/api/dashboard/layouts"]);
+    const layouts = renderHook(() => useApi<{ n: number }>("/api/dashboard/layouts"));
+    const widget = renderHook(() => useApi<{ n: number }>("/api/dashboard/query?q=2"));
+    await waitFor(() => expect(layouts.result.current.data).not.toBeNull());
+    await waitFor(() => expect(widget.result.current.data).not.toBeNull());
+    asked.length = 0;
+    // another tab saved: the storage event names the views to ask again
+    act(() => {
+      window.dispatchEvent(new StorageEvent("storage", {
+        key: "kopifund:api-refresh", newValue: JSON.stringify({ paths: ["/api/dashboard/layouts"], at: 1 }),
+      }));
+    });
+    await waitFor(() => expect(asked).toEqual(["/api/dashboard/layouts"]));
+  });
+
   it("matches a write's route by its <id> segment and nothing longer", () => {
     expect(rereadAfter("/api/dashboard/layouts/main")).toEqual(["/api/dashboard/layouts"]);
     expect(rereadAfter("/api/dashboard/layouts")).toEqual(["/api/dashboard/layouts"]);

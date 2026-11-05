@@ -228,6 +228,7 @@ declare const __KOPIFUND_BUILD__: string;
 const STORE_PREFIX = "kopifund:api:";
 const STORE = `${STORE_PREFIX}${__KOPIFUND_BUILD__}`;
 const CHANGED_KEY = "kopifund:api-changed";       // tells the app's other tabs a write happened
+const REFRESH_KEY = "kopifund:api-refresh";       // tells them which views a REREAD_AFTER write changed
 // localStorage holds about 5 million characters for the whole origin
 const MAX_ENTRY = 1_000_000;
 const MAX_STORED = 3_000_000;
@@ -451,6 +452,15 @@ if (typeof window !== "undefined") {
   window.addEventListener("focus", revalidateViews);
   // a write in another tab of the app empties this tab's cache too
   window.addEventListener("storage", (e) => {
+    if (e.key === REFRESH_KEY && e.newValue) {
+      try {
+        const { paths } = JSON.parse(e.newValue) as { paths?: unknown };
+        if (Array.isArray(paths)) refreshViews(paths.filter((p): p is string => typeof p === "string"));
+      } catch {
+        /* not ours to read */
+      }
+      return;
+    }
     if (e.key !== CHANGED_KEY) return;
     forget();
     window.dispatchEvent(new Event(CHANGED));
@@ -580,7 +590,16 @@ export async function postJSON<T>(url: string, body?: BodyInit, contentType = "a
   // dashboard layout save is one of those too, so a drag does not ask every widget afresh. A load
   // or a mirror is a write, so every view reloads after it anyway.
   const reread = rereadAfter(url.split("?")[0]);
-  if (reread) refreshViews(reread);
+  if (reread) {
+    refreshViews(reread);
+    // the app's other tabs ask those views again too: a Dashboard open in a
+    // second window would otherwise edit, and save, a board this one changed
+    try {
+      storage()?.setItem(REFRESH_KEY, JSON.stringify({ paths: reread, at: Date.now() }));
+    } catch {
+      /* storage refused: other tabs catch up when they get focus */
+    }
+  }
   else if (!NO_CHANGE.some((p) => url.startsWith(p))) notifyChanged();
   if ((data as { stats?: string }).stats === "rebuilding") watchStatsRebuild();
   return data as T;
