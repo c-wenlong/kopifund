@@ -80,8 +80,10 @@ export function PinForm({ row, categories, kinds, onPinned, draft, onDraft, onDi
   // G18: something typed and not saved (a draft kept from before a change of layout included) asks before the
   // page is left
   const dirty = pinDirty(typed, sending ?? base);
-  useUnsavedGuard(!onDirty && dirty);
-  useEffect(() => { onDirty?.(dirty); }, [dirty]);
+  // and a save on its way holds the page too, until it lands: one that fails leaves the edit unsaved
+  const holding = dirty || !!sending;
+  useUnsavedGuard(!onDirty && holding);
+  useEffect(() => { onDirty?.(holding); }, [holding]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const what = `the ${formatDay(row.date)} row`;

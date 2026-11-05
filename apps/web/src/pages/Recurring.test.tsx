@@ -527,6 +527,7 @@ describe("Recurring, friendlier than lists of text", () => {
 
 // ---------------------------------------------------------------- G16: one series' own view
 
+const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 const VIEW: SeriesView = {
   id: "payee:Gym:5000", name: "Gym", payee: "Gym", link: { payee: "Gym", named: "1", hide_transfers: "0", synthetic: "0", out: "1" },
   cadence: "monthly", category: "Fitness", investing: false, amount: 5000, state: "active", late: false,
@@ -759,6 +760,8 @@ describe("A series' own view, G16", () => {
     await screen.findByRole("region", { name: "Gym" });
     fireEvent.change(within(region()).getByLabelText("Usual amount"), { target: { value: "55" } });
     fireEvent.click(within(region()).getByRole("button", { name: "Save" }));
+    // a save on its way may still fail: leaving asks until it lands
+    expect(leaveAsks()).toBe(true);
     fireEvent.change(within(region()).getByLabelText("Usual amount"), { target: { value: "60" } });
     hold = true;
     await waitFor(() => expect(release).not.toBeNull());
@@ -767,6 +770,7 @@ describe("A series' own view, G16", () => {
     await waitFor(() => expect(within(region()).getByRole("button", { name: "Discard" })).toBeEnabled());
     fireEvent.click(within(region()).getByRole("button", { name: "Discard" }));
     expect(within(region()).getByLabelText("Usual amount")).toHaveValue("55");
+    expect(leaveAsks()).toBe(false);
     expect(within(region()).queryByText("Unsaved changes")).not.toBeInTheDocument();
     await act(async () => { while (reads.length) reads.shift()!(); });
     expect(within(region()).getByLabelText("Usual amount")).toHaveValue("55");

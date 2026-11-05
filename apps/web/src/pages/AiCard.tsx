@@ -54,7 +54,8 @@ export function AiCard() {
   const saved = fromServer && standing ? { ...fromServer, ...sending.sent } : fromServer;
   const d = { ...saved, ...draft } as Draft;
   const dirty = !!saved && KEYS.some((k) => d[k] !== saved[k]);
-  useUnsavedGuard(dirty);
+  // a save on its way holds the page until it lands: one that fails leaves the edit unsaved
+  useUnsavedGuard(dirty || (!!sending && !sending.landed));
 
   // the panel's "Open Settings" lands on this card
   const shown = !!data;

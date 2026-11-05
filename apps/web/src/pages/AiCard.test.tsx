@@ -37,6 +37,7 @@ function stub(first: AiSettings, after: (url: string, body: Record<string, unkno
 
 afterEach(() => vi.unstubAllGlobals());
 
+const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 const card = async () => (await screen.findByRole("heading", { name: "AI" })).closest("section")!;
 
 describe("the AI card's key", () => {
@@ -189,6 +190,8 @@ describe("the AI card's settings", () => {
     const c = await card();
     fireEvent.change(within(c).getByRole("combobox", { name: "Ask Kopifund model" }), { target: { value: "claude-opus-4-1" } });
     fireEvent.click(within(c).getByRole("button", { name: "Save" }));
+    // a save on its way may still fail: leaving asks until it lands
+    expect(leaveAsks()).toBe(true);
     // the consent ticked and unticked while the save is on its way
     const consent = within(c).getByRole("checkbox", { name: "Send matching rows to Anthropic" });
     fireEvent.click(consent);
@@ -196,6 +199,8 @@ describe("the AI card's settings", () => {
     await waitFor(() => expect(fail).not.toBeNull());
     await act(async () => fail!());
     expect(await within(c).findByText("disk full")).toBeInTheDocument();
+    // it failed: the model typed is still unsaved
+    expect(leaveAsks()).toBe(true);
     // another tab turns the consent on: the card follows, since nothing here holds it off
     now = settings(keychain, { send_rows: true });
     await act(async () => notifyChanged());

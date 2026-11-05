@@ -329,6 +329,8 @@ describe("Transactions", () => {
     const note = await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" });
     fireEvent.change(note, { target: { value: "a gift" } });
     fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
+    // a save on its way may still fail: leaving asks until it lands
+    expect(leaveAsks()).toBe(true);
     // cleared while "a gift" is being saved: the clear was never sent
     fireEvent.change(note, { target: { value: "" } });
     expect(leaveAsks()).toBe(true);

@@ -1595,7 +1595,7 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   nobody touched along with it and leaves it saved, keeps whatever was typed,
   and a box typed back to its saved value counts as untouched. A save keeps
   what was typed while it was on its way: the boxes it covered show what was
-  saved, and one changed meanwhile stays an edit, even back to the old value. On a phone the
+  saved, and one changed meanwhile stays an edit, even back to the old value. Leaving while such a save is on its way asks too, since it may still fail. On a phone the
   question closes the menu as it comes up, so its buttons can be reached.
 - **Shared states** (`apps/web/src/components/States.tsx`, `ServerBanner.tsx`,
   `Toast.tsx`). Each page names the browser tab ("Spending, Kopifund").

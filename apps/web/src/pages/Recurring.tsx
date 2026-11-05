@@ -615,7 +615,8 @@ function SeriesEditor({ v }: { v: SeriesAnswer }) {
   // an amount is compared as cents, so "98.00" is the saved 98
   const against = pending?.draft ?? saved;
   const dirty = DRAFT_KEYS.some((k) => !sameBox(k, draft[k], against[k]));
-  useUnsavedGuard(dirty);
+  // a save of the boxes on its way holds the page until it lands: one that fails leaves the edit unsaved
+  useUnsavedGuard(dirty || (!!pending && !pending.landedOn));
   const set = (patch: Partial<Draft>) => { setDraft((d) => ({ ...d, ...patch })); setProblem(null); };
   const cents = parseCents(draft.amount);
   const badAmount = cents != null && (Number.isNaN(cents) || cents <= 0);
