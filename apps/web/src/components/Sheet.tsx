@@ -78,10 +78,8 @@ function SheetFrame({ title, onClose, onRequestClose, dirty = false, wide = fals
         if (leaveAsked()) keepEditing();
         else request.current();
       } else if (e.key === "Tab" && panel.current) {
-        // a toast's Undo, outside the panel, keeps its own Tab (it is live for that, KEEP_LIVE)
-        const at = document.activeElement;
-        if (at instanceof HTMLElement && at.closest(`[${KEEP_LIVE}]`)) return;
-        holdTab(e, panel.current);
+        // a toast's Undo, outside the panel, is on the Tab path too (it is live for that, KEEP_LIVE)
+        holdTab(e, panel.current, [...document.querySelectorAll<HTMLElement>(`[${KEEP_LIVE}]`)]);
       }
     };
     window.addEventListener("keydown", onKey);

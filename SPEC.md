@@ -1598,7 +1598,9 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
     region (an error is an alert), gone after a few seconds, with an optional
     Undo. Toasts sit straight under the page's body, above an open Sheet and
     left live by it, so an Undo raised from a Sheet (the copilot's on a phone)
-    can be seen, pressed and heard. A toast that carries an Undo (a trip save or removal, a rule write,
+    can be seen, pressed and heard, and is on the Sheet's Tab path (and the
+    phone menu's): Tab goes from the Sheet's last control to the toast's
+    buttons and back round to its first. A toast that carries an Undo (a trip save or removal, a rule write,
     a row's category) stays up until it is dismissed, its Undo is pressed, or
     newer Undos push it off (other notices never push it off the screen), so
     the way back is never lost to a timer. Undos stack, newest on top, each

@@ -4,7 +4,7 @@ import type { EyeLine } from "../api";
 import { SidebarBody, type Holdings } from "./Sidebar";
 import { eyeTone } from "./NeedsYourEye";
 import { useAppIconLogo } from "./appIcon";
-import { holdTab } from "./focusTrap";
+import { holdTab, KEEP_LIVE } from "./focusTrap";
 
 // G13: under 768px the sidebar would squeeze every page, so a slim bar takes
 // its place and the sidebar opens over the page as a drawer.
@@ -67,7 +67,7 @@ export function Drawer({ path, holdings, asOf, onClose, returnFocus, eye = [], e
     const onKey = (e: KeyboardEvent) => {
       // Audit: a list open inside the drawer keeps its own Escape, and Tab stays in the drawer, which says it is modal
       if (e.key === "Escape" && !e.defaultPrevented) onClose();
-      else if (e.key === "Tab" && panel.current) holdTab(e, panel.current);
+      else if (e.key === "Tab" && panel.current) holdTab(e, panel.current, [...document.querySelectorAll<HTMLElement>(`[${KEEP_LIVE}]`)]);
     };
     window.addEventListener("keydown", onKey);
     return () => {
