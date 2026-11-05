@@ -399,10 +399,14 @@ rollup keeps Actual current and never touches anything else.
 
 ### How Actual is computed
 
-Actual sums `Amount SGD` over the rows with a category and `Flow class =
-External`, computed in Python the same way the Notion formula computes it per
-row: Amount times the row's FX rate when the block prints one, Amount itself
-when it does not.
+Actual sums the SGD value of the rows with a category and `Flow class =
+External`, computed in Python in cents by the record's rule (`v_txn`,
+`sync.sgd_minor`): Amount times the row's FX rate when the block prints one, an
+SGD row's Amount as it is, and nothing for a foreign row whose block prints no
+rate. Such a row has no SGD value (SPEC), so Actual leaves it out and the rollup
+says how many it left out, where the Notion `Amount SGD` formula would count it
+one to one. The CSV snapshot (`analyse --from-csv`) gives the same rows an empty
+`amount_sgd_minor` and a note.
 
 The sign is flipped so Planned and Actual compare like for like. On a spending
 category Actual is positive when money went out. On a category whose `Need

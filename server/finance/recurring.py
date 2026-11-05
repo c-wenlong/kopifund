@@ -214,7 +214,7 @@ def _band(mine, tight):
     return TIGHT_BAND if cats and max(cats, key=cats.get) in tight else AMOUNT_BAND
 
 
-def _split(s, mine, siblings, tight, stat_end=None):
+def _split(s, mine, siblings, tight, stat_end=None, parts=None):
     """G16: (the series' own charges, the odd ones it may answer with) for a series the
     detector named by id.
 
@@ -233,7 +233,15 @@ def _split(s, mine, siblings, tight, stat_end=None):
         return [c for c in mine if c[0] >= since], []
     charges = [(c[0].isoformat(), c[1]) for c in mine]
     band = _band(mine, tight)
-    chains, loners = partition(charges, band)
+    # Audit: every series of a group splits the same charges at the same band, so a Record
+    # splits each group once (`parts`, keyed by the group's charges)
+    key = (tuple(charges), band)
+    if parts is not None and key in parts:
+        chains, loners = parts[key]
+    else:
+        chains, loners = partition(charges, band)
+        if parts is not None:
+            parts[key] = chains, loners
     by_key = {ch["key"]: ch for ch in chains}
     named_chains = {x["id"]: by_key[x["id"].rsplit(":", 1)[-1]] for x in siblings
                     if not x["id"].endswith(":all") and x["id"].rsplit(":", 1)[-1] in by_key}
@@ -290,7 +298,7 @@ def usual_range(s, history, tight=TIGHT_CATEGORIES):
     return round(median * (1 - band)), round(median * (1 + band))
 
 
-def _prepare(s, charges, start, tight, siblings=None, stat_end=None):
+def _prepare(s, charges, start, tight, siblings=None, stat_end=None, parts=None):
     """(payments, low, high) for one series. Charges inside the usual range are
     merged apart from the ones outside it, as the detector drops an odd charge
     before it merges, so a small extra charge the day before cannot swallow a
@@ -302,7 +310,7 @@ def _prepare(s, charges, start, tight, siblings=None, stat_end=None):
     it now; only a result from before series had ids is read as its whole group, its
     charges in the usual range its own."""
     mine = charges.get(_series_key(s), [])
-    split = _split(s, mine, (siblings or {}).get(_series_key(s), [s]), tight, stat_end) if s.get("id") else None
+    split = _split(s, mine, (siblings or {}).get(_series_key(s), [s]), tight, stat_end, parts) if s.get("id") else None
     if split is not None:
         own, odd = split
         if s.get("amount_varies"):
@@ -645,9 +653,16 @@ def _live(conn, data, tight, off=frozenset()):
     return out
 
 
-def refreshed(conn, results):
+def record(conn, results):
+    """Audit: the Record one answer reads every series against. Home builds it once and
+    hands it to `coming_up`, `refreshed`, `edited_out` and the scam checks, so the
+    detector runs once per group per request, not once per reader."""
+    return Record(conn, _results_data(results))
+
+
+def refreshed(conn, results, rec=None):
     """G16: the recurring result as the page reads it (`_live`), for Home's lines."""
-    return Record(conn, _results_data(results)).data
+    return (rec or record(conn, results)).data
 
 
 def live(conn, results, today=None):
@@ -660,14 +675,14 @@ def live(conn, results, today=None):
     return rec.settle(rec.revive(rec.data, ref), ref, today)
 
 
-def edited_out(conn, results):
+def edited_out(conn, results, rec=None):
     """G16: the keys of the payments the owner's edits say are no running recurring charge,
     which the scam check's new subscription leaves out (server/finance/scam_checks.py): every payment
     of a series marked not recurring, and a series' payments on or before the day the owner
     says it ended. A payee marked not recurring on its own line is series.payees_off_in."""
     if not conn.execute("SELECT 1 FROM series_override WHERE series_id IS NOT NULL").fetchone():
         return set()
-    rec = Record(conn, _results_data(results))
+    rec = rec or record(conn, results)
     out = set()
     for state in (*STATES, NOT_RECURRING):
         for s in rec.data.get(state, []):
@@ -732,6 +747,7 @@ class Record:
 
     def __init__(self, conn, data):
         self.charges, self.tight, self.ends = _charges(conn), tight_categories(conn), statement_ends(conn)
+        self.parts = {}   # Audit: each group's amount levels, split once (`_split`)
         self.edits = series.read(conn)
         self.off = series.payees_off(self.edits)
         data = _live(conn, data, self.tight, self.off)
@@ -742,7 +758,7 @@ class Record:
         self.siblings = _siblings(data)
 
     def prepare(self, s, start):
-        return _prepare(s, self.charges, start, self.tight, self.siblings, self.stat_end)
+        return _prepare(s, self.charges, start, self.tight, self.siblings, self.stat_end, self.parts)
 
     def own_keys(self, s):
         """G16: the keys of a series' own payments (its chain's charges, not the odd ones)."""
@@ -850,12 +866,12 @@ def _coming_up(data, rec, ref, today):
                        "investing_extra": sum(r["paid_amount"] for r in extra if r["investing"])}}
 
 
-def coming_up(conn, results, today=None):
+def coming_up(conn, results, today=None, rec=None):
     """This month's expected recurring payments, each paid, due, late, a
     different amount or extra, in the shape Home can show: {month, as_of, rows, totals}."""
     today = today or date.today()
     ref, _ = judged_on(conn, today)
-    rec = Record(conn, _results_data(results))
+    rec = rec or record(conn, results)
     return _coming_up(rec.settle(rec.revive(rec.data, ref), ref, today), rec, ref, today)
 
 
