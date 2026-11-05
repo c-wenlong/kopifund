@@ -108,10 +108,6 @@ def attempt(conn, attempt_id):
 
 # ---------------------------------------------------------------- one step
 
-class Refusal(Exception):
-    """A step that said no for a reason the user can act on (a refused upload)."""
-
-
 def logged(conn, attempt_id, step, input, run, describe, refusals=(), scrub=None):
     """Run one step and record it, through `scrub` (see record) when given.
     `describe(result)` gives (status, summary, output). A refusal (an exception in `refusals`) is recorded as refused, any
