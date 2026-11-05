@@ -75,9 +75,11 @@ export function PinForm({ row, categories, kinds, onPinned, draft, onDraft, onDi
   const latest = useRef(typed);
   latest.current = typed;
   useEffect(() => { onDraft?.({ category, payee, kind, note, base }); }, [category, payee, kind, note, base]);
+  // a save on its way: what is typed meanwhile is measured against what it sent, and a failure puts `base` back
+  const [sending, setSending] = useState<PinFields | null>(null);
   // G18: something typed and not saved (a draft kept from before a change of layout included) asks before the
   // page is left
-  const dirty = pinDirty(typed, base);
+  const dirty = pinDirty(typed, sending ?? base);
   useUnsavedGuard(!onDirty && dirty);
   useEffect(() => { onDirty?.(dirty); }, [dirty]);
   const [saving, setSaving] = useState(false);
@@ -89,6 +91,7 @@ export function PinForm({ row, categories, kinds, onPinned, draft, onDraft, onDi
     setError(null);
     try {
       const sent = { category, payee: payee.trim(), kind, note: note.trim() };
+      setSending(sent);
       await savePin({ key: row.key, ...sent });
       // what was typed while the save was on its way was not sent: the form stays open on it, measured
       // against what was saved, and only a form with nothing left unsaved is done
@@ -97,6 +100,7 @@ export function PinForm({ row, categories, kinds, onPinned, draft, onDraft, onDi
     } catch (e) {
       setError((e as Error).message);
     } finally {
+      setSending(null);
       setSaving(false);
     }
   }

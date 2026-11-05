@@ -737,6 +737,42 @@ describe("A series' own view, G16", () => {
     expect(within(screen.getByRole("region", { name: "Gym" })).getByText("Unsaved changes")).toBeInTheDocument();
   });
 
+  it("discards back to what a save just saved, before the series is read again", async () => {
+    let release: (() => void) | null = null;
+    const reads: (() => void)[] = [];
+    let now = VIEW;
+    let hold = false;
+    const answer = () => new Response(JSON.stringify(now), { status: 200 });
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        return new Promise<Response>((done) => { release = () => {
+          now = { ...VIEW, amount: body.amount ?? VIEW.amount, edit: { ...VIEW.edit, amount: body.amount } };
+          done(answer());
+        }; });
+      }
+      if (!url.startsWith("/api/recurring/series")) return new Response(JSON.stringify(PAGE), { status: 200 });
+      return hold ? new Promise<Response>((done) => reads.push(() => done(answer()))) : answer();
+    }));
+    render(<Recurring />);
+    const region = () => screen.getByRole("region", { name: "Gym" });
+    await screen.findByRole("region", { name: "Gym" });
+    fireEvent.change(within(region()).getByLabelText("Usual amount"), { target: { value: "55" } });
+    fireEvent.click(within(region()).getByRole("button", { name: "Save" }));
+    fireEvent.change(within(region()).getByLabelText("Usual amount"), { target: { value: "60" } });
+    hold = true;
+    await waitFor(() => expect(release).not.toBeNull());
+    await act(async () => release!());
+    // saved, and the series not read back yet: Discard goes back to 55, what is saved now
+    await waitFor(() => expect(within(region()).getByRole("button", { name: "Discard" })).toBeEnabled());
+    fireEvent.click(within(region()).getByRole("button", { name: "Discard" }));
+    expect(within(region()).getByLabelText("Usual amount")).toHaveValue("55");
+    expect(within(region()).queryByText("Unsaved changes")).not.toBeInTheDocument();
+    await act(async () => { while (reads.length) reads.shift()!(); });
+    expect(within(region()).getByLabelText("Usual amount")).toHaveValue("55");
+    expect(within(region()).queryByText("Unsaved changes")).not.toBeInTheDocument();
+  });
+
   it("moves an amount typed as the saved one in other words along with another tab's save", async () => {
     let now = VIEW;
     vi.stubGlobal("fetch", vi.fn(async (url: string) =>

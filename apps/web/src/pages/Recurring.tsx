@@ -712,7 +712,7 @@ function SeriesEditor({ v }: { v: SeriesAnswer }) {
       </form>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         {problem ? <p role="alert" className="m-0 text-[13px] text-danger">{problem}</p> : <span />}
-        <SaveBar dirty={dirty} saving={saving} onSave={save} onDiscard={() => { setDraft(saved); setProblem(null); }} />
+        <SaveBar dirty={dirty} saving={saving} onSave={save} onDiscard={() => { setDraft(against); setProblem(null); }} />
       </div>
     </Card>
   );
