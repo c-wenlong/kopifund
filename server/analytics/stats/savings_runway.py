@@ -54,6 +54,11 @@ CHART = {"type": "line", "x": "month", "series": ["cash_minor", "runway_months"]
 
 RULE_LOW, RULE_HIGH = 3, 6
 
+# G13: cash and runway are a balance and a ratio, so their line does not link.
+# A month's spending is a sum of rows, which a dashboard widget plots (G26,
+# server/finance/dashboard.py reads these links).
+LINKS = {"spend_minor": {"month": "{x}", "spend": "1"}}
+
 # a month row's own fields, bare (an account's column is its name plus
 # `_minor`, so a name here would land on the row's own figure): no account's
 # column may take one of these names
@@ -257,4 +262,4 @@ def run(snapshot, benchmarks=None):
                      "currency": "SGD"},
                     {"months": rows, "provisional": provisional,
                      "accounts": accounts, "summary": summary},
-                    findings, caveats)
+                    findings, caveats, links=LINKS)

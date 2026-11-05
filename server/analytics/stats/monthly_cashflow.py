@@ -30,10 +30,14 @@ CHART = {"type": "bar", "x": "month", "series": ["income_minor", "spend_minor", 
          "source": "months", "unit": "sgd_minor"}
 
 # G13: each bar opens the rows it adds up. Net is income less spending, so its
-# rows are the income rows and the spending rows together.
+# rows are the income rows and the spending rows together. Investing is not
+# drawn, but a dashboard widget plots it (G26, server/finance/dashboard.py
+# reads these links): the Investment transfers, which Transactions hides
+# unless told not to.
 LINKS = {"income_minor": {"month": "{x}", "income": "1"},
          "spend_minor": {"month": "{x}", "spend": "1"},
-         "net_minor": {"month": "{x}", "income": "1", "spend": "1"}}
+         "net_minor": {"month": "{x}", "income": "1", "spend": "1"},
+         "investing_minor": {"month": "{x}", "transfer": "1", "need": "Investment", "hide_transfers": "0"}}
 
 
 def run(snapshot, benchmarks=None):
