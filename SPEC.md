@@ -947,9 +947,11 @@ them. Amounts are integer cents.
     (`10y`, `20y`, `30y` or `65`), today's or future dollars, spending a month
     (`spend_minor`) and a milestone (`milestone_minor`). Rates are stored as
     decimal text. Empty spending spends
-    the record's own average over its last 12 months
-    (`server/finance/spending.py`, `monthly_average`, the same spending definition as
-    the Spending explorer), which the box shows as its hint.
+    the record's own average over the full months among its last 12, ending at
+    its last full month (`server/finance/spending.py`, `monthly_average`, the same
+    spending definition as the Spending explorer and the same full months as
+    every stat, so a month that has only just begun, or one loaded since the
+    stats last ran, never counts as a whole one), which the box shows as its hint.
   - Every field is checked on save (`server/finance/planning.py`, `clean_plan`) and a
     refusal names it: "Income row 2 (Acme): the to date is before the from
     date", "Investing step 1: from is a month", "Inflation is between -10 and
