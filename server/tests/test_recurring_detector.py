@@ -1,6 +1,7 @@
 """G16: the recurring detector on made-up rows: several series per payee, more
 cadences, a price change continues a series, paused apart from stopped."""
 import isolate  # noqa: F401  first: no test writes the real record or cache
+import random
 import unittest
 from datetime import date, timedelta
 
@@ -182,6 +183,20 @@ class Cadences(unittest.TestCase):
         [s] = of(detect(rows), "Landlord")
         self.assertEqual((s["cadence"], s["status"], s["occurrences"], s["median_amount_minor"]),
                          ("twice-monthly", "active", 40, 2500))
+
+    def test_the_two_usual_days_are_the_pair_nearest_every_payment(self):
+        # Audit: usual_pair counts each day of the month once; it must pick the pair the plain
+        # sum over every payment picks, ties to the earlier pair, whatever the days
+        from finance.cadence import _apart, usual_pair
+
+        def plain(days):
+            costs = {(x, y): sum(min(_apart(d, x, 31), _apart(d, y, 31)) for d in days)
+                     for x in range(1, 32) for y in range(x + 1, 32)}
+            return min(costs, key=lambda p: (costs[p], p))
+        rnd = random.Random(16)
+        for _ in range(300):
+            days = [rnd.randint(1, 31) for _ in range(rnd.randint(1, 40))]
+            self.assertEqual(usual_pair(days), plain(days), days)
 
     def test_on_schedule_answers_for_every_cadence(self):
         d = date.fromisoformat
