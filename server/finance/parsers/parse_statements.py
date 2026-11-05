@@ -46,10 +46,9 @@ from pathlib import Path
 # the data folder's layout (server/finance/paths.py) decides where text dumps go
 from finance.paths import current_statements, statements_dir, text_dump_path
 
+from .common import AMT, MONEY, money
 from .layouts import CHECKED, Bank, Layout, Seen, by_months, register, register_bank
 
-AMT = r"[0-9][0-9,]*\.[0-9]{2}"
-MONEY = re.compile(AMT)
 MONTHS = {m: i for i, m in enumerate(
     "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(), 1)}
 MONTHS_UP = {m.upper() for m in MONTHS}
@@ -173,10 +172,6 @@ def warn(source, msg):
     line = f"warning: {source}: {msg}" if source else f"warning: {msg}"
     WARNINGS.append(line)
     print(line, file=sys.stderr)
-
-
-def money(s):
-    return float(s.replace(",", "")) if s else None
 
 
 def col_edges(ln):

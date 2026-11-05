@@ -53,6 +53,7 @@ from pathlib import Path
 # the data folder's layout (server/finance/paths.py) decides where text dumps go
 from finance.paths import current_statements, statements_dir, text_dump_path
 
+from .common import header_spans, money
 from .layouts import CHECKED, Bank, Layout, Seen, register, register_bank
 
 NUM = re.compile(r"^-?[0-9][0-9,]*(?:\.[0-9]+)?$")
@@ -96,22 +97,11 @@ OVERVIEW_ROWS = {"Beginning Of The Period": "begin", "End Of The Period": "end"}
 OVERVIEW_KEYS = ["cash", "stock", None, None, "dividend_accruals", "total"]
 
 
-def money(s):
-    """A printed number as a float, or None when the cell was empty."""
-    return float(s.replace(",", "")) if s else None
-
-
 def total_of(numbers):
     return round(sum(numbers), 4) if numbers else 0.0
 
 
 # ---------------------------------------------------------------- table layout
-
-def header_spans(ln):
-    """The words of a header line, grouped so a single space keeps them
-    together: "Net Cash Value" is one heading, and two spaces start the next."""
-    return [(m.start(), m.end(), m.group()) for m in re.finditer(r"\S+(?: \S+)*", ln)]
-
 
 def word_spans(ln):
     return [(m.start(), m.end(), m.group()) for m in re.finditer(r"\S+", ln)]

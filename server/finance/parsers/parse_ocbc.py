@@ -30,10 +30,10 @@ import csv
 import re
 import shutil
 import sys
-from decimal import Decimal
 from pathlib import Path
 
-from . import parse_statements as ps
+from . import common, parse_statements as ps
+from .common import period_name
 from .layouts import SAMPLE, Bank, Layout, NotThisLayout, Seen, by_months, register, register_bank
 
 ACCOUNT = "OCBC Account"
@@ -46,9 +46,7 @@ BF = re.compile(r"^\s+BALANCE B/F\b")
 CF = re.compile(r"^\s+BALANCE C/F\b")
 MON = {m.upper(): i for m, i in ps.MONTHS.items()}
 PAGE_LINE = re.compile(r"^\s*(STATEMENT OF ACCOUNT|Account No\.|Transaction\b|Date\b|Page \d)")
-
-# how far an amount may sit from its column heading's right edge
-ALIGN = 3
+HEADINGS = ("Withdrawal", "Deposit", "Balance")   # the money columns, by their right edges
 
 # the first description line names the kind of row
 INTERNAL_HINTS = ("OWN ACCOUNT",)
@@ -57,47 +55,6 @@ INTERNAL_HINTS = ("OWN ACCOUNT",)
 def detect(text):
     head = "\n".join(text.splitlines()[:15])
     return "STATEMENT OF ACCOUNT" in head and bool(PERIOD.search(text)) and "BALANCE B/F" in text
-
-
-def _edges(line):
-    """Right edges of the Withdrawal, Deposit and Balance headings."""
-    return [line.index(h) + len(h) for h in ("Withdrawal", "Deposit", "Balance")]
-
-
-def _cents(text):
-    """'1,234.56' as integer cents, exactly: money never passes through a float."""
-    return int((Decimal(text.replace(",", "")) * 100).to_integral_value())
-
-
-def _column_amounts(line, edges):
-    """[(match, column)] for the amounts that sit in the Withdrawal, Deposit or
-    Balance column: right-aligned to that heading's right edge. A number
-    anywhere else is description text (OTHR RENT 250.00) and stays text."""
-    out = []
-    for m in ps.MONEY.finditer(line):
-        i = min(range(3), key=lambda k: abs(m.end() - edges[k]))
-        if abs(m.end() - edges[i]) <= ALIGN:
-            out.append((m, i))
-    return out
-
-
-def _amounts(line, edges):
-    """[withdrawal, deposit, balance] in cents, None where the column is empty."""
-    out = [None, None, None]
-    for m, i in _column_amounts(line, edges):
-        out[i] = _cents(m.group())
-    return out
-
-
-def _date(ddmon, start, end):
-    """'05 MAR' as an ISO date inside the statement period (a January
-    statement can carry a December date)."""
-    d, mon = ddmon.split()
-    m = MON[mon]
-    year = end[0] if m <= end[1] else start[0]
-    if start[0] != end[0] and m >= start[1]:
-        year = start[0]
-    return f"{year:04d}-{m:02d}-{int(d):02d}"
 
 
 def parse(text, source):
@@ -118,26 +75,26 @@ def parse(text, source):
     rows, edges, cur = [], None, None
     for ln in lines:
         if HEADER.search(ln):
-            edges = _edges(ln)
+            edges = common.heading_edges(ln, HEADINGS)
             cur = None
             continue
         if edges is None:
             continue
         if BF.match(ln):
-            block["_opening_c"] = _amounts(ln, edges)[2]
+            block["_opening_c"] = common.amounts(ln, edges)[2]
             continue
         if CF.match(ln):
-            block["_closing_c"] = _amounts(ln, edges)[2]
+            block["_closing_c"] = common.amounts(ln, edges)[2]
             cur = None
             continue
         m = ROW.match(ln)
         if m:
-            wd, dep, bal = _amounts(ln, edges)
-            cols = _column_amounts(ln, edges)
+            wd, dep, bal = common.amounts(ln, edges)
+            cols = common.column_amounts(ln, edges)
             cut = min((a.start() for a, _ in cols), default=len(ln))
             desc = ln[m.start("rest"):cut].strip()
             cents = (dep or 0) - (wd or 0)
-            cur = dict(date=_date(m.group("td"), start, end), account=block["account"],
+            cur = dict(date=common.date_in_period(m.group("td"), start, end, MON), account=block["account"],
                        account_no=block["account_no"], currency="SGD",
                        bank_txn_type=f"OCBC {desc.title()}", direction="In" if cents > 0 else "Out",
                        amount=cents / 100, flow_class="External", merchant="", merchant_country="",
@@ -150,7 +107,7 @@ def parse(text, source):
         # date and no amount in a money column; a page's own heading lines
         # are not one
         if (cur is not None and ln.strip() and ln.startswith(" " * 10)
-                and not _column_amounts(ln, edges) and not PAGE_LINE.match(ln)):
+                and not common.column_amounts(ln, edges) and not PAGE_LINE.match(ln)):
             cur["_detail"].append(ln.strip())
     for k in ("opening", "closing"):
         c = block.pop(f"_{k}_c", None)
@@ -208,10 +165,6 @@ def validate(rows, block):
                  total_out=sum(max(-r["_cents"], 0) for r in rows) / 100,
                  fx_to_sgd="", closing_sgd=block["closing"], note="")
     return bad
-
-
-def period_name(block):
-    return f"{block['account_no']} · {block['currency']} · {block['period_end'][:7]}"
 
 
 def main():

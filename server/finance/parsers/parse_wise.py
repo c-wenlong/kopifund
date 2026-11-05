@@ -88,6 +88,7 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from .common import period_name, plain
 from .parse_statements import (statement_folders, BAL_COLS, MONTHS, TXN_COLS, add_keys,
                               balance_summary, collect_pdfs, direction, money,
                               pdf_to_text, report_duplicate_periods, warn)
@@ -132,10 +133,6 @@ MONTH_NO = {**MONTHS, **{calendar.month_name[i]: i for i in range(1, 13)}}
 def iso(d):
     dd, mon, yr = d.split()
     return f"{int(yr):04d}-{MONTH_NO[mon]:02d}-{int(dd):02d}"
-
-
-def plain(num):
-    return num.replace(",", "")
 
 
 def statement_currency(text):
@@ -371,10 +368,6 @@ def derive_opening(stmt, rows):
 
 
 # ---------------------------------------------------------------- blocks
-
-def period_name(b):
-    return f"{b['account_no']} · {b['currency']} · {b['period_end'][:7]}"
-
 
 def sgd_points(rows):
     """(date, ccy, sgd per unit) from every conversion with SGD on one side. The
