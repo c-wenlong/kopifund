@@ -130,7 +130,9 @@ class RouteTableTest(unittest.TestCase):
                                            "/api/ai/test",
                                            # G25: the device registry is no page's data
                                            "/api/link/pair-token", "/api/pair/redeem",
-                                           "/api/link/devices/revoke"})
+                                           "/api/link/devices/revoke",
+                                           # G23: nor is the server's own stop or restart
+                                           "/api/server/stop", "/api/server/restart"})
         for path in serve.NO_CHANGE:
             self.assertIn(path, serve.POST_ROUTES)
         # "/api/results", the list, lost its route (RT3), and the generated copy lets it go too
@@ -395,6 +397,37 @@ class DownloadTest(Server):
         self.assertEqual(status, 200)
         listed = json.loads(body)["exports"]
         self.assertEqual([e["stamp"] for e in listed], ["2026-10-17-120000"])
+
+
+class ServerControlTest(Server):
+    """G23: Settings' Server card asks after the process, and can stop or restart it."""
+
+    def test_the_server_answer_names_this_process(self):
+        status, _, raw = self.get("/api/server")
+        body = json.loads(raw)
+        self.assertEqual(status, 200)
+        self.assertEqual((body["version"], body["pid"], body["port"], body["mode"]),
+                         (serve.VERSION, os.getpid(), self.server.server_address[1], "serve"))
+        self.assertGreater(body["started"], 0)
+
+    def test_stop_and_restart_answer_then_schedule_the_exit(self):
+        # the side effect is patched out: an unpatched one would take the shared server down with it
+        for path, fn in (("/api/server/stop", serve._stop), ("/api/server/restart", serve._restart)):
+            seen = []
+            with mock.patch.object(serve, "_after_response", seen.append):
+                status, body = self.post(path, None)
+            self.assertEqual((status, body, seen), (200, {"ok": True}, [fn]), path)
+
+    def test_restart_flags_the_exec_and_stops_the_server(self):
+        class Fake:
+            stopped = False
+            def shutdown(self):
+                self.stopped = True
+        fake = Fake()
+        with mock.patch.object(serve, "_SERVER", fake), mock.patch.object(serve, "_RESTART", False):
+            serve._restart()
+            self.assertTrue(fake.stopped)
+            self.assertTrue(serve._RESTART)
 
 
 class RemovedTest(Server):

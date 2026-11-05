@@ -1225,6 +1225,22 @@ class AppIconPage(TypedDict):
     chosen: str
 
 
+type ServerMode = Literal["serve", "dev", "app"]
+"""G23: how the running server was started: `make serve`, `make dev` (`--page` is
+set only there), or the desktop app's sidecar."""
+
+
+class ServerInfo(TypedDict):
+    """GET /api/server: the running server, for Settings' Server card. `started`
+    is the process's own start in epoch seconds, so the card's "running for"
+    resets on a restart."""
+    version: str
+    mode: ServerMode
+    port: int
+    pid: int
+    started: float
+
+
 ENDPOINTS = {
     "/api/plan": PlanState,
     "/api/transactions": TxnPage,
@@ -1244,4 +1260,5 @@ ENDPOINTS = {
     "/api/link/devices": LinkDevices,
     "/api/link/pending": LinkPending,
     "/api/app-icon": AppIconPage,
+    "/api/server": ServerInfo,
 }
