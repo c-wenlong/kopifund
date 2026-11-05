@@ -1317,6 +1317,10 @@ whois` on that IP names the tailnet caller when it matters.
 - **Reads.** The phone reads the same endpoints the app does
   (`/api/profile`, `/api/transactions`, `/api/categories`,
   `/api/overview`): the link path gates, it does not reshape answers.
+  Those four are an allowlist (serve.py's `LINK_READS`): every other GET
+  on the link path is refused 403 even with a bearer, so a lost phone,
+  before it is revoked, cannot pull exports, upload steps, AI threads or
+  settings, and a route added later stays off the link until it is listed.
 - **Phone rows.** `POST /api/link/transactions`, bearer-guarded, lands an
   approved alert row as a `pending_txn` whose `import_id` is unique, so a
   retried post never doubles it. A pending row never counts as spending:
