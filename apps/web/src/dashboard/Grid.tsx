@@ -136,11 +136,7 @@ export function Grid({ widgets, interactive, onArrange, onRemove }: {
     }
     const above = beside.filter(({ t }) => t.y + t.h <= c.y)
       .sort((a, b) => b.t.y + b.t.h - (a.t.y + a.t.h))[0];
-<<<<<<< HEAD
     arrange(settle(widgets, w.id, { ...c, y: above ? above.t.y : 0 }), w.id);
-=======
-    onArrange(settle(widgets, w.id, { ...c, y: above ? above.t.y : 0 }));
->>>>>>> origin/main
   };
 
   if (!interactive) {
