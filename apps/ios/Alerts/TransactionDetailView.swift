@@ -27,8 +27,8 @@ struct TransactionDetailView: View {
                 // the picker edits the calendar day in the phone's own
                 // calendar; the row keeps it as a zone-free day
                 DatePicker("Date", selection: Binding(
-                    get: { CalendarDate(stored: row.date).date(in: .current) },
-                    set: { row.date = CalendarDate($0, in: .current).storedInstant }),
+                    get: { row.day.date(in: .current) },
+                    set: { row.day = CalendarDate($0, in: .current) }),
                            displayedComponents: .date)
                 Picker("Direction", selection: $row.direction) {
                     Text("Outflow").tag("outflow")

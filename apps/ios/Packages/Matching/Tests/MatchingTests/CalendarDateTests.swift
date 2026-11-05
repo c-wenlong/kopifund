@@ -42,7 +42,7 @@ final class CalendarDateTests: XCTestCase {
             XCTAssertEqual(t.date.iso, "2026-10-12", parseZone.identifier)
             let stored = t.date.storedInstant
             for readZone in Self.zones {
-                let read = CalendarDate(stored: stored, legacyZone: readZone)
+                let read = CalendarDate(stored: stored, isDay: true, legacyZone: readZone)
                 XCTAssertEqual(read, t.date, "\(parseZone.identifier) -> \(readZone.identifier)")
                 XCTAssertEqual(read.iso, "2026-10-12")
             }
@@ -118,7 +118,7 @@ final class CalendarDateTests: XCTestCase {
         for (name, zone) in zip(Self.names, Self.zones) {
             var cal = Calendar(identifier: .gregorian); cal.timeZone = zone
             let legacy = cal.date(from: DateComponents(year: 2026, month: 10, day: 12))!
-            XCTAssertEqual(CalendarDate(stored: legacy, legacyZone: zone).iso, "2026-10-12", name)
+            XCTAssertEqual(CalendarDate(stored: legacy, isDay: false, legacyZone: zone).iso, "2026-10-12", name)
         }
     }
 

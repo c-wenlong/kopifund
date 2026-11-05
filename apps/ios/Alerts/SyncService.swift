@@ -42,7 +42,7 @@ enum SyncService {
         if let link {
             record = await LinkDedupe.recordSpends(
                 client: link,
-                months: Set(approved.map { LinkDedupe.monthKey(CalendarDate(stored: $0.date)) }))
+                months: Set(approved.map { LinkDedupe.monthKey($0.day) }))
         }
         let postApproved = UserDefaults.standard.bool(forKey: "postApproved")
         // a store view on its own context: an App Intent's dedup write lands
@@ -70,7 +70,7 @@ enum SyncService {
             // owe a retry in any state, so this runs before the YNAB gate.
             // the row's calendar day goes to the hub and YNAB as printed,
             // with no zone applied, wherever the phone is when it syncs
-            let day = CalendarDate(stored: row.date)
+            let day = row.day
             let sent = "\(day.iso)|" +
                 "\(row.direction == "outflow" ? -row.amountCents : row.amountCents)|" +
                 "\(row.currency)|\(row.payee)"

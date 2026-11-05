@@ -56,7 +56,7 @@ enum LinkDedupe {
         let unmatched = ((try? context.fetch(FetchDescriptor<UnmatchedRecord>())) ?? [])
             .filter { $0.inKopifund != true }
         guard !rows.isEmpty || !unmatched.isEmpty else { return 0 }
-        var months = Set(rows.map { monthKey(CalendarDate(stored: $0.date)) })
+        var months = Set(rows.map { monthKey($0.day) })
         var guesses: [(row: UnmatchedRecord, cents: Int, currency: String,
                        date: CalendarDate, payee: String)] = []
         for u in unmatched {
@@ -75,7 +75,7 @@ enum LinkDedupe {
         for row in rows {
             if let i = Dedup.coveredBy(amountCents: row.amountCents, currency: row.currency,
                                        direction: row.direction,
-                                       date: CalendarDate(stored: row.date),
+                                       date: row.day,
                                        payee: row.payee, in: spends, taken: taken) {
                 taken.insert(i)
                 row.state = "kopifund"

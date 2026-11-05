@@ -72,9 +72,12 @@ public final class TransactionRecord {
     public var payee: String
     public var amountCents: Int         // money is integer cents, never a float
     public var currency: String         // "SGD"
-    /// A calendar day, written as `CalendarDate.storedInstant` and read
-    /// with `CalendarDate(stored:)`, never through a time zone.
+    /// A calendar day, written as `CalendarDate.storedInstant`. Read and
+    /// write it through `day`, never through a time zone.
     public var date: Date
+    /// True when `date` holds a `CalendarDate.storedInstant`; nil on a row
+    /// an earlier build wrote, whose `date` reads in the phone's zone.
+    public var dateIsDay: Bool?
     public var direction: String
     public var accountID: String
     public var categoryID: String?
@@ -112,6 +115,7 @@ public final class TransactionRecord {
         amountCents = NSDecimalNumber(decimal: cents).intValue
         currency = t.currency ?? "SGD"
         date = t.date.storedInstant
+        dateIsDay = true
         direction = t.direction.rawValue
         self.accountID = accountID
         self.categoryID = categoryID
@@ -137,6 +141,7 @@ public final class TransactionRecord {
         currency = "SGD"
         // the tap's day where the phone was when it happened
         self.date = CalendarDate(date, in: .current).storedInstant
+        dateIsDay = true
         direction = "outflow"
         self.accountID = accountID
         memo = ""
@@ -225,5 +230,18 @@ public enum Store {
     public static func memory() throws -> ModelContainer {
         try ModelContainer(for: schema,
                            configurations: [ModelConfiguration(isStoredInMemoryOnly: true)])
+    }
+}
+
+extension TransactionRecord {
+    /// The row's calendar day: the one value the inbox shows, dedup
+    /// compares and the sync posts. Setting it marks the row's `date` as a
+    /// zone-free day.
+    public var day: CalendarDate {
+        get { CalendarDate(stored: date, isDay: dateIsDay == true) }
+        set {
+            date = newValue.storedInstant
+            dateIsDay = true
+        }
     }
 }

@@ -207,13 +207,31 @@ func centsRoundHalfUpFromTheParsedDecimal(amount: String, cents: Int) {
     // back in any zone names the same day
     let alert = TransactionRecord(from: parsed("4.50"), accountID: "a1", categoryID: nil)
     #expect(alert.date == printed.storedInstant)
+    #expect(alert.dateIsDay == true)
     for zone in ["Pacific/Honolulu", "Europe/London", "Asia/Singapore", "Pacific/Kiritimati"] {
-        #expect(CalendarDate(stored: alert.date, legacyZone: TimeZone(identifier: zone)!) == printed)
+        #expect(CalendarDate(stored: alert.date, isDay: true,
+                             legacyZone: TimeZone(identifier: zone)!) == printed)
     }
     // a Wallet tap keeps the day it happened where the phone was
     let wallet = TransactionRecord(walletAmountCents: 100, merchant: "M", card: nil,
                                    date: day, accountID: "")
-    #expect(CalendarDate(stored: wallet.date) == CalendarDate(day, in: .current))
+    #expect(wallet.day == CalendarDate(day, in: .current))
+}
+
+@Test func aLegacyRowOnAUTCMidnightReadsInThePhonesZone() {
+    // review on #50: an earlier build stored a Wallet tap's moment, which
+    // can fall on a UTC midnight; with no mark it still reads where the
+    // phone is, so 00:00Z on 12 Oct is the 11th in Los Angeles
+    let wallet = TransactionRecord(walletAmountCents: 100, merchant: "M", card: nil,
+                                   date: day, accountID: "")
+    wallet.date = Date(timeIntervalSince1970: 1_791_763_200)   // 2026-10-12T00:00Z
+    wallet.dateIsDay = nil
+    let la = TimeZone(identifier: "America/Los_Angeles")!
+    #expect(CalendarDate(stored: wallet.date, isDay: wallet.dateIsDay == true,
+                         legacyZone: la).iso == "2026-10-11")
+    wallet.day = CalendarDate(year: 2026, month: 10, day: 12)!
+    #expect(wallet.dateIsDay == true)
+    #expect(wallet.day.iso == "2026-10-12")
 }
 
 // MARK: - PatternRecord

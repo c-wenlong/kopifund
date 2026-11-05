@@ -71,17 +71,15 @@ public struct CalendarDate: Hashable, Comparable, Sendable, CustomStringConverti
         Self.utc.date(from: DateComponents(year: year, month: month, day: day)) ?? .distantPast
     }
 
-    /// The day a stored `Date` field holds. A UTC midnight is a day written
-    /// by `storedInstant`. Anything else is a row an earlier build wrote (an
-    /// alert parsed to midnight in the phone's zone, or a Wallet tap's
-    /// moment) and reads the way that build read it, in the phone's zone
-    /// (`legacyZone`), so upgrading moves no existing row.
-    public init(stored: Date, legacyZone: TimeZone = .current) {
-        if stored.timeIntervalSince1970.truncatingRemainder(dividingBy: 86_400) == 0 {
-            self.init(stored, in: Self.utc.timeZone)
-        } else {
-            self.init(stored, in: legacyZone)
-        }
+    /// The day a stored `Date` field holds. `isDay` says the field was
+    /// written by `storedInstant` (the row carries that mark); without it the
+    /// row is one an earlier build wrote (an alert parsed to midnight in the
+    /// phone's zone, or a Wallet tap's moment) and reads the way that build
+    /// read it, in the phone's zone (`legacyZone`), so upgrading moves no
+    /// existing row. The mark is explicit: a legacy tap can fall on a UTC
+    /// midnight too, so the instant alone cannot tell the two apart.
+    public init(stored: Date, isDay: Bool, legacyZone: TimeZone = .current) {
+        self.init(stored, in: isDay ? Self.utc.timeZone : legacyZone)
     }
 
     /// Midnight of the day in `zone`, for a date picker that edits the day in
