@@ -9,6 +9,11 @@ import { GripVertical, X } from "lucide-react";
 import type { DashboardWidget } from "../api";
 import { cellOf, clampCell, COLS, pack, type Cell } from "./layout";
 import { widgetDef } from "./registry";
+import { ErrorBoundary } from "../components/ErrorBoundary";
+import { Problem } from "../components/States";
+
+/** Audit: what a widget that throws as it draws shows in its card; the rest of the board keeps working. */
+export const WIDGET_FAILED = "This widget failed to draw.";
 
 /** One arrow-key step, as the [x, y] or [w, h] it nudges. */
 const ARROW: Record<string, readonly [number, number]> = {
@@ -195,7 +200,13 @@ function WidgetCard({ widget, cell, dragging = false, onMove, onResize, onKeyMov
           </button>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden">
-          {Body ? <Body widget={widget} /> : (
+          {Body ? (
+            // Audit: one widget that cannot draw its answer stays in its card; a changed query or option starts it clean
+            <ErrorBoundary resetKey={JSON.stringify([widget.type, widget.query, widget.options])}
+              fallback={(reset) => <Problem message={WIDGET_FAILED} onRetry={reset} />}>
+              <Body widget={widget} />
+            </ErrorBoundary>
+          ) : (
             <p className="m-0 text-[13px] text-ink-3">
               This widget's kind, {widget.type}, is not one this build knows. Its saved place is kept.
             </p>

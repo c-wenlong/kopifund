@@ -1600,7 +1600,10 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
     (`ErrorBoundary.tsx`). Each copilot answer has its own such boundary, so a
     part it cannot draw shows "This answer failed to draw." in its place while
     the other answers, later replies, the History button and the box keep
-    working. Anything outside those fails to a whole-screen message with
+    working. Each Dashboard widget has one too: a widget that cannot draw
+    its answer shows "This widget failed to draw." in its card, with Try
+    again, while its Remove button and the rest of the board keep working.
+    Anything outside those fails to a whole-screen message with
     Reload. Money formatters never throw while a page draws: a value that is
     not integer cents is reported in the console and drawn rounded, or as "?"
     when it is not a number, and a kind with no icon of its own draws a
