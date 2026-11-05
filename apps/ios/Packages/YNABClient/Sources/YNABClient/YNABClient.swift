@@ -161,31 +161,14 @@ public enum Milliunits {
     }
 }
 
-/// A deterministic `import_id` so a retried post never writes two rows. YNAB
-/// caps it at 36 characters; the hash keeps the id stable for the same alert.
+/// The `import_id` that stops a retried post from writing a second copy:
+/// "al-" plus the row's UUID without dashes, 35 characters (YNAB allows 36).
+/// The caller mints it on a row's first send and keeps it on the row, so a
+/// retry reuses it and YNAB answers 409 instead of booking it twice. It comes
+/// from the row, not from what the row says: two real charges with the same
+/// day, amount, payee and channel are two rows, so they get two ids.
 public enum ImportID {
-    /// `Alerts` prefix + a hash of date, milliunit amount, payee and source,
-    /// 32 hex chars: `al-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` is 35.
-    public static func make(date: Date, milliunits: Int, payee: String, source: String?) -> String {
-        var cal = Calendar(identifier: .gregorian)
-        cal.timeZone = TimeZone(identifier: "UTC")!
-        let c = cal.dateComponents([.year, .month, .day], from: date)
-        let day = String(format: "%04d%02d%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
-        let key = "\(day)|\(milliunits)|\(payee.lowercased().trimmingCharacters(in: .whitespaces))|\(source ?? "")"
-        return "al-" + fnv1a(key)
-    }
-
-    /// FNV-1a over UTF-8, 128-bit-style: two 64-bit halves seeded differently,
-    /// hexed into 32 chars. Deterministic and dependency-free.
-    private static func fnv1a(_ s: String) -> String {
-        func hash(_ seed: UInt64) -> UInt64 {
-            var h: UInt64 = seed
-            for b in s.utf8 {
-                h ^= UInt64(b)
-                h &*= 1099511628211
-            }
-            return h
-        }
-        return String(format: "%016x%016x", hash(1469598103934665603), hash(1099511628211))
+    public static func make(rowID: UUID) -> String {
+        "al-" + rowID.uuidString.replacingOccurrences(of: "-", with: "").lowercased()
     }
 }

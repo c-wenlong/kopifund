@@ -2,13 +2,150 @@ import Foundation
 import SwiftData
 import Storage
 import Matching
+import Intents
 import KopifundClient
 import YNABClient
 
-/// Flush approved rows to YNAB. Each row moves pending -> approved -> syncing
-/// -> synced, or failed with the error kept on the row for a retry.
+/// Decides when the queue syncs; `Sync.run` (Intents package) decides what
+/// one YNAB run does to the rows, and `HubLane` below posts each row to a
+/// linked Kopifund record first (G25).
+///
+/// The app owns every run, not a view: a run lives in a task this object
+/// holds, so switching tabs or popping a screen never cancels a send half
+/// way and marks rows failed. Runs serialize. A call that arrives while one
+/// is going asks for another pass once it ends, so a row approved mid-run is
+/// never left waiting for the next launch.
 @MainActor
-enum SyncService {
+@Observable
+final class SyncService {
+    static let shared = SyncService()
+
+    /// What the Inbox banner says when YNAB refused the last run.
+    enum Problem: Equatable {
+        case unauthorized
+        case rateLimited(until: Date)
+    }
+    private(set) var problem: Problem?
+
+    @ObservationIgnored private var running: Task<Void, Never>?
+    @ObservationIgnored private var again = false
+    @ObservationIgnored private var againForced = false
+    @ObservationIgnored private var gate = SyncGate()
+
+    /// Start a run, or ask the running one for another pass, and wait for
+    /// it. `force` is the user's "Sync now": it skips the backoff and a
+    /// remembered token or rate-limit stop.
+    static func flush(context: ModelContext, force: Bool = false) async {
+        await shared.request(context: context, force: force)
+    }
+
+    private func request(context: ModelContext, force: Bool) async {
+        if let running {
+            again = true
+            againForced = againForced || force
+            await running.value
+            return
+        }
+        let task = Task { await self.loop(context: context, force: force) }
+        running = task
+        await task.value
+    }
+
+    private func loop(context: ModelContext, force: Bool) async {
+        var force = force
+        repeat {
+            again = false
+            await runOnce(context: context, force: force)
+            force = againForced
+            againForced = false
+        } while again
+        running = nil
+    }
+
+    private func runOnce(context: ModelContext, force: Bool) async {
+        let hub = await HubLane.start(context: context)
+        // the hub owes no YNAB setup: rows a linked phone still owes the
+        // record go first, whatever their YNAB state
+        if let hub { await hub.sendOwed(context: context) }
+
+        // no YNAB configured: the pending post above still corroborates the
+        // row on the hub; the spend itself stays parked here
+        guard let token = KeychainToken.value, !token.isEmpty else { return }
+        let defaults = UserDefaults.standard
+        let settings = SyncSettings(
+            planID: defaults.string(forKey: "planID") ?? "",
+            defaultAccountID: defaults.string(forKey: "defaultAccountID") ?? "",
+            postApproved: defaults.bool(forKey: "postApproved"))
+        guard !settings.planID.isEmpty,
+              gate.allows(token: token, now: Date(), force: force) else { return }
+        let outcome = await Sync.run(
+            context: context, client: YNABClient(token: token),
+            settings: settings, force: force,
+            beforeSend: { row in await hub?.prepare(row, context: context) })
+        gate.record(outcome, token: token, now: Date())
+        switch outcome.stop {
+        case .unauthorized: problem = .unauthorized
+        case .rateLimited: problem = gate.pausedUntil.map { .rateLimited(until: $0) }
+        case .cancelled: break
+        case nil: problem = nil
+        }
+    }
+
+    /// Bumped when the store changed under the app while it was in the
+    /// background. RootView keys the list tabs on it, so their queries run
+    /// again and show what the other process wrote.
+    private(set) var storeGeneration = 0
+    @ObservationIgnored private var fingerprintAtBackground: Int?
+
+    /// Called when the app leaves the front (inactive, then background):
+    /// what the store held then. The first call wins, so a write that lands
+    /// between the two phases still counts as a change.
+    static func noteBackground(_ context: ModelContext) {
+        guard shared.fingerprintAtBackground == nil else { return }
+        shared.fingerprintAtBackground = fingerprint(context)
+    }
+
+    /// Re-read the queue from disk. The share extension and an intent run in
+    /// another process write the same file, and their saves never reach this
+    /// process's contexts by themselves. A fetch refreshes every row it
+    /// returns that has no unsaved edit here, but it neither redraws an open
+    /// list nor re-runs its query (both checked on the simulator), so a
+    /// change since the app left the front also bumps `storeGeneration`.
+    /// Called when the app comes to the front and before a bulk approve, so
+    /// a row an intent parked as a duplicate is not approved from a stale
+    /// copy.
+    static func refresh(_ context: ModelContext) {
+        let now = fingerprint(context)
+        if let before = shared.fingerprintAtBackground, before != now {
+            shared.storeGeneration += 1
+        }
+        shared.fingerprintAtBackground = nil
+    }
+
+    /// Every row's id and state, and every unmatched alert's id. Fetching
+    /// them is also what refreshes the in-memory rows from disk.
+    private static func fingerprint(_ context: ModelContext) -> Int {
+        var h = Hasher()
+        let rows = (try? context.fetch(FetchDescriptor<TransactionRecord>(
+            sortBy: [SortDescriptor(\.receivedAt)]))) ?? []
+        for row in rows { h.combine(row.id); h.combine(row.state) }
+        let unmatched = (try? context.fetch(FetchDescriptor<UnmatchedRecord>(
+            sortBy: [SortDescriptor(\.receivedAt)]))) ?? []
+        for u in unmatched { h.combine(u.id) }
+        return h.finalize()
+    }
+}
+
+/// G25: the linked phone's half of a run. Each row lands on the hub as a
+/// pending_txn a later statement load confirms, and an approved row a loaded
+/// statement already covers moves to "kopifund" so it never reaches YNAB.
+@MainActor
+final class HubLane {
+    private let link: KopifundClient
+    private let record: [Dedup.RecordSpend]
+    private var taken: Set<Int> = []
+    private var done: Set<UUID> = []
+
     private static let dateFmt: DateFormatter = {
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
@@ -16,138 +153,76 @@ enum SyncService {
         return f
     }()
 
-    private static var flushing = false
+    private init(link: KopifundClient, record: [Dedup.RecordSpend]) {
+        self.link = link
+        self.record = record
+    }
 
-    /// Flushes serialize: a second caller returns rather than racing the
-    /// first over the same rows. Rows left `syncing` by a killed app are
-    /// picked up again, safe because their `import_id` persisted before the
-    /// first send.
-    @MainActor
-    static func flush(context: ModelContext) async {
-        guard !flushing else { return }
-        flushing = true
-        defer { flushing = false }
-        // kopifundError/kopifundID widen the net past YNAB's own states: a
-        // synced row whose hub post failed or never got its reply is fetched
-        // for the hub send alone, and never reaches the YNAB section below
-        let approved = (try? context.fetch(
-            FetchDescriptor<TransactionRecord>(predicate: #Predicate {
-                $0.state == "approved" || $0.state == "failed" || $0.state == "syncing"
-                    || $0.kopifundError != nil || $0.kopifundID != nil }))) ?? []
-        guard !approved.isEmpty else { return }
-        let link = LinkStore.live.client()
-        // YNAB may not be set up on this phone at all: the Kopifund pending
-        // post and the statement dedupe need only the link, so they run
-        // either way and the YNAB post below skips when unconfigured
-        let token = KeychainToken.value ?? ""
-        let planID = UserDefaults.standard.string(forKey: "planID") ?? ""
-        let ynab = (!token.isEmpty && !planID.isEmpty) ? YNABClient(token: token) : nil
-        // G25: a linked phone asks the record first — a spend a loaded
-        // statement already covers is marked "kopifund", never posted
-        var record: [Dedup.RecordSpend] = []
-        var taken: Set<Int> = []
-        if let link {
-            record = await LinkDedupe.recordSpends(
-                client: link, months: Set(approved.map { LinkDedupe.monthKey($0.date) }))
-        }
-        let postApproved = UserDefaults.standard.bool(forKey: "postApproved")
-        // a store view on its own context: an App Intent's dedup write lands
-        // on the same file but never merges into this context's copies, so a
-        // row parked since the batch was fetched must be re-read before post
-        let storeView = try? ModelContext(Store.container())
-        for row in approved {
-            let rowID = row.id
-            if let storeView,
-               let live = (try? storeView.fetch(FetchDescriptor<TransactionRecord>(
-                   predicate: #Predicate { $0.id == rowID })))?.first,
-               live.state != row.state {
-                row.state = live.state
-                row.duplicateOf = live.duplicateOf
-                try? context.save()
-            }
-            // G25: the same row lands on the hub as a pending_txn a later
-            // statement load confirms. A first send is owed only by rows in
-            // the YNAB lane — a sibling parked as a duplicate meanwhile must
-            // never post — while a retry is owed whenever what the hub last
-            // accepted (kopifundSent) differs from the row as it reads now:
-            // a refusal, an interrupted send whose id persisted but whose
-            // reply never came, or an edit since. The import_id is the row's
-            // own, so every repost upserts the one pending row, and a row can
-            // owe a retry in any state, so this runs before the YNAB gate.
-            let sent = "\(dateFmt.string(from: row.date))|" +
-                "\(row.direction == "outflow" ? -row.amountCents : row.amountCents)|" +
-                "\(row.currency)|\(row.payee)"
-            let inLane = row.state == "approved" || row.state == "failed" || row.state == "syncing"
-            let owesHub = row.kopifundError != nil
-                || (row.kopifundID == nil ? inLane : row.kopifundSent != sent)
-            if let link, owesHub {
-                let pendingID = row.kopifundID ?? "kph_\(row.id.uuidString.lowercased())"
-                if row.kopifundID == nil { row.kopifundID = pendingID }
-                let post = PendingPost(
-                    importID: pendingID, date: dateFmt.string(from: row.date),
-                    amountMinor: row.direction == "outflow" ? -row.amountCents : row.amountCents,
-                    currency: row.currency, payee: row.payee)
-                do {
-                    _ = try await link.postPending(post)
-                    row.kopifundSent = sent
-                    row.kopifundError = nil
-                } catch {
-                    row.kopifundError = (error as? KopifundError)?.message ?? error.localizedDescription
-                }
-                try? context.save()
-            }
-            guard row.state == "approved" || row.state == "failed" || row.state == "syncing"
-            else { continue }
-            if row.state == "approved",
-               let i = Dedup.coveredBy(amountCents: row.amountCents, currency: row.currency,
-                                       direction: row.direction, date: row.date,
-                                       payee: row.payee, in: record, taken: taken) {
-                taken.insert(i)
-                row.state = "kopifund"
-                try? context.save()
-                continue
-            }
-            // no YNAB configured: the pending post above still corroborates
-            // the row on the hub; the spend itself stays parked here
-            guard let ynab else { continue }
-            let accountID = row.accountID.isEmpty
-                ? (UserDefaults.standard.string(forKey: "defaultAccountID") ?? "")
-                : row.accountID
-            guard !accountID.isEmpty else {
-                row.state = "failed"; row.syncError = "no YNAB account mapped"
-                continue
-            }
-            row.state = "syncing"
-            try? context.save()
-            let outflow = row.direction == "outflow"
-            let milli = Milliunits.from(Decimal(row.amountCents) / 100, outflow: outflow)
-            // the first send's import_id is saved before posting, so an edit
-            // or a lost reply can never mint a second one for the same row
-            let importID = row.importID ?? ImportID.make(date: row.date, milliunits: milli,
-                                                         payee: row.payee, source: row.source)
-            row.importID = importID
-            let txn = NewTransaction(accountID: accountID,
-                                     date: dateFmt.string(from: row.date),
-                                     amount: milli, payeeName: row.payee,
-                                     categoryID: row.categoryID,
-                                     memo: row.memo.isEmpty ? nil : row.memo,
-                                     approved: postApproved, importID: importID)
+    /// nil when the phone is not linked.
+    static func start(context: ModelContext) async -> HubLane? {
+        guard let link = LinkStore.live.client() else { return nil }
+        let rows = owedRows(context)
+        guard !rows.isEmpty else { return HubLane(link: link, record: []) }
+        // a linked phone asks the record first: a spend a loaded statement
+        // already covers is marked "kopifund", never posted
+        let record = await LinkDedupe.recordSpends(
+            client: link, months: Set(rows.map { LinkDedupe.monthKey($0.date) }))
+        return HubLane(link: link, record: record)
+    }
+
+    /// kopifundError/kopifundID widen the net past YNAB's own states: a
+    /// synced row whose hub post failed or never got its reply is fetched
+    /// for the hub send alone.
+    private static func owedRows(_ context: ModelContext) -> [TransactionRecord] {
+        (try? context.fetch(FetchDescriptor<TransactionRecord>(predicate: #Predicate {
+            $0.state == "approved" || $0.state == "failed" || $0.state == "syncing"
+                || $0.kopifundError != nil || $0.kopifundID != nil }))) ?? []
+    }
+
+    /// Every row the hub is owed, before the YNAB run starts.
+    func sendOwed(context: ModelContext) async {
+        for row in Self.owedRows(context) { await prepare(row, context: context) }
+    }
+
+    /// Post `row` to the hub when it owes a send, then park it as "kopifund"
+    /// when the record covers it. Once per row per run.
+    func prepare(_ row: TransactionRecord, context: ModelContext) async {
+        guard done.insert(row.id).inserted else { return }
+        // A first send is owed only by rows in the YNAB lane (a sibling
+        // parked as a duplicate meanwhile must never post), while a retry is
+        // owed whenever what the hub last accepted (kopifundSent) differs
+        // from the row as it reads now: a refusal, an interrupted send whose
+        // id persisted but whose reply never came, or an edit since. The
+        // import_id is the row's own, so every repost upserts the one
+        // pending row, and a row can owe a retry in any state.
+        let day = Self.dateFmt.string(from: row.date)
+        let signed = row.direction == "outflow" ? -row.amountCents : row.amountCents
+        let sent = "\(day)|\(signed)|\(row.currency)|\(row.payee)"
+        let inLane = row.state == "approved" || row.state == "failed" || row.state == "syncing"
+        let owesHub = row.kopifundError != nil
+            || (row.kopifundID == nil ? inLane : row.kopifundSent != sent)
+        if owesHub {
+            let pendingID = row.kopifundID ?? "kph_\(row.id.uuidString.lowercased())"
+            if row.kopifundID == nil { row.kopifundID = pendingID }
+            let post = PendingPost(importID: pendingID, date: day, amountMinor: signed,
+                                   currency: row.currency, payee: row.payee)
             do {
-                row.ynabID = try await ynab.createTransaction(planID: planID, txn)
-                row.state = "synced"
-                row.syncError = nil
-            } catch let e as YNABError {
-                if e.kind == .conflict {   // import_id already taken: synced before
-                    row.state = "synced"
-                } else {
-                    row.state = "failed"
-                    row.syncError = e.message
-                }
+                _ = try await link.postPending(post)
+                if row.isDeleted || row.modelContext == nil { return }
+                row.kopifundSent = sent
+                row.kopifundError = nil
             } catch {
-                row.state = "failed"
-                row.syncError = error.localizedDescription
+                if row.isDeleted || row.modelContext == nil { return }
+                row.kopifundError = (error as? KopifundError)?.message ?? error.localizedDescription
             }
-            row.syncAttempts += 1
+            try? context.save()
+        }
+        if row.state == "approved",
+           let i = Dedup.coveredBy(amountCents: row.amountCents, currency: row.currency,
+                                   direction: row.direction, date: row.date,
+                                   payee: row.payee, in: record, taken: taken) {
+            taken.insert(i)
+            row.state = "kopifund"
             try? context.save()
         }
     }

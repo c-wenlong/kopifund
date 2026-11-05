@@ -127,14 +127,17 @@ final class MilliunitsTests: XCTestCase {
 }
 
 final class ImportIDTests: XCTestCase {
-    func test_deterministic_and_short() {
-        let d = Date(timeIntervalSince1970: 1_800_000_000)
-        let a = ImportID.make(date: d, milliunits: -4500, payee: "Kopitiam", source: "sms")
-        let b = ImportID.make(date: d, milliunits: -4500, payee: "Kopitiam", source: "sms")
-        XCTAssertEqual(a, b)
+    func test_stable_per_row_and_short() {
+        let row = UUID()
+        let a = ImportID.make(rowID: row)
+        XCTAssertEqual(a, ImportID.make(rowID: row))
+        XCTAssertEqual(a.count, 35)
         XCTAssertLessThanOrEqual(a.count, 36)
         XCTAssertTrue(a.hasPrefix("al-"))
-        let c = ImportID.make(date: d, milliunits: -4500, payee: "Other", source: "sms")
-        XCTAssertNotEqual(a, c)
+    }
+
+    func test_identical_charges_get_distinct_ids() {
+        // two rows for two real S$4.80 coffees at one stall on one day
+        XCTAssertNotEqual(ImportID.make(rowID: UUID()), ImportID.make(rowID: UUID()))
     }
 }

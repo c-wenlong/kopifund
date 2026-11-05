@@ -90,6 +90,7 @@ public final class TransactionRecord {
     public var ynabID: String?
     public var importID: String?
     public var syncError: String?
+    /// Sends started for this row, counted before each POST.
     public var syncAttempts: Int
     /// G25: the row's pending_txn key on the hub once a linked phone tried to
     /// post it (nil until the first attempt): its being set marks only that a
@@ -100,6 +101,9 @@ public final class TransactionRecord {
     public var kopifundID: String?
     public var kopifundSent: String?
     public var kopifundError: String?
+    /// A failed row is not retried automatically before this time; nil means
+    /// no wait. `Date.distantFuture` waits for a manual "Sync now".
+    public var nextSyncAt: Date? = nil
 
     public init(from t: ParsedTransaction, accountID: String, categoryID: String?) {
         id = UUID()
@@ -192,14 +196,28 @@ public enum Store {
     static let schema = Schema([PatternRecord.self, TransactionRecord.self,
                                 UnmatchedRecord.self, MetadataRecord.self])
 
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var opened: ModelContainer?
+
     /// The shared container both the app and the extension write through.
     /// `group.` URLs land under the App Group, so the intents' writes show up
     /// on the app's next launch or model-context merge. Throws
     /// `StoreError.appGroupUnavailable` when the build has no App Group
     /// entitlement, so the app can say so rather than crash at launch.
+    ///
+    /// One container per process: a second container on the same file has
+    /// its own coordinator, so its saves never merge into the first one's
+    /// contexts. The paste box, the re-ingest and an intent that runs inside
+    /// the app's process all get the app's container, and their rows show up
+    /// in the open views at once.
     public static func container() throws -> ModelContainer {
-        try container(groupDirectory: FileManager.default
+        lock.lock()
+        defer { lock.unlock() }
+        if let opened { return opened }
+        let made = try container(groupDirectory: FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: AppGroup.id))
+        opened = made
+        return made
     }
 
     /// `container()` with the App Group lookup passed in, so a test can
@@ -209,11 +227,13 @@ public enum Store {
         return try container(at: groupDirectory.appendingPathComponent("alerts.store"))
     }
 
-    /// The store file at `url`. No versioned schema yet: a field added as an
-    /// optional (as `duplicateOf` was) migrates on its own, which the tests
-    /// pin; a field that is neither optional nor defaulted needs a
-    /// `SchemaMigrationPlan` first.
-    static func container(at url: URL) throws -> ModelContainer {
+    /// The store file at `url`; public for the tests that open two
+    /// containers on one file, the way the app and an intent in another
+    /// process do. No versioned schema yet: a field added as an optional (as
+    /// `duplicateOf` was) migrates on its own, which the tests pin; a field
+    /// that is neither optional nor defaulted needs a `SchemaMigrationPlan`
+    /// first.
+    public static func container(at url: URL) throws -> ModelContainer {
         let config = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
         return try ModelContainer(for: schema, configurations: [config])
     }

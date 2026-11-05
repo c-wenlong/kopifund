@@ -22,6 +22,12 @@ struct InboxView: View {
     var body: some View {
         NavigationStack {
             List {
+                if let problem = SyncService.shared.problem {
+                    Section {
+                        Label(problemText(problem), systemImage: "exclamationmark.triangle")
+                            .foregroundStyle(.red)
+                    }
+                }
                 if !pending.isEmpty {
                     Section("Pending") {
                         ForEach(pending) { row in
@@ -79,9 +85,12 @@ struct InboxView: View {
                 } }
             }
             .task {
+                // sync is not started here: a view's task is cancelled when
+                // the tab changes, and the app owns the runs (SyncService)
                 accountNames = Dictionary(
                     uniqueKeysWithValues: YNABCache.accounts(in: context).map { ($0.id, $0.name) })
-                await SyncService.flush(context: context)
+                // G25: statement coverage is checked on its own here, so a
+                // pending row already in the record leaves the queue
                 await LinkDedupe.sweep(context: context)
             }
             .alert("Ingest failed", isPresented: .constant(!ingestError.isEmpty)) {
@@ -98,18 +107,32 @@ struct InboxView: View {
     }
 
     private func approveAll() {
-        for r in pending { r.state = "approved" }
+        // an intent may have parked one of these as a duplicate since this
+        // list loaded; approving the stale copy would write over that
+        SyncService.refresh(context)
+        for r in pending where r.state == "pending" { r.state = "approved" }
         try? context.save()
         Task { await SyncService.flush(context: context) }
     }
 
     @State private var ingestError = ""
 
+    private func problemText(_ problem: SyncService.Problem) -> String {
+        switch problem {
+        case .unauthorized:
+            return "YNAB rejected the token, so sync stopped. Check it in Settings, then tap Sync now."
+        case .rateLimited(let until):
+            return "YNAB is limiting requests, so sync is paused until "
+                + until.formatted(date: .omitted, time: .shortened) + "."
+        }
+    }
+
     private func ingestPaste() {
         do {
-            let container = try Store.container()
+            // the view's own container: a second one on the same file would
+            // not merge its save into this list
             _ = try Ingest.alert(text: pasteText, source: "paste",
-                                 receivedAt: Date(), container: container)
+                                 receivedAt: Date(), container: context.container)
             pasteText = ""
         } catch {
             // keep the text so a failed ingest does not lose the alert

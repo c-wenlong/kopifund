@@ -12,6 +12,6 @@ let package = Package(
     ],
     targets: [
         .target(name: "Intents", dependencies: ["Matching", "YNABClient", "Storage"]),
-        .testTarget(name: "IntentsTests", dependencies: ["Intents", "Storage"]),
+        .testTarget(name: "IntentsTests", dependencies: ["Intents", "Storage", "YNABClient"]),
     ]
 )
