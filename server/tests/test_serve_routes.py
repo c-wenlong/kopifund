@@ -8,6 +8,7 @@ import os
 import re
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -418,9 +419,82 @@ class ServerControlTest(Server):
         # the side effect is patched out: an unpatched one would take the shared server down with it
         for path, fn in (("/api/server/stop", serve._stop), ("/api/server/restart", serve._restart)):
             seen = []
-            with mock.patch.object(serve, "_after_response", seen.append):
+            with mock.patch.object(serve, "_after_response", seen.append), \
+                    mock.patch.object(serve, "_STOPPING", False):
                 status, body = self.post(path, None)
-            self.assertEqual((status, body, seen), (200, {"ok": True}, [fn]), path)
+                self.assertTrue(serve._STOPPING)
+            self.assertEqual((status, body, seen),
+                             (200, {"ok": True, "waiting_for": [], "timeout": serve.DRAIN_TIMEOUT}, [fn]), path)
+
+    def test_a_stopping_server_refuses_new_writes_and_still_answers_reads(self):
+        with mock.patch.object(serve, "_STOPPING", True):
+            status, body = self.post("/api/trips", {"name": "Bali"})
+            self.assertEqual(status, 503)
+            self.assertIn("stopping", body["error"])
+            self.assertEqual(self.get("/api/server")[0], 200)
+        self.assertEqual(serve._INFLIGHT, {})
+
+    def test_stop_waits_for_a_load_in_flight_then_ends(self):
+        """Stop pressed while another tab runs a load: the answer names the
+        load, and the server shuts down only once the load has finished."""
+        started, release, finished = threading.Event(), threading.Event(), threading.Event()
+
+        def slow_load(req):
+            started.set()
+            release.wait(10)
+            finished.set()
+            return {"ok": True}
+
+        class Fake:
+            stopped_after_load = None
+            def shutdown(self):
+                self.stopped_after_load = finished.is_set()
+        fake, seen = Fake(), []
+        with mock.patch.dict(serve._ROUTERS["POST"].exact, {"/api/run/load": serve.Route(slow_load)}), \
+                mock.patch.object(serve, "_after_response", seen.append), \
+                mock.patch.object(serve, "_STOPPING", False), mock.patch.object(serve, "_SERVER", fake):
+            load = threading.Thread(target=self.post, args=("/api/run/load", {}))
+            load.start()
+            self.assertTrue(started.wait(10))
+            status, body = self.post("/api/server/stop", None)
+            self.assertEqual((status, body["waiting_for"]), (200, ["a load"]))
+            stopping = threading.Thread(target=seen[0])
+            stopping.start()
+            stopping.join(0.6)
+            self.assertTrue(stopping.is_alive(), "the stop did not wait for the load")
+            self.assertIsNone(fake.stopped_after_load)
+            release.set()
+            load.join(10)
+            stopping.join(10)
+            self.assertTrue(fake.stopped_after_load)
+
+    def test_the_wait_covers_the_stats_rebuild_and_is_bounded(self):
+        with mock.patch.object(serve.stats_rebuild, "running", return_value=True):
+            self.assertEqual(serve._running_work(), ["the stats rebuild"])
+            t0 = time.monotonic()
+            self.assertEqual(serve._drain(timeout=0.3), ["the stats rebuild"])
+            self.assertLess(time.monotonic() - t0, 2)
+        answers = iter([True, True, False])
+        with mock.patch.object(serve.stats_rebuild, "running", side_effect=lambda: next(answers, False)):
+            self.assertEqual(serve._drain(timeout=5), [])
+
+    def test_a_read_still_running_at_the_deadline_is_named(self):
+        with mock.patch.dict(serve._INFLIGHT, {("GET", "/api/exports/x/y.csv"): 1}):
+            self.assertEqual(serve._running_work(), [])      # the card names no reads
+            self.assertEqual(serve._drain(timeout=0.2), ["1 read"])
+
+    def test_a_stop_past_the_deadline_says_what_it_cut_off(self):
+        class Fake:
+            stopped = False
+            def shutdown(self):
+                self.stopped = True
+        fake = Fake()
+        with mock.patch.object(serve, "_SERVER", fake), mock.patch.object(serve, "DRAIN_TIMEOUT", 0.2), \
+                mock.patch.object(serve.stats_rebuild, "running", return_value=True), \
+                mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            serve._stop()
+        self.assertTrue(fake.stopped)
+        self.assertIn("the stats rebuild still running", err.getvalue())
 
     def test_restart_flags_the_exec_and_stops_the_server(self):
         class Fake:
@@ -428,7 +502,8 @@ class ServerControlTest(Server):
             def shutdown(self):
                 self.stopped = True
         fake = Fake()
-        with mock.patch.object(serve, "_SERVER", fake), mock.patch.object(serve, "_RESTART", False):
+        with mock.patch.object(serve, "_SERVER", fake), mock.patch.object(serve, "_RESTART", False), \
+                mock.patch.object(serve, "_drain", return_value=[]):
             serve._restart()
             self.assertTrue(fake.stopped)
             self.assertTrue(serve._RESTART)

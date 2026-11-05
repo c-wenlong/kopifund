@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DashboardLayout, DashboardWidget } from "../api";
-import { cellOf, clampCell, COLS, collides, firstFit, MAX_H, newWidgetId, pack, readLayout, writeLayout } from "./layout";
+import { cellOf, clampCell, COLS, collides, firstFit, MAX_H, newWidgetId, pack, readLayout, settle, writeLayout } from "./layout";
 
 // an invented layout fixture: the document GET /api/dashboard/layouts answers
 // and POST writes back, with one widget of each field kind
@@ -135,6 +135,53 @@ describe("pack", () => {
     for (let i = 0; i < cells.length; i++) {
       for (let j = i + 1; j < cells.length; j++) expect(collides(cells[i], cells[j])).toBe(false);
     }
+  });
+});
+
+describe("settle", () => {
+  const cells = (ws: DashboardWidget[]) => Object.fromEntries(ws.map((w) => [w.id, cellOf(w)]));
+
+  it("drops a widget dragged up onto a top-row widget where the preview showed it: on top", () => {
+    // a is first in the list, so a plain repack would win the tie at row 0 for it
+    const ws = [
+      widget("a", { x: 0, y: 0, w: 6, h: 2 }),
+      widget("b", { x: 0, y: 2, w: 6, h: 3 }),
+    ];
+    const cell = { x: 0, y: 0, w: 6, h: 3 };
+    const preview = pack(ws, { id: "b", cell });
+    const dropped = settle(ws, "b", cell);
+    expect(cells(dropped)).toEqual(cells(preview));
+    expect(cells(dropped)).toEqual({ a: { x: 0, y: 3, w: 6, h: 2 }, b: { x: 0, y: 0, w: 6, h: 3 } });
+  });
+
+  it("lands every drop on a board the layout's own read leaves as it is", () => {
+    const ws = [
+      widget("a", { x: 0, y: 0, w: 4, h: 2 }),
+      widget("b", { x: 4, y: 0, w: 8, h: 3 }),
+      widget("c", { x: 0, y: 2, w: 4, h: 2 }),
+      widget("d", { x: 0, y: 4, w: 12, h: 1 }),
+    ];
+    for (const id of ["a", "b", "c", "d"]) {
+      for (let x = 0; x < COLS; x += 3) {
+        for (let y = 0; y < 7; y++) {
+          const cell = { ...cellOf(ws.find((w) => w.id === id)!), x, y };
+          const dropped = settle(ws, id, cell);
+          // the read settles nothing further, and the dropped widget keeps the column it was given
+          expect(cells(pack(dropped))).toEqual(cells(dropped));
+          expect(cellOf(dropped.find((w) => w.id === id)!).x).toBe(clampCell(cell).x);
+          const all = dropped.map(cellOf);
+          for (let i = 0; i < all.length; i++) {
+            for (let j = i + 1; j < all.length; j++) expect(collides(all[i], all[j])).toBe(false);
+          }
+        }
+      }
+    }
+  });
+
+  it("lets a widget dropped below empty rows rise to the highest free one", () => {
+    const ws = [widget("a", { x: 0, y: 0, w: 4, h: 2 }), widget("b", { x: 6, y: 0, w: 4, h: 2 })];
+    expect(cellOf(settle(ws, "b", { x: 0, y: 5, w: 4, h: 2 }).find((w) => w.id === "b")!))
+      .toEqual({ x: 0, y: 2, w: 4, h: 2 });
   });
 });
 
