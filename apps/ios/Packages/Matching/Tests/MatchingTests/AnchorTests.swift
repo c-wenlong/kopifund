@@ -269,6 +269,159 @@ final class AnchorTests: XCTestCase {
         }
     }
 
+    /// Review: a line break after an ignore span stays required even when
+    /// the alert leaves the ignored text out; the literal before the ignore
+    /// must not swallow it.
+    func test_a_line_break_after_an_empty_ignore_still_reads() throws {
+        let mail = "Paid SGD 4.80 at SHOP ref X\nEnd"
+        let p = try pattern(from: mail) { _, t in
+            switch t.text {
+            case "SGD", "4.80": return .amount
+            case "SHOP": return .payee
+            case "X": return .ignore
+            default: return nil
+            }
+        }
+        for next in ["Paid SGD 9.00 at CAFE ref \nEnd", "Paid SGD 9.00 at CAFE ref\nEnd",
+                     "Paid SGD 9.00 at CAFE ref Y Z\nEnd"] {
+            switch Matcher.match(text: next, source: "mail", receivedAt: Date(), patterns: [p]) {
+            case .matched(let t): XCTAssertEqual(t.payee, "CAFE", next.debugDescription)
+            case .unmatched(let r): XCTFail("unmatched \(next.debugDescription): \(r)")
+            }
+        }
+        switch Matcher.match(text: "Paid SGD 9.00 at CAFE ref End", source: "mail",
+                             receivedAt: Date(), patterns: [p]) {
+        case .matched: XCTFail("the line break is part of the template")
+        case .unmatched: break
+        }
+    }
+
+    /// Review: a reference that ends its block must not hand its digits to
+    /// an amount that opens the next block.
+    func test_a_reference_before_an_ignore_keeps_its_digits_from_the_amount() throws {
+        let mail = "Ref 8842 X $4.80 Y at SHOP"
+        let p = try pattern(from: mail) { _, t in
+            switch t.text {
+            case "X", "Y": return .ignore
+            case "$", "4.80": return .amount
+            case "SHOP": return .payee
+            default: return nil
+            }
+        }
+        for (text, amount) in [(mail, "4.80"), ("Ref 9911 Q $12.50 Z at CAFE", "12.50"),
+                               ("Ref 27/10/2026 Q $3.10 Z at CAFE", "3.10")] {
+            switch Matcher.match(text: text, source: "mail", receivedAt: Date(), patterns: [p]) {
+            case .matched(let t): XCTAssertEqual(t.amount, Decimal(string: amount), text)
+            case .unmatched(let r): XCTFail("unmatched \(text): \(r)")
+            }
+        }
+    }
+
+    /// Review on #47: a reference glued to an ignored word ("R27/10X") ends
+    /// its block, so its digit run reads whole and never hands "10" to the
+    /// amount that opens the next block.
+    func test_a_glued_reference_that_ends_its_block_reads_whole() throws {
+        let mail = "Ref R27/10X $4.80 Y at SHOP"
+        let p = try pattern(from: mail) { _, t in
+            switch t.text {
+            case "X", "Y": return .ignore
+            case "$", "4.80": return .amount
+            case "SHOP": return .payee
+            default: return nil
+            }
+        }
+        switch Matcher.match(text: mail, source: "mail", receivedAt: Date(), patterns: [p]) {
+        case .matched(let t): XCTAssertEqual(t.amount, Decimal(string: "4.80"))
+        case .unmatched(let r): XCTFail("unmatched: \(r)")
+        }
+    }
+
+    /// Review on #47: a currency marker glued to a reference's digits keeps
+    /// its whole code; "US$4.80" never reads from its "S$" as SGD.
+    func test_a_currency_glued_to_a_reference_keeps_its_code() throws {
+        let mail = "Ref 8842US$4.80 at SHOP"
+        let tokens = Tokenizer.tokenize(mail)
+        let amountAt = Set(tokens.indices.filter { i in
+            let s = mail[tokens[i].range.lowerBound...]
+            return s.hasPrefix("US$4.80") || s.hasPrefix("$4.80") || s.hasPrefix("4.80")
+                || (s.hasPrefix("S$4.80") && i > 0 && tokens[i - 1].text != "8842")
+        })
+        let p = try pattern(from: mail) { i, t in
+            if t.text == "SHOP" { return .payee }
+            return amountAt.contains(i) && !t.text.hasPrefix("8842") ? .amount : nil
+        }
+        switch Matcher.match(text: mail, source: "mail", receivedAt: Date(), patterns: [p]) {
+        case .matched(let t):
+            XCTAssertEqual(t.amount, Decimal(string: "4.80"))
+            XCTAssertEqual(t.currency, "USD")
+        case .unmatched(let r): XCTFail("unmatched: \(r)")
+        }
+    }
+
+    /// Review on #47: a reference glued to an ignore leaves the next
+    /// block's punctuation, and an amount right after a word still reads.
+    func test_a_glued_ignore_leaves_the_next_blocks_text() throws {
+        let mail = "Ref 8842X:$4.80 at SHOP"
+        let tokens = Tokenizer.tokenize(mail)
+        let p = try pattern(from: mail) { i, t in
+            switch t.text {
+            case "X": return .ignore
+            case "$": return i + 1 < tokens.count && tokens[i + 1].text == "4.80" ? .amount : nil
+            case "4.80": return .amount
+            case "SHOP": return .payee
+            default: return nil
+            }
+        }
+        for (text, amount) in [(mail, "4.80"), ("Ref 9911Q:$12.50 at CAFE", "12.50")] {
+            switch Matcher.match(text: text, source: "mail", receivedAt: Date(), patterns: [p]) {
+            case .matched(let t): XCTAssertEqual(t.amount, Decimal(string: amount), text)
+            case .unmatched(let r): XCTFail("unmatched \(text): \(r)")
+            }
+        }
+    }
+
+    func test_an_amount_glued_to_a_word_reads() throws {
+        let mail = "Paid$4.80 at SHOP"
+        let tokens = Tokenizer.tokenize(mail)
+        let p = try pattern(from: mail) { i, t in
+            switch t.text {
+            case "$": return i + 1 < tokens.count && tokens[i + 1].text == "4.80" ? .amount : nil
+            case "4.80": return .amount
+            case "SHOP": return .payee
+            default: return nil
+            }
+        }
+        switch Matcher.match(text: "Paid$9.10 at CAFE", source: "mail", receivedAt: Date(), patterns: [p]) {
+        case .matched(let t):
+            XCTAssertEqual(t.amount, Decimal(string: "9.10"))
+            XCTAssertEqual(t.currency, "SGD")
+        case .unmatched(let r): XCTFail("unmatched: \(r)")
+        }
+    }
+
+    /// Review: a reference glued to the amount ("8842:$4.80") folds to a
+    /// wildcard that must leave the amount to its capture.
+    func test_a_folded_reference_glued_to_the_amount_leaves_it() throws {
+        let mail = "Ref 8842:$4.80 at SHOP"
+        let p = try pattern(from: mail) { i, t in
+            let tokens = Tokenizer.tokenize(mail)
+            switch t.text {
+            case "$": return i + 1 < tokens.count && tokens[i + 1].text == "4.80" ? .amount : nil
+            case "4.80": return .amount
+            case "SHOP": return .payee
+            default: return nil
+            }
+        }
+        for (text, payee, amount) in [(mail, "SHOP", "4.80"), ("Ref 9911:$12.50 at CAFE", "CAFE", "12.50")] {
+            switch Matcher.match(text: text, source: "mail", receivedAt: Date(), patterns: [p]) {
+            case .matched(let t):
+                XCTAssertEqual(t.payee, payee)
+                XCTAssertEqual(t.amount, Decimal(string: amount))
+            case .unmatched(let r): XCTFail("unmatched \(text): \(r)")
+            }
+        }
+    }
+
     /// A trailing space after the tagged card is a literal that can match
     /// empty, so the lazy capture in front of it shrank "1234" to "1" and
     /// any other card's first digit equalled it. Whitespace-only literals
@@ -297,25 +450,34 @@ final class AnchorTests: XCTestCase {
 }
 
 final class LiteralPatternTests: XCTestCase {
+    /// A line break the sample printed stays required, and the space in
+    /// front of it is horizontal only so it cannot eat the break itself.
+    func test_a_line_break_stays_required() {
+        XCTAssertEqual(LiteralPattern.pattern(for: "\nTo:\n"),
+                       #"[^\S\n]*+\n\s*+To:[^\S\n]*+\n\s*+"#)
+        XCTAssertEqual(LiteralPattern.pattern(for: " "), #"\s*+"#)
+        XCTAssertEqual(LiteralPattern.pattern(for: " ref ", trailingSpace: false), #"\s*+ref"#)
+    }
+
     func test_words_and_punctuation_stay_anchors() {
         XCTAssertEqual(LiteralPattern.pattern(for: "card ending on"),
-                       #"card\s+ending\s+on"#)
+                       #"\s*+card\s++ending\s++on\s*+"#)
     }
 
     func test_a_digit_run_folds() {
         XCTAssertEqual(LiteralPattern.pattern(for: "Ref TXN-8842-1027. Balance"),
-                       #"Ref\s+\S*\d\S*\s+Balance"#)
+                       #"\s*+Ref\s++[^\s\d]*+\d\S*+\s++Balance\s*+"#)
     }
 
     func test_a_date_run_folds_to_its_shape() {
         XCTAssertEqual(LiteralPattern.pattern(for: "dated 27 Oct 2026."),
-                       #"dated\s+(?:\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\."#)
+                       #"\s*+dated\s++(?:\d{1,2}\s+[A-Za-z]{3,9}\s+\d{4})\.\s*+"#)
     }
 
     /// Punctuation broke the date window, so the pieces fold one by one and
     /// the month name rides along instead of pinning "Oct" down.
     func test_a_split_date_keeps_the_month_flexible() {
         XCTAssertEqual(LiteralPattern.pattern(for: "(27 Oct 2026)"),
-                       #"\S*\d\S*\s+[A-Za-z]{3,9}\s+\S*\d\S*"#)
+                       #"\s*+[^\s\d]*+\d\S*+\s++[A-Za-z]{3,9}\s++[^\s\d]*+\d\S*?\s*+"#)
     }
 }
