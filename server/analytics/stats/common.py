@@ -358,6 +358,11 @@ def statement_spans(snapshot):
         for before, month in zip([None] + printed, printed):
             here = by_month[month]
             start = min(reach.get(b["name"], month) for b in here)
+            if idle:
+                # the idle statement before this one covers the months before its
+                # next one was due, however this one turned out
+                due = (add_months(before, n) for n in range(1, min(idle, LONGEST_STATEMENT_GAP)))
+                covered.update(m for m in due if m < month)
             idle = None
             if before:
                 start = max(start, add_months(before, 1))

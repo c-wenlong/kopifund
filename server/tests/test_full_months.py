@@ -141,6 +141,14 @@ class StatementsWithRows(NoPhases):
         self.assertEqual(partial_months(s), fx.MONTHS[7:])
 
 
+    def test_a_later_statement_keeps_the_months_an_idle_one_covered(self):
+        """Greptile on #39: an idle July statement covers August to December; a November
+        statement with activity arriving later does not take August to October back."""
+        s = with_second_bank(bank("2025-01", 0, 50_000), bank("2025-07", 50_000, 50_000),
+                             bank("2025-11", 50_000, 49_000))
+        s["transactions"] += [on_old("2025-11-10", -10.0, "2025-11")]
+        self.assertEqual(partial_months(s), ["2025-12"])
+
 class TheCashHeadline(NoPhases):
     """Greptile on #39: savings-runway's complete month is coverage's, and two more."""
 
