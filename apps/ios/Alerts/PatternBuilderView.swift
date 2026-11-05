@@ -92,10 +92,14 @@ struct PatternBuilderView: View {
         // one confident guess per field becomes a pre-tag, ranked so "to
         // MERCHANT" beats "from BANK"; tokens an earlier candidate already
         // claimed stay with it ("ACME USD" must not eat "USD 4.80")
-        for field in [PatternBuilder.Field.amount, .payee, .date] {
+        for field in [PatternBuilder.Field.amount, .payee, .date, .account] {
             if let c = cands.filter({ $0.field == field && $0.confident })
                 .min(by: { $0.rank < $1.rank }) {
+                let before = tags
                 for i in c.tokenIndexes where tags[i] == nil { tags[i] = c.field }
+                // a card printed right against the payee cannot border it;
+                // that guess stays a dashed suggestion, not a broken pattern
+                if field == .account, cardCannotBorder() { tags = before }
             }
         }
         for c in cands {
@@ -104,6 +108,19 @@ struct PatternBuilderView: View {
             }
         }
         selected = nextMissingField() ?? .amount
+    }
+
+    private func cardCannotBorder() -> Bool {
+        do {
+            // the same build Save runs: only the card-beside-a-wildcard
+            // refusal undoes the pre-tag
+            _ = try builtPattern()
+            return false
+        } catch PatternBuilder.BuildError.wildcardBesideCard {
+            return true
+        } catch {
+            return false
+        }
     }
 
     private func spanText(for indexes: [Int]) -> String {
@@ -158,6 +175,10 @@ struct PatternBuilderView: View {
         }
         .navigationTitle("New pattern")
         .toolbar { progressBadge }
+        // the floating tab bar stacked under the dock and the Save button
+        // and together they hid a quarter of the screen; the builder is a
+        // task with its own way out, so the tabs step aside
+        .toolbar(.hidden, for: .tabBar)
         .safeAreaInset(edge: .bottom) { dock }
         .onChange(of: tags) {
             // a re-tagged payee renames the pattern too, until the name
@@ -592,22 +613,8 @@ struct PatternBuilderView: View {
 
     private func builtPattern() throws -> AlertPattern {
         let spans = PatternBuilder.spans(from: tags, tokens: tokens)
-        // two "amount" spans would produce two captures the regex cannot read:
-        // only `ignore` may repeat
-        for f in PatternBuilder.Field.allCases where f != .ignore {
-            if spans.filter({ $0.field == f }).count > 1 {
-                throw PatternBuilder.BuildError.duplicateField(label(of: f).lowercased())
-            }
-        }
-        // `segment(for:)` fatalErrors on a date it cannot read; checking here
-        // keeps "tap a word as date" an error message, never a crash
-        for s in spans where s.field == .date {
-            let raw = PatternBuilder.spanText(in: sampleText, tokens: tokens, span: s)
-                .trimmingCharacters(in: .whitespaces)
-            if Dates.detectFormat(raw) == nil {
-                throw PatternBuilder.BuildError.unreadableDate(raw)
-            }
-        }
+        // the builder refuses a field tagged twice and an unreadable date
+        // span with a BuildError, shown below
         let segs = try PatternBuilder.segments(in: sampleText, tokens: tokens, spans: spans)
         return AlertPattern(name: name.isEmpty ? "Untitled" : name, direction: direction,
                             accountID: accountID,

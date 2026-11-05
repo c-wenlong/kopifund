@@ -6,7 +6,7 @@
 // dashed outline and a ring: no motion, so reduced-motion changes nothing.
 import { useRef, useState } from "react";
 import { GripVertical, X } from "lucide-react";
-import { cellOf, clampCell, COLS, pack, type Cell } from "./layout";
+import { cellOf, clampCell, COLS, pack, settle, type Cell } from "./layout";
 import { widgetDef } from "./registry";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { reloadViews, type DashboardWidget } from "../api";
@@ -97,12 +97,6 @@ export function Grid({ widgets, interactive, onArrange, onRemove }: {
     onArrange(settle(widgets, drag.id, drag.cell));
   };
 
-  // the moved or resized widget takes the cell it was given, then settles into
-  // the highest free row like every read of the layout does (pack without a
-  // pin), so the saved echo redraws the same board rather than jumping
-  const settle = (ws: DashboardWidget[], id: string, cell: Cell) =>
-    pack(ws.map((v) => (v.id === id ? { ...v, layout: { ...clampCell(cell) } } : v)));
-
   // the same moves as a drag, for the keyboard: arrows on the Move grip shift
   // the widget one cell, on the Resize corner they grow or shrink it. Up and
   // Down hop past the nearest widget that shares the columns in that
@@ -130,13 +124,7 @@ export function Grid({ widgets, interactive, onArrange, onRemove }: {
     }
     const above = beside.filter(({ t }) => t.y + t.h <= c.y)
       .sort((a, b) => b.t.y + b.t.h - (a.t.y + a.t.h))[0];
-    // sorting first at a tie needs the widget ahead of the blocker in the list too
-    let list = widgets;
-    if (above) {
-      list = widgets.filter((v) => v.id !== w.id);
-      list.splice(list.findIndex((v) => v.id === above.v.id), 0, w);
-    }
-    onArrange(settle(list, w.id, { ...c, y: above ? above.t.y : 0 }));
+    onArrange(settle(widgets, w.id, { ...c, y: above ? above.t.y : 0 }));
   };
 
   if (!interactive) {

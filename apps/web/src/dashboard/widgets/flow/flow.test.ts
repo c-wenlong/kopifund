@@ -102,6 +102,11 @@ describe("buildFlow", () => {
     // income covers Food (2000) and part of Transport; Beyond income the rest
     const t = d.links.filter((l) => l.target.id === "m1");
     expect(t.map((l) => [l.source.id, l.minor])).toEqual([["income", 50_000], ["beyond", 50_000]]);
+    // each band holds half of Transport, and no filter lists half of its rows: neither band links,
+    // while a band that carries a whole node (Food, all from income) still opens its rows
+    expect(t.map((l) => l.link)).toEqual([null, null]);
+    expect(d.links.find((l) => l.target.id === "m0")?.link).toEqual({ bucket: "Food" });
+    expect(d.nodes.find((n) => n.id === "m1")?.link).toEqual({ bucket: "Transport" });
     for (const n of d.nodes) {
       const inflow = inflowOf(d, n.id);
       if (inflow > 0) expect(inflow).toBe(n.minor);

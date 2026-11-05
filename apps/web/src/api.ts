@@ -228,6 +228,7 @@ declare const __KOPIFUND_BUILD__: string;
 const STORE_PREFIX = "kopifund:api:";
 const STORE = `${STORE_PREFIX}${__KOPIFUND_BUILD__}`;
 const CHANGED_KEY = "kopifund:api-changed";       // tells the app's other tabs a write happened
+const REFRESH_KEY = "kopifund:api-refresh";       // tells them which views a REREAD_AFTER write changed
 // localStorage holds about 5 million characters for the whole origin
 const MAX_ENTRY = 1_000_000;
 const MAX_STORED = 3_000_000;
@@ -478,6 +479,15 @@ if (typeof window !== "undefined") {
   window.addEventListener("focus", revalidateViews);
   // a write in another tab of the app empties this tab's cache too
   window.addEventListener("storage", (e) => {
+    if (e.key === REFRESH_KEY && e.newValue) {
+      try {
+        const { paths } = JSON.parse(e.newValue) as { paths?: unknown };
+        if (Array.isArray(paths)) refreshViews(paths.filter((p): p is string => typeof p === "string"));
+      } catch {
+        /* not ours to read */
+      }
+      return;
+    }
     if (e.key !== CHANGED_KEY) return;
     forget();
     window.dispatchEvent(new Event(CHANGED));
@@ -579,6 +589,20 @@ export type { StatResult };
 // serve.py's NO_CHANGE (G17: generated from it)
 const NO_CHANGE = NO_CHANGE_PATHS;
 
+/**
+ * The views serve.py's REREAD_AFTER asks again for after a write to `path`, or
+ * undefined. A key may end in a route's `<id>` (`/api/dashboard/layouts/<id>`),
+ * which stands for one segment of the path, as serve.py routes it.
+ */
+export function rereadAfter(path: string): readonly string[] | undefined {
+  for (const [route, views] of Object.entries(REREAD_AFTER)) {
+    const at = route.indexOf("<");
+    if (route === path) return views;
+    if (at > 0 && path.length > at && path.startsWith(route.slice(0, at)) && !path.slice(at).includes("/")) return views;
+  }
+  return undefined;
+}
+
 export async function postJSON<T>(url: string, body?: BodyInit, contentType = "application/json"): Promise<T> {
   const r = await reach(url, { method: "POST", body, headers: { "X-Kopifund": "1", "Content-Type": contentType } }, true);
   const data = await r.json().catch(() => ({}));
@@ -589,11 +613,21 @@ export async function postJSON<T>(url: string, body?: BodyInit, contentType = "a
   }
   // a check, a suggestion and a projection preview (G14) change nothing, so no view needs to reload.
   // G18: but a check moves the upload history, which the overview's Needs your eye reads: the views
-  // serve.py's REREAD_AFTER names ask again (with their tags), and nothing kept is forgotten. A load
+  // serve.py's REREAD_AFTER names ask again (with their tags), and nothing kept is forgotten. G26: a
+  // dashboard layout save is one of those too, so a drag does not ask every widget afresh. A load
   // or a mirror is a write, so every view reloads after it anyway.
-  const path = url.split("?")[0];
-  if (!NO_CHANGE.some((p) => url.startsWith(p))) notifyChanged();
-  else if (REREAD_AFTER[path]) refreshViews(REREAD_AFTER[path]);
+  const reread = rereadAfter(url.split("?")[0]);
+  if (reread) {
+    refreshViews(reread);
+    // the app's other tabs ask those views again too: a Dashboard open in a
+    // second window would otherwise edit, and save, a board this one changed
+    try {
+      storage()?.setItem(REFRESH_KEY, JSON.stringify({ paths: reread, at: Date.now() }));
+    } catch {
+      /* storage refused: other tabs catch up when they get focus */
+    }
+  }
+  else if (!NO_CHANGE.some((p) => url.startsWith(p))) notifyChanged();
   if ((data as { stats?: string }).stats === "rebuilding") watchStatsRebuild();
   return data as T;
 }
@@ -706,6 +740,8 @@ export type PinSet = { payee: string; kind: string; country: string; category: s
 export type RuleUndone = { undone: string; relinked?: Relinked };
 // G9: export
 export type ExportDone = { folder: string; stamp: string; files: string[]; transactions: number };
+/** G23: POST /api/server/stop or /restart: the work the exit waits for, in words, and the most it waits (seconds). */
+export type ServerEnding = { ok: boolean; waiting_for: string[]; timeout: number };
 export type Exports = { exports: { stamp: string; files: string[] }[] };
 
 // G10: first run and profile

@@ -15,7 +15,7 @@ G20: every amount in a snapshot is integer cents under `<name>_minor`
 record holds it, and no amount is a float in dollars. A Notion number and a
 parsed CSV amount arrive in dollars and become cents once, as they are read
 (`cents`); a CSV row's SGD amount is the record's own rule for a foreign row
-(`money.fx_minor`). The brokerage and CPF statements are the parsers' own
+(`sync.sgd_minor`, none for a foreign row with no FX rate). The brokerage and CPF statements are the parsers' own
 output, figures as the statements print them, which their stats turn into
 cents as they read them.
 
@@ -48,7 +48,7 @@ from pathlib import Path
 
 from finance import notion, sync
 from finance.model import num
-from finance.money import fx_minor, rate_e9, to_cents
+from finance.money import to_cents
 from finance.paths import cache_dir
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -437,8 +437,9 @@ def build_from_csv(cfg, csv_dir, rules_path=None, categories=None):
             "date": r["date"],
             "month": (r["date"] or "")[:7],
             "amount_minor": amount,
-            # the record's rule for a foreign row (v_txn): the block's rate, in integers
-            "amount_sgd_minor": fx_minor(amount, rate_e9(rate)) if rate else amount,
+            # the record's rule (v_txn, sync.sgd_minor): the block's rate, in integers;
+            # a foreign row whose block has no rate has no SGD value
+            "amount_sgd_minor": sync.sgd_minor(r, rate),
             "currency": r["currency"],
             "account": account_names.get(r["account_no"], r.get("account") or ""),
             "account_no": r["account_no"],
@@ -514,11 +515,16 @@ def build_from_csv(cfg, csv_dir, rules_path=None, categories=None):
                                  ("cards", len(cards)),
                                  ("budgets", len(budgets)),
                                  ("trips", 0))]
+    unpriced = sum(1 for t in transactions if t["amount_sgd_minor"] is None)
     return assemble("csv", databases, transactions, periods, payees, categories,
                     accounts, cards, budgets, [],
                     notes=["Trips and Budgets.Planned are typed in Notion, so a csv "
                            "snapshot carries no trip on any row and no planned budget.",
-                           f"Categories came from {CATEGORIES_FALLBACK.name}."],
+                           f"Categories came from {CATEGORIES_FALLBACK.name}.",
+                           # the record's snapshot (db.snapshot) says the same
+                           *([f"{unpriced} rows sit in a block with no FX rate to SGD, so their "
+                              "SGD amount is unknown and they are left out of SGD totals"]
+                             if unpriced else [])],
                     portfolio=read_portfolio(cfg), cpf=read_cpf(cfg),
                     category_groups=shipped_category_groups())
 
