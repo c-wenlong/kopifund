@@ -62,12 +62,23 @@ command line tools; off a Mac or without Rust, `make check` skips only the shell
 | `make check` | The tests, the rules lint, the runbook table check, the record schema check (docs/schema.md), the layouts table check (docs/parsing.md), the TypeScript typecheck and `cargo test --locked` on the desktop shell, which compiles it and runs its Rust tests. Run it before every push |
 | `make types` | Write `apps/web/src/types.gen.ts` from `server/finance/types.py`: run it after changing what an endpoint sends |
 
+Every test run works on a throwaway data folder: `server/tests/isolate.py`
+points `KOPIFUND_DATA`, `KOPIFUND_DB`, `KOPIFUND_CACHE`, the `.env`, the
+copilot's threads and the device registry at a scratch folder for the whole
+run, whatever the shell had set, so no test can touch the real data folder,
+record or cache, even one that forgets its own fixture.
+
 Tests that need real statements (`test_monthly_run`, `test_analytics_snapshot`,
-`test_analytics_review`) run only where a data folder exists and skip
-everywhere else, CI included. They read the data folder and never write it:
-`server/tests/__init__.py` points `KOPIFUND_DB` and `KOPIFUND_CACHE` at a throwaway
-folder for the whole run, so no test can touch the real record or cache. Parser tests run on the scrubbed fixtures in
-`server/tests/fixtures/statements`.
+`test_analytics_review`) skip unless the run asks for the real folder by name.
+The owner runs them with
+
+    KOPIFUND_TEST_REAL_DATA=1 make test
+
+(`1` reads the folder `KOPIFUND_DATA` or `~/.kopifund` names;
+`KOPIFUND_TEST_REAL_DATA=<folder>` reads that folder instead, such as a copy).
+Even then only those three modules see it, only while their own tests run,
+and they read it and never write it. An agent never sets it to `~/.kopifund`.
+Parser tests run on the scrubbed fixtures in `server/tests/fixtures/statements`.
 
 ### A feature is done when its make commands have run clean
 

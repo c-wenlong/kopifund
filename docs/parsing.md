@@ -738,7 +738,9 @@ directory.
 
 The statement tree lives in the data folder, outside the repo, so a fresh clone
 has the scrubbed fixtures but not the statements. Every module that needs the tree skips itself with a line saying
-which path is missing, and the suite still ends clean.
+which path is missing, and the suite still ends clean. Those modules also skip unless the run sets
+`KOPIFUND_TEST_REAL_DATA=1` (or a folder), because the suite otherwise points the data folder at a throwaway one
+(AGENTS.md, "Commands").
 
 | Test | Pins down |
 | --- | --- |
