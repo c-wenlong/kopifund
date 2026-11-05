@@ -400,6 +400,56 @@ class EndpointTest(unittest.TestCase):
         with self.assertRaises(ValueError):                      # bad q JSON is a 400
             self.get("/api/dashboard/query", {"q": "{nope"})
 
+    def test_a_save_stamps_its_own_time_and_an_unchanged_layout_keeps_its_stamp(self):
+        with mock.patch("finance.dashboard._now", return_value="2026-11-01T00:00:00+00:00"):
+            first = self.post("/api/dashboard/layouts/main", {"name": "Home", "widgets": []})
+            self.post("/api/dashboard/layouts/side", {"name": "Side", "widgets": []})
+        with mock.patch("finance.dashboard._now", return_value="2026-11-02T00:00:00+00:00"):
+            # the client echoes the stamp it read; the server's own time wins
+            again = self.post("/api/dashboard/layouts/main", {**first, "name": "Home 2"})
+            self.assertEqual(again["updated_at"], "2026-11-02T00:00:00+00:00")
+            # a list write (a board switch) moves only the layouts that changed
+            by = {d["id"]: d for d in self.get("/api/dashboard/layouts")["layouts"]}
+            out = self.post("/api/dashboard/layouts", {
+                "layouts": [by["main"], {**by["side"], "name": "Side 2"}], "active": "main"})
+        stamps = {d["id"]: d["updated_at"] for d in out["layouts"]}
+        self.assertEqual(stamps, {"main": "2026-11-02T00:00:00+00:00", "side": "2026-11-02T00:00:00+00:00"})
+        with mock.patch("finance.dashboard._now", return_value="2026-11-03T00:00:00+00:00"):
+            out = self.post("/api/dashboard/layouts", {"layouts": out["layouts"], "active": "side"})
+        self.assertEqual({d["id"]: d["updated_at"] for d in out["layouts"]}, stamps)
+
+    def test_the_state_writes_read_and_write_in_one_transaction(self):
+        # a read outside the write's transaction lets another tab's save land between them, lost
+        seen = []
+        real = dashboard._doc
+
+        def doc(conn, key, default):
+            seen.append((key, conn.in_transaction))
+            return real(conn, key, default)
+
+        with mock.patch("finance.dashboard._doc", doc):
+            for path, body in (("/api/dashboard/layouts/main", {"name": "Home", "widgets": []}),
+                               ("/api/dashboard/layouts", {"layouts": [{"id": "main", "name": "Home"}]}),
+                               ("/api/dashboard/goals", {"name": "Aside", "target_minor": 100}),
+                               ("/api/dashboard/goals", {"id": "g-1", "name": "Aside 2"}),
+                               ("/api/dashboard/goals/remove", {"id": "g-1"})):
+                seen.clear()
+                self.post(path, body)
+                # the read the write builds on is inside its transaction (the answer's reads after need not be)
+                self.assertEqual(seen[0][1], True, path)
+        # and the list and the active id land together or not at all
+        real_put = dashboard._put
+
+        def put(conn, key, value):
+            if key == dashboard.ACTIVE_KEY:
+                raise OSError("disk full")
+            real_put(conn, key, value)
+
+        with mock.patch("finance.dashboard._put", put), self.assertRaises(OSError):
+            self.post("/api/dashboard/layouts", {"layouts": [{"id": "other", "name": "Other"}],
+                                                 "active": "other"})
+        self.assertEqual([d["id"] for d in self.get("/api/dashboard/layouts")["layouts"]], ["main"])
+
     # ---- the query endpoints
 
     def test_post_and_get_resolve_the_same_query(self):
@@ -436,6 +486,13 @@ class EndpointTest(unittest.TestCase):
                      {"name": "x", "target_minor": 100, "source": "net-worth"},
                      {"name": "x", "target_minor": 100, "source": "savings-runway",
                       "metric": "runway_months"},                  # a goal is an amount
+                     # a balance, not a flow whose last month is still running
+                     {"name": "x", "target_minor": 100, "source": "spending", "metric": "spend"},
+                     {"name": "x", "target_minor": 100, "source": "monthly-cashflow", "metric": "net"},
+                     # not a slice, and not the projection's future
+                     {"name": "x", "target_minor": 100, "source": "net-worth", "metric": "value",
+                      "dimension": "part"},
+                     {"name": "x", "target_minor": 100, "source": "forward-view", "metric": "cash"},
                      {"id": "g-9", "name": "x", "target_minor": 100},
                      {"name": "x", "target_minor": 100,
                       "milestones": [{"month": "2027-13", "target_minor": 1}]}):
@@ -443,6 +500,19 @@ class EndpointTest(unittest.TestCase):
                 self.post("/api/dashboard/goals", body)
         with self.assertRaises(serve.Refused):
             self.post("/api/dashboard/goals/remove", {"id": "g-9"})
+
+    def test_a_goal_saved_with_a_binding_from_before_reads_unbound_and_still_edits(self):
+        with closing(db.connect()) as conn:
+            dashboard._put(conn, dashboard.GOALS_KEY, [{
+                "id": "g-1", "name": "Old", "target_minor": 100, "month": None, "note": "", "milestones": [],
+                "binding": {"source": "spending", "metric": "spend", "dimension": "month"}}])
+        goal = self.get("/api/dashboard/goals")["goals"][0]
+        self.assertNotIn("binding", goal)
+        self.assertIsNone(goal["current_minor"])
+        got = self.post("/api/dashboard/goals", {"id": "g-1", "name": "Renamed"})["goals"][0]
+        self.assertEqual((got["name"], got.get("binding")), ("Renamed", None))
+        got = self.post("/api/dashboard/goals", {"id": "g-1", "source": "net-worth", "metric": "total"})["goals"][0]
+        self.assertEqual(got["binding"], {"source": "net-worth", "metric": "total", "dimension": "month"})
 
     # ---- scenario preview
 
