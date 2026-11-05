@@ -86,7 +86,13 @@ struct UnmatchedView: View {
     private func finished(_ id: UUID, andSay toast: String) {
         pendingRemoval = id
         notice = toast
-        path.removeAll()
+        if path.isEmpty {
+            // the user already came back (a re-ingest can finish after the
+            // pop): no detail shows the row, and onAppear will not run again
+            removePending()
+        } else {
+            path.removeAll()
+        }
     }
 
     private func removePending() {
