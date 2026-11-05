@@ -1,7 +1,7 @@
 import {
   ArrowUpDown, Ban, BriefcaseBusiness, Calendar1, CalendarClock, CalendarDays, CalendarPlus, CalendarRange, CalendarSync,
   CalendarCheck2, CalendarFold, CalendarMinus2, CalendarPlus2, CircleCheck, CirclePause, CirclePlus, CircleStop, CircleX,
-  ClockAlert, CloudUpload, Coins, Copy, CreditCard, Database, EqualNot, EyeOff, FileCheck, FileClock, FileQuestion,
+  CircleHelp, ClockAlert, CloudUpload, Coins, Copy, CreditCard, Database, EqualNot, EyeOff, FileCheck, FileClock, FileQuestion,
   FilePlus, FileWarning, Flag, FlaskConical, FolderSearch, Globe, HandCoins, Heart, Hourglass, Landmark, LoaderCircle, MapPinHouse,
   OctagonX, PiggyBank, Plane, PlugZap, ReceiptText, Repeat, SearchCheck, ServerCrash, ShieldAlert, ShoppingBasket, Shuffle,
   SkipForward, SlidersHorizontal, Smartphone, Store, Tag, TicketsPlane, TrendingDown, TrendingUp, TriangleAlert, Unplug,
@@ -145,6 +145,9 @@ export const SERVER_ICON: Record<ServerState, LucideIcon> = {
   offline: Unplug,
 };
 
+/** Audit: what a kind with no icon of its own shows, so a value this build does not know draws instead of throwing. */
+export const UNKNOWN_ICON: LucideIcon = CircleHelp;
+
 export type IconTone = "current" | "ink" | "ink-2" | "ink-3" | "good" | "warn" | "danger" | "info";
 
 const TONE: Record<IconTone, string> = {
@@ -164,9 +167,11 @@ const TONE: Record<IconTone, string> = {
  * tooltip and an accessible name. The tone is a colour token; `current` takes
  * the text colour around it, so a chip's icon matches its words.
  */
-export function KindIcon({ icon: Icon, size = 12, tone = "current", label, spin = false, className = "" }: {
-  icon: LucideIcon; size?: number; tone?: IconTone; label?: string; spin?: boolean; className?: string;
+export function KindIcon({ icon, size = 12, tone = "current", label, spin = false, className = "" }: {
+  // undefined when a newer server sends a kind this build has no icon for (a map lookup misses)
+  icon: LucideIcon | undefined; size?: number; tone?: IconTone; label?: string; spin?: boolean; className?: string;
 }) {
+  const Icon = icon ?? UNKNOWN_ICON;
   const cls = ["shrink-0", TONE[tone], spin ? "animate-spin" : "", className].filter(Boolean).join(" ");
   if (label) {
     // the title on a wrapping span is a tooltip in every browser, which an SVG's own title is not
@@ -181,7 +186,7 @@ export function KindIcon({ icon: Icon, size = 12, tone = "current", label, spin 
 
 /** An icon and its word side by side, for a word that sits in running text (a cadence, a payee's kind). */
 export function KindLabel({ icon, children, tone = "current", size = 12, className = "" }: {
-  icon: LucideIcon; children: React.ReactNode; tone?: IconTone; size?: number; className?: string;
+  icon: LucideIcon | undefined; children: React.ReactNode; tone?: IconTone; size?: number; className?: string;
 }) {
   return (
     <span className={`inline-flex items-center gap-1 align-[-1px] ${className}`}>

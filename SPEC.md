@@ -1732,6 +1732,25 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
     reach the server says it was not saved.
   - "Run the analysis" is shown only for a real 404 on a stat result. Any other
     failed load says what went wrong, with Try again.
+  - A page that fails as it draws (an answer in a shape this build does not
+    know) shows "Something on this page failed to draw." in its place, with
+    Try again, which forgets the kept answers (the one the page failed on
+    included), asks for them again and draws the page once they are back
+    (three seconds at most), so a page handed the shell's overview (Home)
+    reads the new one; the sidebar, the header and the
+    other pages keep working, and opening another page starts clean
+    (`ErrorBoundary.tsx`). Each copilot answer has its own such boundary, so a
+    part it cannot draw shows "This answer failed to draw." in its place while
+    the other answers, later replies, the History button and the box keep
+    working. Each Dashboard widget has one too: a widget that cannot draw
+    its answer shows "This widget failed to draw." on one line in its card,
+    with Try again (which asks for the answers afresh the same way), while
+    its Remove button and the rest of the board keep working.
+    Anything outside those fails to a whole-screen message with
+    Reload. Money formatters never throw while a page draws: a value that is
+    not integer cents is reported in the console and drawn rounded, or as "?"
+    when it is not a number, and a kind with no icon of its own draws a
+    generic one.
   - A card still loading is a fixed-height skeleton, so the cards below do not
     jump when its figures arrive.
   - A toast is a short message at the bottom of the screen in a polite live

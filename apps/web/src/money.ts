@@ -9,8 +9,21 @@ export const MINUS = "−";
 const whole = new Intl.NumberFormat("en-SG", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 const cents2 = new Intl.NumberFormat("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export function formatSgd(cents: Cents, opts: { decimals?: boolean } = {}): string {
-  if (!Number.isInteger(cents)) throw new Error(`money must be integer cents, got ${cents}`);
+/**
+ * Audit: money must be integer cents, and a value that is not is a bug in what
+ * sent it. These formatters run while a page draws, where a throw blanked the
+ * app, so they say so in the console and carry on: a float is rounded to whole
+ * cents, and what is not a number at all comes back null (shown as "?").
+ */
+function wholeCents(cents: Cents): Cents | null {
+  if (Number.isInteger(cents)) return cents;
+  console.error(`money must be integer cents, got ${cents}`);
+  return typeof cents === "number" && Number.isFinite(cents) ? Math.round(cents) : null;
+}
+
+export function formatSgd(amount: Cents, opts: { decimals?: boolean } = {}): string {
+  const cents = wholeCents(amount);
+  if (cents === null) return "S$?";
   const decimals = opts.decimals ?? false;
   const value = decimals ? cents / 100 : Math.round(cents / 100);
   const text = (decimals ? cents2 : whole).format(Math.abs(value));
@@ -24,9 +37,10 @@ export function formatPlain(cents: Cents): string {
 // An amount in its own currency: S$ for SGD, the code in front for the rest,
 // grouped and signed the same way ("SEK 9,412.05", "−SEK 12.00"). The space
 // after the code is a no-break space, so the code and the amount stay together.
-export function formatAmount(cents: Cents, currency: string): string {
-  if (currency === "SGD") return formatSgd(cents, { decimals: true });
-  if (!Number.isInteger(cents)) throw new Error(`money must be integer cents, got ${cents}`);
+export function formatAmount(amount: Cents, currency: string): string {
+  if (currency === "SGD") return formatSgd(amount, { decimals: true });
+  const cents = wholeCents(amount);
+  if (cents === null) return `${currency} ?`;
   return `${cents < 0 ? MINUS : ""}${currency} ${cents2.format(Math.abs(cents / 100))}`;
 }
 
@@ -54,8 +68,9 @@ export function parseCents(text: string): Cents | null {
 }
 
 /** Cents as the plain text a money box shows: "1234" for whole dollars, "1234.50" otherwise; the box groups it. */
-export function centsText(cents: Cents): string {
-  if (!Number.isInteger(cents)) throw new Error(`money must be integer cents, got ${cents}`);
+export function centsText(amount: Cents): string {
+  const cents = wholeCents(amount);
+  if (cents === null) return "";
   const a = Math.abs(cents);
   const rest = a % 100;
   return `${cents < 0 ? "-" : ""}${(a - rest) / 100}${rest ? `.${String(rest).padStart(2, "0")}` : ""}`;
