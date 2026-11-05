@@ -1461,7 +1461,15 @@ widget dropped onto another's cell lands above it, as the preview showed; a
 widget's height
 is bounded (`MAX_H`), so a stray saved size cannot stall the page. A change
 writes the layout back through `POST /api/dashboard/layouts/<id>` after a
-short debounce, so nothing waits on a Save. Under 768px the same widgets stack in one column in
+short debounce, so nothing waits on a Save; a move that leaves every widget
+where it was writes nothing, and a drag the pointer cancels or Escape drops
+leaves the board as it was. Only the board on screen is saved as the active
+one (an Undo on a board left behind does not change which board opens next),
+and switching boards writes the chosen board alone, never this tab's copies
+of the others. Leaving the page saves what waits, so only a save that failed
+asks before leaving; a save made on leaving that fails says so in a toast
+that can try again. With no board yet, the first widget picked makes the
+Default board. One status line says where a moved widget landed. Under 768px the same widgets stack in one column in
 their saved order and do not drag. An empty record (or an empty board) offers
 the starter presets in `presets.ts`; Reset restores the default one, and a
 removal or a reset offers an Undo toast. Named layouts switch in the page's
