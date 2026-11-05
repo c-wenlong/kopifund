@@ -86,12 +86,15 @@ private struct UnmatchedRow: View {
                 Text(title ?? AlertText.meaningfulLine(in: r.text))
                     .font(.body).lineLimit(2)
                 Spacer()
+                // neutral, like the builder's READS line: an unmatched alert
+                // has no direction yet, and green reads as money coming in
+                // on what is usually a payment
                 if let chip {
                     Text(chip)
                         .font(.caption.weight(.semibold)).monospacedDigit()
                         .padding(.horizontal, 7).padding(.vertical, 3)
-                        .background(Color.green.opacity(0.15))
-                        .foregroundStyle(.green)
+                        .background(Color(.tertiarySystemFill))
+                        .foregroundStyle(.primary)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
             }
