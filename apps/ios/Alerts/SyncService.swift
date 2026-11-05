@@ -89,8 +89,12 @@ enum SyncService {
                 row.syncError = live.syncError
                 changed = true
             }
-            if live.currency != row.currency {
+            // a currency moves with its amount: a conversion saved from
+            // another context sets both, and the check below must never
+            // pass the plan's code on the foreign figure
+            if live.currency != row.currency || live.amountCents != row.amountCents {
                 row.currency = live.currency
+                row.amountCents = live.amountCents
                 changed = true
             }
             if changed { try? context.save() }
