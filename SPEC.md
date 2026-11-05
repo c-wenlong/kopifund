@@ -2731,7 +2731,12 @@ then the Upload page names its statement as not supported and keeps nothing.
   plan), a statement's printed figures, a Notion number, a published
   reference figure. A stat's result is already cents and never goes through
   it (G20). `from_cents` is the exact way back, to a Decimal. A bool, NaN or an
-  infinity is refused. In the browser, `apps/web/src/money.ts` reads a money box's
+  infinity is refused, and so is text that is not a plain signed decimal:
+  thousands commas only between groups of three ("1,234.5" is 123450 cents,
+  "1,2,3" is refused), no currency sign, bracket, trailing minus or CR, and an
+  exponent only in a Decimal's own text with no commas ("1E+3", as the plan's
+  checked amounts can read). The rounding is exact integer arithmetic whatever the decimal
+  context, and 10^26 dollars or more is refused as no amount of money. In the browser, `apps/web/src/money.ts` reads a money box's
   text as cents digit by digit (`parseCents`: "1,234.5" is 123450) and writes
   cents back as box text (`centsText`); nothing in the app multiplies dollars
   by 100.
@@ -2806,7 +2811,13 @@ then the Upload page names its statement as not supported and keeps nothing.
   amount (`amount_sgd_minor`) uses the period's FX rate, which is an approximation for non-SGD wallets and
   is labelled as one.
 - A transaction's date is the calendar date the statement prints. It is never
-  converted between time zones.
+  converted between time zones. A printed day with no year ("28 Dec") takes
+  the statement's year, or the year before when its month is later than the
+  statement's. A day that does not exist in that year ("29 Feb" on a March
+  2025 statement, "31/04/2026") stops the parse rather than load as a date
+  every reader after it would break on, and `server/finance/dates.py` refuses
+  one too (a ValueError, in its labels and its month arithmetic) rather than
+  print it.
 - Every row has a stable key built from what the statement prints, so loading
   the same statement twice adds nothing, and a re-exported Revolut or Wise file
   replaces rather than duplicates.
