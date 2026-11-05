@@ -151,10 +151,24 @@ describe("the server banner", () => {
     down();
     await act(async () => { await checkServer(); });
     const banner = screen.getByRole("alert");
-    expect(banner).toHaveTextContent("Can't reach Kopifund. Quit and reopen Kopifund, then Retry.");
+    // in a browser the server runs apart from the page, so reopening the page cannot bring it back
+    expect(banner).toHaveTextContent("Can't reach Kopifund. Start it again on the computer that runs it, then Retry.");
     // Audit: words an app user can act on, not a developer's command
     expect(banner).not.toHaveTextContent(/make serve/);
     expect(within(banner).getByRole("button", { name: "Retry" })).toBeInTheDocument();
+  });
+
+  // Greptile on #68: the Mac app starts its own server, so there reopening the app is the way back
+  it("tells the Mac app's window to reopen the app", async () => {
+    (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__ = {};
+    try {
+      render(<ServerBanner />);
+      down();
+      await act(async () => { await checkServer(); });
+      expect(screen.getByRole("alert")).toHaveTextContent("Can't reach Kopifund. Quit and reopen Kopifund, then Retry.");
+    } finally {
+      delete (window as unknown as Record<string, unknown>).__TAURI_INTERNALS__;
+    }
   });
 
   it("says the figures are from the last visit only when a view shows them", async () => {

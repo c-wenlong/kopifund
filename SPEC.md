@@ -1731,7 +1731,10 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
 - **Shared states** (`apps/web/src/components/States.tsx`, `ServerBanner.tsx`,
   `Toast.tsx`). Each page names the browser tab ("Spending, Kopifund").
   - A server that does not answer is one banner at the top of the page, "Can't
-    reach Kopifund. Quit and reopen Kopifund, then Retry.", with Retry (it asks `/api/health`
+    reach Kopifund. Quit and reopen Kopifund, then Retry." in the Mac app's
+    window (it starts its own server) and "Can't reach Kopifund. Start it
+    again on the computer that runs it, then Retry." in a browser or the
+    installed web app, with Retry (it asks `/api/health`
     and every page then revalidates); it asks again by itself every five
     seconds. A failure to get any answer is one plain message in `api.ts`
     (`OFFLINE`), never the browser's "Failed to fetch"; a gateway that answers
