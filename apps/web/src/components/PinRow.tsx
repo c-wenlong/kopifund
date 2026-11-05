@@ -97,9 +97,14 @@ export function PinForm({ row, categories, kinds, onPinned, draft, onDraft, onDi
       await savePin({ key: row.key, ...sent });
       // what was typed while the save was on its way was not sent: the form stays open on it, measured
       // against what was saved, and only a form with nothing left unsaved is done
-      if (pinDirty(latest.current, sent)) setBase(sent);
+      const left = pinDirty(latest.current, sent);
+      // said straight away, not through the effect: a form hidden (Less, Close) while the save ran is not
+      // mounted to say it, and its page must not keep asking about it
+      onDirty?.(left);
+      if (left) setBase(sent);
       else onPinned?.();
     } catch (e) {
+      onDirty?.(pinDirty(latest.current, base));
       setError((e as Error).message);
     } finally {
       setSending(null);

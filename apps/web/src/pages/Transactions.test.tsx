@@ -341,6 +341,30 @@ describe("Transactions", () => {
     expect(leaveAsks()).toBe(true);
   });
 
+  it("stops asking when a form hidden during its save has nothing typed and the save fails", async () => {
+    stubFetch();
+    const answer = globalThis.fetch;
+    let fail: (() => void) | null = null;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      // the More form's save (the chip's sends no kind) waits, then is refused
+      if (url === "/api/rules/pin" && "kind" in JSON.parse(String(init!.body))) {
+        return new Promise<Response>((done) => { fail = () => done(new Response(JSON.stringify({ error: "disk full" }), { status: 500 })); });
+      }
+      return answer(url, init);
+    }));
+    render(<><Transactions /><Toaster /></>);
+    fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row/ }));
+    fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Donations" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" });
+    fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
+    expect(leaveAsks()).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Less" }));
+    await waitFor(() => expect(fail).not.toBeNull());
+    await act(async () => fail!());
+    await waitFor(() => expect(leaveAsks()).toBe(false));
+  });
+
   it("stops asking when the category chip saves the only thing a hidden form held", async () => {
     stubFetch();
     render(<><Transactions /><Toaster /></>);
