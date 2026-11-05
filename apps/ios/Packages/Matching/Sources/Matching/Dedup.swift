@@ -11,14 +11,14 @@ public enum Dedup {
     /// Case and punctuation out, letters and digits kept: "SGH - DIGESTIVE &
     /// LIVE" from the bank and "Sgh - Digestive & Live" from Apple's Wallet
     /// record both become "sghdigestivelive".
-    public static func normalizedPayee(_ s: String) -> String {
+    static func normalizedPayee(_ s: String) -> String {
         String(s.lowercased().filter { $0.isLetter || $0.isNumber })
     }
 
     /// Equal after normalising, or one name inside the other ("AMAZON SG" in
     /// "Amazon.sg Marketplace"). The short side needs a few letters before a
     /// containment counts, or every Grab and 7-Eleven would match.
-    public static func similarPayee(_ a: String, _ b: String) -> Bool {
+    static func similarPayee(_ a: String, _ b: String) -> Bool {
         let (x, y) = (normalizedPayee(a), normalizedPayee(b))
         guard !x.isEmpty, !y.isEmpty else { return false }
         if x == y { return true }
