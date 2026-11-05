@@ -252,14 +252,15 @@ final class HubLane {
     /// - any row whose last hub post failed or was held (`kopifundError`
     ///   stays set until a post succeeds, so a synced row's failed post is
     ///   retried too);
-    /// - a posted row that can still be edited, so an edit reposts. A synced
-    ///   row is read-only, and a "kopifund" row is one a loaded statement
-    ///   already covers, so neither is fetched once its post landed.
+    /// - a posted row with no accepted copy on record (`kopifundSent` nil):
+    ///   a send whose reply never came, or an edit since, which clears it
+    ///   (TransactionDetailView). A row the hub holds as it reads now is
+    ///   never fetched again.
     private static func owedRows(_ context: ModelContext) -> [TransactionRecord] {
         (try? context.fetch(FetchDescriptor<TransactionRecord>(predicate: #Predicate {
             $0.state == "approved" || $0.state == "failed" || $0.state == "syncing"
                 || $0.kopifundError != nil
-                || ($0.kopifundID != nil && $0.state != "synced" && $0.state != "kopifund")
+                || ($0.kopifundID != nil && $0.kopifundSent == nil)
         }))) ?? []
     }
 

@@ -144,6 +144,15 @@ struct TransactionDetailView: View {
                 Section("Kopifund") { Text(err).foregroundStyle(.red) }
             }
         }
+        // an edit to what the hub was sent (payee, amount, day, direction,
+        // currency) owes it a repost: clearing the accepted copy puts the
+        // row back in the sync's hub pass
+        .onChange(of: "\(row.payee)|\(row.amountCents)|\(row.day.iso)|\(row.direction)|\(row.currency)") {
+            if row.kopifundID != nil, row.kopifundSent != nil {
+                row.kopifundSent = nil
+                try? context.save()
+            }
+        }
         .navigationTitle(row.state == "pending" ? "Review"
                          : row.state == "kopifund" ? "in kopifund" : row.state)
         .task {
