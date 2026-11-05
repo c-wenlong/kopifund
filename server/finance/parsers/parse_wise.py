@@ -188,12 +188,15 @@ def parse(text, source, ccy):
             continue
         if HEADER.match(ln):
             edges = [ln.find(k) + len(k) for k in ("Incoming", "Outgoing", "Amount")]
-            pending = None
             continue
         if edges is None:
             continue
         if FOOTER.search(ln):
-            break                            # the table ends at the licence block
+            # the licence block closes every page; the next page's rows come
+            # after its own column header. A row whose description sits at
+            # the foot of one page keeps it for its date line on the next.
+            edges = None
+            continue
         if not ln.strip():
             continue
         if m := DATED.match(ln):

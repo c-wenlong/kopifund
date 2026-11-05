@@ -86,16 +86,29 @@ function labelSlices(answer: WidgetAnswer): Slice[] {
   }).filter((s) => !s.missing).map(({ missing: _, ...s }) => s);
 }
 
-/**
- * The slices a set of answers draws. Several answers, or one answer with
- * several series, read as one slice per series (`aggregate` says how); one
- * answer with one series reads as one slice per label.
- */
-export function slicesFor(answers: readonly WidgetAnswer[], aggregate: Aggregate = "latest"): Slice[] {
+/** Every slice the answers hold, the ones at or below zero included. */
+function allSlices(answers: readonly WidgetAnswer[], aggregate: Aggregate): Slice[] {
   const list = answers.filter(Boolean);
   if (list.length === 0) return [];
   if (list.length > 1 || list[0].series.length > 1) return seriesSlices(list, aggregate);
   return labelSlices(list[0]);
+}
+
+/**
+ * The slices a set of answers draws. Several answers, or one answer with
+ * several series, read as one slice per series (`aggregate` says how); one
+ * answer with one series reads as one slice per label. A share of a whole
+ * has no room for a part at or below zero (a bucket whose refunds passed its
+ * spending): it would draw overlapping sectors or a tile of negative area and
+ * net into the total, so it is left out here and listed by `slicesLeftOut`.
+ */
+export function slicesFor(answers: readonly WidgetAnswer[], aggregate: Aggregate = "latest"): Slice[] {
+  return allSlices(answers, aggregate).filter((s) => s.value > 0);
+}
+
+/** The slices `slicesFor` leaves out, at or below zero, for a note under the chart. */
+export function slicesLeftOut(answers: readonly WidgetAnswer[], aggregate: Aggregate = "latest"): Slice[] {
+  return allSlices(answers, aggregate).filter((s) => s.value <= 0);
 }
 
 /** Every answer's figure added up: what "the whole" is for the slices drawn. */

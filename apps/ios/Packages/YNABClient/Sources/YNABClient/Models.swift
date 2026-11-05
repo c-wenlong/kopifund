@@ -108,6 +108,21 @@ public struct PayeesResponse: Codable, Sendable {
     public struct Payload: Codable, Sendable { public let payees: [Payee] }
 }
 
+/// `{ "data": { "settings": { "currency_format": { "iso_code": "SGD", ... } } } }`
+/// for GET /plans/{id}/settings. YNAB may send a null currency format.
+public struct PlanSettingsResponse: Codable, Sendable {
+    public let data: Payload
+    public struct Payload: Codable, Sendable { public let settings: Settings }
+    public struct Settings: Codable, Sendable {
+        public let currencyFormat: CurrencyFormat?
+        enum CodingKeys: String, CodingKey { case currencyFormat = "currency_format" }
+    }
+    public struct CurrencyFormat: Codable, Sendable {
+        public let isoCode: String
+        enum CodingKeys: String, CodingKey { case isoCode = "iso_code" }
+    }
+}
+
 public struct TransactionResponse: Codable, Sendable {
     public let data: Payload
     public struct Payload: Codable, Sendable {

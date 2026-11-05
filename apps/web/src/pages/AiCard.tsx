@@ -41,10 +41,21 @@ export function AiCard() {
   const [draft, setDraft] = useState<Partial<Draft> | null>(null);
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const saved = data ? savedOf(data) : null;
+  // a save on its way: what is typed meanwhile is an edit, even back to the old saved value
+  const inFlight = useRef(false);
+  const latest = useRef(ai.data);
+  latest.current = ai.data;
+  // what the last save sent, standing for the saved values from when it is sent until the settings are read
+  // again after it lands: an edit is measured against what is being, or has just been, saved
+  // (`landedOn` is the answer on screen when the save landed: any newer one was read after it)
+  const [sending, setSending] = useState<{ sent: Draft; landed: boolean; landedOn?: unknown } | null>(null);
+  const fromServer = data ? savedOf(data) : null;
+  const standing = !!sending && (!sending.landed || sending.landedOn === ai.data);
+  const saved = fromServer && standing ? { ...fromServer, ...sending.sent } : fromServer;
   const d = { ...saved, ...draft } as Draft;
   const dirty = !!saved && KEYS.some((k) => d[k] !== saved[k]);
-  useUnsavedGuard(dirty);
+  // a save on its way holds the page until it lands: one that fails leaves the edit unsaved
+  useUnsavedGuard(dirty || (!!sending && !sending.landed));
 
   // the panel's "Open Settings" lands on this card
   const shown = !!data;
@@ -70,8 +81,8 @@ export function AiCard() {
   const set = (patch: Partial<Draft>) => {
     setDraft((now) => {
       const next = { ...now, ...patch };
-      // a value set back to what is saved is no longer an edit
-      for (const k of KEYS) if (k in next && next[k] === saved[k]) delete next[k];
+      // a value set back to what is saved is no longer an edit, unless that value is about to change
+      if (!inFlight.current) for (const k of KEYS) if (k in next && next[k] === saved[k]) delete next[k];
       return Object.keys(next).length ? next : null;
     });
     setProblem(null);
@@ -79,16 +90,35 @@ export function AiCard() {
 
   async function save() {
     setSaving(true);
+    inFlight.current = true;
+    const sent = { ...d };
+    setSending({ sent, landed: false });
     try {
       // Off sends only the provider: the models and consent stay saved for the day AI is turned on again
       const fields = { model: d.model.trim(), copilot_model: d.copilot_model.trim(), send_rows: d.send_rows };
       // G22: a custom provider is config.toml's: picking it hands back to config.toml, models and all
       await postJSON<AiSettings>("/api/ai/settings", JSON.stringify(d.provider === null ? { provider: null }
         : custom ? { provider: d.provider, send_rows: d.send_rows } : { provider: d.provider, ...fields }));
-      setDraft(null);
+      // G18: the fields the save covered are saved; one changed while it was on its way stays an edit
+      setDraft((now) => {
+        const left = Object.fromEntries(Object.entries(now ?? {}).filter(([k, v]) => v !== sent[k as keyof Draft]));
+        return Object.keys(left).length ? left : null;
+      });
+      setSending((s) => (s?.sent === sent ? { sent, landed: true, landedOn: latest.current } : s));
     } catch (e) {
+      setSending((s) => (s?.sent === sent ? null : s));
+      // nothing was saved: a box set back to the saved value while the save was on its way is no edit now
+      const now = latest.current;
+      if (Array.isArray(now?.providers)) {
+        const server = savedOf(now);
+        setDraft((dr) => {
+          const left = Object.fromEntries(Object.entries(dr ?? {}).filter(([k, v]) => v !== server[k as keyof Draft]));
+          return Object.keys(left).length ? left : null;
+        });
+      }
       setProblem((e as Error).message);
     } finally {
+      inFlight.current = false;
       setSaving(false);
     }
   }

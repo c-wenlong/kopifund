@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   postJSON, useApi, type ActiveSeries, type ComingStatus, type ComingUpRow, type IrregularPayee, type NotRecurring,
@@ -539,6 +539,24 @@ const draftOf = (v: SeriesAnswer): Draft => ({
   amount: centsText(v.amount), cadence: (v.cadence || v.detected.cadence || "monthly") as Cadence,
   day: v.day == null ? "" : String(v.day), ended: v.ended_on ?? "",
 });
+const DRAFT_KEYS: (keyof Draft)[] = ["amount", "cadence", "day", "ended"];
+/** One box holds the same value as another: an amount as cents, so "50.00" is the saved 50; text that is no amount only as itself. */
+const sameBox = (k: keyof Draft, a: string, b: string) => {
+  if (a === b) return true;
+  if (k !== "amount") return false;
+  const x = parseCents(a);
+  return x != null && !Number.isNaN(x) && x === parseCents(b);
+};
+/**
+ * `d` moved from the values `from` to `to`: a box still holding its `from` value takes the new one, a box typed in
+ * keeps its text. The day and how often go together: a day of the month is no weekday, so when only one of them
+ * would move and the day would then be read under the other kind of cadence, both keep what was typed.
+ */
+const follow = (d: Draft, from: Draft, to: Draft): Draft => {
+  const out = Object.fromEntries(DRAFT_KEYS.map((k) => [k, sameBox(k, d[k], from[k]) ? to[k] : d[k]])) as Draft;
+  const dayUnder = sameBox("day", d.day, from.day) ? to.cadence : d.cadence;
+  return sameKind(out.cadence, dayUnder) ? out : { ...out, cadence: d.cadence, day: d.day };
+};
 const sameKind = (a: string, b: string) => BY_WEEKDAY.includes(a) === BY_WEEKDAY.includes(b);
 const dayOptions = (c: string) => (BY_WEEKDAY.includes(c)
   ? WEEKDAYS.map((w, i) => ({ value: String(i + 1), label: w }))
@@ -567,10 +585,9 @@ function SeriesView({ id }: { id: string }) {
   return (
     <div className="flex flex-col gap-3">
       <BackLink />
-      {/* keyed by the values the form holds, so a save of them (here or in another tab) starts the boxes again
-          from it, while Not recurring and Recurring, which change none of them, keep what is typed */}
-      <SeriesEditor key={JSON.stringify([data.id, data.amount, data.cadence, data.day, data.ended_on, data.edit.amount,
-        data.edit.cadence, data.edit.day, data.edit.ended_on])} v={data} />
+      {/* keyed by the series alone: a save of its values (here or in another tab) moves the boxes left alone
+          to what was saved and keeps what is typed in the others (SeriesEditor) */}
+      <SeriesEditor key={data.id} v={data} />
       <ScheduleList v={data} />
       <PaymentList v={data} />
     </div>
@@ -581,12 +598,32 @@ function SeriesView({ id }: { id: string }) {
 function SeriesEditor({ v }: { v: SeriesAnswer }) {
   const saved = draftOf(v);
   const [draft, setDraft] = useState<Draft>(saved);
+  // G18: the saved values the boxes started from. When they change (this form's save, or another tab's), a box
+  // left alone shows the new value and one typed in, while a save was on its way included, keeps what was typed
+  const [base, setBase] = useState<Draft>(saved);
+  // a save of the boxes on its way (what it sent) or landed (what it saved, `landedOn` the series on screen
+  // then): the boxes are measured against it, so one typed back to the old value meanwhile is an edit. A write
+  // has every view ask again, so the first series that differs from `landedOn` was read after the save: only
+  // that one ends it, moving the boxes that still show what the save left. A series read meanwhile (an earlier
+  // save's, another tab's) moves nothing.
+  const latest = useRef(v);
+  latest.current = v;
+  const [pending, setPending] = useState<{ draft: Draft; landedOn?: SeriesAnswer } | null>(null);
+  if (pending?.landedOn && v !== pending.landedOn) {
+    setPending(null);
+    setBase(saved);
+    setDraft((d) => follow(d, pending.draft, saved));
+  } else if (!pending && DRAFT_KEYS.some((k) => base[k] !== saved[k])) {
+    setBase(saved);
+    setDraft((d) => follow(d, base, saved));
+  }
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   // an amount is compared as cents, so "98.00" is the saved 98
-  const dirty = (Object.keys(saved) as (keyof Draft)[]).some((k) => (k === "amount"
-    ? !Object.is(parseCents(draft.amount), parseCents(saved.amount)) : draft[k] !== saved[k]));
-  useUnsavedGuard(dirty);
+  const against = pending?.draft ?? saved;
+  const dirty = DRAFT_KEYS.some((k) => !sameBox(k, draft[k], against[k]));
+  // a save of the boxes on its way holds the page until it lands: one that fails leaves the edit unsaved
+  useUnsavedGuard(dirty || (!!pending && !pending.landedOn));
   const set = (patch: Partial<Draft>) => { setDraft((d) => ({ ...d, ...patch })); setProblem(null); };
   const cents = parseCents(draft.amount);
   const badAmount = cents != null && (Number.isNaN(cents) || cents <= 0);
@@ -596,10 +633,21 @@ function SeriesEditor({ v }: { v: SeriesAnswer }) {
   async function send(body: object, form = false) {
     setSaving(true);
     setProblem(null);
+    const sent = draft;
+    const before = pending;
+    if (form) setPending({ draft: sent });
     try {
       const next = await postJSON<SeriesAnswer>("/api/recurring/series", JSON.stringify({ id: v.id, ...body }));
-      if (form) setDraft(draftOf(next));
+      // a box the save covered shows what was saved (an amount kept as detected reads back as the detected
+      // one); one changed while the save was on its way keeps what was typed
+      if (form) {
+        const after = draftOf(next);
+        setDraft((d) => follow(d, sent, after));
+        setPending({ draft: after, landedOn: latest.current });
+      }
     } catch (e) {
+      // nothing was saved: what stood before this save (an earlier one not yet read back) stands again
+      if (form) setPending(before);
       setProblem((e as Error).message);
     } finally {
       setSaving(false);
@@ -672,7 +720,7 @@ function SeriesEditor({ v }: { v: SeriesAnswer }) {
       </form>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
         {problem ? <p role="alert" className="m-0 text-[13px] text-danger">{problem}</p> : <span />}
-        <SaveBar dirty={dirty} saving={saving} onSave={save} onDiscard={() => { setDraft(saved); setProblem(null); }} />
+        <SaveBar dirty={dirty} saving={saving} onSave={save} onDiscard={() => { setDraft(against); setProblem(null); }} />
       </div>
     </Card>
   );

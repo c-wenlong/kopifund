@@ -47,7 +47,7 @@ RENT = "Rent"
 
 def day_rate(total, days):
     """`total` cents over `days` as cents a day, rounded half away from zero
-    (common.div_cents): the rule the Trips page uses (finance.spending.per_month),
+    (common.div_cents): the rule the Trips page uses too (server/finance/api.py, `trips`),
     so a half cent rounds the same way on the page and in this stat."""
     return c.div_cents(total, days)
 

@@ -153,7 +153,13 @@ Debit-card rows print the merchant, a country slot and the purchase date on one
 line, and every one of them is typed `Debit Card Transaction`. The country slot
 is inconsistent: a 3-letter code, a 2-letter code, a US state, or `065` (the IDD
 code) for some Singapore merchants. All of it is normalised to ISO alpha-3 so
-one select value covers each country.
+one select value covers each country. A US state code reads as the USA, except
+`ID`, `IN` and `DE`, which are also Indonesia, India and Germany: those read as
+the country unless the town printed before them is a US city in the city table
+(with the data folder's `places.csv`, its prefix and exact rows alike). A card
+row's town is the last one to three words before the slot, the shortest that
+names a known town deciding, since the parser has collapsed the spacing that
+set it apart. Wallet merchants (`places.split_country`) follow the same rule.
 
 On the bank side, a row is a wallet load only when the statement names the
 wallet's own counterparty, never when the word appears in free text.
@@ -342,6 +348,12 @@ opening differs from the previous statement's closing gets the same treatment
 with a row dated the first of the month, and the period then opens at the
 previous closing so that opening + in - out still equals the printed closing.
 
+A jump that the next printed row explains with its sign turned over is not a
+dropped row: that row's amount was read into Money In for Money Out, or the
+other way round, and a synthetic row of twice its size would hide the misread.
+No row is synthesised for it; the parser warns that the amount was read in the
+wrong column, the balance check fails on that row and the run stops.
+
 A synthetic row is `Internal - YouTrip` when its size is a known top-up size, or
 when it matches an exchange printed in another wallet over the same days.
 Everything else is External and is listed in the open-items note, which is
@@ -484,6 +496,13 @@ and Wise's transaction id, which becomes the row's `reference`: it is the one
 thing about a row that never changes, so the keys stay stable across a
 re-export. The rows are then reversed into oldest first, which leaves a single
 day's rows in the order Wise applied them.
+
+A long statement runs over several pages. Every page ends with the licence block
+and a `ref:... 1/2` page counter, and the next page starts its own column header,
+so the parser skips from each licence block to the next header rather than
+stopping at the first one. The older rows sit on the later pages, and since Wise
+prints no opening, a parser that read only page 1 would derive an opening that
+absorbs the lost rows and still reconcile.
 
 | Row | Bank txn type | Flow class |
 | --- | --- | --- |
@@ -732,13 +751,13 @@ which path is missing, and the suite still ends clean.
 | `test_parse_no_closing` | a card statement and an empty YouTrip month say in their note why they print no closing; any other block that does not is a problem |
 | `test_parse_page_break` | a consolidated card row whose detail lines fall behind a page break keeps its merchant, parses to the same rows and keeps the same keys, and nothing from the footer leaks into a row |
 | `test_parse_revolut` | the Revolut export: pages grouped into wallet sections, every row kind and the type it gets, a fee left inside the column amount, one block per month with the export month closing the section, the borrowed FX rate, the real export's five wallets all reconciled, a section with no balance summary stopping the parser before it writes anything, and that the shared city table is the same table whatever order the parsers are imported in |
-| `test_parse_wise` | the Wise export set: the column split at the real column positions, the currency read off the heading, every balance taking the SGD file's account number, every row kind and the type it gets, the transaction id as the reference, rows reversed into oldest first, one block per month plus the export month, the opening derived twice, the SEK rate off the conversion, the real export's three balances all reconciled, and a file with no printed closing stopping the parser before it writes anything |
+| `test_parse_wise` | the Wise export set: the column split at the real column positions, the currency read off the heading, every balance taking the SGD file's account number, every row kind and the type it gets, the transaction id as the reference, rows reversed into oldest first, one block per month plus the export month, the opening derived twice, the SEK rate off the conversion, the real export's three balances all reconciled, a statement over two pages read as one, and a file with no printed closing stopping the parser before it writes anything |
 | `test_parse_tiger` | the Tiger Brokers parser on five invented statements across the two layouts: the bare-symbol layout, the wrapped 2026 layout with every trade printed twice, and a quiet period with no trades, withdrawals or dividends: every field, the duplicated trades and the interrupted tables |
 | `test_parse_cpf` | the CPF parser on five invented yearly statements, one per layout plus a quiet year and a year whose transactions table is torn across a page break: every field, the positional column reading and the page furniture, and a year that does not reconcile left out of `parse_folder` and named |
 | `test_parse_uob` | the UOB One and Stash layouts on invented statements from the public sample: a statement that balances, one that does not and is refused by the run, the table broken across pages with a carried and a brought forward balance, a credit and a debit on one day, a month brought forward from the last one's closing, and the One and savings statements filed apart |
 | `test_sniff` | every fixture here, the Tiger Brokers ones and the CPF ones read as exactly one layout and go to the right account and currency, with the config's numbers, with none and with statements already filed; two accounts it cannot tell apart, a number no account knows, a wallet currency with no folder and a file that reads as two statements all ask; a statement no layout reads is not supported and kept nowhere; an upload whose text names another account is refused |
 | `test_sample` | `finance.py sample` on every fixture here plus an invented bank's statement (`server/tests/fixtures/unknown/`): no name, address, account or card number, NRIC, email or phone number survives, every amount and date does, every line keeps its length; a random identifier of each kind planted in a fixture is always replaced; the text goes beside the PDF or where it is told, never into the repository, and the PDF is only read |
-| `test_youtrip_synthesis` | a jump inside a statement and a jump across a month boundary each produce the right synthetic row |
+| `test_youtrip_synthesis` | a jump inside a statement and a jump across a month boundary each produce the right synthetic row; an amount read in the wrong column fails the check instead |
 | `test_dates` | both printed date forms, including the consolidated layout keeping its own printed year |
 | `test_keys` | the fields `txn_key` hashes and how repeats are numbered, both frozen because Notion holds the current keys |
 | `test_card_duplicates` | card rows covered by an account statement are dropped, the card block's totals fall by what left, and an empty card statement is skipped |
