@@ -106,6 +106,15 @@ export function AiCard() {
       setSending((s) => (s?.sent === sent ? { sent, landed: true, landedOn: latest.current } : s));
     } catch (e) {
       setSending((s) => (s?.sent === sent ? null : s));
+      // nothing was saved: a box set back to the saved value while the save was on its way is no edit now
+      const now = latest.current;
+      if (Array.isArray(now?.providers)) {
+        const server = savedOf(now);
+        setDraft((dr) => {
+          const left = Object.fromEntries(Object.entries(dr ?? {}).filter(([k, v]) => v !== server[k as keyof Draft]));
+          return Object.keys(left).length ? left : null;
+        });
+      }
       setProblem((e as Error).message);
     } finally {
       inFlight.current = false;

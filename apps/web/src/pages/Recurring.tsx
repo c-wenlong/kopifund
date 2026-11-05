@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import {
   postJSON, useApi, type ActiveSeries, type ComingStatus, type ComingUpRow, type IrregularPayee, type NotRecurring,
@@ -540,9 +540,16 @@ const draftOf = (v: SeriesAnswer): Draft => ({
   day: v.day == null ? "" : String(v.day), ended: v.ended_on ?? "",
 });
 const DRAFT_KEYS: (keyof Draft)[] = ["amount", "cadence", "day", "ended"];
+/** One box holds the same value as another: an amount as cents, so "50.00" is the saved 50; text that is no amount only as itself. */
+const sameBox = (k: keyof Draft, a: string, b: string) => {
+  if (a === b) return true;
+  if (k !== "amount") return false;
+  const x = parseCents(a);
+  return x != null && !Number.isNaN(x) && x === parseCents(b);
+};
 /** `d` moved from the values `from` to `to`: a box still holding its `from` value takes the new one, a box typed in keeps its text. */
 const follow = (d: Draft, from: Draft, to: Draft): Draft =>
-  Object.fromEntries(DRAFT_KEYS.map((k) => [k, d[k] === from[k] ? to[k] : d[k]])) as Draft;
+  Object.fromEntries(DRAFT_KEYS.map((k) => [k, sameBox(k, d[k], from[k]) ? to[k] : d[k]])) as Draft;
 const sameKind = (a: string, b: string) => BY_WEEKDAY.includes(a) === BY_WEEKDAY.includes(b);
 const dayOptions = (c: string) => (BY_WEEKDAY.includes(c)
   ? WEEKDAYS.map((w, i) => ({ value: String(i + 1), label: w }))
@@ -587,16 +594,19 @@ function SeriesEditor({ v }: { v: SeriesAnswer }) {
   // G18: the saved values the boxes started from. When they change (this form's save, or another tab's), a box
   // left alone shows the new value and one typed in, while a save was on its way included, keeps what was typed
   const [base, setBase] = useState<Draft>(saved);
-  // a save of the boxes on its way (`landed` false: what it sent) or landed and not yet read back (what it
-  // saved): the boxes are measured against it, so one typed back to the old value meanwhile is an edit, and the
-  // series read again after the save moves only the boxes that still show what the save left
-  const [pending, setPending] = useState<{ draft: Draft; landed: boolean } | null>(null);
-  const changed = DRAFT_KEYS.some((k) => base[k] !== saved[k]);
-  if (changed && pending?.landed) {
+  // a save of the boxes on its way (what it sent) or landed (what it saved, `landedOn` the series on screen
+  // then): the boxes are measured against it, so one typed back to the old value meanwhile is an edit. A write
+  // has every view ask again, so the first series that differs from `landedOn` was read after the save: only
+  // that one ends it, moving the boxes that still show what the save left. A series read meanwhile (an earlier
+  // save's, another tab's) moves nothing.
+  const latest = useRef(v);
+  latest.current = v;
+  const [pending, setPending] = useState<{ draft: Draft; landedOn?: SeriesAnswer } | null>(null);
+  if (pending?.landedOn && v !== pending.landedOn) {
     setPending(null);
     setBase(saved);
     setDraft((d) => follow(d, pending.draft, saved));
-  } else if (changed && !pending) {
+  } else if (!pending && DRAFT_KEYS.some((k) => base[k] !== saved[k])) {
     setBase(saved);
     setDraft((d) => follow(d, base, saved));
   }
@@ -604,8 +614,7 @@ function SeriesEditor({ v }: { v: SeriesAnswer }) {
   const [problem, setProblem] = useState<string | null>(null);
   // an amount is compared as cents, so "98.00" is the saved 98
   const against = pending?.draft ?? saved;
-  const dirty = (Object.keys(saved) as (keyof Draft)[]).some((k) => (k === "amount"
-    ? !Object.is(parseCents(draft.amount), parseCents(against.amount)) : draft[k] !== against[k]));
+  const dirty = DRAFT_KEYS.some((k) => !sameBox(k, draft[k], against[k]));
   useUnsavedGuard(dirty);
   const set = (patch: Partial<Draft>) => { setDraft((d) => ({ ...d, ...patch })); setProblem(null); };
   const cents = parseCents(draft.amount);
@@ -617,7 +626,8 @@ function SeriesEditor({ v }: { v: SeriesAnswer }) {
     setSaving(true);
     setProblem(null);
     const sent = draft;
-    if (form) setPending({ draft: sent, landed: false });
+    const before = pending;
+    if (form) setPending({ draft: sent });
     try {
       const next = await postJSON<SeriesAnswer>("/api/recurring/series", JSON.stringify({ id: v.id, ...body }));
       // a box the save covered shows what was saved (an amount kept as detected reads back as the detected
@@ -625,10 +635,11 @@ function SeriesEditor({ v }: { v: SeriesAnswer }) {
       if (form) {
         const after = draftOf(next);
         setDraft((d) => follow(d, sent, after));
-        setPending({ draft: after, landed: true });
+        setPending({ draft: after, landedOn: latest.current });
       }
     } catch (e) {
-      if (form) setPending(null);
+      // nothing was saved: what stood before this save (an earlier one not yet read back) stands again
+      if (form) setPending(before);
       setProblem((e as Error).message);
     } finally {
       setSaving(false);

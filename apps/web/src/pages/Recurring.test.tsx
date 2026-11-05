@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { choose } from "../test-select";
+import { notifyChanged } from "../api";
 import type { ActiveSeries, ComingUpRow, RecurringPage, SeriesView } from "../api";
 import { ComingUpItem, DotStrip, mergeSeries, Recurring, stepOn } from "./Recurring";
 import { leadingIcon } from "../test-icons";
@@ -692,6 +693,64 @@ describe("A series' own view, G16", () => {
     const region = screen.getByRole("region", { name: "Gym" });
     expect(within(region).getByLabelText("Usual amount")).toHaveValue(before);
     expect(within(region).getByText("Unsaved changes")).toBeInTheDocument();
+  });
+
+  it("keeps a box typed during a second save when the first save's read comes back meanwhile", async () => {
+    const posts: (() => void)[] = [];
+    const reads: (() => void)[] = [];
+    let now = VIEW;
+    let hold = false;
+    const answer = () => new Response(JSON.stringify(now), { status: 200 });
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        return new Promise<Response>((done) => posts.push(() => {
+          now = { ...VIEW, amount: body.amount ?? VIEW.amount, edit: { ...VIEW.edit, amount: body.amount } };
+          done(answer());
+        }));
+      }
+      if (!url.startsWith("/api/recurring/series")) return new Response(JSON.stringify(PAGE), { status: 200 });
+      // once held, a read of the series waits, and answers with the series as it is when let go
+      return hold ? new Promise<Response>((done) => reads.push(() => done(answer()))) : answer();
+    }));
+    render(<Recurring />);
+    const amount = () => within(screen.getByRole("region", { name: "Gym" })).getByLabelText("Usual amount");
+    await screen.findByRole("region", { name: "Gym" });
+    fireEvent.change(amount(), { target: { value: "55" } });
+    fireEvent.click(within(screen.getByRole("region", { name: "Gym" })).getByRole("button", { name: "Save" }));
+    hold = true;
+    await act(async () => posts.shift()!());
+    await waitFor(() => expect(reads.length).toBeGreaterThan(0));
+    // a second save before the first one's read is back
+    fireEvent.change(amount(), { target: { value: "60" } });
+    fireEvent.click(within(screen.getByRole("region", { name: "Gym" })).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(posts.length).toBe(1));
+    // the first save's read (55) lands while the second is on its way; then 55 is typed again, an edit against 60
+    await act(async () => { while (reads.length) reads.shift()!(); });
+    fireEvent.change(amount(), { target: { value: "55" } });
+    await act(async () => posts.shift()!());
+    await waitFor(() => expect(reads.length).toBeGreaterThan(0));
+    await act(async () => { while (reads.length) reads.shift()!(); });
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(now.amount).toBe(6000);
+    expect(amount()).toHaveValue("55");
+    expect(within(screen.getByRole("region", { name: "Gym" })).getByText("Unsaved changes")).toBeInTheDocument();
+  });
+
+  it("moves an amount typed as the saved one in other words along with another tab's save", async () => {
+    let now = VIEW;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) =>
+      new Response(JSON.stringify(url.startsWith("/api/recurring/series") ? now : PAGE), { status: 200 })));
+    render(<Recurring />);
+    const head = await screen.findByRole("region", { name: "Gym" });
+    fireEvent.change(within(head).getByLabelText("Usual amount"), { target: { value: "50.00" } });
+    expect(within(head).queryByText("Unsaved changes")).not.toBeInTheDocument();
+    // another tab saves 60
+    now = { ...VIEW, amount: 6000, edit: { ...VIEW.edit, amount: 6000 } };
+    await act(async () => notifyChanged());
+    const region = screen.getByRole("region", { name: "Gym" });
+    await waitFor(() => expect(within(region).getByLabelText("Usual amount")).toHaveValue("60"));
+    expect(within(region).queryByText("Unsaved changes")).not.toBeInTheDocument();
   });
 
   it("refuses an amount that is not dollars and cents before it sends anything", async () => {

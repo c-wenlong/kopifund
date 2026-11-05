@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { postJSON, rowsChanged, useApi, type GroupRow, type GroupRows, type PinSet, type Relinked, type RuleUndone } from "../api";
 import { formatAmount } from "../money";
 import { formatDay } from "../dates";
@@ -15,7 +15,13 @@ import { showToast } from "./Toast";
 // filed without a pattern rule that would also catch the next transfer to the
 // same person. G13: the row is filed in the record at once, and the toast's
 // Undo takes the rule and the row's category back together.
-export type PinDraft = { category: string; payee: string; kind: string; note: string };
+export type PinFields = { category: string; payee: string; kind: string; note: string };
+// what was typed, and (`base`) what it is measured against: what the form opened on, or what its last save sent
+export type PinDraft = PinFields & { base?: PinFields };
+
+/** Typed and not saved, against `base`; a kind counts only with a payee. */
+export const pinDirty = (d: PinFields, base: PinFields) => d.category !== base.category
+  || d.payee.trim() !== base.payee.trim() || d.note.trim() !== base.note.trim() || (!!d.payee.trim() && d.kind !== base.kind);
 
 type Pinned = { change?: string | null; relinked?: Relinked; unchanged?: boolean; pinned?: PinSet };
 
@@ -58,16 +64,20 @@ export function PinForm({ row, categories, kinds, onPinned, draft, onDraft, onDi
   // rules page would suggest for the text it printed (a person only for a
   // counterparty, as `suggest` in finance/rules_app.py), not "Person" for all
   // but a merchant's own line
-  const [opened] = useState(() => ({ category: row.category, payee: row.payee, kind: row.similar?.kind ?? (row.field === "counterparty" ? "Person" : "Merchant") }));
-  const [category, setCategory] = useState(draft?.category ?? opened.category);
-  const [payee, setPayee] = useState(draft?.payee ?? opened.payee);
-  const [kind, setKind] = useState(draft?.kind ?? opened.kind);
-  const [note, setNote] = useState(draft?.note ?? "");
-  useEffect(() => { onDraft?.({ category, payee, kind, note }); }, [category, payee, kind, note]);
+  const [base, setBase] = useState<PinFields>(() => draft?.base ?? {
+    category: row.category, payee: row.payee, kind: row.similar?.kind ?? (row.field === "counterparty" ? "Person" : "Merchant"), note: "",
+  });
+  const [category, setCategory] = useState(draft?.category ?? base.category);
+  const [payee, setPayee] = useState(draft?.payee ?? base.payee);
+  const [kind, setKind] = useState(draft?.kind ?? base.kind);
+  const [note, setNote] = useState(draft?.note ?? base.note);
+  const typed = { category, payee, kind, note };
+  const latest = useRef(typed);
+  latest.current = typed;
+  useEffect(() => { onDraft?.({ category, payee, kind, note, base }); }, [category, payee, kind, note, base]);
   // G18: something typed and not saved (a draft kept from before a change of layout included) asks before the
-  // page is left; a kind counts only with a payee
-  const dirty = category !== opened.category || payee.trim() !== opened.payee.trim() || note.trim() !== ""
-    || (!!payee.trim() && kind !== opened.kind);
+  // page is left
+  const dirty = pinDirty(typed, base);
   useUnsavedGuard(!onDirty && dirty);
   useEffect(() => { onDirty?.(dirty); }, [dirty]);
   const [saving, setSaving] = useState(false);
@@ -78,8 +88,12 @@ export function PinForm({ row, categories, kinds, onPinned, draft, onDraft, onDi
     setSaving(true);
     setError(null);
     try {
-      await savePin({ key: row.key, category, payee: payee.trim(), kind, note: note.trim() });
-      onPinned?.();
+      const sent = { category, payee: payee.trim(), kind, note: note.trim() };
+      await savePin({ key: row.key, ...sent });
+      // what was typed while the save was on its way was not sent: the form stays open on it, measured
+      // against what was saved, and only a form with nothing left unsaved is done
+      if (pinDirty(latest.current, sent)) setBase(sent);
+      else onPinned?.();
     } catch (e) {
       setError((e as Error).message);
     } finally {

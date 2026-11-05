@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { choose } from "../test-select";
+import { notifyChanged } from "../api";
 import type { AiKey, AiSettings } from "../types.gen";
 import { AiCard } from "./AiCard";
 
@@ -172,6 +173,33 @@ describe("the AI card's settings", () => {
     await act(async () => releaseRead!());
     expect(model).toHaveValue("");
     expect(within(c).getByText("Unsaved changes")).toBeInTheDocument();
+  });
+
+  it("lets a failed save leave no edit behind for a box set back to the saved value meanwhile", async () => {
+    let fail: (() => void) | null = null;
+    let now = settings(keychain);
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/ai/settings" && init?.method === "POST") {
+        return new Promise<Response>((done) => { fail = () => done(new Response(JSON.stringify({ error: "disk full" }), { status: 500 })); });
+      }
+      if (url === "/api/ai") return new Response(JSON.stringify(now), { status: 200 });
+      return new Response(JSON.stringify({ provider: "anthropic", models: [], fetched_at: null, error: null }), { status: 200 });
+    }));
+    render(<AiCard />);
+    const c = await card();
+    fireEvent.change(within(c).getByRole("combobox", { name: "Ask Kopifund model" }), { target: { value: "claude-opus-4-1" } });
+    fireEvent.click(within(c).getByRole("button", { name: "Save" }));
+    // the consent ticked and unticked while the save is on its way
+    const consent = within(c).getByRole("checkbox", { name: "Send matching rows to Anthropic" });
+    fireEvent.click(consent);
+    fireEvent.click(consent);
+    await waitFor(() => expect(fail).not.toBeNull());
+    await act(async () => fail!());
+    expect(await within(c).findByText("disk full")).toBeInTheDocument();
+    // another tab turns the consent on: the card follows, since nothing here holds it off
+    now = settings(keychain, { send_rows: true });
+    await act(async () => notifyChanged());
+    await waitFor(() => expect(within(c).getByRole("checkbox", { name: "Send matching rows to Anthropic" })).toBeChecked());
   });
 
   it("tests the provider and says how it went", async () => {

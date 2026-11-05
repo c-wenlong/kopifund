@@ -10,7 +10,7 @@ import { Button, buttonClass } from "../components/Button";
 import { Combobox } from "../components/Combobox";
 import { EmptyState } from "../components/EmptyState";
 import { Pager, usePager } from "../components/Pager";
-import { PinForm, pinnedText, savePin, undoRuleWrite, type PinDraft } from "../components/PinRow";
+import { PinForm, pinDirty, pinnedText, savePin, undoRuleWrite, type PinDraft } from "../components/PinRow";
 import { draftParams, ruleOf, type Draft } from "../components/RuleEditor";
 import { Select } from "../components/Select";
 import { Loading, Problem } from "../components/States";
@@ -226,6 +226,8 @@ export function Transactions() {
     data?.days.find((d) => d.date === date) ?? { date, count: 0, in_sgd: 0, out_sgd: 0, continued: false, continues: false };
   // what was typed into a row's own form, kept here so a change of layout (a tablet turned over) does not empty it
   const drafts = useRef<Record<string, PinDraft>>({});
+  // the rows whose More form is on screen
+  const shownForms = useRef(new Set<string>());
   // the rows whose kept draft holds something unsaved: leaving asks while any does, the form open or not,
   // and a save takes its row off
   const [unsaved, setUnsaved] = useState<ReadonlySet<string>>(() => new Set());
@@ -242,9 +244,15 @@ export function Transactions() {
       onStart={() => setPicking(t.key)} onDone={() => setPicking((k) => (k === t.key ? null : k))} onPicked={() => setOpen(t.key)}
       onPinned={(pin) => {
         setPins((p) => ({ ...p, [t.key]: pin }));
-        // a form typed into before keeps its note and payee, with the category just picked
+        // a form typed into before keeps its note and payee, with the category just picked, which is now
+        // saved: the row is left unsaved only if something else typed still differs
         const typed = drafts.current[t.key];
-        if (pin && typed) drafts.current[t.key] = { ...typed, category: pin.category };
+        if (pin && typed) {
+          const next = { ...typed, category: pin.category, base: typed.base && { ...typed.base, category: pin.category } };
+          drafts.current[t.key] = next;
+          // (a form on screen reports for itself)
+          if (next.base && !shownForms.current.has(t.key)) markUnsaved(t.key, pinDirty(next, next.base));
+        }
       }} />
   );
 
@@ -375,7 +383,7 @@ export function Transactions() {
                         </tr>
                         {open === t.key && (
                           <tr>
-                            <td colSpan={4} className="bg-tile px-3 py-2"><RowPanel txnKey={t.key} drafts={drafts.current} onUnsaved={markUnsaved} pin={pins[t.key]} onClose={() => setOpen(null)} /></td>
+                            <td colSpan={4} className="bg-tile px-3 py-2"><RowPanel txnKey={t.key} drafts={drafts.current} shownForms={shownForms.current} onUnsaved={markUnsaved} pin={pins[t.key]} onClose={() => setOpen(null)} /></td>
                           </tr>
                         )}
                         </Fragment>
@@ -405,7 +413,7 @@ export function Transactions() {
                     {t.currency !== "SGD" && <span className="num ml-auto text-ink-3">{sgdValue(t)}</span>}
                   </div>
                   <ScamNote t={t} />
-                  {open === t.key && <div className="mt-2 rounded-md bg-tile px-3 py-2"><RowPanel txnKey={t.key} drafts={drafts.current} onUnsaved={markUnsaved} pin={pins[t.key]} onClose={() => setOpen(null)} /></div>}
+                  {open === t.key && <div className="mt-2 rounded-md bg-tile px-3 py-2"><RowPanel txnKey={t.key} drafts={drafts.current} shownForms={shownForms.current} onUnsaved={markUnsaved} pin={pins[t.key]} onClose={() => setOpen(null)} /></div>}
                 </li>
                 </Fragment>
               ))}
@@ -584,8 +592,8 @@ function CategoryCell({ t, categories, picking, onStart, onDone, onPicked, onPin
 // into a rule for the rows like it ("Apply to 6 similar rows", the count from
 // the rule preview), and "More" for the payee, kind and note of the row's own
 // rule. A row a hand-edited rules file left unapplied offers Apply rules.
-function RowPanel({ txnKey, drafts, onUnsaved, pin, onClose }: {
-  txnKey: string; drafts: Record<string, PinDraft>; onUnsaved: (key: string, dirty: boolean) => void; onClose: () => void;
+function RowPanel({ txnKey, drafts, shownForms, onUnsaved, pin, onClose }: {
+  txnKey: string; drafts: Record<string, PinDraft>; shownForms: Set<string>; onUnsaved: (key: string, dirty: boolean) => void; onClose: () => void;
   // what the pick just set, so the similar-rows chip need not wait for the row to be asked again;
   // null while the pick is still being saved, when there is nothing to preview yet
   pin?: PinSet | null;
@@ -593,6 +601,11 @@ function RowPanel({ txnKey, drafts, onUnsaved, pin, onClose }: {
   const state = useApi<GroupRows>(`/api/rules/rows?${new URLSearchParams({ key: txnKey })}`);
   // a form opened before a change of layout (a tablet turned over) opens again with what was typed
   const [more, setMore] = useState(() => txnKey in drafts);
+  useEffect(() => {
+    if (!more) return;
+    shownForms.add(txnKey);
+    return () => { shownForms.delete(txnKey); };
+  }, [more, txnKey, shownForms]);
   const [busy, setBusy] = useState(false);
   // the pick's answer stands for the row's pin only until the row is asked again: after
   // that (a save through More, an Undo) the row's own pin is the newer word
