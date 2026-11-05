@@ -252,6 +252,26 @@ class PinnedRowsGuardTest(Record):
         self.assertEqual(p.code, "pinned-rows-gone")
         self.assertEqual(p.subject, "1 row(s): k2 (a trip pin, marked fine)")
 
+    def phone_row(self, key):
+        # G25: a phone row matched to the record row `key`
+        self.conn.execute("""INSERT INTO pending_txn(import_id, txn_date, amount_minor, currency, payee,
+                                                     state, matched_txn_key, created_at)
+                             VALUES ('i1', '2025-07-01', -500, 'SGD', 'Grab', 'matched', ?, 'now')""", (key,))
+
+    def test_a_row_a_phone_row_matched_that_would_leave_stops_the_load(self):
+        self.load([row("k1", "-12.50"), row("k2", "-5.00")])
+        self.phone_row("k2")
+        [p] = sync.check_pinned_rows(self.conn, self.run_of(row("k1", "-12.50")))
+        self.assertEqual(p.subject, "1 row(s): k2 (a phone match)")
+
+    def test_a_phone_match_follows_the_re_key(self):
+        self.load([row("k1", "-12.50")])
+        self.phone_row("k1")
+        self.assertEqual(sync.check_pinned_rows(self.conn, self.run_of(row("k9", "-12.50", merchant="X"))), [])
+        self.load([row("k9", "-12.50", merchant="X")])
+        from finance import pending
+        self.assertEqual(pending._current_keys(self.conn, "k1"), {"k1", "k9"})
+
     def test_a_row_with_nothing_saved_on_it_may_leave(self):
         self.load([row("k1", "-12.50"), row("k2", "-5.00")])
         self.assertEqual(sync.check_pinned_rows(self.conn, self.run_of(row("k1", "-12.50"))), [])

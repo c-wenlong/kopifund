@@ -384,8 +384,8 @@ def attach_former_keys(rows):
 
 def check_pinned_rows(conn, parsed):
     """Audit: rows the owner saved something on that this load would archive.
-    A trip pin, a "marked fine", a series edit or a keys.csv rule names a row
-    by its txn_key; a row the parser re-keys keeps all four (db.rekeys and
+    A trip pin, a "marked fine", a series edit, a matched phone row (G25) or a
+    keys.csv rule names a row by its txn_key; a row the parser re-keys keeps them all (db.rekeys and
     txn_key_alias), so one that would still go has left the tree or changed
     in a way that cannot be paired. The Notion path's orphan check (check_orphans)
     needs a plan; this one reads the record, so a load with Notion off has it
@@ -409,7 +409,10 @@ def check_pinned_rows(conn, parsed):
     saved = defaultdict(set)
     for what, sql in (("a trip pin", "SELECT txn_key FROM trip_pin"),
                       ("marked fine", "SELECT txn_key FROM txn_marked_fine"),
-                      ("a series edit", "SELECT txn_key FROM series_override_txn")):
+                      ("a series edit", "SELECT txn_key FROM series_override_txn"),
+                      # G25: a phone row matched to it counts nowhere once the row goes
+                      ("a phone match", "SELECT matched_txn_key FROM pending_txn "
+                                        "WHERE state = 'matched' AND matched_txn_key IS NOT NULL")):
         for (k,) in conn.execute(sql):
             if k in by_key or k in taken:
                 saved[k].add(what)

@@ -337,8 +337,9 @@ shipped table, so a shipped city wins a prefix both could match
   reference, card and purchase date tell them apart or nothing does, so an
   uneven or ambiguous group is not guessed). The row keeps its id and
   takes the new key, and the old key goes into `txn_key_alias`, so trip pins,
-  rows marked fine, series edits and `keys.csv` rules on the old key follow it.
-  A row that would still be archived while it carries one of those stops
+  rows marked fine, series edits, matched phone rows (G25) and `keys.csv` rules
+  on the old key follow it. A row that would still be archived while it carries
+  one of those stops
   doctor, `load` and the app's Load with `pinned-rows-gone`, and an old key
   the run now gives to a different row while something is saved on it stops
   them with `pinned-key-reused`; the command line loads past both with
