@@ -288,7 +288,8 @@ struct SettingsView: View {
     }
 
     private func summarizeData() -> String {
-        // rows still on their way to YNAB; a duplicate or a row the record
+        // rows YNAB has not confirmed (a lost reply leaves one failed or
+        // syncing though it landed); a duplicate or a row the record
         // already covers ("kopifund") never goes there
         guard let all = try? context.fetchCount(FetchDescriptor<TransactionRecord>()),
               let unsynced = try? context.fetchCount(FetchDescriptor<TransactionRecord>(
@@ -300,11 +301,13 @@ struct SettingsView: View {
             // an unknown count must not read as an empty store
             return "The stored data could not be counted. This deletes every transaction, "
                 + "pattern, unmatched alert and ignored alert shape, whatever is there. "
-                + "The YNAB token stays. This cannot be undone."
+                + "Transactions already in YNAB stay there, and so does the YNAB token. "
+                + "This cannot be undone."
         }
-        return "This deletes \(count(all, "transaction")) (\(unsynced) not in YNAB yet), "
+        return "This deletes \(count(all, "transaction")) (\(unsynced) not confirmed in YNAB), "
             + "\(count(patterns, "pattern")), \(count(unmatched, "unmatched alert")) "
-            + "and every ignored alert shape. The YNAB token stays. This cannot be undone."
+            + "and every ignored alert shape from this phone. Transactions already in YNAB "
+            + "stay there, and so does the YNAB token. This cannot be undone."
     }
 
     private func count(_ n: Int, _ noun: String) -> String {
