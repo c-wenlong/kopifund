@@ -94,7 +94,7 @@ describe("the Link a phone card", () => {
     });
     render(<LinkCard />);
     const c = await card();
-    expect(await within(c).findByText(/2 phone rows are waiting/)).toBeInTheDocument();
+    expect(await within(c).findByText(/2 phone rows are waiting for a statement/)).toBeInTheDocument();
     await userEvent.click(within(c).getByRole("button", { name: "Dismiss all waiting" }));
     expect(posts).toEqual([]);
     await userEvent.click(within(c).getByRole("button", { name: "Press again to dismiss 2" }));

@@ -220,8 +220,8 @@ function DismissAll({ count, onDone, onError }: {
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-ink-2">
-      <span className="min-w-0 flex-1">
-        {count} phone rows are waiting for a statement. They wait until one confirms them or you dismiss them.
+      <span className="min-w-0 grow basis-56">
+        {count} phone rows are waiting for a statement.
       </span>
       <Button size="sm" disabled={busy} onBlur={() => setArmed(false)} onClick={() => void go()}>
         {armed ? `Press again to dismiss ${count}` : "Dismiss all waiting"}
