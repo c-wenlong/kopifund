@@ -1473,7 +1473,13 @@ bucket's cents a month and answers the template beside a month's actuals:
 income, per-bucket planned and actual, the actuals counted over every
 External spend row as `planning.budgets` does. The game pot (`GET/POST
 /api/dashboard/game-pot`) is metadata only for now: a name, the benchmark it
-plays against, a note, and the account ids it links.
+plays against, a note, and the account ids it links. Each of these state
+writes is read by its own GET alone, so after one the app asks that GET again
+and keeps every other answer (serve.py's `REREAD_AFTER`): a drag or a resize
+saves the layout, and forgetting every widget's answer each time would ask
+for them all afresh. The server still moves its version, so the GET's tag
+changes, and the app's other tabs are told which views to ask again, so a
+Dashboard open in a second window never edits a board this one changed.
 
 **The change widgets** (`apps/web/src/dashboard/widgets/change/`) are the
 first components bound to the query layer: a time series of one or more

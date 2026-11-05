@@ -300,10 +300,22 @@ NO_CHANGE = frozenset({"/api/run/check", "/api/rules/suggest", "/api/uploads/sta
                        "/api/server/stop", "/api/server/restart",
                        # G26: a widget query and a scenario preview read, they change nothing
                        "/api/dashboard/query", "/api/dashboard/scenario/preview"})
-# G18: but a check writes the upload history, and the overview's Needs your
-# eye reads where the latest upload stands, so after a check the app asks for
-# the overview again (and for nothing else). types.gen.ts carries this too.
-REREAD_AFTER = {"/api/run/check": ("/api/overview",)}
+# G18: after one of these writes the app asks again for the GETs named, with
+# their tags, and for nothing else: every other answer it keeps stays (any other
+# write forgets them all, unless it is in NO_CHANGE). A check writes the upload
+# history, and the overview's Needs your eye reads where the latest upload
+# stands. G26: the dashboard's own state is read by its own GET alone, and a
+# layout is saved on every drag, resize and board switch; forgetting every
+# widget's answer each time would ask for them all afresh. Those writes still
+# move the server's version (they are not in NO_CHANGE), so their GET's tag
+# changes. types.gen.ts carries this too.
+REREAD_AFTER = {"/api/run/check": ("/api/overview",),
+                "/api/dashboard/layouts": ("/api/dashboard/layouts",),
+                "/api/dashboard/layouts/<id>": ("/api/dashboard/layouts",),
+                "/api/dashboard/goals": ("/api/dashboard/goals",),
+                "/api/dashboard/goals/remove": ("/api/dashboard/goals",),
+                "/api/dashboard/allocation": ("/api/dashboard/allocation",),
+                "/api/dashboard/game-pot": ("/api/dashboard/game-pot",)}
 
 
 def cached(path: str) -> bool:
