@@ -129,9 +129,23 @@ class Cache:
                 continue
             if not in_cents(body):
                 continue
-            out[stat_id] = body
+            out[stat_id] = current_names(stat_id, body)
             newest = max(newest, mtime)
         return out, newest
+
+
+def current_names(stat_id, body):
+    """A saved result with any field renamed since it was written given its
+    name now, so a result from before the rename still reads right until the
+    stats run again. category-breakdown wrote its trend ratio as `change_pct`
+    before #308; it is `change_share` now, since a `_pct` name is a percent and
+    the ratio would read as a hundredth of itself (server/analytics/SPEC.md,
+    "The chart hint")."""
+    if stat_id == "category-breakdown":
+        for row in (body.get("data") or {}).get("categories") or ():
+            if isinstance(row, dict) and "change_pct" in row:
+                row.setdefault("change_share", row.pop("change_pct"))
+    return body
 
 
 def _cache():

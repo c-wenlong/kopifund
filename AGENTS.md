@@ -41,7 +41,7 @@ How the pipeline works, in depth:
 
 Needs Python 3.14 or later, Node 22, and `pdftotext` (`brew install poppler`).
 The desktop app (`make desktop`, G23) also needs Rust (`rustup`) and Xcode's
-command line tools; off a Mac or without Rust, `make check` skips only the shell's `cargo check`.
+command line tools; off a Mac or without Rust, `make check` skips only the shell's `cargo test`.
 
 | Command | What it does |
 | --- | --- |
@@ -57,9 +57,9 @@ command line tools; off a Mac or without Rust, `make check` skips only the shell
 | `./build_macos.sh [ref]` | One click: copy one version (`origin/main` unless a branch, tag or commit is named) into `~/Library/Application Support/Kopifund/builds`, build `Kopifund.app` from that copy and install it in `/Applications`, quitting the open one first. The app then keeps serving that version whatever this checkout switches to |
 | `make desktop` | Build `Kopifund.app` (G23), a Mac window that starts `serve.py --app` on http://127.0.0.1:8771 and stops it on quit, and put it in `~/Applications`. It runs from this checkout, on the same data folder as `make serve` |
 | `make app-icon [SET=<set>]` | Write the icon sets in `app-icons/` into the web, iOS and desktop apps from `app-icons/sets.json`, for each app's default icon and Settings' picker; `SET=iso` makes iso the default first |
-| `make dev` | Development on http://localhost:5173: Vite reloads the page on a web change and forwards `/api` to `serve.py --reload`, which restarts on a Python change and sends any page asked of port 8770 to 5173, so an old `apps/web/dist` build never shows. Ctrl-C stops both |
+| `make dev` | Development on http://localhost:5173: Vite reloads the page on a web change and forwards `/api` to `serve.py --reload`, which restarts on a Python change and sends any page asked of port 8770 to 5173, so an old `apps/web/dist` build never shows. If the API cannot take its port because another server holds it, or either one stops, both stop, so `/api` never reaches another checkout's server. Ctrl-C stops both |
 | `make test` | Python tests (`python3 -m unittest discover tests` in `server/`) and web tests (`npm test` in `apps/web/`) |
-| `make check` | The tests, the rules lint, the runbook table check, the record schema check (docs/schema.md), the layouts table check (docs/parsing.md), the TypeScript typecheck and `cargo check` on the desktop shell. Run it before every push |
+| `make check` | The tests, the rules lint, the runbook table check, the record schema check (docs/schema.md), the layouts table check (docs/parsing.md), the TypeScript typecheck and `cargo test --locked` on the desktop shell, which compiles it and runs its Rust tests. Run it before every push |
 | `make types` | Write `apps/web/src/types.gen.ts` from `server/finance/types.py`: run it after changing what an endpoint sends |
 
 Every test run works on a throwaway data folder: `server/tests/isolate.py`
