@@ -204,11 +204,12 @@ def _day(d):
     return (date.fromisoformat(d) - date(1970, 1, 1)).days
 
 
-def flags(conn, cfg=None, results=None):
+def flags(conn, cfg=None, results=None, rec=None):
     """Every flagged row, newest first: {key, date, payee, amount, reasons}.
     `amount` is the SGD cents sent (positive); each reason is {code, text}.
     `results` are the stat results, whose recurring series the owner's edits
-    are read over (G16); without them only a payee's own Not recurring is."""
+    are read over (G16); without them only a payee's own Not recurring is.
+    `rec` is a recurring.Record already built for this answer (Home's)."""
     cfg = cfg or settings(conn)
     first = conn.execute("SELECT MIN(txn_date) FROM v_txn").fetchone()[0]
     if not first:
@@ -217,7 +218,7 @@ def flags(conn, cfg=None, results=None):
     fine = marked_fine(conn)
     # G16: a payee marked not recurring has no running recurring charge, whatever the rules say
     off = series.payees_off_in(conn)
-    out_keys = recurring.edited_out(conn, results) | {r["txn_key"] for r in rows if r["payee_name"] in off}
+    out_keys = recurring.edited_out(conn, results, rec) | {r["txn_key"] for r in rows if r["payee_name"] in off}
     by_who = defaultdict(list)
     for r in rows:
         w = who(r)

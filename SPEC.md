@@ -464,7 +464,7 @@ default buckets (`category_groups`) and each category's own
   not fit (a phone, or eleven buckets on a laptop): the end that has more tabs
   past it fades out and shows a small arrow that scrolls that way, and an end
   with nothing past it shows neither. The tab is kept in the address (`?bucket=`, so a link
-  opens it, and the address wins) and in this browser; a name no bucket has
+  opens it, even while the page is open, and the address wins) and in this browser; a name no bucket has
   opens the first. Adding a bucket opens its tab, renaming one keeps its tab,
   and deleting one opens the bucket its categories went to. The row is a
   `Tabs` component (tablist, tab and tabpanel roles, arrows, Home and End).
@@ -1447,7 +1447,16 @@ dimension or filter is a 4xx with the names it takes, never a blank chart.
 The answer (`WidgetAnswer`) is `labels`, `series` (one per name when a
 spending query `split`s by bucket, category, payee, account or need class), a
 `unit`, and `label_links`: the Transactions filters each point lists, the
-chart `links` idea carried to widgets. Money comes back under `values_minor`,
+chart `links` idea carried to widgets. A stat source's points take the stat's
+own `chart.links` entry for the metric's field (a month written as `from` and
+`to`), so the stat stays the one place that says which rows a figure adds up,
+and a metric the stat does not link (a balance, a share) links nowhere. A
+`spending` point's link carries the metric's flag (`hide_transfers=0` with
+`transfers` and `net`, whose transfer rows Transactions otherwise hides), the
+query's filters, and its slice's filter; the folded "Everything else" slice
+leaves out the shown names on top of any the query's own filters left out.
+`server/tests/test_stat_links.py` follows every point of every metric,
+dimension and split to the rows its link lists and holds the two to the cent. Money comes back under `values_minor`,
 integer cents with unit `sgd_minor`; anything else under `values` with its own
 unit (`months`, `fraction`, `percent`, the two share scales kept apart as
 they are everywhere).
@@ -1481,7 +1490,13 @@ bucket's cents a month and answers the template beside a month's actuals:
 income, per-bucket planned and actual, the actuals counted over every
 External spend row as `planning.budgets` does. The game pot (`GET/POST
 /api/dashboard/game-pot`) is metadata only for now: a name, the benchmark it
-plays against, a note, and the account ids it links.
+plays against, a note, and the account ids it links. Each of these state
+writes is read by its own GET alone, so after one the app asks that GET again
+and keeps every other answer (serve.py's `REREAD_AFTER`): a drag or a resize
+saves the layout, and forgetting every widget's answer each time would ask
+for them all afresh. The server still moves its version, so the GET's tag
+changes, and the app's other tabs are told which views to ask again, so a
+Dashboard open in a second window never edits a board this one changed.
 
 **The change widgets** (`apps/web/src/dashboard/widgets/change/`) are the
 first components bound to the query layer: a time series of one or more
@@ -1546,7 +1561,11 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   run, what started it (`make serve`, `make dev` or the desktop app, which
   `GET /api/server` answers) and its port and pid, with a Stop that asks
   once ("Stop the server?") before `POST /api/server/stop` and a Restart
-  before `POST /api/server/restart`. Both answer first, then the process
+  before `POST /api/server/restart`. Both answer first, naming the work
+  under way (a load, a save, the stats rebuild), then refuse new writes
+  (503) and wait for every request being answered and the stats rebuild to
+  finish, two minutes at most, so a load or a rebuild is never cut off
+  mid-run; the card says what it is waiting for. Then the process
   ends or runs its command line again in its place (under `--app` the
   shell's hold on stdin survives, and the new ready line reloads the
   window). A stopped server answers nothing its own page could use to
@@ -2168,7 +2187,16 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   (80 per cent, within three days, for twice a month), and a run of fewer than five must
   keep every gap. Three payments are needed, four every two months, six over eight weeks
   weekly, six over ten fortnightly, eight over twelve twice a month, and two for
-  half-yearly and yearly when the rules mark the payee recurring. Below S$10 a repeat is
+  half-yearly and yearly when the rules mark the payee recurring. A weekly or fortnightly
+  run counts every payment its span should hold, so one missing a week in three is off
+  schedule. At a busy payee, where the other charges within one cadence of a run number
+  more than half its own payments (charges of the payee's other series aside), a run must
+  also keep its days (80 per cent of its payments within a day of its weekday, or three
+  days of its day of the month) and hold its prices (60 per cent of its payments within
+  a twentieth of the one before or after, every one in a run of fewer than five): some
+  stretch of purchases at one amount level otherwise always happens to fall a week or a
+  month apart. The group taken whole, as a bill whose amount moves, must always keep its
+  days. Below S$10 a repeat is
   noise on every path, held against the amount the series finally reports, unless the
   rules mark the payee recurring. A varying bill's usual range on the page comes from its
   own charges and the odd ones that answered its schedule at half to twice its amount,
@@ -2179,7 +2207,9 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   whole. A series is **paused** when nothing has come for one and a half cadences, and
   at least a month, before the last day its own account's statements cover, and
   **stopped** after three cadences and at least two months: so a missed rent half or a
-  missed week reads late, not paused. A paused
+  missed week reads late, not paused. An account with no statement for more than three
+  months (91 days) while the record runs on is closed, not lagging: its series are
+  judged on the record's last day, so a bill on a cancelled card stops. A paused
   series is listed under the active ones with a Paused chip, its last payment in place
   of the next one and no bar, and is in no total, not in Coming up and not in Needs
   your eye; once the record shows it paying again it is active, before the stat next
@@ -2216,7 +2246,8 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   account, so a card loaded to 28 October does not make a bank GIRO paid from an
   account loaded to 30 September late. The account is the one the series' own latest
   payment in the usual range came from, not another purchase at the same payee; a
-  series whose account is unknown is judged on the record's latest date.
+  series whose account is unknown, or closed (no statement for more than 91 days before
+  the record's latest date), is judged on the record's latest date.
   Each row carries the status of the series' payment this
   month, as a chip: **paid** (with the day it came in under the name),
   **different amount** (paid but outside the detector's amount band around the
@@ -2631,7 +2662,8 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   (`Combobox`) takes the highlighted option when you Tab or click away from
   half-typed text, and puts the last choice back only when no option contains
   what was typed. The search text, the view, the filters and the page are kept in the address
-  (`?q=`, `?view=order`, `?show=`, `?category=`, `?page=`), so a reload or Back lands where you were, and an edit in
+  (`?q=`, `?view=order`, `?show=`, `?category=`, `?page=`) and read from it, so a reload or Back lands where you were,
+  a link to the bare `/rules` while the page is open shows every rule, and an edit in
   progress survives the window crossing 768px.
 - **Type.** Sans serif only, never a mono font. Figures use tabular numerals so
   columns of money line up.
@@ -2641,8 +2673,6 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   "3 Oct 2026", a month "Oct 2026", a range "3 Oct to 9 Oct 2026" (both ends
   in full across a year), and only chart axis ticks shorten to "Oct 26"; the
   API, exports and file names stay ISO.
-- Until G5 wires in the analytics results, every figure on screen comes from
-  [apps/web/src/sample.ts](apps/web/src/sample.ts) and is invented.
 
 ## Supported statements
 
@@ -2714,7 +2744,12 @@ then the Upload page names its statement as not supported and keeps nothing.
   plan), a statement's printed figures, a Notion number, a published
   reference figure. A stat's result is already cents and never goes through
   it (G20). `from_cents` is the exact way back, to a Decimal. A bool, NaN or an
-  infinity is refused. In the browser, `apps/web/src/money.ts` reads a money box's
+  infinity is refused, and so is text that is not a plain signed decimal:
+  thousands commas only between groups of three ("1,234.5" is 123450 cents,
+  "1,2,3" is refused), no currency sign, bracket, trailing minus or CR, and an
+  exponent only in a Decimal's own text with no commas ("1E+3", as the plan's
+  checked amounts can read). The rounding is exact integer arithmetic whatever the decimal
+  context, and 10^26 dollars or more is refused as no amount of money. In the browser, `apps/web/src/money.ts` reads a money box's
   text as cents digit by digit (`parseCents`: "1,234.5" is 123450) and writes
   cents back as box text (`centsText`); nothing in the app multiplies dollars
   by 100.
@@ -2789,7 +2824,13 @@ then the Upload page names its statement as not supported and keeps nothing.
   amount (`amount_sgd_minor`) uses the period's FX rate, which is an approximation for non-SGD wallets and
   is labelled as one.
 - A transaction's date is the calendar date the statement prints. It is never
-  converted between time zones.
+  converted between time zones. A printed day with no year ("28 Dec") takes
+  the statement's year, or the year before when its month is later than the
+  statement's. A day that does not exist in that year ("29 Feb" on a March
+  2025 statement, "31/04/2026") stops the parse rather than load as a date
+  every reader after it would break on, and `server/finance/dates.py` refuses
+  one too (a ValueError, in its labels and its month arithmetic) rather than
+  print it.
 - Every row has a stable key built from what the statement prints, so loading
   the same statement twice adds nothing, and a re-exported Revolut or Wise file
   replaces rather than duplicates.
@@ -2806,5 +2847,3 @@ then the Upload page names its statement as not supported and keeps nothing.
   localhost. G23's later lines answer this with a desktop app that bundles
   both ("Desktop app (G23)" above), so the parsers need not move to the browser.
   It stays open until those lines ship.
-- **Personal plan and profile.** The forward view reads the owner's pay and
-  trip plan from local config. Decide how a new user enters theirs.

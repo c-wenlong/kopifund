@@ -6,6 +6,7 @@ path asks about. The gate tests run a real server on an ephemeral port and
 send X-Forwarded-For by hand, which is exactly what `tailscale serve` does
 when it forwards the tailnet's HTTPS to loopback.
 """
+import isolate  # noqa: F401  first: no test writes the real record or cache
 import http.client
 import json
 import os

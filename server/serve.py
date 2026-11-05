@@ -156,9 +156,11 @@ privilege, never gain it.
     POST /api/link/pending/dismiss-all  G25: every waiting row dismissed at once, each can be put back (loopback)
     POST /api/link/pending/restore  G25: {import_id}: a matched or dismissed row back to waiting; a match
                                     it was in joins its rejected list and is never offered again (loopback)
-    POST /api/server/stop           G23: answer, then stop the server. Nothing can start it from the page
+    POST /api/server/stop           G23: answer with the work it waits for, refuse new writes, wait for
+                                    every request and the stats rebuild to end (DRAIN_TIMEOUT at most),
+                                    then stop the server. Nothing can start it from the page
                                     it served: the desktop shell's start page, or `make serve`, does
-    POST /api/server/restart        G23: answer, then run the same command line again in place of this
+    POST /api/server/restart        G23: as stop, then run the same command line again in place of this
                                     process: under --app the shell's hold on stdin and the new ready line
                                     work as on first launch, so its window reloads itself
     POST /api/dashboard/layouts     G26: {layouts, active?}: replace the whole list of layouts
@@ -224,7 +226,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 import dev_reload
 from analytics import api as growth_api
 from analytics import run as stats_run
-from finance import api, api_writes, app_icon, link, monthly, page_cache
+from finance import api, api_writes, app_icon, link, monthly, page_cache, stats_rebuild
 from finance.api import Download, Stream
 from finance.errors import NotFound, Refused
 
@@ -311,10 +313,22 @@ NO_CHANGE = frozenset({"/api/run/check", "/api/rules/suggest", "/api/uploads/sta
                        "/api/server/stop", "/api/server/restart",
                        # G26: a widget query and a scenario preview read, they change nothing
                        "/api/dashboard/query", "/api/dashboard/scenario/preview"})
-# G18: but a check writes the upload history, and the overview's Needs your
-# eye reads where the latest upload stands, so after a check the app asks for
-# the overview again (and for nothing else). types.gen.ts carries this too.
-REREAD_AFTER = {"/api/run/check": ("/api/overview",)}
+# G18: after one of these writes the app asks again for the GETs named, with
+# their tags, and for nothing else: every other answer it keeps stays (any other
+# write forgets them all, unless it is in NO_CHANGE). A check writes the upload
+# history, and the overview's Needs your eye reads where the latest upload
+# stands. G26: the dashboard's own state is read by its own GET alone, and a
+# layout is saved on every drag, resize and board switch; forgetting every
+# widget's answer each time would ask for them all afresh. Those writes still
+# move the server's version (they are not in NO_CHANGE), so their GET's tag
+# changes. types.gen.ts carries this too.
+REREAD_AFTER = {"/api/run/check": ("/api/overview",),
+                "/api/dashboard/layouts": ("/api/dashboard/layouts",),
+                "/api/dashboard/layouts/<id>": ("/api/dashboard/layouts",),
+                "/api/dashboard/goals": ("/api/dashboard/goals",),
+                "/api/dashboard/goals/remove": ("/api/dashboard/goals",),
+                "/api/dashboard/allocation": ("/api/dashboard/allocation",),
+                "/api/dashboard/game-pot": ("/api/dashboard/game-pot",)}
 
 
 def cached(path: str) -> bool:
@@ -359,6 +373,7 @@ def make_handler(dist: Path, page: str | None = None) -> type[BaseHTTPRequestHan
             if self.command != "HEAD":
                 self.wfile.write(body)
 
+        @_counted
         def do_GET(self) -> None:  # noqa: N802 (http.server naming)
             path = unquote(urlsplit(self.path).path)
             if self._proxied():
@@ -396,6 +411,7 @@ def make_handler(dist: Path, page: str | None = None) -> type[BaseHTTPRequestHan
 
         do_PUT = do_PATCH = do_DELETE = refuse  # noqa: N815
 
+        @_counted
         def do_POST(self) -> None:  # noqa: N802
             proxied = self._proxied()
             if not proxied and self.foreign_host():
@@ -705,6 +721,78 @@ def _get_server(req):
     return {"version": VERSION, "mode": _MODE, "port": _PORT, "pid": os.getpid(), "started": STARTED}
 
 
+# A stop or restart waits for the work already under way: every request being
+# answered (a load writing the record, a save) and the stats rebuild a write
+# started in the background. Request threads are daemons and a restart
+# execs, so without the wait that work would be cut off mid-run. The wait is
+# bounded, so a stuck request cannot keep the server up for good, and while
+# it lasts every new write is refused, so no new load starts only to be cut.
+DRAIN_TIMEOUT = 120                          # seconds
+_BUSY = threading.Condition()
+_INFLIGHT: dict[tuple[str, str], int] = {}   # (method, path) -> requests being answered
+_STOPPING = False
+_ENDS = frozenset({"/api/server/stop", "/api/server/restart"})
+# what the card names while it waits, for the writes that take a while
+_WORK_WORDS = {"/api/run/load": "a load", "/api/run/check": "a check", "/api/run/mirror": "the Notion mirror",
+               "/api/statements": "an upload", "/api/export": "an export"}
+
+
+def _counted(method: Callable) -> Callable:
+    """Wrap a do_GET or do_POST so a stop or restart knows it is running."""
+    def counted(self) -> None:
+        key = (self.command, unquote(urlsplit(self.path).path))
+        with _BUSY:
+            if _STOPPING and self.command == "POST":
+                refused = True
+            else:
+                refused = False
+                _INFLIGHT[key] = _INFLIGHT.get(key, 0) + 1
+        if refused:
+            self.send_json({"error": "The server is stopping, so it takes no new changes: "
+                                     "try again once it is back"}, HTTPStatus.SERVICE_UNAVAILABLE)
+            return
+        try:
+            method(self)
+        finally:
+            with _BUSY:
+                _INFLIGHT[key] -= 1
+                if not _INFLIGHT[key]:
+                    del _INFLIGHT[key]
+                _BUSY.notify_all()
+    return counted
+
+
+def _running_work(reads: bool = False) -> list[str]:
+    """The work a stop waits for, in the card's words: the writes under way
+    but the stop itself, and the stats rebuild. GETs are waited for too, and
+    named only with `reads` (the warning when the wait runs out), as the
+    card has no use for a read that takes a moment."""
+    with _BUSY:
+        posts = [path for (method, path) in _INFLIGHT if method == "POST" and path not in _ENDS]
+        gets = sum(n for (method, _path), n in _INFLIGHT.items() if method in ("GET", "HEAD"))
+    words = list(dict.fromkeys(_WORK_WORDS.get(p, "a save") for p in sorted(posts)))
+    if stats_rebuild.running():
+        words.append("the stats rebuild")
+    if reads and gets:
+        words.append("1 read" if gets == 1 else f"{gets} reads")
+    return words
+
+
+def _drain(timeout: float | None = None) -> list[str]:
+    """Wait until no request is being answered and no stats rebuild runs, for
+    at most `timeout` seconds (DRAIN_TIMEOUT). The work still running at the
+    deadline, in the card's words, or [] when everything finished."""
+    deadline = time.monotonic() + (DRAIN_TIMEOUT if timeout is None else timeout)
+    with _BUSY:
+        while _INFLIGHT or stats_rebuild.running():
+            left = deadline - time.monotonic()
+            if left <= 0:
+                break
+            # a request's end notifies; the stats rebuild does not, so look again shortly
+            _BUSY.wait(min(left, 0.25))
+    return _running_work(reads=True) if (_INFLIGHT or stats_rebuild.running()) else []
+
+
 def _after_response(fn: Callable[[], None]) -> None:
     """Run `fn` once this request's answer has had a moment to leave, so the
     stop or restart that ends this process never eats its own reply."""
@@ -712,6 +800,10 @@ def _after_response(fn: Callable[[], None]) -> None:
 
 
 def _stop() -> None:
+    left = _drain()
+    if left:
+        print(f"Stopping after {DRAIN_TIMEOUT} s with {', '.join(left)} still running: "
+              "it ends unfinished, and the record keeps what it last committed", file=sys.stderr, flush=True)
     if _SERVER is not None:
         _SERVER.shutdown()
 
@@ -722,14 +814,21 @@ def _restart() -> None:
     _stop()
 
 
+def _ending(fn: Callable[[], None]) -> dict:
+    """Stop taking writes, answer with the work the exit waits for, then end."""
+    global _STOPPING
+    with _BUSY:
+        _STOPPING = True
+    _after_response(fn)
+    return {"ok": True, "waiting_for": _running_work(), "timeout": DRAIN_TIMEOUT}
+
+
 def _post_server_stop(req):
-    _after_response(_stop)
-    return {"ok": True}
+    return _ending(_stop)
 
 
 def _post_server_restart(req):
-    _after_response(_restart)
-    return {"ok": True}
+    return _ending(_restart)
 
 
 # ----------------------------------------------------- G19: the route tables
