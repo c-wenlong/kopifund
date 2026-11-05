@@ -16,6 +16,9 @@ const FULL = "w-60";
 
 export type Holdings = { label: string; value: Cents }[];
 
+/** The sidebar toggle's name; pressed means the sidebar folds away and opens on hover. */
+export const TOGGLE = "Expand sidebar on hover";
+
 export function Sidebar({ path, holdings = [], asOf, eye = [] }: { path: string; holdings?: Holdings; asOf?: string | null; eye?: EyeLine[] }) {
   const [mode, setMode] = useSidebarMode();
   const logo = useAppIconLogo();
@@ -62,8 +65,9 @@ export function Sidebar({ path, holdings = [], asOf, eye = [] }: { path: string;
           <button
             type="button"
             onClick={() => setMode(mode === "open" ? "hover" : "open")}
+            // Audit: one fixed name with its pressed state; a name that flipped read as the opposite of the state
             aria-pressed={mode === "hover"}
-            aria-label={mode === "open" ? "Expand on hover" : "Keep sidebar open"}
+            aria-label={TOGGLE}
             title={mode === "open" ? "Expand on hover" : "Keep sidebar open"}
             className="grid size-8 shrink-0 place-items-center rounded-md text-ink-3 hover:bg-hover hover:text-ink"
           >

@@ -144,7 +144,7 @@ export function ModelField({ label, provider, value, onChange, placeholder }: {
         role="combobox"
         aria-label={label}
         aria-expanded={showing}
-        aria-controls={listId}
+        aria-controls={showing ? listId : undefined}
         aria-autocomplete="list"
         aria-activedescendant={showing && active >= 0 ? `${id}-${active}` : undefined}
         value={value}

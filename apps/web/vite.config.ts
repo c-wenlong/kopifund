@@ -17,6 +17,8 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    // Audit: the CSP in index.html is for the built app; Vite's dev server injects inline scripts and styles it would block
+    { name: "kopifund-csp-build-only", apply: "serve", transformIndexHtml: (html: string) => html.replace(/\s*<meta http-equiv="Content-Security-Policy"[^>]*>/, "") },
     VitePWA({
       registerType: "autoUpdate",
       // src/serviceWorker.ts registers it, and skips it inside the desktop window

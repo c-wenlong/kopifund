@@ -105,7 +105,17 @@ flowchart LR
   Content-Length that is not a whole number is a 400, and one over 25 MB a 413.
   The link path below gets the same headers, the same JSON on a failure and
   the same length check; its GETs are held by the device bearer instead of
-  `Sec-Fetch-Site`. The phone link ("Phone link (G25)"
+  `Sec-Fetch-Site`. The built app also carries a Content-Security-Policy in
+  `apps/web/index.html` (a meta tag, so `make serve` and the Mac app's window
+  both get it from the page itself): every script, style, font, image, fetch
+  and worker comes from the app's own origin, with `data:` and `blob:` images
+  allowed, no inline script, no plugin (`object-src 'none'`), no `<base>`, and
+  forms only to itself. Vite's dev server injects inline scripts, so
+  `vite.config.ts` drops the tag under `make dev`. The two policies split the
+  work: the meta tag owns what the page may load and run, and serve.py's
+  header owns only `frame-ancestors`, which a meta tag cannot set. A browser
+  enforces both at once, and neither names a directive the other does. The
+  phone link ("Phone link (G25)"
   below) is the only way a request reaches the API off this machine, and it
   arrives on loopback too, through `tailscale serve`. The routes are listed at the top of
   serve.py, and in it `GET_ROUTES` and `POST_ROUTES` are the one table that
@@ -680,7 +690,9 @@ changes the record.
   back to the model as a tool error saying so, for it to call again; it never
   ends the answer. Every stream ends with a `done` line, after an `error`
   line when anything failed, the record not opening or the turn not saving
-  included.
+  included. A line the app cannot read ends the request there (the app
+  cancels the body and aborts the fetch, so the model stops), and the answer
+  says "The answer came back garbled, so it stopped there."
 - **Steps.** Each answer shows its steps in order above the answer, every
   row collapsed until pressed: "Thought" (a round's summarized thinking,
   quiet, under a rule), "Used 2 tools" (the tools of one round, or of rounds
@@ -1208,9 +1220,13 @@ this, and a figure kept from before a write is never shown after it.
   server is down, or the connection dropped while the answer was coming) keeps the
   kept one and says so in a banner. Memory holds the
   50 most recently read answers. The answers are kept in `localStorage` too, most
-  recently used first up to about 3 million characters, under a key that
-  names the build, so a reload paints from them and a new build never paints
-  an answer shaped for an old one. Every write the app makes (`notifyChanged`)
+  recently used first up to about 1.5 million characters (500,000 for one),
+  under a key that names the build, so a reload paints from them and a new
+  build never paints an answer shaped for an old one. That copy sits in the
+  browser's profile on disk, outside the data folder, so it holds only what a
+  page paints first: never `/api/transactions`, `/api/rules/rows`,
+  `/api/scam-checks` or `/api/profile`, which stay in memory for the visit,
+  and an answer not read for 30 days is dropped as the app starts. Every write the app makes (`notifyChanged`)
   empties both, so a page opened after a write waits for the new figures; a
   view already on screen keeps its figures until the new ones arrive. The end
   of a stats rebuild empties them again, an answer asked for before a write
@@ -1721,22 +1737,52 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
 - **Shared states** (`apps/web/src/components/States.tsx`, `ServerBanner.tsx`,
   `Toast.tsx`). Each page names the browser tab ("Spending, Kopifund").
   - A server that does not answer is one banner at the top of the page, "Can't
-    reach Kopifund. Is make serve running?", with Retry (it asks `/api/health`
+    reach Kopifund. Quit and reopen Kopifund, then Retry." in the Mac app's
+    window (it starts its own server) and "Can't reach Kopifund. Start it
+    again on the computer that runs it, then Retry." in a browser or the
+    installed web app, with Retry (it asks `/api/health`
     and every page then revalidates); it asks again by itself every five
     seconds. A failure to get any answer is one plain message in `api.ts`
     (`OFFLINE`), never the browser's "Failed to fetch"; a gateway that answers
     500 with no body (the dev proxy with `serve.py` stopped) counts as no
-    answer. A page that has its last answer in the cache keeps painting it, and
+    answer, and so does a 502, 503 or 504 whatever its body says. An answer
+    that comes but is not JSON (a proxy's page, a body cut short) says
+    "Kopifund's answer could not be read." rather than the parser's words; for
+    a write it adds that the change should be checked before it is done again,
+    and every view asks again, since the write may have landed. A page that has its last answer in the cache keeps painting it, and
     the banner adds "Showing figures from your last visit"; a card with nothing
     to show is a quiet placeholder, not a repeated error. A write that cannot
     reach the server says it was not saved.
   - "Run the analysis" is shown only for a real 404 on a stat result. Any other
     failed load says what went wrong, with Try again.
+  - A page that fails as it draws (an answer in a shape this build does not
+    know) shows "Something on this page failed to draw." in its place, with
+    Try again, which forgets the kept answers (the one the page failed on
+    included), asks for them again and draws the page once they are back
+    (three seconds at most), so a page handed the shell's overview (Home)
+    reads the new one; the sidebar, the header and the
+    other pages keep working, and opening another page starts clean
+    (`ErrorBoundary.tsx`). Each copilot answer has its own such boundary, so a
+    part it cannot draw shows "This answer failed to draw." in its place while
+    the other answers, later replies, the History button and the box keep
+    working. Each Dashboard widget has one too: a widget that cannot draw
+    its answer shows "This widget failed to draw." on one line in its card,
+    with Try again (which asks for the answers afresh the same way), while
+    its Remove button and the rest of the board keep working.
+    Anything outside those fails to a whole-screen message with
+    Reload. Money formatters never throw while a page draws: a value that is
+    not integer cents is reported in the console and drawn rounded, or as "?"
+    when it is not a number, and a kind with no icon of its own draws a
+    generic one.
   - A card still loading is a fixed-height skeleton, so the cards below do not
     jump when its figures arrive.
   - A toast is a short message at the bottom of the screen in a polite live
     region (an error is an alert), gone after a few seconds, with an optional
-    Undo. A toast that carries an Undo (a trip save or removal, a rule write,
+    Undo. Toasts sit straight under the page's body, above an open Sheet and
+    left live by it, so an Undo raised from a Sheet (the copilot's on a phone)
+    can be seen, pressed and heard, and is on the Sheet's Tab path (and the
+    phone menu's): Tab goes from the Sheet's last control to the toast's
+    buttons and back round to its first. A toast that carries an Undo (a trip save or removal, a rule write,
     a row's category) stays up until it is dismissed, its Undo is pressed, or
     newer Undos push it off (other notices never push it off the screen), so
     the way back is never lost to a timer. Undos stack, newest on top, each
@@ -1768,7 +1814,16 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
     (`accent-color`), not the browser's blue.
   - Anything the keyboard can reach (button, link, summary, custom radio or
     tab) gets a 2px ring in `--focus` on `:focus-visible`; inputs keep their
-    own ring.
+    own ring, and a file picker's label (Choose PDFs) shows the ring of its
+    hidden input. The first Tab stop is "Skip to content", shown only while
+    it has the focus, which moves the focus to the page past the sidebar. The
+    phone menu, like a Sheet, keeps Tab inside itself while it is open, and a
+    list open inside it keeps its own Escape. A control names the element it
+    controls (`aria-controls`) only while that element is there.
+  - User-facing words never tell someone to run a command: an app user has
+    no shell. Where a developer's command helps (a missing pdftotext, the
+    Notion mirror's options), it is the server's own sentence on a problem's
+    details line.
   - For a visitor who asked for reduced motion, the spinner stops and the
     sidebar width and chevron transitions are off.
   - On a touch screen (`pointer: coarse`) every button, menu and text box is at
@@ -2040,7 +2095,11 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   cost per day) opens nothing, shows no pointer and its hover card does not
   invite a click; where only some series link, the card names them ("Click
   the Spend bar to see its transactions"). The 12-month spending chart on Home
-  does the same and draws the average as a dashed line.
+  does the same and draws the average as a dashed line. A stat chart's
+  figures follow it as a table under a "Figures as a table" disclosure, which
+  shows only to the keyboard (as it takes the focus) and to a screen reader:
+  the text alternative to the drawing, and the keyboard's way to the rows,
+  since each figure that links is a link to the same rows as its bar.
   **Chart views:** a chart of the same series over time carries a small
   switch in its card's header (a radio group: one tab stop, the arrow keys
   choose) and remembers the choice per chart in this browser. Stacked is the

@@ -63,12 +63,17 @@ export const KNOWN: Record<string, Known> = {
     next: "Check again. If it stays, move the newest upload out of the statements folder and check once more.",
     fix: true,
   },
-  "pdftotext-missing": { headline: "pdftotext is not installed", next: "Run brew install poppler, then reload this page." },
+  // Audit: the next step in an app user's words; the exact command is the server's sentence, on the details line
+  "pdftotext-missing": {
+    headline: "pdftotext is not installed",
+    next: "Kopifund reads PDFs with it. Install poppler (the command is on the details line), then reload this page.",
+    fix: true,
+  },
   // the Notion mirror's checks: they reach this page only through Past uploads
   "unknown-account": { headline: "Account not linked to Notion", next: "Add the account in Notion and in config.toml under [accounts], then try again." },
   "unknown-card": { headline: "Card not linked to Notion", next: "Add the card in Notion and in config.toml under [cards], then try again." },
-  "unknown-option": { headline: "Notion is missing an option", next: "Run python3 finance.py add-options, then try again.", fix: true },
-  "missing-payee": { headline: "A payee is not in Notion", next: "Run python3 finance.py payees, then try again." },
+  "unknown-option": { headline: "Notion is missing an option", next: "Add the options Notion is missing (the command is on the details line), then try again.", fix: true },
+  "missing-payee": { headline: "A payee is not in Notion", next: "Add the missing payees to Notion (the command is on the details line), then try again.", fix: true },
   "missing-category": { headline: "A category is not in Notion", next: "Create the category in Notion and check its spelling in your rules." },
   "implausible-insert": {
     headline: "Far more new rows than expected",

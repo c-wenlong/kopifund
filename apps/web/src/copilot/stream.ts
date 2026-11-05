@@ -6,10 +6,15 @@
 import { ApiError, checkServer, OFFLINE } from "../api";
 import type { CopilotEvent, CopilotPage } from "../types.gen";
 
+/** Audit: a line that is not JSON, in place of the parser's words. */
+export const GARBLED = "The answer came back garbled, so it stopped there.";
+
 /**
  * Every event in an ndjson body, in order, as each line completes. A chunk can
  * end mid-line (the rest comes with the next chunk) or hold several lines; a
  * last line with no newline after it still counts. Blank lines are skipped.
+ * Audit: a line that does not parse, or a listener that throws, cancels the
+ * body before the error goes on, so the request is not left running.
  */
 export async function readEvents(body: ReadableStream<Uint8Array>, onEvent: (e: CopilotEvent) => void): Promise<void> {
   const reader = body.getReader();
@@ -19,19 +24,24 @@ export async function readEvents(body: ReadableStream<Uint8Array>, onEvent: (e: 
     const text = line.trim();
     if (text) onEvent(JSON.parse(text) as CopilotEvent);
   };
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    held += decoder.decode(value, { stream: true });
-    let at = held.indexOf("\n");
-    while (at !== -1) {
-      emit(held.slice(0, at));
-      held = held.slice(at + 1);
-      at = held.indexOf("\n");
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      held += decoder.decode(value, { stream: true });
+      let at = held.indexOf("\n");
+      while (at !== -1) {
+        emit(held.slice(0, at));
+        held = held.slice(at + 1);
+        at = held.indexOf("\n");
+      }
     }
+    held += decoder.decode();
+    emit(held);
+  } catch (e) {
+    await reader.cancel().catch(() => {});
+    throw e;
   }
-  held += decoder.decode();
-  emit(held);
 }
 
 export type AskBody = { thread: string | null; question: string; page: CopilotPage };
@@ -74,14 +84,18 @@ export async function ask(body: AskBody, onEvent: (e: CopilotEvent) => void, sig
   if (!r.body) {
     // a body the browser hands over whole (no stream): the same lines, read at once
     const text = await r.text();
-    for (const line of text.split("\n")) if (line.trim()) onEvent(JSON.parse(line) as CopilotEvent);
+    try {
+      for (const line of text.split("\n")) if (line.trim()) onEvent(JSON.parse(line) as CopilotEvent);
+    } catch (e) {
+      throw e instanceof SyntaxError ? new ApiError(GARBLED, r.status) : e;
+    }
     return;
   }
   try {
     await readEvents(r.body, onEvent);
   } catch (e) {
     if (isAbort(e)) throw e;
-    if (e instanceof SyntaxError) throw e;
+    if (e instanceof SyntaxError) throw new ApiError(GARBLED, r.status);
     // the connection dropped after the answer began
     void checkServer();
     throw new ApiError(OFFLINE);

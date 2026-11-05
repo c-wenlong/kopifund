@@ -69,6 +69,11 @@ export type Country = { code: string; alpha2: string; flag: string };
 // shell says it once, in a banner (components/ServerBanner.tsx).
 export const OFFLINE = "Can't reach Kopifund.";
 const OFFLINE_WRITE = "Can't reach Kopifund, so that was not saved.";
+// Audit: an answer came but is not the JSON the app reads (a proxy's or a captive portal's page, a body cut
+// short). Said in plain words, never the parser's "Unexpected token"; a write whose answer is unreadable may
+// still have landed, so it is not reported as saved, and the views ask again to show what is true.
+export const UNREADABLE = "Kopifund's answer could not be read.";
+export const UNREADABLE_WRITE = "Kopifund's answer could not be read, so check the change shows before doing it again.";
 
 /** `status` is the HTTP status, or 0 when no answer came back at all. */
 export class ApiError extends Error {
@@ -174,17 +179,41 @@ async function readText(r: Response, write = false): Promise<string> {
   }
 }
 
-async function failure(r: Response, write = false): Promise<ApiError> {
+/** An answer's text as JSON, or UNREADABLE for text that is not. */
+function parse(text: string, status: number, write = false): unknown {
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    throw new ApiError(write ? UNREADABLE_WRITE : UNREADABLE, status);
+  }
+}
+
+/** The `error` a refusal's body carries, when it is JSON with one. */
+function saidIn(text: string): string | null {
+  try {
+    const said = (JSON.parse(text) as { error?: unknown } | null)?.error;
+    return typeof said === "string" && said ? said : null;
+  } catch {
+    return null;
+  }
+}
+
+/** A failed answer as the error a page shows; `text` is its body when the caller has read it already. */
+async function failure(r: Response, write = false, text?: string): Promise<ApiError> {
   let msg = `${r.status} ${r.statusText}`;
   let said = false;
-  try {
-    const body = await r.json();
-    if (body?.error) {
-      msg = body.error;
-      said = true;
+  let body = text;
+  if (body === undefined) {
+    try {
+      body = await r.text();
+    } catch {
+      body = "";
     }
-  } catch {
-    /* not JSON */
+  }
+  const words = saidIn(body);
+  if (words) {
+    msg = words;
+    said = true;
   }
   // a gateway that found nothing behind it (the dev server's proxy answers 500
   // with no body when serve.py is stopped) is a server that is not there
@@ -199,7 +228,7 @@ async function failure(r: Response, write = false): Promise<ApiError> {
 export async function getJSON<T>(url: string): Promise<T> {
   const r = await reach(url);
   if (!r.ok) throw await failure(r);
-  return JSON.parse(await readText(r)) as T;
+  return parse(await readText(r), r.status) as T;
 }
 
 // `status` is the HTTP status of a failed answer (404 for "nothing there yet"), 0 when the server did not answer
@@ -227,11 +256,19 @@ export function cacheable(url: string): boolean {
 declare const __KOPIFUND_BUILD__: string;
 const STORE_PREFIX = "kopifund:api:";
 const STORE = `${STORE_PREFIX}${__KOPIFUND_BUILD__}`;
+/** For tests: where the kept copy lives. */
+export const KEPT_KEY = STORE;
 const CHANGED_KEY = "kopifund:api-changed";       // tells the app's other tabs a write happened
 const REFRESH_KEY = "kopifund:api-refresh";       // tells them which views a REREAD_AFTER write changed
 // localStorage holds about 5 million characters for the whole origin
-const MAX_ENTRY = 1_000_000;
-const MAX_STORED = 3_000_000;
+const MAX_ENTRY = 500_000;
+const MAX_STORED = 1_500_000;
+// Audit: the copy sits on disk in the browser profile, outside the data folder, so it holds only what a
+// page paints first (the summaries and stat results), never the ledger's rows or the profile, which stay
+// in memory for the visit; and an answer not read for KEEP_FOR is dropped
+const NOT_KEPT = ["/api/transactions", "/api/rules/rows", "/api/scam-checks", "/api/profile"];
+export const KEEP_FOR = 30 * 24 * 60 * 60 * 1000;
+const keptOnDisk = (url: string) => !NOT_KEPT.includes(url.split("?")[0]);
 // answers kept in memory, the least recently read going first: every search
 // and page of Transactions is its own URL
 export const MAX_KEPT = 50;
@@ -267,6 +304,11 @@ function storage(): Storage | null {
   }
 }
 
+/** Paint from the kept copy: what a reload starts with. Exported for tests. */
+export function restoreKept() {
+  restore();
+}
+
 function restore() {
   const store = storage();
   if (!store) return;
@@ -276,10 +318,15 @@ function restore() {
       if (key?.startsWith(STORE_PREFIX) && key !== STORE) store.removeItem(key);
     }
     const kept = JSON.parse(store.getItem(STORE) ?? "[]") as [string, string | null, string, number][];
+    const now = Date.now();
+    let dropped = false;
     for (const [url, etag, text, used] of kept) {
       // checked 0: painted from the copy, then asked about straight away
-      if (cacheable(url)) keep(url, { data: JSON.parse(text), etag, text, checked: 0, used });
+      if (cacheable(url) && keptOnDisk(url) && now - used <= KEEP_FOR) keep(url, { data: JSON.parse(text), etag, text, checked: 0, used });
+      else dropped = true;
     }
+    // what was dropped leaves the disk now, not at the next answer
+    if (dropped) save();
   } catch {
     cache.clear();                                 // a copy that does not parse: start empty
   }
@@ -295,7 +342,7 @@ function save() {
   let size = 0;
   for (const [url, e] of [...cache].sort((a, b) => b[1].used - a[1].used)) {
     const n = e.text.length + url.length + 64;
-    if (n > MAX_ENTRY || size + n > MAX_STORED) continue;
+    if (!keptOnDisk(url) || n > MAX_ENTRY || size + n > MAX_STORED) continue;
     rows.push([url, e.etag, e.text, e.used]);
     size += n;
   }
@@ -331,9 +378,17 @@ function forget() {
   }
 }
 
-/** For tests: start from nothing. */
+/**
+ * For tests: start from nothing, as a fresh page would. Audit: that includes
+ * the per-URL generations, the revalidate clock and a stats watch left
+ * running by a test that ended mid-rebuild (which would make the next one skip).
+ */
 export function clearApiCache() {
   forget();
+  urlGeneration.clear();
+  revalidatedAt = 0;               // no round asked yet, whatever clock a test moved
+  watchRun += 1;
+  watching = false;
 }
 
 /** The kept answer for `url`, if any, without asking the server. */
@@ -341,6 +396,8 @@ function peek<T>(url: string): T | undefined {
   const e = cacheable(url) ? cache.get(url) : undefined;
   if (!e) return undefined;
   e.used = Date.now();
+  // the read time goes to disk too, so an answer drops 30 days after it was last read, offline or not
+  saveSoon();
   return e.data as T;
 }
 
@@ -365,7 +422,7 @@ function load<T>(url: string): Promise<T> {
       throw err;
     }
     const text = await readText(r);
-    const data = JSON.parse(text) as unknown;
+    const data = parse(text, r.status);
     if (asked === generationOf(url)) {
       const now = Date.now();
       keep(url, { data, etag: r.headers.get("ETag"), text, checked: now, used: now });
@@ -400,6 +457,33 @@ export function prefetch(urls: readonly string[]) {
 // after a load or a new rule, Home and the stat cards show the new record
 // without a browser reload. A reload keeps the old data on screen meanwhile.
 const CHANGED = "kopifund:changed";
+
+const tick = () => new Promise<void>((done) => setTimeout(done, 0));
+/** The longest reloadViews waits on the asks it starts, in ms. */
+const RELOAD_WAIT = 3_000;
+
+/**
+ * Audit: forget every kept answer, in memory and on disk, and ask every mounted
+ * view again. Resolves once those asks have settled and the views have drawn
+ * what came back, so a part drawn after it (an error boundary's Try again)
+ * reads the server's answers, not the ones it failed on: the shell's overview,
+ * which Home is handed, included.
+ */
+export async function reloadViews(): Promise<void> {
+  forget();
+  window.dispatchEvent(new Event(CHANGED));
+  // the views ask as they redraw, a tick after the event; a few rounds catch an ask that starts
+  // another, and an ask that hangs (a server gone quiet) holds Try again up RELOAD_WAIT at most in all
+  const until = Date.now() + RELOAD_WAIT;
+  for (let round = 0; round < 3; round += 1) {
+    await tick();
+    const running = [...inflight.values()].map((r) => r.promise.catch(() => undefined));
+    const left = until - Date.now();
+    if (!running.length || left <= 0) break;
+    await Promise.race([Promise.all(running), new Promise<void>((done) => setTimeout(done, left))]);
+  }
+  await tick();
+}
 
 /** Ask every mounted view again, keeping the cache: the ETags make it cheap. */
 export function revalidate() {
@@ -578,11 +662,27 @@ export function rereadAfter(path: string): readonly string[] | undefined {
 
 export async function postJSON<T>(url: string, body?: BodyInit, contentType = "application/json"): Promise<T> {
   const r = await reach(url, { method: "POST", body, headers: { "X-Kopifund": "1", "Content-Type": contentType } }, true);
-  const data = await r.json().catch(() => ({}));
-  if (!r.ok) {
-    const said = (data as { error?: string }).error;
-    if (said) throw new ApiError(said, r.status);
-    throw await failure(r, true);
+  // Audit: a refusal goes through `failure` like every other answer, so a gateway's 502 is no answer
+  // whatever its body says
+  if (!r.ok) throw await failure(r, true, await readText(r, true).catch(() => ""));
+  // the body read once, as text. Empty is an answer with nothing to say; text that is not JSON fails,
+  // after every view is asked again, since the write may have landed. So does a connection that drops
+  // while the body comes: the server answers only once the write is done, so it is not "not saved"
+  let text: string;
+  try {
+    text = await r.text();
+  } catch {
+    notifyChanged();
+    throw new ApiError(UNREADABLE_WRITE, r.status);
+  }
+  let data: unknown = {};
+  if (text.trim() !== "") {
+    try {
+      data = parse(text, r.status, true);
+    } catch (e) {
+      notifyChanged();
+      throw e;
+    }
   }
   // a check, a suggestion and a projection preview (G14) change nothing, so no view needs to reload.
   // G18: but a check moves the upload history, which the overview's Needs your eye reads: the views
@@ -610,9 +710,12 @@ export async function postJSON<T>(url: string, body?: BodyInit, contentType = "a
 // a stat page opened meanwhile shows the new figures rather than the old ones.
 // One watch at a time, whatever page started it; it gives up after two minutes.
 let watching = false;
+// Audit: which watch is the live one; a reset (a test's) moves it on, so a watch already under way stops
+let watchRun = 0;
 export function watchStatsRebuild(every = 1500, tries = 80) {
   if (watching) return;
   watching = true;
+  const run = watchRun;
   const ask = (left: number) => {
     // a page torn down meanwhile (a test's, or the window closing) has nothing left to tell
     if (typeof window === "undefined") {
@@ -620,6 +723,7 @@ export function watchStatsRebuild(every = 1500, tries = 80) {
       return;
     }
     window.setTimeout(async () => {
+      if (run !== watchRun) return;
       if (typeof window === "undefined") {
         watching = false;
         return;
@@ -631,6 +735,7 @@ export function watchStatsRebuild(every = 1500, tries = 80) {
         // a question that failed says nothing about the rebuild: ask again
         running = true;
       }
+      if (run !== watchRun) return;
       if (running && left > 1) {
         ask(left - 1);
         return;

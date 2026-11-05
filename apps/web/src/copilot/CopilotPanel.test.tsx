@@ -3,7 +3,8 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Toaster } from "../components/Toast";
 import type { AiSettings, CopilotCard, CopilotEvent, CopilotThread } from "../types.gen";
-import { CopilotSide } from "./CopilotPanel";
+import { ANSWER_FAILED, CopilotSide } from "./CopilotPanel";
+import { GARBLED } from "./stream";
 import { CUT_SHORT, stepsOf, useCopilot } from "./useCopilot";
 
 // G22: the Ask Kopifund panel: the answer's steps as they come, the answer and its parts, confirm cards, and its states.
@@ -640,5 +641,56 @@ describe("a reopened answer's steps", () => {
       { kind: "text" as const, text: "Groceries came to S$100.00.", tools: [] }];
     expect(stepsOf({ text: "Groceries came to S$100.00.", tools, steps }).map((s) => s.kind)).toEqual(["thinking"]);
     expect(stepsOf({ text: "Something else.", tools, steps }).map((s) => s.kind)).toEqual(["thinking", "text"]);
+  });
+});
+
+describe("a garbled answer", () => {
+  // Audit: the request was left open, so the model ran on while the panel showed the parser's words
+  it("stops the request and says the answer came back garbled", async () => {
+    let signal: AbortSignal | undefined;
+    stub(aiOn, (url, init) => {
+      if (url !== "/api/copilot/ask") return undefined;
+      signal = init?.signal ?? undefined;
+      return new Response(new ReadableStream<Uint8Array>({
+        start(c) { c.enqueue(enc.encode('{"type":"text","text":"Half"}\n<<not json>>\n')); },
+      }), { status: 200 });
+    });
+    render(<Panel />);
+    await askIt("What happened?");
+    expect(await screen.findByText(GARBLED)).toBeInTheDocument();
+    expect(signal?.aborted).toBe(true);
+  });
+});
+
+describe("an answer the panel cannot draw", () => {
+  // Audit: a part in a shape this build does not know used to take the whole app down with it
+  it("shows a problem in the panel and keeps the box", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const odd = { type: "chart", chart: { title: "Odd", result: "not a result" } } as unknown as CopilotEvent;
+    stub(aiOn, (url) => (url === "/api/copilot/ask" ? lines([odd, { type: "done" }]) : undefined));
+    render(<Panel />);
+    await askIt("Show me something odd");
+    expect(await screen.findByText(ANSWER_FAILED)).toBeInTheDocument();
+    await waitFor(() => expect(box()).toBeEnabled());
+    vi.mocked(console.error).mockRestore();
+  });
+
+  // Greptile on #305: one bad answer used to hide every later reply in the thread
+  it("still draws the answers after it", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const odd = { type: "chart", chart: { title: "Odd", result: "not a result" } } as unknown as CopilotEvent;
+    let n = 0;
+    stub(aiOn, (url) => {
+      if (url !== "/api/copilot/ask") return undefined;
+      n += 1;
+      return n === 1 ? lines([odd, { type: "done" }]) : lines([{ type: "text", text: "S$42 on kopi" }, { type: "done" }]);
+    });
+    render(<Panel />);
+    await askIt("Show me something odd");
+    expect(await screen.findByText(ANSWER_FAILED)).toBeInTheDocument();
+    await askIt("And kopi?");
+    expect(await screen.findByText("S$42 on kopi")).toBeInTheDocument();
+    expect(screen.getAllByText(ANSWER_FAILED)).toHaveLength(1);
+    vi.mocked(console.error).mockRestore();
   });
 });

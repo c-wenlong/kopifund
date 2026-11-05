@@ -47,16 +47,19 @@ export const isOffline = (message: string) => message === OFFLINE;
  * A problem, in plain words. When the server is simply not there the app
  * banner says so once (ServerBanner), so here the card stays a quiet placeholder
  * instead of every card repeating the browser's message. `retry` adds a Try
- * again button for a failed load; it asks the page's figures again.
+ * again button for a failed load; it asks the page's figures again. `onRetry`
+ * gives the button its own action instead (an error boundary drawing anew).
  */
-export function Problem({ message, hint, retry = false }: { message: string; hint?: string; retry?: boolean }) {
+export function Problem({ message, hint, retry = false, onRetry }: {
+  message: string; hint?: string; retry?: boolean; onRetry?: () => void;
+}) {
   if (isOffline(message)) return <CardSkeleton height={120} still />;
   return (
     <div className="rounded-lg bg-warn-bg px-4 py-3 text-[14px] text-warn" role="alert">
       <p className="m-0 flex items-center gap-2"><CircleAlert size={16} className="shrink-0" aria-hidden /> {message}</p>
       {hint && <p className="m-0 mt-1 text-[13px]">{hint}</p>}
-      {retry && (
-        <button type="button" onClick={revalidate}
+      {(retry || onRetry) && (
+        <button type="button" onClick={onRetry ?? revalidate}
           className="mt-2 rounded-md border border-warn/40 px-2.5 py-1 text-[13px] text-warn hover:bg-hover">
           Try again
         </button>
@@ -66,7 +69,7 @@ export function Problem({ message, hint, retry = false }: { message: string; hin
 }
 
 /** "Nothing there yet" is only a 404; any other failure says what went wrong. */
-export function NoResult({ status, error, what, hint = "Run the analysis from the Upload page, or `make analyse`." }: {
+export function NoResult({ status, error, what, hint = "Run the analysis from the Upload page." }: {
   status?: number; error: string | null; what: string; hint?: string;
 }) {
   if (error && status !== 404) return <Problem message={error} retry />;

@@ -19,6 +19,11 @@ function publish(p: Published | null) {
   listeners.forEach((l) => l());
 }
 
+/** For tests: no page has published anything. */
+export function resetPublished() {
+  publish(null);
+}
+
 /** The filters the page on screen published, or none. */
 export function usePublishedFilters(): Record<string, string> {
   return useSyncExternalStore(

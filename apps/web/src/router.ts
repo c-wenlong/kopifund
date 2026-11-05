@@ -161,4 +161,13 @@ function install() {
   window.addEventListener("popstate", onPop, true);
 }
 
+/** For tests: no guard, no question up, and the entry on screen read afresh, as a fresh page would. */
+export function resetRouter() {
+  dirtyGuards.clear();
+  pending = null;
+  passing = restoring = leaving = false;
+  at = indexOf(window.history.state) ?? 0;
+  emit();
+}
+
 if (typeof window !== "undefined") install();
