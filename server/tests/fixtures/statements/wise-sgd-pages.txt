@@ -33,7 +33,7 @@
   14 July 2025 | Transaction: TRANSFER-4163248355
 
   Converted 140.00 NOK to 18.67 SGD                                                                18.67                                48.67
-  14 July 2025 | Transaction: BALANCE-1391530443
+  14 July 2025 | Transaction: BALANCE-0272333191
 
 
 
