@@ -2,12 +2,19 @@
 """Income, spend, net and investing per month, plus the two phase averages.
 
 G20: every amount is integer cents, added from the rows' `amount_sgd_minor`
-and averaged over a phase's months with `common.div_cents` (half up).
+and averaged with `common.div_cents` (half up).
+
+A phase's totals add every one of its months, but its figures a month divide
+the full months' money by their count (`common.average_months`): the month
+that has only just begun, or one a bank statement is missing from, is real
+money but only part of a month, so it is left out of an average's sum and
+count alike. `full_months` says how many there were; a phase with none
+averages over all of its months.
 
 data:
   months  [{month, income_minor, spend_minor, net_minor, investing_minor,
             net_after_investing_minor, transfers_out_minor, partial}]
-  phases  [{name, from, to, months, income_minor, spend_minor, net_minor,
+  phases  [{name, from, to, months, full_months, income_minor, spend_minor, net_minor,
             investing_minor, income_per_month_minor, spend_per_month_minor,
             net_per_month_minor, investing_per_month_minor,
             net_after_investing_per_month_minor}]
@@ -51,25 +58,32 @@ def run(snapshot, benchmarks=None):
                        "transfers_out_minor": c.spend_minor(tra.get(m, [])),
                        "partial": cov[m]["partial"]})
 
+    full = [x["month"] for x in months if not x["partial"]]
     phases = []
     for p in c.phases():
         rows = [x for x in months if c.in_phase(x["month"], p)]
         if not rows:
             continue
-        n = len(rows)
         income = c.sum_cents(x["income_minor"] for x in rows)
         spend = c.sum_cents(x["spend_minor"] for x in rows)
         investing = c.sum_cents(x["investing_minor"] for x in rows)
+        averaged = set(c.average_months([x["month"] for x in rows], full))
+        avg = [x for x in rows if x["month"] in averaged]
+        n = len(avg)
+        a_income = c.sum_cents(x["income_minor"] for x in avg)
+        a_spend = c.sum_cents(x["spend_minor"] for x in avg)
+        a_investing = c.sum_cents(x["investing_minor"] for x in avg)
         phases.append({"name": p["name"], "from": rows[0]["month"],
-                       "to": rows[-1]["month"], "months": n,
+                       "to": rows[-1]["month"], "months": len(rows),
+                       "full_months": sum(1 for x in rows if not x["partial"]),
                        "income_minor": income, "spend_minor": spend,
                        "net_minor": income - spend, "investing_minor": investing,
-                       "income_per_month_minor": c.div_cents(income, n),
-                       "spend_per_month_minor": c.div_cents(spend, n),
-                       "net_per_month_minor": c.div_cents(income - spend, n),
-                       "investing_per_month_minor": c.div_cents(investing, n),
+                       "income_per_month_minor": c.div_cents(a_income, n),
+                       "spend_per_month_minor": c.div_cents(a_spend, n),
+                       "net_per_month_minor": c.div_cents(a_income - a_spend, n),
+                       "investing_per_month_minor": c.div_cents(a_investing, n),
                        "net_after_investing_per_month_minor":
-                           c.div_cents(income - spend - investing, n)})
+                           c.div_cents(a_income - a_spend - a_investing, n)})
 
     counted = [x for x in months if not x["partial"]]
     totals = {"income_minor": c.sum_cents(x["income_minor"] for x in counted),
@@ -81,8 +95,11 @@ def run(snapshot, benchmarks=None):
     findings = []
     if phases:
         last = phases[-1]
+        span = f"{last['months']} months"
+        if 0 < last["full_months"] < last["months"]:
+            span += f", {last['full_months']} of them full"
         findings.append(
-            f"{last['name']} ({c.range_label(last['from'], last['to'])}, {last['months']} months) "
+            f"{last['name']} ({c.range_label(last['from'], last['to'])}, {span}) "
             f"averages {c.label(last['income_per_month_minor'])} in, "
             f"{c.label(last['spend_per_month_minor'])} out and "
             f"{c.label(last['investing_per_month_minor'])} invested, leaving "
@@ -115,7 +132,8 @@ def run(snapshot, benchmarks=None):
     if partial:
         caveats.append(f"{len(partial)} month(s) have incomplete statement coverage "
                        f"({c.range_label(partial[0], partial[-1])}) and are left out of the "
-                       f"totals; they are flagged in the table.")
+                       f"totals and of every figure a month (a phase with no full month at all "
+                       f"averages over every one of its months); they are flagged in the table.")
     used = (len(c.income_rows(snapshot)) + len(c.spend_rows(snapshot))
             + len(c.investing_rows(snapshot)))
     return c.result(sys.modules[__name__], snapshot,

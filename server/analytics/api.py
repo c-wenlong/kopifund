@@ -19,13 +19,14 @@ def get_growth(req):
     return _growth(req, query=req.query)
 
 
-def _saved_plan(req):
-    """The plan and the record's spending a month, or ({}, None) with no record yet."""
+def _saved_plan(req, results):
+    """The plan and the record's spending a month over the months the stats
+    (`results`) call full, or ({}, None) with no record yet."""
     from finance import planning, spending
     conn = req.maybe_record()
     if conn is None:
         return {}, None                  # no record yet: no pay and no investing transfer
-    return planning.get_plan(conn), spending.monthly_average(conn)
+    return planning.get_plan(conn), spending.monthly_average(conn, results=results)
 
 
 def _growth(req, query=None, inputs=None):
@@ -34,13 +35,14 @@ def _growth(req, query=None, inputs=None):
     written). An input the plan would refuse is refused here the same way."""
     from analytics import growth
     from finance import planning, profile
-    plan, hint = _saved_plan(req)
+    results = results_cache.results(req)
+    plan, hint = _saved_plan(req, results)
     if inputs is not None:
         try:
             plan = planning.clean_plan(planning.merge_inputs(plan, planning.plan_in(inputs)))
         except planning.PlanRefused as e:
             raise Refused(str(e)) from e
-    return growth.project(results_cache.results(req), plan, profile.load().get("birth_date"), query or {},
+    return growth.project(results, plan, profile.load().get("birth_date"), query or {},
                           spend_hint=hint)
 
 
