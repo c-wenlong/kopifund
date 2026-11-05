@@ -149,6 +149,9 @@ struct AlertView: View {
         }
         context.delete(record)
         try? context.save()
+        // a pattern that auto-approves queues the row approved: send it now,
+        // not at the next return to the front
+        if outcome == "queued" { Task { await SyncService.flush(context: context) } }
         switch outcome {
         case "queued": return "Pattern saved. The alert is in your Inbox"
         case "ignored": return "Pattern saved, but this shape is ignored"
