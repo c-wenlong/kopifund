@@ -29,6 +29,16 @@ function answer(url: unknown, body: Spending = base) {
       [y, m] = m === 12 ? [y + 1, 1] : [y, m + 1];
     }
   }
+  if (!months.length && body.available) {
+    // with no range asked, the server's own default: the last 12 months the record holds, never before its first
+    let [y, m] = body.available.to.split("-").map(Number);
+    for (let i = 0; i < 12; i++) {
+      const month = `${y}-${String(m).padStart(2, "0")}`;
+      if (month < body.available.from) break;
+      months.unshift(month);
+      [y, m] = m === 1 ? [y - 1, 12] : [y, m - 1];
+    }
+  }
   const scope = q.get("scope") ?? "sg";
   const shown = months.length ? months : base.months;
   // the server's own link: the range, the scope and the idea of spending, which every figure's rows share
@@ -38,12 +48,16 @@ function answer(url: unknown, body: Spending = base) {
 }
 
 describe("SpendingExplorer", () => {
+  // the controls live in the address: each test starts on the bare page
+  beforeEach(() => window.history.replaceState(null, "", "/spending"));
+  afterEach(() => window.history.replaceState(null, "", "/"));
+
   it("shows no figures that do not answer the controls on screen", async () => {
     let calls = 0;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       calls += 1;
-      // the probe answers; the first filtered request matches; the overseas one fails
-      return calls <= 2 ? answer(url) : new Response(JSON.stringify({ error: "boom" }), { status: 500 });
+      // the first answer is the default view on screen; the overseas one fails
+      return calls <= 1 ? answer(url) : new Response(JSON.stringify({ error: "boom" }), { status: 500 });
     });
     render(<SpendingExplorer />);
     expect(await screen.findByText("left out of these figures")).toBeInTheDocument();
@@ -117,18 +131,78 @@ describe("SpendingExplorer", () => {
     expect(new Set(twelve.map((b, rank) => colourFor(b, rank, { by: "payee", bucket_order: [] }))).size).toBe(12);
   });
 
-  it("asks for Singapore only by bucket over the last 12 months, then follows the toggles", async () => {
+  it("opens on Singapore only by bucket over the last 12 months with one request, then follows the toggles", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => answer(url));
     render(<SpendingExplorer />);
     expect(await screen.findByText("left out of these figures")).toBeInTheDocument();
     expect(screen.getByText("S$110")).toBeInTheDocument();                  // overseas
-    await waitFor(() => expect(fetchSpy.mock.calls.map(([u]) => String(u)))
-      .toContain("/api/spending?scope=sg&by=bucket&to=2026-09&from=2025-10"));
+    // the first answer already is the default view: no second explore of the same months
+    expect(fetchSpy.mock.calls.map(([u]) => String(u))).toEqual(["/api/spending"]);
     fireEvent.click(screen.getByRole("radio", { name: "Include overseas" }));
     fireEvent.click(screen.getByRole("radio", { name: "By payee" }));
     fireEvent.click(screen.getByRole("radio", { name: "3M" }));
     await waitFor(() => expect(fetchSpy.mock.calls.map(([u]) => String(u)))
       .toContain("/api/spending?scope=all&by=payee&to=2026-09&from=2026-07"));
+  });
+
+  it("never starts a range before the record's first month, so a month is the same average Home shows", async () => {
+    // the record holds 2026-01 to 2026-09: nine months, fewer than 12M asks for
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => answer(url));
+    render(<SpendingExplorer />);
+    expect(await screen.findByText("9 months")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "Include overseas" }));
+    await waitFor(() => expect(fetchSpy.mock.calls.map(([u]) => String(u)))
+      .toContain("/api/spending?scope=all&by=bucket&to=2026-09&from=2026-01"));
+    expect(fetchSpy.mock.calls.map(([u]) => String(u)).join(" ")).not.toContain("from=2025");
+    expect(await screen.findByText("9 months")).toBeInTheDocument();
+  });
+
+  it("keeps the range, scope and split in the address, so Back and a copied link restore them", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => answer(url));
+    const first = render(<SpendingExplorer />);
+    await screen.findByText("left out of these figures");
+    // the defaults keep a clean address
+    expect(window.location.search).toBe("");
+    fireEvent.click(screen.getByRole("radio", { name: "3M" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Include overseas" }));
+    fireEvent.click(screen.getByRole("radio", { name: "By payee" }));
+    expect(Object.fromEntries(new URLSearchParams(window.location.search))).toEqual({ range: "3", scope: "all", by: "payee" });
+    // leaving and coming back mounts a fresh page on the same address
+    first.unmount();
+    render(<SpendingExplorer />);
+    await waitFor(() => expect(screen.getByRole("radio", { name: "3M" })).toHaveAttribute("aria-checked", "true"));
+    expect(screen.getByRole("radio", { name: "Include overseas" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "By payee" })).toHaveAttribute("aria-checked", "true");
+    fireEvent.click(screen.getByRole("radio", { name: "All" }));
+    expect(new URLSearchParams(window.location.search).get("range")).toBe("all");
+    await waitFor(() => expect(fetchSpy.mock.calls.map(([u]) => String(u)))
+      .toContain("/api/spending?scope=all&by=payee&to=2026-09&from=2026-01"));
+    // back to the defaults, back to a bare address
+    fireEvent.click(screen.getByRole("radio", { name: "12M" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Singapore only" }));
+    fireEvent.click(screen.getByRole("radio", { name: "By bucket" }));
+    expect(window.location.search).toBe("");
+  });
+
+  it("reads a range, scope or split it does not know as the default", async () => {
+    window.history.replaceState(null, "", "/spending?range=7&scope=moon&by=colour");
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => answer(url));
+    render(<SpendingExplorer />);
+    await screen.findByText("left out of these figures");
+    expect(screen.getByRole("radio", { name: "12M" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Singapore only" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "By bucket" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("lists two identical biggest payments as two rows, keyed by their own transaction keys", async () => {
+    const twice = { key: "", date: "2026-09-03", payee: "Shop", category: "Shopping", amount: 5_000 };
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => answer(url, {
+      ...base, biggest: [{ ...twice, key: "dup1" }, { ...twice, key: "dup2" }] }));
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<SpendingExplorer />);
+    const rows = await screen.findAllByRole("link", { name: /Shop/ });
+    expect(rows.map((a) => a.getAttribute("href"))).toEqual(["/transactions?key=dup1", "/transactions?key=dup2"]);
+    expect(warn.mock.calls.flat().join(" ")).not.toMatch(/same key/);
   });
 
   it("shows four biggest payments and four top payees, each list with its own row to show the rest", async () => {
@@ -160,11 +234,11 @@ describe("SpendingExplorer", () => {
     fireEvent.click(screen.getAllByRole("button", { name: /Food/ }).find((b) => b.hasAttribute("aria-expanded"))!);
     // every link carries the range, Singapore only, and the explorer's idea of spending
     expect(screen.getByRole("link", { name: /Eating out/ }))
-      .toHaveAttribute("href", "/transactions?from=2025-10&to=2026-09&spend=1&home=1&category=Eating+out");
+      .toHaveAttribute("href", "/transactions?from=2026-01&to=2026-09&spend=1&home=1&category=Eating+out");
     // a biggest payment opens that one row, by its key; a top payee opens its exact name within the same range
     expect(screen.getByRole("link", { name: /NUS/ })).toHaveAttribute("href", "/transactions?key=a1b2c3d4e5f6");
     expect(screen.getByRole("link", { name: /Power Source/ }))
-      .toHaveAttribute("href", "/transactions?from=2025-10&to=2026-09&spend=1&home=1&payee=Power+Source");
+      .toHaveAttribute("href", "/transactions?from=2026-01&to=2026-09&spend=1&home=1&payee=Power+Source");
   });
 
   it("links a payee the statement left unnamed too, since it is matched exactly", async () => {
@@ -175,7 +249,7 @@ describe("SpendingExplorer", () => {
     render(<SpendingExplorer />);
     const links = await screen.findAllByRole("link", { name: /\(no name\)/ });
     expect(links.map((a) => a.getAttribute("href"))).toEqual([
-      "/transactions?key=k0", "/transactions?from=2025-10&to=2026-09&spend=1&home=1&payee=%28no+name%29"]);
+      "/transactions?key=k0", "/transactions?from=2026-01&to=2026-09&spend=1&home=1&payee=%28no+name%29"]);
   });
 });
 
