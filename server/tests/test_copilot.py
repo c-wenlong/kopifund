@@ -448,6 +448,18 @@ class ToolsTest(Record):
         self.assertTrue(failed)
         self.assertIn("Results there are", text)
 
+    def test_a_month_that_does_not_exist_is_refused_back_to_the_model(self):
+        """A bad month is the model's argument to correct, never the end of the answer."""
+        ctx = self.context()
+        for tool, args in (("transactions", {"month": "2026-13"}), ("transactions", {"from": "0000-05"}),
+                           ("spending", {"from": "0000-05"}), ("spending", {"to": "2026-00"}),
+                           ("suggest_change", {"kind": "budget", "category": "Groceries", "month": "0000-01",
+                                               "planned_minor": 100})):
+            with self.subTest(tool=tool, args=args):
+                text, failed = tools.run(ctx, tool, args)
+                self.assertTrue(failed, text)
+                self.assertRegex(text, "month")
+
     def test_a_result_that_counts_rows_links_to_exactly_those_rows(self):
         ctx = self.context()
         t = self.call(ctx, "transactions", category="Groceries")
