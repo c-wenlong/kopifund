@@ -89,6 +89,19 @@ export function pack(widgets: DashboardWidget[], pinned?: { id: string; cell: Ce
   return widgets.map((w) => ({ ...w, layout: { ...cells.get(w.id)! } }));
 }
 
+/**
+ * Where a dragged or resized widget lands on drop: the board its drag
+ * previewed (`pack` with it pinned to `cell`, everything it lands on pushed
+ * down), then settled into the highest free rows the way every read of the
+ * layout settles it (`pack` without a pin). Settling the preview, not the
+ * board from before the drag, keeps the preview's order: a widget dropped
+ * onto another's cell lands above it, as the preview showed, and the saved
+ * echo redraws the same board.
+ */
+export function settle(widgets: DashboardWidget[], id: string, cell: Cell): DashboardWidget[] {
+  return pack(pack(widgets, { id, cell }));
+}
+
 /** The highest cell a new widget of `size` fits into, beside what is already placed. */
 export function firstFit(widgets: DashboardWidget[], size: { w: number; h: number }): Cell {
   const taken = widgets.map(cellOf);

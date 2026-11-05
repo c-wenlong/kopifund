@@ -51,7 +51,8 @@ change the ids, whichever your account allows.
 2. Tap **Fetch plans & accounts**, pick your plan, then pick the default
    account Wallet transactions post to.
 3. Build a pattern: **Patterns > +**, paste a real bank alert. The detector
-   pre-tags its best guesses for the amount, the payee and the date; dashed
+   pre-tags its best guesses for the amount, the payee, the date and the card
+   (the digits after "ending", as in "Card ending 1234"); dashed
    words are weaker guesses that accept with one tap. Pick a field chip and
    tap or drag across words to fix anything, watch "This pattern reads",
    then save with the account it maps to.
@@ -63,7 +64,8 @@ change the ids, whichever your account allows.
 
 An alert no pattern takes waits in Unmatched. Rows lead with the merchant
 the detector reads out of the alert (falling back to its first telling
-line), and a chip shows the detector's best money guess when one exists. Tapping a row opens
+line), and a neutral chip shows the detector's best money guess when one
+exists (no colour: the direction is unknown until a pattern says it). Tapping a row opens
 the alert itself first: mail chrome dimmed, the detector's summary up top
 ("amount, date found"), and the matcher rejections tucked behind "Why
 nothing matched".
@@ -86,6 +88,16 @@ a later alert matches only when it prints the same number. The payee capture
 reads only to the end of its line. A wildcard or a folding piece right
 beside the payee is refused at build time: a fixed word or a printed line
 break has to stand there, or the regex cannot tell where the name ends.
+
+The regex is built so a failed match stays close to linear in the alert's
+length: whitespace runs read possessively, a payee or card capture starts
+and ends on a non-space (and reads at most 200 characters while it looks
+for the anchor after it; one that ends the template reads to its line's
+end), and each ignore span commits to the first place the text after it
+reads. One pattern gets 250 ms on one alert; past that it gives up with
+"text too long to read in time" rather than freezing the app or getting an
+intent killed. Ingest runs the match on a detached task, so even a phone
+with many patterns never holds the main thread while it reads an alert.
 
 ## Shortcuts automations
 

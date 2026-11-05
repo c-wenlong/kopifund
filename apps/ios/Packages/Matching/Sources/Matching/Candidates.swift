@@ -30,6 +30,33 @@ public enum Candidates {
         amounts(in: text, tokens: tokens)
             + dates(in: text, tokens: tokens)
             + payees(in: text, tokens: tokens)
+            + cards(in: text, tokens: tokens)
+    }
+
+    // MARK: - cards
+
+    /// "Card ending 1234", "card ending in 5678", "(Mobile ending 2468)":
+    /// the digits after "ending" name the card or account the money went
+    /// through, the one shape banks print the same way every time. Only the
+    /// digits are the span; "ending" stays as the literal that anchors it.
+    private static func cards(in text: String, tokens: [Token]) -> [Candidate] {
+        var out: [Candidate] = []
+        for i in tokens.indices where tokens[i].kind == .word
+            && tokens[i].text.lowercased() == "ending" {
+            guard var n = nextNonSpace(i, in: tokens) else { continue }
+            if tokens[n].kind == .word, ["in", "with"].contains(tokens[n].text.lowercased()),
+               let m = nextNonSpace(n, in: tokens) { n = m }
+            if tokens[n].kind == .punct, tokens[n].text == ":",
+               let m = nextNonSpace(n, in: tokens) { n = m }
+            // the digits sit on the anchor's own line
+            guard !tokens[(i + 1)..<n].contains(where: { $0.text.contains("\n") }),
+                  tokens[n].kind == .number,
+                  tokens[n].text.allSatisfy(\.isNumber),
+                  (3...6).contains(tokens[n].text.count) else { continue }
+            out.append(Candidate(field: .account, tokenIndexes: [n],
+                                 confident: out.isEmpty, rank: out.count))
+        }
+        return out
     }
 
     // MARK: - amounts
