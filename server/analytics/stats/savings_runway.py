@@ -130,11 +130,25 @@ def run(snapshot, benchmarks=None):
     # balance never lands in another account's column or in the cash total
     name = unique({a: labels.of(a) for a in started}, reserved=ROW_FIELDS)
 
-    held, rows = {}, []
+    # the months each account's rows fall in: a balance carried past a month the
+    # account had rows in is stale, whatever statement those rows came on
+    moved = {}
+    for r in snapshot["transactions"]:
+        if r.get("account_no") and r.get("date"):
+            moved.setdefault(r["account_no"], set()).add(r["date"][:7])
+
+    def stale(a, m):
+        """True when account `a`'s carried balance at month `m` is out of date: it
+        printed a statement this month with no balance the stat can read, or it
+        has rows after the month its balance was last read."""
+        return a in cov[m]["accounts"] or any(read_at[a] < x <= m for x in moved.get(a, ()))
+
+    held, rows, read_at = {}, [], {}
     for m in months:
         for key, value in sorted(closings.get(m, {}).items()):
             held[key] = value
         here = printed.get(m, set())
+        read_at.update((a, m) for a in here)
         carried = sorted(a for a in {k[0] for k in held}
                          if a not in here and not (a in closed and m > closed[a]))
         by_account = {}
@@ -147,16 +161,14 @@ def run(snapshot, benchmarks=None):
                "not_started": sorted(name[a] for a, start in started.items()
                                      if m < start),
                # a month is complete when some open bank account covers it,
-               # none is missing from it, and none printed a statement this
-               # stat cannot read a balance from (its carried figure would be
-               # stale). A carried wallet balance does not make it incomplete,
-               # since a wallet that printed nothing was not used and the last
-               # balance it printed is the balance it holds; nor does an idle
-               # account between its half-yearly statements, which printed
-               # nothing and holds what it last printed
+               # none is missing from it, and no bank account's carried figure
+               # is stale (`stale`). A carried wallet balance does not make it
+               # incomplete, since a wallet that printed nothing was not used
+               # and the last balance it printed is the balance it holds; nor
+               # does an idle account between its half-yearly statements,
+               # which has no rows since and holds what it last printed
                "complete": (bool(cov[m]["expected"]) and not cov[m]["missing"]
-                            and not [a for a in carried
-                                     if a not in wallets and a in cov[m]["accounts"]]),
+                            and not [a for a in carried if a not in wallets and stale(a, m)]),
                "partial": cov[m]["partial"]}
         # one column per account, in the order of the names shown
         for account_no, value in sorted(by_account.items(), key=lambda kv: name[kv[0]]):

@@ -165,6 +165,15 @@ class TheCashHeadline(NoPhases):
         s = with_second_bank(bank("2025-01", 0, 50_000), bank("2025-07", 50_000, 50_000))
         self.assertEqual(savings_runway.run(s)["data"]["summary"]["as_of_complete"], "2025-12")
 
+    def test_a_balance_carried_past_its_own_rows_is_not_current_cash(self):
+        """Greptile on #39: B2's July statement holds rows from February on, so its
+        January balance is stale in June, though July's statement covers June."""
+        s = with_second_bank(bank("2025-01", 0, 50_000), bank("2025-07", 50_000, 45_000))
+        s["transactions"] += [on_old(f"2025-{m:02d}-10", -10.0, "2025-07") for m in range(2, 8)]
+        s["periods"] = [b for b in s["periods"] if b["account_no"] != fx.MAIN or c.period_month(b) <= "2025-06"]
+        self.assertEqual(c.coverage(s)["2025-06"]["missing"], [])
+        self.assertEqual(savings_runway.run(s)["data"]["summary"]["as_of_complete"], "2025-01")
+
     def test_a_wallet_month_after_every_bank_closed_is_not_complete(self):
         s = fx.snapshot()
         main = next(b for b in s["periods"] if b["name"] == f"{fx.MAIN} · SGD · 2025-12")
