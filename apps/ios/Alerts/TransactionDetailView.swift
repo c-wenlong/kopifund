@@ -184,8 +184,8 @@ struct TransactionDetailView: View {
     /// The typed plan-currency figure as cents, nil until a positive one
     /// is entered; the post button stays off until then.
     private var convertedCents: Int? {
-        guard let c = converted, c.isFinite, c > 0, c < 1_000_000_000_000 else { return nil }
-        return Int((c * 100).rounded())
+        guard let c = converted, c > 0, let cents = Cents.from(c), cents > 0 else { return nil }
+        return cents
     }
 
     private var centsBinding: Binding<Double> {
