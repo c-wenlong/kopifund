@@ -6,6 +6,7 @@ import isolate  # noqa: F401  first: no test writes the real record or cache
 import contextlib
 import io
 import json
+import socket
 import sqlite3
 import tempfile
 import threading
@@ -104,6 +105,22 @@ class AnswersTest(unittest.TestCase):
     def test_a_negative_length_is_400_at_once(self):
         status, _, _ = self.send("POST", "/api/uploads/start", {"X-Kopifund": "1", "Content-Length": "-1"})
         self.assertEqual(status, 400)
+
+    def test_a_length_with_spaces_around_it_is_read(self):
+        status, _, _ = self.send("POST", "/api/dashboard/query",
+                                 {"X-Kopifund": "1", "Content-Length": "2 "}, b"{}")
+        self.assertNotEqual(status, 400)
+
+    def test_a_request_target_that_does_not_parse_still_answers_json(self):
+        # http.client will not send this target, so a raw socket does
+        with self.quietly(), socket.create_connection(("127.0.0.1", self.port), timeout=10) as raw:
+            raw.sendall(b"GET http://[broken/api/health HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n")
+            reply = b""
+            while chunk := raw.recv(65536):
+                reply += chunk
+        head, _, body = reply.partition(b"\r\n\r\n")
+        self.assertTrue(head.startswith(b"HTTP/1.0 500"), head)
+        self.assertIn("error", json.loads(body))
 
     def test_a_length_over_the_limit_is_still_413(self):
         status, _, _ = self.send("POST", "/api/uploads/start",

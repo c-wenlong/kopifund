@@ -350,7 +350,10 @@ def make_handler(dist: Path, page: str | None = None) -> type[BaseHTTPRequestHan
                 self.close_connection = True            # the client went away
             except Exception as exc:  # noqa: BLE001  the last stop before the socket closes
                 self.close_connection = True
-                where = urlsplit(getattr(self, "path", "")).path
+                try:
+                    where = urlsplit(getattr(self, "path", "")).path
+                except ValueError:                      # the target that failed may not parse either
+                    where = "(a request target that does not parse)"
                 print(f"kopifund: {getattr(self, 'command', '?')} {where} failed", file=sys.stderr)
                 traceback.print_exc()
                 if not self.answering:
@@ -463,7 +466,8 @@ def make_handler(dist: Path, page: str | None = None) -> type[BaseHTTPRequestHan
                 self.send_json({"error": "Writes are only accepted from the Kopifund app"},
                                HTTPStatus.FORBIDDEN)
                 return
-            given = self.headers.get("Content-Length") or "0"
+            # HTTP allows spaces and tabs around a header's value
+            given = (self.headers.get("Content-Length") or "0").strip(" \t")
             if not (given.isascii() and given.isdigit()):
                 self.send_json({"error": "The request's length is not a number"}, HTTPStatus.BAD_REQUEST)
                 return
