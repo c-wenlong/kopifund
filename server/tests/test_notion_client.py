@@ -114,6 +114,13 @@ class CreateIsNotResentTest(unittest.TestCase):
                 self.assertIsInstance(got, notion.NotionError)
                 self.assertEqual(calls, 1)
 
+    def test_a_refused_create_is_not_reported_as_maybe_made(self):
+        # a 400 means Notion wrote nothing: the plain error, one call
+        got, calls = self.run_call("POST", "/pages", [self.http(400)])
+        self.assertIsInstance(got, notion.NotionError)
+        self.assertNotIn("may have been created", str(got))
+        self.assertEqual(calls, 1)
+
     def test_a_create_is_retried_where_notion_never_saw_it(self):
         import socket
         import urllib.error

@@ -124,7 +124,9 @@ class NotionClient:
                     return json.load(resp)
             except urllib.error.HTTPError as e:
                 msg = e.read().decode(errors="replace")
-                if creates and e.code != 429:
+                if creates and e.code >= 500:
+                    # a 4xx is Notion refusing the page, so nothing was made; it
+                    # is not retried either, and falls through to the plain error
                     raise NotionError(f"Notion API {e.code} on {method} {path}, not retried: the page "
                                       f"may have been created; the next run creates it if not: {msg[:600]}")
                 if e.code in (429, 500, 502, 503, 504) and attempt < self.tries - 1:
