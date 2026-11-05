@@ -112,8 +112,8 @@ struct PatternBuilderView: View {
 
     private func cardCannotBorder() -> Bool {
         do {
-            // builtPattern, not segments: it refuses an unreadable date
-            // before segments would trap on it
+            // the same build Save runs: only the card-beside-a-wildcard
+            // refusal undoes the pre-tag
             _ = try builtPattern()
             return false
         } catch PatternBuilder.BuildError.wildcardBesideCard {
