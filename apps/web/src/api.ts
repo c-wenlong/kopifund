@@ -395,6 +395,8 @@ function peek<T>(url: string): T | undefined {
   const e = cacheable(url) ? cache.get(url) : undefined;
   if (!e) return undefined;
   e.used = Date.now();
+  // the read time goes to disk too, so an answer drops 30 days after it was last read, offline or not
+  saveSoon();
   return e.data as T;
 }
 
@@ -613,8 +615,15 @@ export async function postJSON<T>(url: string, body?: BodyInit, contentType = "a
   // whatever its body says
   if (!r.ok) throw await failure(r, true, await readText(r, true).catch(() => ""));
   // the body read once, as text. Empty is an answer with nothing to say; text that is not JSON fails,
-  // after every view is asked again, since the write may have landed
-  const text = await readText(r, true);
+  // after every view is asked again, since the write may have landed. So does a connection that drops
+  // while the body comes: the server answers only once the write is done, so it is not "not saved"
+  let text: string;
+  try {
+    text = await r.text();
+  } catch {
+    notifyChanged();
+    throw new ApiError(UNREADABLE_WRITE, r.status);
+  }
   let data: unknown = {};
   if (text.trim() !== "") {
     try {

@@ -21,6 +21,18 @@ describe("postJSON", () => {
     window.removeEventListener("kopifund:changed", asked);
   });
 
+  // Greptile on #62: the server answers once the write is done, so a body cut off is no "not saved"
+  it("says a write may have landed when its answer is cut off, and asks the views again", async () => {
+    const cut = new Response("{}", { status: 200 });
+    vi.spyOn(cut, "text").mockRejectedValue(new TypeError("network error"));
+    vi.stubGlobal("fetch", vi.fn(async () => cut));
+    const asked = vi.fn();
+    window.addEventListener("kopifund:changed", asked);
+    await expect(postJSON("/api/trips", "{}")).rejects.toMatchObject({ message: UNREADABLE_WRITE, status: 200 });
+    expect(asked).toHaveBeenCalled();
+    window.removeEventListener("kopifund:changed", asked);
+  });
+
   it("takes an empty success as nothing to report", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => new Response(null, { status: 200 })));
     await expect(postJSON("/api/trips")).resolves.toEqual({});
@@ -102,6 +114,24 @@ describe("the copy kept in localStorage", () => {
     const old = renderHook(() => useApi("/api/spending"));
     expect(fresh.result.current.data).toEqual({ fresh: true });
     expect(old.result.current.data).toBeNull();
+  });
+
+  // Greptile on #62: a read with no answer to follow (offline) moved the read time in memory only
+  it("writes an answer's read time to disk when it is read, offline too", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const then = Date.now() - KEEP_FOR + 60_000;
+      window.localStorage.setItem(KEPT_KEY, JSON.stringify([["/api/overview", null, JSON.stringify({ n: 1 }), then]]));
+      restoreKept();
+      vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>(() => {})));
+      const view = renderHook(() => useApi("/api/overview"));
+      expect(view.result.current.data).toEqual({ n: 1 });
+      await vi.advanceTimersByTimeAsync(1000);
+      const [[, , , used]] = JSON.parse(window.localStorage.getItem(KEPT_KEY)!) as [string, null, string, number][];
+      expect(used).toBeGreaterThan(then);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
