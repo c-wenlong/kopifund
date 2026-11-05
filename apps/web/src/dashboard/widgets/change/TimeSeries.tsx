@@ -11,7 +11,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Card } from "../../../components/Card";
+import { MaybeCard } from "../../../components/Card";
 import { EmptyState } from "../../../components/EmptyState";
 import { Loading, Problem } from "../../../components/States";
 import {
@@ -53,17 +53,17 @@ export const DEFAULT_TIME_SERIES_CONFIG: TimeSeriesConfig = {
   ],
 };
 
-export function TimeSeriesWidget({ config = DEFAULT_TIME_SERIES_CONFIG }: { config?: TimeSeriesConfig }) {
+export function TimeSeriesWidget({ config = DEFAULT_TIME_SERIES_CONFIG, bare = false }: { config?: TimeSeriesConfig; bare?: boolean }) {
   const { frame, error, loading } = useAnswers(config.series, config.range);
   const title = config.title ?? "Over time";
   return (
-    <Card title={title}>
+    <MaybeCard title={title} bare={bare}>
       {loading && <Loading what={`Loading ${title.toLowerCase()}`} />}
       {!loading && error && <Problem message={error} retry />}
       {frame && (frame.labels.length === 0
         ? <EmptyState title="Nothing to show yet">The series this widget asks about have no figures in the range.</EmptyState>
         : <TimeSeriesChart frame={frame} />)}
-    </Card>
+    </MaybeCard>
   );
 }
 

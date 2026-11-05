@@ -14,7 +14,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Card } from "../../../components/Card";
+import { MaybeCard } from "../../../components/Card";
 import { EmptyState } from "../../../components/EmptyState";
 import { Loading, Problem } from "../../../components/States";
 import {
@@ -111,7 +111,7 @@ export function waterfallSteps(balance: Frame | null, flows: Frame | null): Wate
   return steps;
 }
 
-export function WaterfallWidget({ config = DEFAULT_WATERFALL_CONFIG }: { config?: WaterfallConfig }) {
+export function WaterfallWidget({ config = DEFAULT_WATERFALL_CONFIG, bare = false }: { config?: WaterfallConfig; bare?: boolean }) {
   const balance = useAnswers([config.balance], config.range);
   const flows = useAnswers(config.flows, config.range);
   const title = config.title ?? "Waterfall";
@@ -123,7 +123,7 @@ export function WaterfallWidget({ config = DEFAULT_WATERFALL_CONFIG }: { config?
   // a projection or preview answer marks its figures as estimates; show every note either frame carries
   const notes = [...new Set([balance.frame?.note, flows.frame?.note].filter((n): n is string => !!n))];
   return (
-    <Card title={title}>
+    <MaybeCard title={title} bare={bare}>
       {loading && <Loading what={`Loading ${title.toLowerCase()}`} />}
       {!loading && error && <Problem message={error} retry />}
       {!loading && !error && balance.frame && flows.frame && (steps === null
@@ -131,7 +131,7 @@ export function WaterfallWidget({ config = DEFAULT_WATERFALL_CONFIG }: { config?
         : steps && steps.length <= 2
           ? <EmptyState title="Nothing to show yet">The flows this widget asks about have no figures in the range.</EmptyState>
           : steps && <WaterfallChart steps={steps} unit={balance.frame.unit ?? "sgd_minor"} notes={notes} />)}
-    </Card>
+    </MaybeCard>
   );
 }
 

@@ -10,6 +10,10 @@ import type { DashboardLayout, DashboardWidget } from "../api";
 
 export const COLS = 12;
 
+/** A grid row's height and the gap between cells: the px Grid's pointer math and a bound chart's height (bind.tsx) share. */
+export const ROW_PX = 84;
+export const GAP_PX = 12;
+
 /** A widget is never smaller than this; a resize clamps to it. */
 export const MIN_W = 2;
 export const MIN_H = 1;

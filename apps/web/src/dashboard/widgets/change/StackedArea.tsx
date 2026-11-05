@@ -11,7 +11,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Card } from "../../../components/Card";
+import { MaybeCard } from "../../../components/Card";
 import { EmptyState } from "../../../components/EmptyState";
 import { Loading, Problem } from "../../../components/States";
 import {
@@ -51,12 +51,12 @@ export const DEFAULT_STACKED_AREA_CONFIG: StackedAreaConfig = {
   ],
 };
 
-export function StackedAreaWidget({ config = DEFAULT_STACKED_AREA_CONFIG }: { config?: StackedAreaConfig }) {
+export function StackedAreaWidget({ config = DEFAULT_STACKED_AREA_CONFIG, bare = false }: { config?: StackedAreaConfig; bare?: boolean }) {
   const { frame, error, loading } = useAnswers(config.series, config.range);
   const [view, setView] = useChartView<ChartView>(`widget-${config.id}`, VIEW_KEYS, "stacked");
   const title = config.title ?? "Composition over time";
   return (
-    <Card title={title} actions={frame && frame.series.length > 0 ? (
+    <MaybeCard title={title} bare={bare} actions={frame && frame.series.length > 0 ? (
       <ViewSwitch label="Chart view" value={view} options={VIEWS} onChange={setView} />
     ) : null}>
       {loading && <Loading what={`Loading ${title.toLowerCase()}`} />}
@@ -64,7 +64,7 @@ export function StackedAreaWidget({ config = DEFAULT_STACKED_AREA_CONFIG }: { co
       {frame && (frame.labels.length === 0
         ? <EmptyState title="Nothing to show yet">The series this widget asks about have no figures in the range.</EmptyState>
         : <StackedAreaChart frame={frame} view={view} />)}
-    </Card>
+    </MaybeCard>
   );
 }
 

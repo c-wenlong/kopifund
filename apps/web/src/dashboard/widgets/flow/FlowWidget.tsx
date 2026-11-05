@@ -7,9 +7,9 @@
 // sideways, so nothing overlaps.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Loaded } from "../../../api";
-import { Card } from "../../../components/Card";
+import { MaybeCard } from "../../../components/Card";
 import { cutName, TipBox, TipRow } from "../../../components/chartKit";
-import { CardSkeleton, Problem } from "../../../components/States";
+import { CardSkeleton, Loading, Problem } from "../../../components/States";
 import { formatSgd, type Cents } from "../../../money";
 import { navigate } from "../../../router";
 import type { WidgetAnswer, WidgetQuery } from "../../../types.gen";
@@ -166,7 +166,7 @@ function Sankey({ graph }: { graph: FlowGraph }) {
  * a dashboard draws this with its own `config`; everything it shows is read
  * through widget queries.
  */
-export function FlowWidget({ config = defaultFlowConfig }: { config?: FlowConfig }) {
+export function FlowWidget({ config = defaultFlowConfig, bare = false }: { config?: FlowConfig; bare?: boolean }) {
   const cfg = {
     title: config.title ?? defaultFlowConfig.title,
     range: config.range,
@@ -197,7 +197,9 @@ export function FlowWidget({ config = defaultFlowConfig }: { config?: FlowConfig
   if (middle.error) return <Problem message={middle.error} retry />;
   if (queries.transfers != null && transfers.error) return <Problem message={transfers.error} retry />;
   if (!income.data || !middle.data || (queries.transfers != null && !transfers.data)) {
-    return <CardSkeleton height={280} what="Loading the money flow" />;
+    return bare
+      ? <Loading what="Loading the money flow" />
+      : <CardSkeleton height={280} what="Loading the money flow" />;
   }
 
   const inc = income.data;
@@ -226,7 +228,7 @@ export function FlowWidget({ config = defaultFlowConfig }: { config?: FlowConfig
   });
 
   return (
-    <Card title={cfg.title ?? "Money flow"}>
+    <MaybeCard title={cfg.title ?? "Money flow"} bare={bare}>
       {names.map((n, i) => ((mvals[i] ?? 0) > 0
         ? <SliceFetch key={n} name={n} query={queries.category(n)} report={report} />
         : null))}
@@ -239,6 +241,6 @@ export function FlowWidget({ config = defaultFlowConfig }: { config?: FlowConfig
       ) : (
         <Sankey graph={graph} />
       )}
-    </Card>
+    </MaybeCard>
   );
 }

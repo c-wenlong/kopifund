@@ -7,17 +7,13 @@
 import { useRef, useState } from "react";
 import { GripVertical, X } from "lucide-react";
 import type { DashboardWidget } from "../api";
-import { cellOf, clampCell, COLS, pack, type Cell } from "./layout";
+import { cellOf, clampCell, COLS, GAP_PX, pack, ROW_PX, type Cell } from "./layout";
 import { widgetDef } from "./registry";
 
 /** One arrow-key step, as the [x, y] or [w, h] it nudges. */
 const ARROW: Record<string, readonly [number, number]> = {
   ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
 };
-
-/** A grid row's height and the gap between cells, the px the pointer math shares with the style below. */
-const ROW_PX = 84;
-const GAP_PX = 12;
 
 type Drag = {
   id: string;
