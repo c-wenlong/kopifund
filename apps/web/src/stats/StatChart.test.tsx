@@ -349,3 +349,25 @@ describe("Tip's click line", () => {
     expect(container).toHaveTextContent("Click the Spend bar to see its transactions");
   });
 });
+
+// Audit: a chart's figures were mouse-only; the same figures follow as a table, each linked figure a link
+describe("the figures as a table", () => {
+  const flow: StatResult = {
+    id: "cash-flow", title: "Monthly cash flow",
+    chart: { type: "bar", x: "month", series: ["income_minor", "spend_minor"], unit: "sgd_minor",
+      links: { spend_minor: { month: "{x}", spend: "1" } } },
+    data: { months: [{ month: "2026-09", income_minor: 500_000, spend_minor: 210_050 }] },
+  };
+
+  it("gives every figure as text, and a link where its bar opens rows", async () => {
+    const { container } = chartFor(flow);
+    const table = container.querySelector("details table") as HTMLTableElement;
+    expect(table).not.toBeNull();
+    expect(table.textContent).toContain("S$5,000.00");
+    const link = screen.getByRole("link", { name: /S\$2,100\.50.*see its transactions/ });
+    expect(link).toHaveAttribute("href", "/transactions?month=2026-09&spend=1");
+    fireEvent.click(link);
+    expect(navigate).toHaveBeenCalledWith("/transactions?month=2026-09&spend=1");
+    expect(screen.queryByRole("link", { name: /S\$5,000\.00/ })).not.toBeInTheDocument();
+  });
+});

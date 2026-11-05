@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { Toaster } from "../components/Toast";
 import type { AiSettings, CopilotCard, CopilotEvent, CopilotThread } from "../types.gen";
 import { ANSWER_FAILED, CopilotSide } from "./CopilotPanel";
+import { GARBLED } from "./stream";
 import { CUT_SHORT, stepsOf, useCopilot } from "./useCopilot";
 
 // G22: the Ask Kopifund panel: the answer's steps as they come, the answer and its parts, confirm cards, and its states.
@@ -640,6 +641,24 @@ describe("a reopened answer's steps", () => {
       { kind: "text" as const, text: "Groceries came to S$100.00.", tools: [] }];
     expect(stepsOf({ text: "Groceries came to S$100.00.", tools, steps }).map((s) => s.kind)).toEqual(["thinking"]);
     expect(stepsOf({ text: "Something else.", tools, steps }).map((s) => s.kind)).toEqual(["thinking", "text"]);
+  });
+});
+
+describe("a garbled answer", () => {
+  // Audit: the request was left open, so the model ran on while the panel showed the parser's words
+  it("stops the request and says the answer came back garbled", async () => {
+    let signal: AbortSignal | undefined;
+    stub(aiOn, (url, init) => {
+      if (url !== "/api/copilot/ask") return undefined;
+      signal = init?.signal ?? undefined;
+      return new Response(new ReadableStream<Uint8Array>({
+        start(c) { c.enqueue(enc.encode('{"type":"text","text":"Half"}\n<<not json>>\n')); },
+      }), { status: 200 });
+    });
+    render(<Panel />);
+    await askIt("What happened?");
+    expect(await screen.findByText(GARBLED)).toBeInTheDocument();
+    expect(signal?.aborted).toBe(true);
   });
 });
 
