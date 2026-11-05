@@ -130,6 +130,9 @@ describe("figures and links", () => {
     expect(signedValue(-150, "sgd_minor")).toBe("−S$2");
     expect(signedValue(-40, "sgd_minor")).toBe("S$0");
     expect(signedValue(12_345.5, "sgd_minor")).toBe("+S$123");
+    // a worked-out half cent rounds away from zero, as fmtValue rounds it
+    expect(signedValue(-149.5, "sgd_minor")).toBe("−S$2");
+    expect(fmtValue(-149.5, "sgd_minor")).toBe("−S$2");
     expect(signedValue(0.05, "fraction")).toBe("+5%");
     expect(signedValue(-2.3, "percent")).toBe("−2.3%");
     expect(signedValue(0.4, "months")).toBe("+0.4 mo");

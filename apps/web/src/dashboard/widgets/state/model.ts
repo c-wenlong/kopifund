@@ -135,7 +135,7 @@ export function signedValue(delta: number, unit: WidgetUnit | string): string {
   const a = Math.abs(delta);
   if (unit === "sgd_minor") {
     // Audit: the sign of the whole dollars shown (money.ts's rule), so a change of 40 cents reads "S$0", never "−S$0"
-    const dollars = wholeDollars(Math.round(delta));
+    const dollars = wholeDollars(delta < 0 ? -Math.round(-delta) : Math.round(delta));
     return `${dollars > 0 ? "+" : dollars < 0 ? MINUS : ""}${formatSgd(Math.abs(dollars) * 100 as Cents)}`;
   }
   const sign = delta >= 0 ? "+" : MINUS;
