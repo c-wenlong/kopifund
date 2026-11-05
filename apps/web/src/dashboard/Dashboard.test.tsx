@@ -282,6 +282,38 @@ describe("Dashboard", () => {
     await waitFor(() => expect(saved.layouts[0].widgets).toHaveLength(0));
   });
 
+  it("drops a retry of a save made on leaving once a newer save of that board has gone out", async () => {
+    const saved = {
+      layouts: [doc("default", "Default", [
+        { id: "w-a", type: "note", title: "Note A", options: { text: "kept" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+        { id: "w-b", type: "note", title: "Note B", options: { text: "b" }, layout: { x: 4, y: 0, w: 4, h: 2 } },
+      ])],
+      active: "default",
+    };
+    stubServer(saved);
+    const first = render(<><Dashboard /><Toaster /></>);
+    await screen.findByText("kept");
+    fireEvent.click(screen.getByRole("button", { name: "Remove Note A" }));
+    const real = globalThis.fetch;
+    let fail = true;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) =>
+      fail && init?.method === "POST"
+        ? new Response(JSON.stringify({ error: "disk full" }), { status: 500 })
+        : real(input, init));
+    first.unmount();
+    render(<Toaster />);
+    const retry = await screen.findByRole("button", { name: "Try again" });
+    fail = false;
+    // the page opens again (the failed save never landed, so A is back) and a newer edit saves: B gone
+    render(<Dashboard />);
+    fireEvent.click(await screen.findByRole("button", { name: "Remove Note B" }));
+    await waitFor(() => expect(saved.layouts[0].widgets.map((w) => w.id)).toEqual(["w-a"]), { timeout: 3000 });
+    // the old retry (A removed, B kept) would undo that edit: it is dropped
+    fireEvent.click(retry);
+    expect(await screen.findByText(/newer change to that board was saved/)).toBeInTheDocument();
+    expect(saved.layouts[0].widgets.map((w) => w.id)).toEqual(["w-a"]);
+  });
+
   it("makes no board when the picker closes with nothing picked, and the Default one with the first widget", async () => {
     const saved = { layouts: [] as DashboardLayout[], active: null as string | null };
     const posts = stubServer(saved);

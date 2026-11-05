@@ -23,13 +23,31 @@ import { widgetDef, WIDGETS } from "./registry";
 
 const SAVE_AFTER = 700;
 
+// how many saves of each board this app has sent: a retry of a save made on
+// leaving stands only while no later save of that board has gone out
+const sent = new Map<string, number>();
+function sending(id: string): number {
+  const n = (sent.get(id) ?? 0) + 1;
+  sent.set(id, n);
+  return n;
+}
+
 /** Save a board after its page has gone; a failure says so in a toast that can try again. */
 function saveOnLeaving(id: string, body: string) {
+  const mine = sending(id);
   postJSON(`/api/dashboard/layouts/${id}`, body).catch((e: unknown) => {
     showToast({
       message: e instanceof Error ? `The dashboard was not saved: ${e.message}` : "The dashboard was not saved.",
       tone: "error",
-      action: { label: "Try again", onClick: () => saveOnLeaving(id, body) },
+      action: {
+        label: "Try again",
+        // a newer save of the board (the page opened again) holds the newer
+        // edit, so this older body would only overwrite it
+        onClick: () => {
+          if (sent.get(id) === mine) saveOnLeaving(id, body);
+          else showToast({ message: "A newer change to that board was saved since, so it was kept." });
+        },
+      },
     });
   });
 }
@@ -105,6 +123,7 @@ export function Dashboard() {
           try {
             // only the board on screen is the active one: an Undo on a board left
             // behind saves it without making it the board the next visit opens
+            sending(b.id);
             const written = await postJSON<DashboardLayout>(`/api/dashboard/layouts/${b.id}`,
               JSON.stringify({ ...writeLayout(b), active: b.id === activeRef.current }));
             remember(written);
@@ -248,6 +267,7 @@ export function Dashboard() {
       const b = boardsRef.current?.find((x) => x.id === id);
       if (!b) return;
       try {
+        sending(id);
         const written = await postJSON<DashboardLayout>(`/api/dashboard/layouts/${id}`,
           JSON.stringify({ ...writeLayout(b), active: true }));
         remember(written);
