@@ -243,7 +243,7 @@ export function UploadPage() {
   });
 
   const blocking = report?.problems.filter((p) => p.code !== "pdftotext-missing") ?? [];
-  const todo = report ? report.to_add_count + report.recategorised_count + report.to_archive_count : 0;
+  const todo = report ? report.to_add_count + report.recategorised_count + report.to_archive_count + (report.rekeyed_count ?? 0) : 0;
   const nothingNew = !!report && todo === 0;
   const loadedOk = !!loaded?.loaded;
   // the record holds everything the statements say: just loaded, or a clean check with nothing to add
