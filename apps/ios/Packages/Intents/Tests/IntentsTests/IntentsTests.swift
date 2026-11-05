@@ -166,7 +166,7 @@ private let day = Calendar.current.date(
 
 /// A batched automation run (the Email trigger can deliver several mails at
 /// once) must write one record per item rather than one stitched blob.
-@Test @MainActor func batchedIngestWritesOneRecordPerItem() throws {
+@Test @MainActor func batchedIngestWritesOneRecordPerItem() async throws {
     let container = try Store.memory()
     let context = ModelContext(container)
     let pattern = AlertPattern(name: "Card spend", direction: .outflow,
@@ -178,7 +178,7 @@ private let day = Calendar.current.date(
     try context.save()
     let (defaults, name) = scratchDefaults()
     defer { defaults.removePersistentDomain(forName: name) }
-    let outcome = try Ingest.alert(
+    let outcome = try await Ingest.alert(
         texts: ["You charged SGD5.00 at KOPITIAM",
                 "a reminder about a mentorship evening, no spend here",
                 "   "],
@@ -187,7 +187,7 @@ private let day = Calendar.current.date(
     #expect(try context.fetchCount(FetchDescriptor<TransactionRecord>()) == 1)
     #expect(try context.fetchCount(FetchDescriptor<UnmatchedRecord>()) == 1)
     // a single item keeps the single-ingest wording
-    #expect(try Ingest.alert(texts: ["You charged SGD9.00 at STARBUCKS"],
+    #expect(try await Ingest.alert(texts: ["You charged SGD9.00 at STARBUCKS"],
                            source: "email", receivedAt: day,
                            container: container, defaults: defaults) == "queued")
 }
@@ -281,13 +281,13 @@ private func rows(_ container: ModelContainer) throws -> [TransactionRecord] {
     #expect(row.currency == "SGD")
 }
 
-@Test @MainActor func unstatedAlertPairsWithALaterForeignTapAndIsHeld() throws {
+@Test @MainActor func unstatedAlertPairsWithALaterForeignTapAndIsHeld() async throws {
     // Greptile on #319: filling SGD at intake stopped this pair forming, so
     // the auto-approved alert posted JPY 1,200 as S$1,200
     let container = try store(cardPattern(autoApprove: true))
     let (defaults, name) = scratchDefaults(planCurrency: "SGD")
     defer { defaults.removePersistentDomain(forName: name) }
-    _ = try Ingest.alert(text: "You charged 1200.00 at LAWSON", source: "sms",
+    _ = try await Ingest.alert(text: "You charged 1200.00 at LAWSON", source: "sms",
                          receivedAt: day, container: container, defaults: defaults)
     let first = try #require(try rows(container).first)
     #expect(first.currency == "")
@@ -313,11 +313,11 @@ private func rows(_ container: ModelContainer) throws -> [TransactionRecord] {
     #expect(try rows(container).first?.currency == "")
 }
 
-@Test @MainActor func foreignAlertIsHeldEvenOnAnAutoApprovePattern() throws {
+@Test @MainActor func foreignAlertIsHeldEvenOnAnAutoApprovePattern() async throws {
     let container = try store(cardPattern(autoApprove: true))
     let (defaults, name) = scratchDefaults(planCurrency: "SGD")
     defer { defaults.removePersistentDomain(forName: name) }
-    _ = try Ingest.alert(text: "You charged USD 12.00 at AMAZON", source: "sms",
+    _ = try await Ingest.alert(text: "You charged USD 12.00 at AMAZON", source: "sms",
                          receivedAt: day, container: container, defaults: defaults)
     let row = try #require(try rows(container).first)
     #expect(row.currency == "USD")
@@ -326,24 +326,24 @@ private func rows(_ container: ModelContainer) throws -> [TransactionRecord] {
     #expect(row.syncError?.contains("USD") == true)
 }
 
-@Test @MainActor func localAlertStillAutoApproves() throws {
+@Test @MainActor func localAlertStillAutoApproves() async throws {
     let container = try store(cardPattern(autoApprove: true))
     let (defaults, name) = scratchDefaults(planCurrency: "SGD")
     defer { defaults.removePersistentDomain(forName: name) }
-    _ = try Ingest.alert(text: "You charged SGD 12.00 at KOPITIAM", source: "sms",
+    _ = try await Ingest.alert(text: "You charged SGD 12.00 at KOPITIAM", source: "sms",
                          receivedAt: day, container: container, defaults: defaults)
     let row = try #require(try rows(container).first)
     #expect(row.state == "approved")
     #expect(row.syncError == nil)
 }
 
-@Test @MainActor func suppressedShapeIsIgnoredWithInjectedDefaults() throws {
+@Test @MainActor func suppressedShapeIsIgnoredWithInjectedDefaults() async throws {
     let container = try store(cardPattern(autoApprove: false))
     let (defaults, name) = scratchDefaults()
     defer { defaults.removePersistentDomain(forName: name) }
     let text = "You charged SGD 12.00 at KOPITIAM"
     Suppression.add(AlertShape.signature(of: text), in: defaults)
-    #expect(try Ingest.alert(text: text, source: "sms", receivedAt: day,
+    #expect(try await Ingest.alert(text: text, source: "sms", receivedAt: day,
                              container: container, defaults: defaults) == "ignored")
     #expect(try rows(container).isEmpty)
 }

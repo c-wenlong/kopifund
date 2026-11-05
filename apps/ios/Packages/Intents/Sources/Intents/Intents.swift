@@ -12,12 +12,17 @@ import SwiftData
 /// the match or park it in Unmatched. Called by the intent, the share
 /// extension and the paste box so all three behave identically.
 public enum Ingest {
-    /// `defaults` is the App Group's everywhere but in tests: it holds the
-    /// suppressed shapes and the plan's currency.
+    ///
+    /// The store is read and written on the main actor, but the match itself
+    /// runs on a detached task: a pattern can spend up to its budget on a
+    /// long alert, and a phone with many patterns would otherwise hold the
+    /// main thread, and a share extension's UI, for all of them. `defaults`
+    /// is the App Group's everywhere but in tests: it holds the suppressed
+    /// shapes and the plan's currency.
     @MainActor
     public static func alert(text: String, source: String?, receivedAt: Date,
                              container: ModelContainer,
-                             defaults: UserDefaults? = AppGroup.defaults) throws -> String {
+                             defaults: UserDefaults? = AppGroup.defaults) async throws -> String {
         let context = ModelContext(container)
         // a shape the user dismissed as noise never reaches the queue, even
         // when a pattern could read it; the same check runs in the
@@ -27,7 +32,10 @@ public enum Ingest {
         }
         let patterns = try context.fetch(FetchDescriptor<PatternRecord>())
             .compactMap { $0.pattern }
-        switch Matcher.match(text: text, source: source, receivedAt: receivedAt, patterns: patterns) {
+        let outcome = await Task.detached(priority: .userInitiated) {
+            Matcher.match(text: text, source: source, receivedAt: receivedAt, patterns: patterns)
+        }.value
+        switch outcome {
         case .matched(let t):
             let pattern = patterns.first { $0.id == t.patternID }
             let row = TransactionRecord(from: t, accountID: pattern?.accountID ?? "",
@@ -56,12 +64,12 @@ public enum Ingest {
     @MainActor
     public static func alert(texts: [String], source: String?, receivedAt: Date?,
                              container: ModelContainer,
-                             defaults: UserDefaults? = AppGroup.defaults) throws -> String {
+                             defaults: UserDefaults? = AppGroup.defaults) async throws -> String {
         var tally: [(outcome: String, count: Int)] = []
         let at = receivedAt ?? Date()
         for body in texts where !body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            let outcome = try alert(text: body, source: source, receivedAt: at,
-                                    container: container, defaults: defaults)
+            let outcome = try await alert(text: body, source: source, receivedAt: at,
+                                          container: container, defaults: defaults)
             if let i = tally.firstIndex(where: { $0.outcome == outcome }) {
                 tally[i].count += 1
             } else {
@@ -248,8 +256,8 @@ public struct IngestAlertIntent: AppIntent {
     @MainActor
     public func perform() async throws -> some IntentResult & ReturnsValue<String> {
         let container = try Store.container()
-        let outcome = try Ingest.alert(texts: text, source: source,
-                                       receivedAt: receivedAt, container: container)
+        let outcome = try await Ingest.alert(texts: text, source: source,
+                                             receivedAt: receivedAt, container: container)
         return .result(value: outcome)
     }
 }
