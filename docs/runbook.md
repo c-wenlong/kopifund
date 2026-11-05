@@ -297,7 +297,7 @@ the wrong file is a load error, not a silent miss.
 Columns: `match_on, pattern, payee, kind, country, category, notes, account_no,
 recurring`. The last two are optional and the column may be absent. `kind` is
 required whenever `payee` is set, and is one of Merchant, Person, Employer,
-Institution. `category` must be the exact name of a Categories row in Notion.
+Institution. `category` must be the exact name of a category the record holds (the Categories page lists them).
 `notes` is free text apart from the two lint markers described below.
 
 The four in the data folder name people, pin individual rows, or name the
@@ -370,16 +370,16 @@ rule" queue the run report prints. Either is a fine place to work from.
 | Adding | Do this |
 | --- | --- |
 | A category | add it to `kopifund.db` (the one-time `import-notion` brings over every category you made in Notion), then use the name in a rule. Rules are checked against the shipped category list plus every category the record holds |
-| An account | create the Accounts row in Notion, add `"<account no>" = "<page id>"` under `[accounts]` in `config.toml`, add a `[[folder]]` block with its path, parser and account number, and a parser for the layout if it is a new bank |
-| A card | create the Cards row in Notion, add `"<last 4>" = "<page id>"` under `[cards]` in `config.toml` |
+| An account | the first-run Setup page makes a statement folder and its `[[folder]]` entry for each bank or wallet you pick; to add one later, add a `[[folder]]` block to `config.toml` with its path, parser and account number (a new bank also needs a parser for the layout). The account shows on Your profile once its first statement is loaded. `make doctor` (not `make load`) reports `unknown-account` until the account number is a key under `[accounts]` in `config.toml`, even with Notion off; the value is the account's Notion page id |
+| A card | nothing in the app: a card appears with its first loaded statement. `make doctor` (not `make load`) reports `unknown-card` until the last four digits are a key under `[cards]` in `config.toml`, even with Notion off; the value is the card's Notion page id |
 | A YouTrip currency | create the folder `statements/youtrip-<ccy>/<year>/`, add a `[[folder]]` entry with that path, `parser = "youtrip"` and `wallet = "<CCY>"`, and add it to `WALLETS` and `SYMBOL` in `server/finance/parsers/parse_youtrip.py` if the code or symbol is new |
 | A Revolut wallet | nothing. The export holds every wallet and the parser splits it by the `XXX Statement` headings, so a new wallet arrives with the next export. A currency Revolut prints with a symbol rather than a code needs that symbol in `SYMBOL` and `ANY_SYMBOL` in `server/finance/parsers/parse_revolut.py` |
 | A Wise balance | create the folder `statements/wise-<ccy>/<year>/` and add a `[[folder]]` entry with that path, `parser = "wise"` and `wallet = "<CCY>"`, on the same account number. The parser reads the currency off the `XXX statement` heading, so a file in the wrong folder is caught. There is no `[cards]` entry to add either: Wise prints no card number |
 | A city, so its card rows get a country | a town of your own stays or trips: append a `place,country` line (`SOMETOWN,NOR`) to `places.csv` in the data folder, which YouTrip, Revolut and Wise all read after the shipped table. A capital or major city any user meets: append it to `SHIPPED_CITY_TABLE` in `server/finance/parsers/places.py`. Append rather than insert, because order decides a prefix match, never remove an entry (an old month has to still resolve when it is re-parsed), and run `make doctor` afterwards: a new city can split a merchant string that used to stay whole, which changes that row's txn key |
 | A purchase to keep out of the spending rates | add its txn key to `spend_exclude_keys` under `[plan]` in `config.toml`, key first and a note after it on the same line (`make why KEY=` shows keys). Only the key is read; the rest of the line is for you. The forward view then leaves the row out of every rate it reports |
 | A life detail the stats should know: a phase (a stay abroad, then home), who you repay, how long a trip runs before it counts as living there, your age band, a what-if extra income | add it under `[analytics]` in `config.toml`. [server/analytics/SPEC.md](../server/analytics/SPEC.md), "Settings", lists every key and what the stats do without it; nothing about one person is written into the code |
-| A trip | create the Trips Expenses row in Notion, point `Trip plan` at the planner row, then `python3 server/finance.py rollup`. Rows are claimed by date plus evidence of being abroad; see [schema.md](schema.md#which-rows-a-trip-claims) |
-| A budget | type Planned on the Budgets row for that category and month. The rollup creates the row and keeps Actual current; it can never write Planned |
+| A trip | "Add a trip" on the Trips page, with its dates and countries. Rows are claimed by date plus evidence of being abroad; see [schema.md](schema.md#which-rows-a-trip-claims). The Notion steps are under "The Notion mirror: rollup, budgets and trips" below |
+| A budget | type the planned amount for the category and month on the Plan page. It saves when you press Enter or leave the box. Nothing reads a Planned typed in Notion |
 | A select option | `python3 server/finance.py add-options`. Notion rejects an unknown select value, and patching a select property replaces its whole definition, so this sends the full option list and the existing description back with the change |
 
 `categorise.py` keeps an offline copy of the category names in
@@ -471,7 +471,13 @@ way Revolut's is. The block that moves is the last one of each balance, for the
 same reason: it ends on the export date, so a later export closes it on a month
 end and opens a new one at its own date.
 
-## The rollup, budgets and trips
+## The Notion mirror: rollup, budgets and trips
+
+The record owns budgets, trips, accounts and cards: you edit them on the Plan,
+Trips and Setup pages, and nothing is read back from Notion after the one-time
+`import-notion`. A Planned or a trip typed in Notion changes nothing in the app.
+This section is for the Notion mirror only, and the commands in it need a Notion
+token.
 
 The rollup is the analytics pass. It runs at the end of every `sync` and can be
 run on its own, and it derives everything it writes, so a rerun with nothing new
@@ -490,8 +496,9 @@ python3 server/finance.py rollup               # change it
 | `Accounts` Statements from / to and Data coverage | the blocks parsed for each account named in config.toml |
 | `Payees.Recurring` | the `recurring` column in the rules |
 
-**Budgets.Planned is yours.** It is deliberately absent from the loader's
-property table, so no code path can write or clear it. Type it on the row the
+**Budgets.Planned is yours, in Notion.** It is deliberately absent from the loader's
+property table, so no code path can write or clear it. The app's planned amounts
+(Plan page) are a separate copy in the record; type it on the row the
 rollup created, or create the row yourself named `<Category> · <yyyy-mm>` and
 the rollup will fill in Actual on the next run. Actual is signed so it compares
 with Planned directly: positive when money went out of a spending category, and
