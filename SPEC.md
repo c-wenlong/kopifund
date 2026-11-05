@@ -1472,7 +1472,9 @@ its month) and optional `filters`, which are Transactions' own filter names
 `account` by its id, `home`, `trip`, `scope`). `POST /api/dashboard/query`
 takes the query as its body; `GET /api/dashboard/query?q=` takes it as JSON in
 the address, so a widget loads through `useApi`'s cache and ETag like a page
-(`useWidgetData`, `apps/web/src/widgets.ts`). An unknown source, metric,
+(`useWidgetData`, `apps/web/src/widgets.ts`, which writes the query's keys in
+one order so one question is one address). A query copies only the stat
+results it reads (`results_cache.results_view`), not every stat's. An unknown source, metric,
 dimension or filter is a 4xx with the names it takes, never a blank chart.
 
 The answer (`WidgetAnswer`) is `labels`, `series` (one per name when a
@@ -1490,7 +1492,14 @@ leaves out the shown names on top of any the query's own filters left out.
 dimension and split to the rows its link lists and holds the two to the cent. Money comes back under `values_minor`,
 integer cents with unit `sgd_minor`; anything else under `values` with its own
 unit (`months`, `fraction`, `percent`, the two share scales kept apart as
-they are everywhere).
+they are everywhere). A `spending` answer by month lists in `partial` the
+months the monthly-cashflow stat calls partial (a bank has not printed them
+yet): a KPI reading the latest month steps over them as Home's tiles do, so
+half a month is never set against a whole one. A pie or treemap draws a share
+of a whole, so it leaves out a part at or below zero (a bucket whose refunds
+passed its spending) rather than draw it into the total, and the flow widget
+draws one "Everything else" under a bucket, holding the answer's own folded
+row with whatever else its refunds pushed out.
 
 **The sources** (`server/finance/dashboard.py`, `_CATALOGUE`): `spending`
 reads the record's `v_txn` with the Spending explorer's own WHEREs and its
