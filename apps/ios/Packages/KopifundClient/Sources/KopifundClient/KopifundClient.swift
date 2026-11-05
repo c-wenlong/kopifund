@@ -71,7 +71,9 @@ public actor KopifundClient {
     }
 
     public func pair(token: String, name: String) async throws -> PairedDevice {
-        let body = try JSONEncoder().encode(["token": token, "name": name])
+        // one nonce per pairing, in the body every retry resends: a retry after a
+        // lost reply gets the same device row back, not an orphan second one
+        let body = try JSONEncoder().encode(["token": token, "name": name, "nonce": UUID().uuidString])
         return try await request("/api/pair/redeem", method: "POST", body: body, authorize: false)
     }
 
