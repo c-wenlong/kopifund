@@ -329,9 +329,20 @@ def _events(cfg, settings, key, path, thread, question, page, transport, today):
             thread = {"id": secrets.token_hex(8), "title": "", "updated_at": _now(), "messages": []}
             _ISSUED.add(thread["id"])
         _LATEST[thread["id"]] = token     # a question asked on this thread after now overtakes this one
+    answer = _answer(cfg, settings, key, path, thread, question, page, transport, today, token)
+    ended = False
     try:
-        yield from _answer(cfg, settings, key, path, thread, question, page, transport, today, token)
+        for event in answer:
+            ended = event["type"] == "done"
+            yield event
+    except Exception:            # noqa: BLE001  Audit: a failure outside the model loop (the record would
+        # not open, the turn could not be saved) still ends the stream the way the page reads one
+        traceback.print_exc(file=sys.stderr)
+        if not ended:
+            yield {"type": "error", "message": "Something went wrong while answering. Try again."}
+            yield {"type": "done"}
     finally:
+        answer.close()
         with _LOCK:
             if _LATEST.get(thread["id"]) is token:
                 del _LATEST[thread["id"]]

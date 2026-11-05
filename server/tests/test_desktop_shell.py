@@ -28,6 +28,11 @@ class DesktopConfigTest(unittest.TestCase):
         self.assertIs(self.main.get("create"), False)
         self.assertIn("on_navigation", (DESKTOP / "src-tauri" / "src" / "main.rs").read_text())
 
+    def test_the_window_saves_downloads(self):
+        # WebKit cancels a download when the window has no download handler,
+        # so Settings' export links would do nothing (main.rs, `on_download`)
+        self.assertIn(".on_download(", (DESKTOP / "src-tauri" / "src" / "main.rs").read_text())
+
 
 class ReadyLineTest(unittest.TestCase):
     """The shell leaves the start page when serve.py prints its ready line.
