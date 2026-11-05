@@ -1430,7 +1430,16 @@ dimension or filter is a 4xx with the names it takes, never a blank chart.
 The answer (`WidgetAnswer`) is `labels`, `series` (one per name when a
 spending query `split`s by bucket, category, payee, account or need class), a
 `unit`, and `label_links`: the Transactions filters each point lists, the
-chart `links` idea carried to widgets. Money comes back under `values_minor`,
+chart `links` idea carried to widgets. A stat source's points take the stat's
+own `chart.links` entry for the metric's field (a month written as `from` and
+`to`), so the stat stays the one place that says which rows a figure adds up,
+and a metric the stat does not link (a balance, a share) links nowhere. A
+`spending` point's link carries the metric's flag (`hide_transfers=0` with
+`transfers` and `net`, whose transfer rows Transactions otherwise hides), the
+query's filters, and its slice's filter; the folded "Everything else" slice
+leaves out the shown names on top of any the query's own filters left out.
+`server/tests/test_stat_links.py` follows every point of every metric,
+dimension and split to the rows its link lists and holds the two to the cent. Money comes back under `values_minor`,
 integer cents with unit `sgd_minor`; anything else under `values` with its own
 unit (`months`, `fraction`, `percent`, the two share scales kept apart as
 they are everywhere).
@@ -2151,7 +2160,16 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   (80 per cent, within three days, for twice a month), and a run of fewer than five must
   keep every gap. Three payments are needed, four every two months, six over eight weeks
   weekly, six over ten fortnightly, eight over twelve twice a month, and two for
-  half-yearly and yearly when the rules mark the payee recurring. Below S$10 a repeat is
+  half-yearly and yearly when the rules mark the payee recurring. A weekly or fortnightly
+  run counts every payment its span should hold, so one missing a week in three is off
+  schedule. At a busy payee, where the other charges within one cadence of a run number
+  more than half its own payments (charges of the payee's other series aside), a run must
+  also keep its days (80 per cent of its payments within a day of its weekday, or three
+  days of its day of the month) and hold its prices (60 per cent of its payments within
+  a twentieth of the one before or after, every one in a run of fewer than five): some
+  stretch of purchases at one amount level otherwise always happens to fall a week or a
+  month apart. The group taken whole, as a bill whose amount moves, must always keep its
+  days. Below S$10 a repeat is
   noise on every path, held against the amount the series finally reports, unless the
   rules mark the payee recurring. A varying bill's usual range on the page comes from its
   own charges and the odd ones that answered its schedule at half to twice its amount,
@@ -2162,7 +2180,9 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   whole. A series is **paused** when nothing has come for one and a half cadences, and
   at least a month, before the last day its own account's statements cover, and
   **stopped** after three cadences and at least two months: so a missed rent half or a
-  missed week reads late, not paused. A paused
+  missed week reads late, not paused. An account with no statement for more than three
+  months (91 days) while the record runs on is closed, not lagging: its series are
+  judged on the record's last day, so a bill on a cancelled card stops. A paused
   series is listed under the active ones with a Paused chip, its last payment in place
   of the next one and no bar, and is in no total, not in Coming up and not in Needs
   your eye; once the record shows it paying again it is active, before the stat next
@@ -2199,7 +2219,8 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   account, so a card loaded to 28 October does not make a bank GIRO paid from an
   account loaded to 30 September late. The account is the one the series' own latest
   payment in the usual range came from, not another purchase at the same payee; a
-  series whose account is unknown is judged on the record's latest date.
+  series whose account is unknown, or closed (no statement for more than 91 days before
+  the record's latest date), is judged on the record's latest date.
   Each row carries the status of the series' payment this
   month, as a chip: **paid** (with the day it came in under the name),
   **different amount** (paid but outside the detector's amount band around the
