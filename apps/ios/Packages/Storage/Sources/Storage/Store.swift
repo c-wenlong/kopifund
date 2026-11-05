@@ -83,7 +83,6 @@ public final class TransactionRecord {
     public var direction: String
     public var accountID: String
     public var categoryID: String?
-    public var payeeID: String?
     public var memo: String
     public var accountHint: String?
     public var alertText: String
@@ -108,20 +107,19 @@ public final class TransactionRecord {
     public var kopifundSent: String?
     public var kopifundError: String?
 
-    public init(from t: ParsedTransaction, accountID: String, categoryID: String?) {
+    /// Throws `Cents.OutOfRange` for an amount too large to count, rather
+    /// than storing a wrapped figure.
+    public init(from t: ParsedTransaction, accountID: String, categoryID: String?) throws {
+        guard let cents = Cents.from(t.amount) else { throw Cents.OutOfRange(amount: "\(t.amount)") }
         id = UUID()
         payee = t.payee
-        var cents = Decimal()
-        var scaled = t.amount * 100
-        NSDecimalRound(&cents, &scaled, 0, .plain)
-        amountCents = NSDecimalNumber(decimal: cents).intValue
+        amountCents = cents
         currency = t.currency ?? ""
         date = t.date.storedInstant
         dateIsDay = true
         direction = t.direction.rawValue
         self.accountID = accountID
         self.categoryID = categoryID
-        payeeID = nil
         memo = ""
         accountHint = t.accountHint
         alertText = t.alertText
