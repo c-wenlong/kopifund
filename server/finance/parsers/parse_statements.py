@@ -610,7 +610,11 @@ def add_keys(rows):
 # ---------------------------------------------------------------- validation
 
 def validate(rows, blocks):
-    """Replay each block's balance chain; return the drifts found."""
+    """Replay each block's balance chain; return the drifts found. A block
+    with a drift is not ok even when the replay, resynced onto each printed
+    balance, still reaches the closing: its `reconciled` column is what a
+    reused CSV is checked by (sync.check_blocks), and a row the chain
+    disagreed with must never load."""
     bad = []
     by_block = defaultdict(list)
     for r in rows:
@@ -619,6 +623,7 @@ def validate(rows, blocks):
         b.setdefault("closing", None)   # a layout that printed none still has the key
         rs = by_block.get((b["source"], b["account_no"], b["currency"]), [])
         run, tin, tout = (b["opening"] if b["opening"] is not None else 0.0), 0.0, 0.0
+        drifts = len(bad)
         for r in rs:
             run += r["amount"]
             tin += max(r["amount"], 0)
@@ -627,6 +632,7 @@ def validate(rows, blocks):
                 bad.append((b["source"], b["currency"], r["date"], r["bank_txn_type"],
                             round(run, 2), r["balance_after"]))
                 run = r["balance_after"]        # resync so one error is not N errors
+        drifted = len(bad) > drifts
         b.update(computed_closing=round(run, 2) if b["opening"] is not None else None,
                  computed_in=round(tin, 2), computed_out=round(tout, 2), n_txns=len(rs))
         if b.get("card_statement"):
@@ -649,7 +655,7 @@ def validate(rows, blocks):
                 b["ok"] = False
             else:
                 b["balance_state"] = "checked"
-                b["ok"] = abs(run - b["closing"]) < 0.005
+                b["ok"] = abs(run - b["closing"]) < 0.005 and not drifted
             b.setdefault("total_in", round(tin, 2))
             b.setdefault("total_out", round(tout, 2))
             b.setdefault("note", BALANCE_STATES[b["balance_state"]])
