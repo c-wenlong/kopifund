@@ -1,8 +1,11 @@
 """G17: one way dollars become cents (server/finance/money.py), and the converters
 that used to round their own way now all go through it."""
 import isolate  # noqa: F401  first: no test writes the real record or cache
+import decimal
+import random
 import unittest
 from decimal import Decimal
+from fractions import Fraction
 
 from analytics import growth, income
 from analytics.stats import forward_view
@@ -40,6 +43,111 @@ class ToCentsTest(unittest.TestCase):
                     "1e999999999"):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 money.to_cents(bad)
+
+    def test_thousands_commas_must_group_by_three(self):
+        for text, cents in (("1,234", 123400), ("12,345.67", 1234567), ("1,234,567.891", 123456789),
+                            ("-1,000", -100000), ("+5", 500), ("999", 99900), ("1234567", 123456700)):
+            with self.subTest(text=text):
+                self.assertEqual(money.to_cents(text), cents)
+        for bad in ("1,2,3", "1,23", "12,34.56", "1234,567", ",123", "1,", "1,,234", "1,234,56", "1.234,5",
+                    "1_000", "1 234.50", "1,234 .5"):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                money.to_cents(bad)
+
+    def test_text_with_no_number_rules_written_in_is_refused(self):
+        """Only a plain signed decimal: no currency, no bracket or trailing sign for
+        a negative, no digits outside 0 to 9, and an exponent only without commas."""
+        for bad in ("$12.00", "S$12.00", "12.00 SGD", "(12.00)", "12.00-", "12.00 CR", "12.00DR", "\u221212.00",
+                    "1,000e2", "1e", "e2", "1e+", "0x10", "--5", "+-5", "- 5", ".", "-", "+", "\u0661\u0662", "\uff11\uff12",
+                    "12.5.0", "inf", "-Infinity", "sNaN"):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                money.to_cents(bad)
+
+    def test_short_forms_and_signed_zero(self):
+        for text, cents in (("12.", 1200), (".5", 50), ("-.5", -50), ("-0", 0), ("-0.00", 0), ("+0.004", 0),
+                            ("0.005", 1), ("\t7.25\n", 725)):
+            with self.subTest(text=text):
+                self.assertEqual(money.to_cents(text), cents)
+        self.assertEqual(money.to_cents(float("-0.0")), 0)
+        self.assertEqual(money.to_cents(Decimal("-0")), 0)
+
+    def test_a_decimal_with_an_exponent_is_a_number(self):
+        self.assertEqual(money.to_cents(Decimal("1E+2")), 10000)
+        self.assertEqual(money.to_cents(Decimal("1.2345E+3")), 123450)
+        self.assertEqual(money.to_cents(Decimal("5E-3")), 1)
+        self.assertEqual(money.to_cents(Decimal("4.9999E-3")), 0)
+        self.assertEqual(money.to_cents(Decimal("1E-999999")), 0)
+        self.assertEqual(money.to_cents(Decimal("0E+26")), 0)          # zero, whatever its exponent
+        self.assertEqual(money.to_cents("0." + "1" * 5000), 11)
+        self.assertEqual(money.to_cents("0.00" + "5" * 5000), 1)
+        self.assertEqual(money.to_cents(10 ** 15), 10 ** 17)
+        self.assertEqual(money.to_cents(1e15), 10 ** 17)
+
+    def test_a_decimal_s_own_text_reads_as_the_decimal(self):
+        """str() of a Decimal can carry an exponent ("1E+3", "0E-7"): the plan's
+        checked text is that, so it reads the same as the Decimal itself."""
+        for text, cents in (("1E+3", 100000), ("1e3", 100000), ("-1.5E+2", -15000), ("0E-7", 0), ("2.5e-2", 3),
+                            (".5E1", 500), ("0E+26", 0), ("-0E+999", 0)):
+            with self.subTest(text=text):
+                self.assertEqual(money.to_cents(text), cents)
+        rng = random.Random(41)
+        for _ in range(3000):
+            d = Decimal(rng.randint(-10 ** 9, 10 ** 9)).scaleb(rng.randint(-12, 12))
+            with self.subTest(d=d):
+                self.assertEqual(money.to_cents(str(d)), money.to_cents(d))
+
+    def test_the_plan_s_checked_amounts_all_read(self):
+        from finance import planning
+        plan = planning.clean_plan({"dca": "1e3", "income": [
+            {"name": "Job", "type": "employment", "gross": "1e3", "from": "2026-01-01"}]})
+        out = planning.plan_out(plan)
+        self.assertEqual(out["dca_minor"], 100000)
+        self.assertEqual(out["income"][0]["gross_minor"], 100000)
+
+    def test_more_than_two_places_round_exactly_half_up(self):
+        for text, cents in (("0.125", 13), ("0.1249999999999999999999999", 12), ("0.1250000000000000000000001", 13),
+                            ("2.675", 268), ("-2.675", -268), ("-0.0049", 0), ("-0.005", -1),
+                            ("1.0049999999", 100), ("99999999999999.995", 10 ** 16)):
+            with self.subTest(text=text):
+                self.assertEqual(money.to_cents(text), cents)
+
+    def test_far_past_any_real_figure_is_still_exact_or_refused(self):
+        """26 digits of dollars read exactly, half up; past that it is not money."""
+        self.assertEqual(money.to_cents("12345678901234567890123456.785"),
+                         1234567890123456789012345679)
+        self.assertEqual(money.to_cents(Decimal("-12345678901234567890123456.785")),
+                         -1234567890123456789012345679)
+        self.assertEqual(money.to_cents(10 ** 26 - 1), 10 ** 28 - 100)
+        for bad in ("1" + "0" * 26, Decimal("1E+26"), 1e26, 1e300, Decimal("1E+999999999"), 10 ** 26, -10 ** 30,
+                    "1e99999999999999999999999", "1e-99999999999999999999999", "9" * 5000, "99999999999999999999999999.995"):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                money.to_cents(bad)
+
+    def test_the_answer_does_not_depend_on_the_decimal_context(self):
+        with decimal.localcontext() as ctx:
+            ctx.prec, ctx.rounding = 3, decimal.ROUND_FLOOR
+            self.assertEqual(money.to_cents("1,234.565"), 123457)
+            self.assertEqual(money.to_cents(Decimal("-2.675")), -268)
+            self.assertEqual(money.to_cents(1234.565), 123457)
+
+    def test_random_amounts_round_trip_and_round_like_exact_fractions(self):
+        rng = random.Random(17)
+        for _ in range(3000):
+            cents = rng.randint(-10 ** 14, 10 ** 14)
+            dollars = money.from_cents(cents)
+            grouped = f"{dollars:,.2f}"
+            with self.subTest(cents=cents):
+                self.assertEqual(money.to_cents(dollars), cents)
+                self.assertEqual(money.to_cents(str(dollars)), cents)
+                self.assertEqual(money.to_cents(grouped), cents)
+            places = rng.randint(0, 8)
+            raw = rng.randint(-10 ** 12, 10 ** 12)
+            text = str(Decimal(raw).scaleb(-places))
+            f = Fraction(raw, 10 ** places) * 100
+            want = int(abs(f) + Fraction(1, 2)) * (1 if f >= 0 else -1)
+            with self.subTest(text=text):
+                self.assertEqual(money.to_cents(text), want)
+                self.assertEqual(money.to_cents(Decimal(text)), want)
 
     def test_from_cents_is_exact_and_takes_only_whole_cents(self):
         self.assertEqual(money.from_cents(123456), Decimal("1234.56"))
