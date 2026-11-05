@@ -13,7 +13,7 @@ or a paste box inside the app.
 | Folder | What it is |
 | --- | --- |
 | `Packages/Matching` | Pure Swift, no UI, no dependencies: tokenizer, alert-reading helpers (boilerplate, field candidates, shape signatures), tap-to-pattern builder, regex matcher, unit tests |
-| `Packages/YNABClient` | `api.ynab.com` over `URLSession` + `Codable`: plans, accounts, categories, payees, transaction creation, milliunits, `import_id` |
+| `Packages/YNABClient` | `api.ynab.com` over `URLSession` + `Codable`: plans, the plan's currency, accounts, categories, transaction creation, milliunits, `import_id`; a 429 waits as long as `Retry-After` asks, up to 30 s |
 | `Packages/KopifundClient` | The phone link (G25): pairs with the Mac's Kopifund server over Tailscale with a device token, reads its profile, transactions, categories and overview, and posts approved alert rows to it |
 | `Packages/Storage` | SwiftData models, the shared App Group store, and the suppressed alert-shape set |
 | `Packages/Intents` | `Ingest Alert` and `Ingest Wallet Transaction` App Intents |
@@ -149,9 +149,39 @@ poorer of the pair (the one without the bank's raw text) parks itself
 under **Possible duplicates** and never syncs; open it to see the row it
 matched and tap **Not a duplicate** if two real charges tripped the rule.
 
+A spend in another currency never posts as the plan's. Each sync reads the
+YNAB plan's currency; a row that printed a different one ("USD 12.00", or a
+Wallet tap whose shortcut passes Currency JPY) goes back to review with the
+reason on it, and nothing converts it. Open it, type what it cost in the
+plan's currency under **Amount in SGD** (the plan's code) and tap **Post in
+SGD**; the button stays off until a figure is typed. A row whose source printed
+no currency counts in the plan's. The bundled Wallet shortcut does not pass a
+currency yet, so its taps count in the plan's currency; add the Currency
+field to the Ingest Wallet Transaction action to pass one.
+
 Matches wait in the Inbox. Edit payee, amount, date, category or memo, then
 approve (or approve all). Approved rows sync to YNAB as uncleared and
 unapproved so YNAB still shows them for review; a setting flips that. Rows
 carry their sync state (pending, approved, syncing, synced, failed,
-duplicate) and a
-deterministic `import_id`, so a retried sync never duplicates a transaction.
+duplicate) and an `import_id` minted on the row's first send and kept, so a
+retried sync never duplicates a transaction. It hashes the day, amount, payee
+and source with the moment the row was captured, so two real charges with the
+same amount, payee and day still post as two (a row an earlier build wrote
+keeps that build's formula).
+
+The app owns each sync run, so leaving a tab never cancels one. A run starts
+at launch, whenever the app comes back to the front, and after an approval;
+it keeps going until no approved row is left. A failed row waits before it is
+retried on its own: one minute, doubling up to six hours, and after eight
+attempts, or after an error YNAB will repeat every time (a bad account or
+category), it waits for **Sync now** in Settings, which retries everything at
+once. A rejected token or a rate limit stops the run after one request and
+shows a banner in the Inbox; rows stay approved, not failed.
+
+A row's date is a calendar day (`CalendarDate`), never a moment: the day
+the alert printed, or the day the Wallet tap or the alert arrived where the
+phone was. It posts to YNAB as that `yyyy-MM-dd` whatever zone the phone is
+in at sync, and dedup compares those days. An alert that prints no year
+(`26 Oct`, `31/12`) takes the latest year that keeps it no later than the
+day after it arrived, so `31 Dec` arriving on 1 January is last year's; a
+day the year lacks (`29 Feb` in 2027) is unreadable rather than 1 March.

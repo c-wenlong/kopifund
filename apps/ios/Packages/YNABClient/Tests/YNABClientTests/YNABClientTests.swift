@@ -1,9 +1,18 @@
 import XCTest
 @testable import YNABClient
 
-private func respond(_ status: Int, _ json: String) -> (HTTPURLResponse, Data) {
-    (HTTPURLResponse(url: YNAB.base, statusCode: status, httpVersion: nil, headerFields: nil)!,
+private func respond(_ status: Int, _ json: String,
+                     headers: [String: String]? = nil) -> (HTTPURLResponse, Data) {
+    (HTTPURLResponse(url: YNAB.base, statusCode: status, httpVersion: nil, headerFields: headers)!,
      Data(json.utf8))
+}
+
+/// Records every wait the client asks for instead of sleeping through it.
+private final class Waits: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _all: [UInt64] = []
+    var all: [UInt64] { lock.withLock { _all } }
+    func record(_ n: UInt64) { lock.withLock { _all.append(n) } }
 }
 
 final class YNABClientTests: XCTestCase {
@@ -28,7 +37,7 @@ final class YNABClientTests: XCTestCase {
         XCTAssertEqual(plans.map(\.name), ["Main"])
     }
 
-    func test_accounts_categories_payees() async throws {
+    func test_accounts_and_categories() async throws {
         MockProtocol.handler = { req in
             switch req.url?.path {
             case "/v1/plans/p1/accounts":
@@ -39,10 +48,6 @@ final class YNABClientTests: XCTestCase {
                 return respond(200, """
                 {"data":{"category_groups":[{"id":"g1","name":"Food","hidden":false,"deleted":false,"categories":[{"id":"c1","name":"Eating out","hidden":false,"deleted":false}]}]}}
                 """)
-            case "/v1/plans/p1/payees":
-                return respond(200, """
-                {"data":{"payees":[{"id":"y1","name":"Kopitiam","deleted":false}]}}
-                """)
             default:
                 return respond(404, "{}")
             }
@@ -52,8 +57,25 @@ final class YNABClientTests: XCTestCase {
         XCTAssertEqual(accounts.map(\.name), ["DBS"])
         let groups = try await c.categories(planID: "p1")
         XCTAssertEqual(groups.first?.categories.first?.name, "Eating out")
-        let payees = try await c.payees(planID: "p1")
-        XCTAssertEqual(payees.first?.name, "Kopitiam")
+    }
+
+    func test_plan_currency_reads_the_settings_iso_code() async throws {
+        MockProtocol.handler = { req in
+            XCTAssertEqual(req.url?.path, "/v1/plans/p1/settings")
+            return respond(200, """
+            {"data":{"settings":{"date_format":{"format":"DD/MM/YYYY"},"currency_format":{"iso_code":"SGD","example_format":"123,456.78","decimal_digits":2,"decimal_separator":".","symbol_first":true,"group_separator":",","currency_symbol":"S$","display_symbol":true}}}}
+            """)
+        }
+        let code = try await client().planCurrency(planID: "p1")
+        XCTAssertEqual(code, "SGD")
+    }
+
+    func test_plan_currency_is_nil_when_ynab_sends_none() async throws {
+        MockProtocol.handler = { _ in
+            respond(200, #"{"data":{"settings":{"date_format":null,"currency_format":null}}}"#)
+        }
+        let code = try await client().planCurrency(planID: "p1")
+        XCTAssertNil(code)
     }
 
     func test_create_transaction_posts_snake_case() async throws {
@@ -105,6 +127,126 @@ final class YNABClientTests: XCTestCase {
         }
     }
 
+    func test_429_waits_as_long_as_retry_after_asks() async throws {
+        let waits = Waits()
+        MockProtocol.handler = { _ in
+            if MockProtocol.requests.count < 2 { return respond(429, "{}", headers: ["Retry-After": "2"]) }
+            return respond(200, #"{"data":{"plans":[]}}"#)
+        }
+        let c = YNABClient(token: "t", session: MockProtocol.session(), retryDelay: 1,
+                           sleep: { waits.record($0) })
+        _ = try await c.plans()
+        XCTAssertEqual(waits.all, [2_000_000_000])
+    }
+
+    func test_429_without_retry_after_uses_the_default_delay() async throws {
+        let waits = Waits()
+        MockProtocol.handler = { _ in
+            if MockProtocol.requests.count < 2 { return respond(429, "{}") }
+            return respond(200, #"{"data":{"plans":[]}}"#)
+        }
+        let c = YNABClient(token: "t", session: MockProtocol.session(), retryDelay: 7,
+                           sleep: { waits.record($0) })
+        _ = try await c.plans()
+        XCTAssertEqual(waits.all, [7])
+    }
+
+    func test_429_asking_a_long_wait_stops_at_once_with_the_wait() async throws {
+        // YNAB's limit is per hour: sleeping an hour inside a sync would hang
+        // it, and retrying sooner only burns more of the quota
+        let waits = Waits()
+        MockProtocol.handler = { _ in respond(429, "{}", headers: ["Retry-After": "3600"]) }
+        let c = YNABClient(token: "t", session: MockProtocol.session(), retryDelay: 1,
+                           gate: RateGate(), sleep: { waits.record($0) })
+        do {
+            _ = try await c.plans()
+            XCTFail("should throw")
+        } catch let e as YNABError {
+            XCTAssertEqual(e.kind, .rateLimited)
+            XCTAssertEqual(e.retryAfter, 3600)
+            XCTAssertTrue(e.message.contains("3600"))
+        }
+        XCTAssertEqual(MockProtocol.requests.count, 1)
+        XCTAssertTrue(waits.all.isEmpty)
+    }
+
+    /// Review on #75: after a long wait is asked, the rest of the sync (and
+    /// the next client) sends nothing until it is over.
+    func test_a_long_wait_holds_every_later_request() async throws {
+        let gate = RateGate()
+        MockProtocol.handler = { _ in respond(429, "{}", headers: ["Retry-After": "3600"]) }
+        let first = YNABClient(token: "t", session: MockProtocol.session(), retryDelay: 1,
+                               gate: gate, sleep: { _ in })
+        _ = try? await first.plans()
+        MockProtocol.handler = { _ in respond(200, #"{"data":{"plans":[]}}"#) }
+        let second = YNABClient(token: "t", session: MockProtocol.session(), gate: gate)
+        do {
+            _ = try await second.plans()
+            XCTFail("should not send during the wait")
+        } catch let e as YNABError {
+            XCTAssertEqual(e.kind, .rateLimited)
+        }
+        XCTAssertEqual(MockProtocol.requests.count, 1)
+    }
+
+    /// Review on #75: a shorter wait reported later never shortens a
+    /// longer one already in force.
+    func test_the_gate_keeps_the_later_deadline() {
+        let gate = RateGate()
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        gate.close(for: 3600, now: now)
+        gate.close(for: 120, now: now)
+        XCTAssertEqual(gate.remaining(now: now), 3600)
+    }
+
+    /// Review on #75: a huge or non-numeric Retry-After never traps.
+    func test_a_huge_retry_after_is_reported_not_trapped() async throws {
+        MockProtocol.handler = { _ in respond(429, "{}", headers: ["Retry-After": "100000000000000000000"]) }
+        let c = YNABClient(token: "t", session: MockProtocol.session(), retryDelay: 1,
+                           gate: RateGate(), sleep: { _ in })
+        do {
+            _ = try await c.plans()
+            XCTFail("should throw")
+        } catch let e as YNABError {
+            XCTAssertEqual(e.kind, .rateLimited)
+            XCTAssertTrue(e.message.contains("100000000000000000000"))
+        }
+        let http = HTTPURLResponse(url: YNAB.base, statusCode: 429, httpVersion: nil,
+                                   headerFields: ["Retry-After": "inf"])!
+        XCTAssertNil(YNABClient.retryAfter(http))
+    }
+
+    func test_retry_after_reads_seconds_and_http_dates() {
+        func http(_ value: String?) -> HTTPURLResponse {
+            HTTPURLResponse(url: YNAB.base, statusCode: 429, httpVersion: nil,
+                            headerFields: value.map { ["Retry-After": $0] })!
+        }
+        let now = Date(timeIntervalSince1970: 1_793_000_000)   // Mon, 26 Oct 2026 07:33:20 GMT
+        XCTAssertEqual(YNABClient.retryAfter(http("120"), now: now), 120)
+        XCTAssertEqual(YNABClient.retryAfter(http("Mon, 26 Oct 2026 07:34:20 GMT"), now: now), 60)
+        XCTAssertEqual(YNABClient.retryAfter(http("Mon, 26 Oct 2026 07:00:00 GMT"), now: now), 0)
+        XCTAssertNil(YNABClient.retryAfter(http("-5"), now: now))
+        XCTAssertNil(YNABClient.retryAfter(http("soon"), now: now))
+        XCTAssertNil(YNABClient.retryAfter(http(nil), now: now))
+    }
+
+    func test_cancelled_sync_stops_retrying() async throws {
+        MockProtocol.handler = { _ in respond(429, "{}") }
+        let c = YNABClient(token: "t", session: MockProtocol.session(), retries: 100,
+                           retryDelay: 10_000_000_000)
+        let task = Task { try await c.plans() }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("should throw")
+        } catch is CancellationError {
+        } catch {
+            XCTFail("wrong error: \(error)")
+        }
+        XCTAssertEqual(MockProtocol.requests.count, 1)
+    }
+
     func test_401_is_unauthorized() async {
         MockProtocol.handler = { _ in respond(401, "{}") }
         do {
@@ -119,10 +261,19 @@ final class YNABClientTests: XCTestCase {
 }
 
 final class MilliunitsTests: XCTestCase {
-    func test_conversion() {
-        XCTAssertEqual(Milliunits.from(Decimal(string: "12.34")!, outflow: true), -12340)
-        XCTAssertEqual(Milliunits.from(Decimal(string: "12.34")!, outflow: false), 12340)
-        XCTAssertEqual(Milliunits.from(Decimal(string: "0.01")!, outflow: true), -10)
+    func test_conversion_from_cents() {
+        XCTAssertEqual(Milliunits.from(cents: 1234, outflow: true), -12340)
+        XCTAssertEqual(Milliunits.from(cents: 1234, outflow: false), 12340)
+        XCTAssertEqual(Milliunits.from(cents: 1, outflow: true), -10)
+        XCTAssertEqual(Milliunits.from(cents: 0, outflow: true), 0)
+        // a printed minus already in the cents flips back, never doubles
+        XCTAssertEqual(Milliunits.from(cents: -450, outflow: true), 4500)
+    }
+
+    func test_overflow_is_refused_not_wrapped() {
+        XCTAssertNil(Milliunits.from(cents: Int.max / 5, outflow: true))
+        XCTAssertNil(Milliunits.from(cents: Int.min / 5, outflow: false))
+        XCTAssertEqual(Milliunits.from(cents: Int.max / 10, outflow: false), (Int.max / 10) * 10)
     }
 }
 
@@ -136,5 +287,21 @@ final class ImportIDTests: XCTestCase {
         XCTAssertTrue(a.hasPrefix("al-"))
         let c = ImportID.make(date: d, milliunits: -4500, payee: "Other", source: "sms")
         XCTAssertNotEqual(a, c)
+    }
+
+    /// Review on #50: two real Wallet purchases of one amount at one merchant
+    /// on one day get different ids once each carries its capture moment;
+    /// without one, the id is the old build's, so a legacy retry matches.
+    func test_capture_moment_separates_same_day_purchases() {
+        let day = Date(timeIntervalSince1970: 1_800_000_000)
+        let morning = ImportID.make(date: day, milliunits: -4500, payee: "Kopitiam",
+                                    source: "wallet", capturedAt: day.addingTimeInterval(7 * 3600))
+        let evening = ImportID.make(date: day, milliunits: -4500, payee: "Kopitiam",
+                                    source: "wallet", capturedAt: day.addingTimeInterval(17 * 3600))
+        XCTAssertNotEqual(morning, evening)
+        XCTAssertLessThanOrEqual(morning.count, 36)
+        XCTAssertEqual(ImportID.make(date: day, milliunits: -4500, payee: "Kopitiam", source: "wallet"),
+                       ImportID.make(date: day, milliunits: -4500, payee: "Kopitiam", source: "wallet",
+                                     capturedAt: nil))
     }
 }

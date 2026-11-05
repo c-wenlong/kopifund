@@ -9,9 +9,10 @@ import Matching
 // defaults suite is a fresh name, so no test touches the App Group.
 
 private let day = Date(timeIntervalSince1970: 1_793_000_000)
+private let printed = CalendarDate(year: 2026, month: 10, day: 26)!
 
 private func parsed(_ amount: String, currency: String? = "SGD") -> ParsedTransaction {
-    ParsedTransaction(payee: "KOPITIAM", amount: Decimal(string: amount)!, date: day,
+    ParsedTransaction(payee: "KOPITIAM", amount: Decimal(string: amount)!, date: printed,
                       direction: .outflow, accountHint: "1234", currency: currency,
                       patternID: UUID(), patternName: "DBS card", alertText: "alert",
                       source: "sms", receivedAt: day)
@@ -61,7 +62,7 @@ private func scratchDefaults() -> (UserDefaults, String) {
     let rowID: UUID
     do {
         let context = ModelContext(try Store.container(at: url))
-        let row = TransactionRecord(from: parsed("4.50"), accountID: "a1", categoryID: "c1")
+        let row = try TransactionRecord(from: parsed("4.50"), accountID: "a1", categoryID: "c1")
         row.state = "approved"
         rowID = row.id
         context.insert(row)
@@ -78,9 +79,10 @@ private func scratchDefaults() -> (UserDefaults, String) {
     #expect(try context.fetch(FetchDescriptor<MetadataRecord>()).first?.key == "accounts|p1")
 }
 
-/// The transaction row as it shipped before `duplicateOf` (a4294e9). A store
-/// written with this shape must open under today's schema, the way an older
-/// install's store does on upgrade.
+/// The transaction row as it shipped before `duplicateOf` (a4294e9), still
+/// carrying `payeeID` (dropped as unused in the G24 audit). A store written
+/// with this shape must open under today's schema, the way an older install's
+/// store does on upgrade: one field added, one removed.
 enum LegacyStore {
     @Model final class TransactionRecord {
         @Attribute(.unique) var id: UUID
@@ -144,7 +146,7 @@ enum LegacyStore {
 @Test func memoryStoreHoldsEveryModel() throws {
     let context = ModelContext(try Store.memory())
     context.insert(PatternRecord(samplePattern()))
-    context.insert(TransactionRecord(from: parsed("1"), accountID: "a1", categoryID: nil))
+    context.insert(try TransactionRecord(from: parsed("1"), accountID: "a1", categoryID: nil))
     context.insert(UnmatchedRecord(text: "t", source: nil, receivedAt: day, reasons: "P: no"))
     context.insert(MetadataRecord(key: "k", payload: Data(), fetchedAt: day))
     try context.save()
@@ -160,19 +162,19 @@ enum LegacyStore {
     ("4.50", 450), ("4.505", 451), ("4.504", 450), ("0.005", 1),
     ("1200", 120000), ("0.01", 1),
 ] as [(String, Int)])
-func centsRoundHalfUpFromTheParsedDecimal(amount: String, cents: Int) {
-    let row = TransactionRecord(from: parsed(amount), accountID: "a1", categoryID: nil)
+func centsRoundHalfUpFromTheParsedDecimal(amount: String, cents: Int) throws {
+    let row = try TransactionRecord(from: parsed(amount), accountID: "a1", categoryID: nil)
     #expect(row.amountCents == cents)
 }
 
-@Test func negativeHalfCentRoundsAwayFromZero() {
-    let row = TransactionRecord(from: parsed("-4.505"), accountID: "a1", categoryID: nil)
+@Test func negativeHalfCentRoundsAwayFromZero() throws {
+    let row = try TransactionRecord(from: parsed("-4.505"), accountID: "a1", categoryID: nil)
     #expect(row.amountCents == -451)
 }
 
-@Test func parsedRowCarriesTheAlert() {
+@Test func parsedRowCarriesTheAlert() throws {
     let t = parsed("12.00", currency: "USD")
-    let row = TransactionRecord(from: t, accountID: "a1", categoryID: "c9")
+    let row = try TransactionRecord(from: t, accountID: "a1", categoryID: "c9")
     #expect(row.currency == "USD")
     #expect(row.payee == "KOPITIAM")
     #expect(row.accountID == "a1")
@@ -199,6 +201,38 @@ func centsRoundHalfUpFromTheParsedDecimal(amount: String, cents: Int) {
     #expect(row.direction == "outflow")
     #expect(row.state == "pending")
     #expect(row.receivedAt == day)
+}
+
+@Test func rowsStoreACalendarDayWithNoZone() throws {
+    // a parsed alert keeps the day it printed as UTC midnight, so reading it
+    // back in any zone names the same day
+    let alert = try TransactionRecord(from: parsed("4.50"), accountID: "a1", categoryID: nil)
+    #expect(alert.date == printed.storedInstant)
+    #expect(alert.dateIsDay == true)
+    for zone in ["Pacific/Honolulu", "Europe/London", "Asia/Singapore", "Pacific/Kiritimati"] {
+        #expect(CalendarDate(stored: alert.date, isDay: true,
+                             legacyZone: TimeZone(identifier: zone)!) == printed)
+    }
+    // a Wallet tap keeps the day it happened where the phone was
+    let wallet = TransactionRecord(walletAmountCents: 100, merchant: "M", card: nil,
+                                   date: day, accountID: "")
+    #expect(wallet.day == CalendarDate(day, in: .current))
+}
+
+@Test func aLegacyRowOnAUTCMidnightReadsInThePhonesZone() {
+    // review on #50: an earlier build stored a Wallet tap's moment, which
+    // can fall on a UTC midnight; with no mark it still reads where the
+    // phone is, so 00:00Z on 12 Oct is the 11th in Los Angeles
+    let wallet = TransactionRecord(walletAmountCents: 100, merchant: "M", card: nil,
+                                   date: day, accountID: "")
+    wallet.date = Date(timeIntervalSince1970: 1_791_763_200)   // 2026-10-12T00:00Z
+    wallet.dateIsDay = nil
+    let la = TimeZone(identifier: "America/Los_Angeles")!
+    #expect(CalendarDate(stored: wallet.date, isDay: wallet.dateIsDay == true,
+                         legacyZone: la).iso == "2026-10-11")
+    wallet.day = CalendarDate(year: 2026, month: 10, day: 12)!
+    #expect(wallet.dateIsDay == true)
+    #expect(wallet.day.iso == "2026-10-12")
 }
 
 // MARK: - PatternRecord
@@ -282,4 +316,44 @@ func everyDateFormatRoundTrips(format: AlertPattern.DateFormat) {
     Suppression.add("anything", in: nil)
     #expect(!Suppression.contains("anything", in: nil))
     Suppression.clear(in: nil)
+}
+
+// MARK: - Cents
+
+@Test(arguments: [
+    (4.53, 453), (4.505, 451), (0.1, 10), (1200, 120000), (-4.505, -451), (0.005, 1),
+] as [(Double, Int)])
+func doubleAmountsRoundAsTyped(amount: Double, cents: Int) {
+    #expect(Cents.from(amount) == cents)
+}
+
+@Test(arguments: [Double.nan, .infinity, -.infinity, 1e12, -1e12, 1e300])
+func doubleAmountsPastCountingAreRefused(amount: Double) {
+    #expect(Cents.from(amount) == nil)
+}
+
+@Test func decimalAmountsPastTheCeilingAreRefused() throws {
+    // the alert capture reads any run of digits; a wrapped figure must never
+    // reach the queue (the audit saw -200376420520688664 come back)
+    let huge = Decimal(string: "99999999999999999999")!
+    #expect(Cents.from(huge) == nil)
+    #expect(Cents.from(Decimal.nan) == nil)
+    #expect(Cents.from(Decimal(string: "999999999999.99")!) == 99_999_999_999_999)
+    #expect(throws: Cents.OutOfRange.self) {
+        _ = try TransactionRecord(from: parsed("99999999999999999999"), accountID: "a1",
+                                  categoryID: nil)
+    }
+}
+
+@Test func anUnmatchedAlertKeepsTheDayItArrivedOn() {
+    // review on #50: just after midnight on 30 Oct in Kiritimati is still
+    // 28 Oct in Los Angeles; the day saved at arrival does not move with
+    // the phone, so a printed "30 Oct" keeps this year
+    let arrived = Date(timeIntervalSince1970: 1_793_268_000)   // 2026-10-29T10:00Z
+    let kiritimati = TimeZone(identifier: "Pacific/Kiritimati")!
+    let u = UnmatchedRecord(text: "t", source: nil, receivedAt: arrived, reasons: "",
+                            zone: kiritimati)
+    #expect(u.arrivedOn.iso == "2026-10-30")
+    u.receivedDay = nil
+    #expect(u.arrivedOn == CalendarDate(arrived, in: .current))
 }

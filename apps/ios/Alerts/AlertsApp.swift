@@ -51,11 +51,9 @@ struct AlertsApp: App {
             if let container {
                 RootView()
                     .modelContainer(container)
-                    .task {
-                        if let ctx = try? ModelContext(container) {
-                            await SyncService.flush(context: ctx)
-                        }
-                    }
+                    // the run belongs to SyncService, so this task ending
+                    // never cancels a send
+                    .task { await SyncService.flush(context: container.mainContext) }
                     .onOpenURL { url in
                         // G25: a kopifund://pair URL reaches us from the Camera's
                         // scan banner, the Files pasteboard, anywhere a link can
@@ -92,11 +90,32 @@ struct AlertsApp: App {
 }
 
 struct RootView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.modelContext) private var context
+
     var body: some View {
+        tabs
+            // back from a Wallet tap, a share or a Shortcut run: the other
+            // process wrote the file while this one was in the background
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else {
+                    SyncService.noteBackground(context)
+                    return
+                }
+                SyncService.refresh(context)
+                Task { await SyncService.flush(context: context) }
+            }
+    }
+
+    private var tabs: some View {
         TabView {
+            // a new identity re-runs the list's query after another
+            // process wrote the store (SyncService.refresh)
             InboxView()
+                .id(SyncService.shared.storeGeneration)
                 .tabItem { Label("Inbox", systemImage: "tray") }
             UnmatchedView()
+                .id(SyncService.shared.storeGeneration)
                 .tabItem { Label("Unmatched", systemImage: "questionmark.folder") }
             KopifundView()
                 .tabItem { Label("Kopifund", systemImage: "link") }

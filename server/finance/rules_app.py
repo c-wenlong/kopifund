@@ -179,17 +179,25 @@ def commit(conn, files, action, summary):
 
 def db_rows(conn, key=None):
     """The record's live rows in the shape the categoriser reads; with `key`,
-    only that row."""
-    return [{"txn_key": r["txn_key"], "date": r["txn_date"], "currency": r["currency"],
-             "amount": f"{r['amount_minor'] / 100:.2f}", "amount_minor": r["amount_minor"],
-             "amount_sgd_minor": r["amount_sgd_minor"], "account": r["account_name"] or r["account_no"],
-             "merchant": r["merchant_raw"],
-             "counterparty": r["counterparty"], "memo": r["memo"], "reference": r["reference"],
-             "bank_txn_type": r["bank_txn_type"], "flow_class": r["flow_class"],
-             "account_no": r["account_no"], "payee": r["payee_name"] or "",
-             "category": r["category_name"] or "", "rule": r["rule"], "synthetic": r["is_synthetic"]}
-            for r in (conn.execute("SELECT * FROM v_txn WHERE txn_key = ?", (key,)) if key is not None
-                      else conn.execute("SELECT * FROM v_txn"))]
+    only that row. Each carries the keys it was loaded under before
+    (`_former_keys`), so a keys.csv rule on an old key previews as a load
+    applies it."""
+    from . import db
+    former = db.former_keys(conn)
+    out = [{"txn_key": r["txn_key"], "date": r["txn_date"], "currency": r["currency"],
+            "amount": f"{r['amount_minor'] / 100:.2f}", "amount_minor": r["amount_minor"],
+            "amount_sgd_minor": r["amount_sgd_minor"], "account": r["account_name"] or r["account_no"],
+            "merchant": r["merchant_raw"],
+            "counterparty": r["counterparty"], "memo": r["memo"], "reference": r["reference"],
+            "bank_txn_type": r["bank_txn_type"], "flow_class": r["flow_class"],
+            "account_no": r["account_no"], "payee": r["payee_name"] or "",
+            "category": r["category_name"] or "", "rule": r["rule"], "synthetic": r["is_synthetic"]}
+           for r in (conn.execute("SELECT * FROM v_txn WHERE txn_key = ?", (key,)) if key is not None
+                     else conn.execute("SELECT * FROM v_txn"))]
+    for r in out:
+        if r["txn_key"] in former:
+            r["_former_keys"] = former[r["txn_key"]]
+    return out
 
 
 NEEDS_SHOWN = 60   # the needs-a-rule groups GET /api/rules sends, biggest first
@@ -281,7 +289,7 @@ def group_rows(conn, text="", key="", limit=50, folders=()):
     banks = {a["account_no"] or a["name"]: d["bank"] for a, d in zip(known, account_names.describe(known, folders))}
     rows = []
     for r in hits[:limit]:
-        pin = _key_rule(keyed, r["txn_key"])
+        pin = _key_rule(keyed, r)
         field = _group_of(r)[0] or "bank_txn_type"
         rows.append({"key": r["txn_key"], "date": r["date"], "amount": r["amount_minor"],
                      "currency": r["currency"], "amount_sgd": r["amount_sgd_minor"],
@@ -310,10 +318,11 @@ def similar(r):
     return suggest(r[field][:44], field) if field else None
 
 
-def _key_rule(rules, key):
-    """The first key rule that matches a txn_key, the one the categoriser uses."""
-    return next((r for r in rules if r["match_on"] == "key"
-                 and fnmatchcase(categorise.norm(key), r["glob"])), None)
+def _key_rule(rules, row):
+    """The key rule the categoriser gives a record row: the first that matches
+    its txn_key, then any key it was loaded under before (`_former_keys`)."""
+    return next((r for v in categorise.tier_values(row, "key") for r in rules
+                 if r["match_on"] == "key" and fnmatchcase(v, r["glob"])), None)
 
 
 def _text(r):
@@ -341,12 +350,14 @@ def pin(conn, data):
         if not rule["category"]:
             raise RuleRefused("Choose a category")
         rules = _load_all(conn)
-        held = _key_rule(rules, key)
-        # G13: the row's own pin in keys.csv (set from the app, this key exactly)
-        # is replaced, so the category can be picked again in one tap; any other
-        # key rule that sets the row stays the Rules page's to change
+        held = _key_rule(rules, row)
+        # G13: the row's own pin in keys.csv (set from the app, this key exactly,
+        # or a key the row had before a re-key) is replaced, so the category can
+        # be picked again in one tap; any other key rule that sets the row stays
+        # the Rules page's to change
+        mine = {categorise.norm(k) for k in (key, *row.get("_former_keys", ()))}
         own = held if held and held["file"] == PERSONAL_FILE["key"] and \
-            categorise.norm(held["pattern"]) == categorise.norm(key) else None
+            categorise.norm(held["pattern"]) in mine else None
         # keys.csv loads first, and the first rule naming a payee sets its kind,
         # country and account (snapshot.payees_from_rules): a payee that other
         # rules already name keeps them. The pin being replaced is not one of
@@ -362,7 +373,7 @@ def pin(conn, data):
         if not held:
             return {**_add(conn, rule, "pin", summary), "pinned": _pinned(rule)}
         f = RulesFile(PERSONAL_FILE["key"])
-        line = _own_pin(f, key) if own else None
+        line = _own_pin(f, own["pattern"]) if own else None
         if line is None:
             raise RuleRefused(f"{held['file']} line {held['line']} already sets this row; "
                               "remove that rule in Rules first")
@@ -376,6 +387,11 @@ def pin(conn, data):
             if not rule.get(k) and old.get(k) and old["payee"] == rule["payee"]:
                 rule[k] = old[k]
         f.replace(line, _row(rule)[1])
+        # a pin on another key the row had before would win again after a later
+        # re-key (former keys are tried in a fixed order), so the row keeps one
+        for k in row.get("_former_keys", ()):
+            while (extra := _own_pin(f, k)) is not None:
+                f.delete(extra)
         if f.data() == f.before:
             return {"file": f.name, "unchanged": True, "change": None, "relinked": {"changed": 0, "written": 0},
                     "pinned": _pinned(rule)}
