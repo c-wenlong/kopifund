@@ -115,6 +115,28 @@ final class BuilderEdgeTests: XCTestCase {
         XCTAssertEqual(t.payee, "TOAST BOX")
     }
 
+    /// Review on #48: a bank that prints its months in capitals ("27 OCT")
+    /// must not leave "OCT" fixed at the cut either.
+    func test_a_shed_edge_drops_an_uppercase_month() throws {
+        let sample = "Dear customer, on 27 OCT we have just seen SGD 4.80 at KOPITIAM"
+        let segs = try segments(sample) { t in
+            switch t.text {
+            case "SGD", "4.80": return .amount
+            case "KOPITIAM": return .payee
+            default: return nil
+            }
+        }
+        guard case .literal(let kept) = segs[1] else { return XCTFail("\(segs)") }
+        XCTAssertFalse(kept.contains("OCT"), kept)
+        let p = AlertPattern(name: "p", direction: .outflow, accountID: "a",
+                             segments: segs, sampleText: sample)
+        let november = "Dear customer, on 3 NOV we have just seen SGD 9.00 at TOAST BOX"
+        guard case .success(let t) = Matcher.test(p, text: november) else {
+            return XCTFail("a November alert of the same template should read")
+        }
+        XCTAssertEqual(t.payee, "TOAST BOX")
+    }
+
     func test_kept_edges_are_whole_words_and_drop_a_lone_month() {
         XCTAssertEqual(PatternBuilder.keptEdge(of: "Dear customer, on 27 Oct 2026 we had now seen ", atEnd: true),
                        "2026 we had now seen ")
