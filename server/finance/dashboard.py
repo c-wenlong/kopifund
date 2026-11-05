@@ -79,11 +79,14 @@ _CATALOGUE = {
     },
     "category-breakdown": {
         "dims": {"category": {"rows": "categories", "x": "category", "grain": "none",
-                              "metrics": {"total": _minor("total"), "monthly_avg": _minor("monthly_avg"),
-                                          "last3_avg": _minor("last3_avg"),
-                                          "prior6_avg": _minor("prior6_avg"),
-                                          "share": ("share_pct", "percent"),
-                                          "trend": ("trend_pct", "percent")}}},
+                              # the stat's own fields (category_breakdown.py's docstring);
+                              # test_dashboard holds every metric here to a real run of each stat
+                              "metrics": {"total": _minor("total"), "per_month": _minor("per_month"),
+                                          "last3_per_month": _minor("last3_per_month"),
+                                          "prior6_per_month": _minor("prior6_per_month"),
+                                          "change": _minor("change"),
+                                          "share": ("share", "fraction"),
+                                          "change_share": ("change_share", "fraction")}}},
     },
     "portfolio": {
         "dims": {
