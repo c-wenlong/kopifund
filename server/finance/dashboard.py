@@ -262,7 +262,7 @@ def _slice_link(base, dimension, key, shown):
         return None
     out = {**base, **extra}
     for name in ("not_categories", "not_payees"):
-        if name in base and name in extra:
+        if base.get(name) and name in extra:     # an empty filter is no filter
             out[name] = _names(dict.fromkeys(json.loads(base[name]) + json.loads(extra[name])))
     return out
 

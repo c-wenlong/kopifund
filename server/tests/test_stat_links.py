@@ -408,6 +408,11 @@ class DashboardPoints(unittest.TestCase):
             self.assertEqual(a["labels"][-1], spending.OTHER, dim)
             self.follow(q)
             self.assertNotIn("s4", {r["key"] for r in listed(self.conn, a["label_links"][-1])[2]["rows"]})
+        # an empty exclusion is no exclusion: the folded slice still answers and lists its rows
+        for dim, key in (("category", "not_categories"), ("payee", "not_payees")):
+            q = {"source": "spending", "metric": "spend", "dimension": dim, "filters": {"scope": "all", key: ""}}
+            self.follow(q)
+            self.follow({**q, "dimension": "month", "split": dim})
 
     def test_every_stat_point_lists_its_rows_through_the_stats_own_links(self):
         linked = {}
