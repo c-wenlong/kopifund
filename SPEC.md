@@ -2625,8 +2625,6 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   "3 Oct 2026", a month "Oct 2026", a range "3 Oct to 9 Oct 2026" (both ends
   in full across a year), and only chart axis ticks shorten to "Oct 26"; the
   API, exports and file names stay ISO.
-- Until G5 wires in the analytics results, every figure on screen comes from
-  [apps/web/src/sample.ts](apps/web/src/sample.ts) and is invented.
 
 ## Supported statements
 
@@ -2790,5 +2788,3 @@ then the Upload page names its statement as not supported and keeps nothing.
   localhost. G23's later lines answer this with a desktop app that bundles
   both ("Desktop app (G23)" above), so the parsers need not move to the browser.
   It stays open until those lines ship.
-- **Personal plan and profile.** The forward view reads the owner's pay and
-  trip plan from local config. Decide how a new user enters theirs.
