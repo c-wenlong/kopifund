@@ -14,16 +14,18 @@ const scamChecks = {
 const posts: { url: string; body?: string }[] = [];
 
 // G23: the Server card's answer; a stop write flips `up` so the next health check misses
-function stubFetch({ health = true, exports = [{ stamp: "2026-10-12", files: ["transactions.csv", "stats.json", "notes.txt"] }] } = {}) {
+function stubFetch({ health = true, exports = [{ stamp: "2026-10-12", files: ["transactions.csv", "stats.json", "notes.txt"] }],
+  waitingFor = [] as string[] } = {}) {
   let up = health, pid = 4321;
   const started = () => Math.floor(Date.now() / 1000) - 2 * 3600 - 5 * 60;
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (url === "/api/health") return up ? new Response(JSON.stringify({ ok: true }), { status: 200 }) : Promise.reject(new Error("down"));
     if (url.startsWith("/api/server/") && init?.method === "POST") {
       posts.push({ url });
-      if (url.endsWith("/stop")) up = false;
+      // a stop with work under way keeps answering until the test lets it go
+      if (url.endsWith("/stop") && !waitingFor.length) up = false;
       if (url.endsWith("/restart")) pid += 1;
-      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      return new Response(JSON.stringify({ ok: true, waiting_for: waitingFor, timeout: 120 }), { status: 200 });
     }
     if (url === "/api/server") {
       if (!up) return Promise.reject(new Error("down"));
@@ -50,6 +52,7 @@ function stubFetch({ health = true, exports = [{ stamp: "2026-10-12", files: ["t
     if (url.startsWith("/api/link/pending")) return new Response(JSON.stringify({ rows: [] }), { status: 200 });
     return new Response("{}", { status: 404 });
   }));
+  return { goDown: () => { up = false; } };
 }
 
 // G18: true when the page would hold a reload or a closed tab behind the browser's question
@@ -286,6 +289,21 @@ describe("Server card", () => {
     expect(await screen.findByText("Stopped.", {}, { timeout: 3000 })).toBeInTheDocument();
     expect(screen.getByText(/make serve/)).toBeInTheDocument();
     expect(await screen.findByText("Server offline")).toBeInTheDocument();
+  });
+
+  it("says what a stop waits for, and goes offline once the work is done", async () => {
+    const server = stubFetch({ waitingFor: ["a load", "the stats rebuild"] });
+    render(<><Settings /><ServerBanner /></>);
+    await screen.findByText("Server connected");
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "Waiting for a load and the stats rebuild to finish first (2 minutes at most).");
+    // still up a while later: the card waits, the banner stays quiet
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(screen.queryByText("Stopped.")).not.toBeInTheDocument();
+    server.goDown();
+    expect(await screen.findByText("Stopped.", {}, { timeout: 4000 })).toBeInTheDocument();
   });
 
   it("restarts the server and waits for the new process without the offline banner", async () => {
