@@ -129,6 +129,29 @@ final class AmountGrammarTests: XCTestCase {
         XCTAssertEqual(t.amount, Decimal(string: "999999999.99"))
     }
 
+    /// Review on #69: an amount that ends the template has no anchor after
+    /// it, so an oversized figure there must fail rather than read its
+    /// first twelve digits.
+    func test_a_huge_figure_at_the_template_end_does_not_match() throws {
+        let p = try build("Paid SOUQ total KWD 12.50") { t in
+            switch t.text {
+            case "KWD", "12.50": return .amount
+            case "SOUQ": return .payee
+            default: return nil
+            }
+        }
+        for text in ["Paid SOUQ total KWD 1234567890123.00", "Paid SOUQ total KWD 1,234,567,890,123.00",
+                     "Paid SOUQ total KWD 12.5000"] {
+            if case .success(let t) = Matcher.test(p, text: text) {
+                XCTFail("\(text) read as \(t.amount)")
+            }
+        }
+        guard case .success(let t) = Matcher.test(p, text: "Paid SOUQ total KWD 12.50") else {
+            return XCTFail("the sample still reads")
+        }
+        XCTAssertEqual(t.amount, Decimal(string: "12.50"))
+    }
+
     /// Ringgit, the most common foreign currency for an SG user, reads with
     /// its ISO code; a zero-decimal yen amount reads whole.
     func test_ringgit_and_yen_read() throws {

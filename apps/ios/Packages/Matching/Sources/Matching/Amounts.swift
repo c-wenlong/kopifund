@@ -41,8 +41,14 @@ public enum Amounts {
 
     /// What an amount capture reads: an optional minus, an optional
     /// currency, the number.
-    static let pattern = #"-?(?:"# + currency + #")\s*+(?:"# + number + #")|"#
-        + noNumberBefore + #"-?(?:"# + number + ")"
+    static let pattern = #"-?(?:"# + currency + #")\s*+(?:"# + number + ")" + numberEnd + "|"
+        + noNumberBefore + #"-?(?:"# + number + ")" + numberEnd
+
+    /// A capture never stops inside a longer figure: no digit, and no
+    /// separator followed by a digit, may come right after it. Without this
+    /// an oversized "1234567890123.00" at a template's end read as its first
+    /// twelve digits instead of failing.
+    static let numberEnd = #"(?![0-9]|[.,][0-9])"#
 
     private static let whole: NSRegularExpression = {
         // force-try: the grammar is a constant this package's tests compile
