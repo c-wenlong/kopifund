@@ -59,6 +59,27 @@ describe("kpiOf", () => {
     expect(kpiOf(answer).series?.name).toBe("need");
   });
 
+  it("shows nothing when the named series is gone, never another series' figure", () => {
+    const answer: WidgetAnswer = {
+      ...BY_MONTH,
+      series: [
+        { name: "need", values_minor: [100, 200] },
+        { name: "want", values_minor: [300, 400] },
+      ],
+    };
+    const k = kpiOf(answer, "transport");
+    expect(k.series).toBeUndefined();
+    expect(k.value).toBeNull();
+  });
+
+  it("reads an all-null spread as no figure, not S$0", () => {
+    const answer: WidgetAnswer = {
+      ...BY_PART,
+      series: [{ name: "investments", values_minor: [null, null, null] }],
+    };
+    expect(kpiOf(answer, "investments", "sum").value).toBeNull();
+  });
+
   it("sums a spread that is not over time, with no prior and no run", () => {
     const k = kpiOf(BY_PART);
     expect(k.value).toBe(492_990_000);

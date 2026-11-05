@@ -33,22 +33,42 @@ function lastAt(values: (number | null)[], end = values.length): number {
   return -1;
 }
 
+/**
+ * The transactions a series' slice lists: the series' own filters over the
+ * period the figure counts. `latest` counts one point, so the link is that
+ * point's label link (its `from`/`to` month) plus the series' filters; `sum`
+ * counts every non-null point, so the link spans the first to the last.
+ */
+function seriesLink(a: WidgetAnswer, s: WidgetSeries, values: (number | null)[], at: number, aggregate: Aggregate) {
+  const points = a.label_links;
+  if (aggregate === "sum" && points?.length) {
+    const first = points[values.findIndex((v) => v != null)]?.from;
+    const last = points[at]?.to;
+    if (first && last) return { ...(s.link ?? {}), from: first, to: last };
+  }
+  const point = points?.[at];
+  if (point) return { ...point, ...s.link };
+  return s.link ?? null;
+}
+
 /** One slice per series: for several bound queries or one split answer. `name` is the series' display name. */
 function seriesSlices(answers: readonly WidgetAnswer[], aggregate: Aggregate): Slice[] {
   const slices: Slice[] = [];
-  for (const a of answers) {
+  answers.forEach((a, ai) => {
     for (const s of a.series) {
       const values = valuesOf(s);
       const at = lastAt(values);
       if (at < 0) continue;
       slices.push({
-        key: s.name,
+        // two bound queries can answer a series of the same name: the answer's
+        // place keys the slice apart so the legend toggles each on its own
+        key: answers.length > 1 ? `${ai}:${s.name}` : s.name,
         name: label(s.name),
         value: aggregate === "sum" ? values.reduce<number>((sum, v) => sum + (v ?? 0), 0) : (values[at] as number),
-        link: s.link ?? a.label_links?.[at] ?? null,
+        link: seriesLink(a, s, values, at, aggregate),
       });
     }
-  }
+  });
   return slices;
 }
 

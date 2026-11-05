@@ -41,7 +41,8 @@ const TIME_DIMS = new Set(["month", "year", "period"]);
 
 /** What the tile shows for an answer: the figure, the point before it, and the run of figures. */
 export function kpiOf(answer: WidgetAnswer, seriesName?: string, aggregate: Aggregate = "latest") {
-  const series = (seriesName && answer.series.find((s) => s.name === seriesName)) || answer.series[0];
+  // a named series that is gone shows nothing rather than another series' figure
+  const series = seriesName === undefined ? answer.series[0] : answer.series.find((s) => s.name === seriesName);
   const raw = series ? (series.values_minor ?? series.values ?? []) : [];
   const timed = TIME_DIMS.has(answer.dimension);
   let value: number | null = null;
@@ -62,7 +63,7 @@ export function kpiOf(answer: WidgetAnswer, seriesName?: string, aggregate: Aggr
       }
     }
   } else {
-    value = raw.length ? raw.reduce<number>((sum, v) => sum + (v ?? 0), 0) : null;
+    value = raw.some((v) => v != null) ? raw.reduce<number>((sum, v) => sum + (v ?? 0), 0) : null;
   }
   return { series, value, prior, atLabel, priorLabel, timed,
     run: timed ? raw.filter((v): v is number => v != null) : [] };

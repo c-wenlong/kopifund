@@ -43,12 +43,27 @@ describe("slicesFor", () => {
     const slices = slicesFor([SPLIT_BY_MONTH]);
     expect(slices.map((s) => s.name)).toEqual(["Food", "Transport"]);
     expect(slices.map((s) => s.value)).toEqual([60_000, 20_000]);
-    expect(slices[0].link).toEqual({ spend: "1", bucket: "Food", home: "1" });
+    // the series' own filters plus the shown point's month, so the click lists what the figure counts
+    expect(slices[0].link).toEqual({ from: "2026-10", to: "2026-10", spend: "1", home: "1", bucket: "Food" });
+    expect(slices[1].link).toEqual({ from: "2026-10", to: "2026-10", spend: "1", home: "1", bucket: "Transport" });
   });
 
-  it("sums the range instead when aggregate is sum", () => {
+  it("sums the range instead when aggregate is sum, and the link spans it", () => {
     const slices = slicesFor([SPLIT_BY_MONTH], "sum");
     expect(slices.map((s) => s.value)).toEqual([150_000, 30_000]);
+    expect(slices[0].link).toEqual({ from: "2026-08", to: "2026-10", spend: "1", home: "1", bucket: "Food" });
+    // Transport's figures are Aug and Oct: the summed link covers its own first to last point
+    expect(slices[1].link).toEqual({ from: "2026-08", to: "2026-10", spend: "1", home: "1", bucket: "Transport" });
+  });
+
+  it("keys two same-named series from two bound queries apart, so each hides alone", () => {
+    const other: WidgetAnswer = {
+      ...SPLIT_BY_MONTH,
+      series: [{ name: "spend", values_minor: [1_000, 2_000, 3_000], link: { spend: "1", bucket: "Food", home: "1" } }],
+    };
+    const slices = slicesFor([SPLIT_BY_MONTH, other]);
+    expect(slices.map((s) => s.key)).toEqual(["0:Food", "0:Transport", "1:spend"]);
+    expect(new Set(slices.map((s) => s.key)).size).toBe(3);
   });
 
   it("falls back to the point's own label link when a series has none", () => {
