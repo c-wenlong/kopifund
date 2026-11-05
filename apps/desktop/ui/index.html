@@ -5,11 +5,11 @@
 <title>Kopifund</title>
 <!-- G23: the window shows this page until serve.py prints its ready line, and
      again if the server stops. The colours are web/src/index.css's page and
-     ink tokens, so the switch to the app does not flash. -->
+     ink tokens (server/tests/test_desktop_start_page.py keeps them equal), so the switch to the app does not flash. -->
 <style>
-  :root { --page: #f6f5f0; --ink: #1f1e1d; --ink-2: #55544f; --line: #e3e1d9; color-scheme: light dark; }
+  :root { --page: #f6f5f0; --ink: #1f1e1d; --ink-2: #55544f; --line: rgb(31 30 29 / 0.12); color-scheme: light dark; }
   @media (prefers-color-scheme: dark) {
-    :root { --page: #1f1e1d; --ink: #f0eee6; --ink-2: #b4b2a9; --line: #3a3936; }
+    :root { --page: #1f1e1d; --ink: #f0eee6; --ink-2: #b4b2a9; --line: rgb(255 255 255 / 0.1); }
   }
   html, body { height: 100%; margin: 0; }
   body {
