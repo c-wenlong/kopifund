@@ -95,7 +95,6 @@ _ALLOWED_ACTIONS = {sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_F
 CHART_TYPES = ("bar", "stacked", "line", "scatter", "table")
 CHART_UNITS = ("sgd_minor", "count", "percent", "fraction", "months", "days", "number")
 CARD_KINDS = ("rule", "category", "budget", "trip")
-MONTH = re.compile(r"\d{4}-(0[1-9]|1[0-2])")
 
 
 class ToolRefused(Exception):
@@ -378,8 +377,10 @@ def fit(value, limit=RESULT_CHARS):
 def _check_month(v, name):
     if v in (None, ""):
         return None
-    if not isinstance(v, str) or not MONTH.fullmatch(v):
-        raise ToolRefused(f"{name} is a month, YYYY-MM")
+    try:
+        dates.add_months(v, 0)               # a real YYYY-MM month, year 0001 on
+    except (TypeError, ValueError):
+        raise ToolRefused(f"{name} is a month, YYYY-MM") from None
     return v
 
 
@@ -476,13 +477,14 @@ def tool_transactions(ctx, args):
     query["limit"] = str(max(1, min(MAX_TXNS, limit)))
     offset = args.get("offset") or 0
     query["offset"] = str(max(0, int(offset) if isinstance(offset, int) else 0))
+    filters = {k: v for k, v in query.items() if k not in ("limit", "offset")}
     try:
+        words = _filter_words(filters)           # a month that does not exist is refused here
         page = api.transactions(ctx.conn, query, ctx.folders, ctx.results)
     except ValueError as e:
         raise ToolRefused(str(e)) from None
-    filters = {k: v for k, v in query.items() if k not in ("limit", "offset")}
     link = href(filters)
-    ctx.offer_link(f"Transactions: {_filter_words(filters)}", link)
+    ctx.offer_link(f"Transactions: {words}", link)
     keys = [r["key"] for r in page["rows"]]
     texts = {}
     if keys:
@@ -685,10 +687,13 @@ def _category_card(ctx, args):
         raise ToolRefused(f"{category!r} is not a category; pick one from the data dictionary")
     r = {**rows[0], "text": rules_app._text(rows[0])}
     body = {"key": key, "category": category}
-    if args.get("payee"):
-        body["payee"] = str(args["payee"]).strip()
+    payee = str(args.get("payee") or "").strip()
+    if payee:
+        body["payee"] = payee
+    # Audit: the card says every field Confirm saves, the payee included
     card = _card(ctx, "category", f"Category: {category}",
-                 f"This one row, {money.label(r['amount_minor'], r['currency'])} on {dates.day_label(r['date'])}",
+                 f"This one row, {money.label(r['amount_minor'], r['currency'])} on {dates.day_label(r['date'])}"
+                 + (f", payee {payee}" if payee else ""),
                  [_row_line({**r, "amount": r["amount_minor"]}, r["category"], category)],
                  {"path": "/api/rules/pin", "body": body})
     return card, {"row": key, "category_now": rows[0]["category"] or None}
@@ -739,10 +744,12 @@ def _trip_card(ctx, args):
         body.update({"id": held["id"], "old_name": name, "notes": held["notes"] or "",
                      "extra_keys": db.trip_pins(ctx.conn, held["id"], follow=False)})
     n = ctx.conn.execute("SELECT COUNT(*) FROM v_txn WHERE txn_date BETWEEN ? AND ?", (start, end)).fetchone()[0]
+    preview = [f"{n} row{'s' if n != 1 else ''} in the record fall in those days; "
+               "the ones spent abroad join the trip"]
+    if body["notes"] and not held:
+        preview.append(f"Notes: {body['notes']}")    # Audit: the card says every field Confirm saves
     card = _card(ctx, "trip", f"Trip: {name}", f"{dates.range_label(start, end)}, {', '.join(countries) or 'no country'}",
-                 [f"{n} row{'s' if n != 1 else ''} in the record fall in those days; "
-                  "the ones spent abroad join the trip"],
-                 {"path": "/api/trips", "body": body})
+                 preview, {"path": "/api/trips", "body": body})
     return card, {"edits_existing_trip": bool(held)}
 
 
@@ -885,7 +892,7 @@ def run(ctx, name, args):
     tool = BY_NAME.get(name)
     if tool is None:
         return f"No tool called {name!r}", True
-    if args is None:
+    if not isinstance(args, dict):
         return "The arguments were not a JSON object", True
     try:
         out = tool["run"](ctx, args)
@@ -893,6 +900,10 @@ def run(ctx, name, args):
         return str(ctx.private(str(e))), True
     except sqlite3.Error as e:
         return f"The record could not answer: {e.__class__.__name__}", True
+    except (TypeError, ValueError, AttributeError, KeyError) as e:
+        # Audit: a list or a number where the schema says a string is the model's
+        # mistake to fix and call again, not a reason to end the whole answer
+        return str(ctx.private(f"The arguments did not fit {name}'s schema ({e}): check each field's type")), True
     return json.dumps(fit(ctx.private(out)), ensure_ascii=False, default=str), False
 
 

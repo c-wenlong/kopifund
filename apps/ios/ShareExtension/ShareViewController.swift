@@ -15,8 +15,8 @@ final class ShareViewController: UIViewController {
                 guard let text = try await provider.loadItem(forTypeIdentifier: UTType.plainText.identifier) as? String,
                       !text.isEmpty else { throw NSError(domain: "alerts", code: 1) }
                 let container = try Store.container()
-                _ = try Ingest.alert(text: text, source: "share", receivedAt: Date(),
-                                     container: container)
+                _ = try await Ingest.alert(text: text, source: "share", receivedAt: Date(),
+                                           container: container)
                 close()
             } catch {
                 // a failed ingest must not look like a successful share

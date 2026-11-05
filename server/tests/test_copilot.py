@@ -6,6 +6,7 @@ No test calls the network: the provider is a fake transport that replays
 scripted replies. No test touches the Keychain or the real data folder."""
 import isolate  # noqa: F401  first: no test writes the real record, cache, Keychain or .env
 import http.client
+import io
 import json
 import os
 import sqlite3
@@ -448,6 +449,18 @@ class ToolsTest(Record):
         self.assertTrue(failed)
         self.assertIn("Results there are", text)
 
+    def test_a_month_that_does_not_exist_is_refused_back_to_the_model(self):
+        """A bad month is the model's argument to correct, never the end of the answer."""
+        ctx = self.context()
+        for tool, args in (("transactions", {"month": "2026-13"}), ("transactions", {"from": "0000-05"}),
+                           ("spending", {"from": "0000-05"}), ("spending", {"to": "2026-00"}),
+                           ("suggest_change", {"kind": "budget", "category": "Groceries", "month": "0000-01",
+                                               "planned_minor": 100})):
+            with self.subTest(tool=tool, args=args):
+                text, failed = tools.run(ctx, tool, args)
+                self.assertTrue(failed, text)
+                self.assertRegex(text, "month")
+
     def test_a_result_that_counts_rows_links_to_exactly_those_rows(self):
         ctx = self.context()
         t = self.call(ctx, "transactions", category="Groceries")
@@ -662,6 +675,36 @@ class ToolsTest(Record):
             with self.subTest(args=args):
                 self.assertTrue(tools.run(ctx, "suggest_change", args)[1])
 
+    def test_a_wrongly_typed_argument_is_a_tool_error_the_model_can_fix(self):
+        # Audit: a list or a number where a tool wants a string came back as an
+        # exception, which ended the whole answer; now the model reads what was wrong
+        ctx = self.context()
+        for name, args in (("stat_result", {"id": ["x"]}),
+                           ("suggest_change", {"kind": "rule", "pattern": 5, "category": "Groceries"}),
+                           ("suggest_change", {"kind": ["rule"]}),
+                           ("suggest_change", {"kind": "category", "key": 5, "category": "Groceries"}),
+                           ("transactions", {"limit": "5"}),
+                           ("spending", ["not", "an", "object"])):
+            with self.subTest(tool=name, args=args):
+                text, failed = tools.run(ctx, name, args)
+                self.assertTrue(failed)
+                self.assertIsInstance(text, str)
+                self.assertTrue(text)
+
+    def test_a_card_shows_every_field_it_would_save(self):
+        # Audit: a category card's payee and a trip card's notes were saved on
+        # Confirm without the card ever showing them
+        ctx = self.context()
+        self.call(ctx, "suggest_change", kind="category", key="x1", category="Person to person", payee="Jane")
+        card = ctx.cards[-1]
+        self.assertEqual(card["request"]["body"]["payee"], "Jane")
+        self.assertIn("payee Jane", card["summary"])
+        self.call(ctx, "suggest_change", kind="trip", name="Osaka", start="2026-09-01", end="2026-09-07",
+                  countries=["JPN"], why="the September visit")
+        card = ctx.cards[-1]
+        self.assertEqual(card["request"]["body"]["notes"], "the September visit")
+        self.assertTrue(any("the September visit" in line for line in card["preview"]), card["preview"])
+
     def test_a_card_the_owner_confirms_saves_through_the_endpoint_it_names(self):
         ctx = self.context()
         self.call(ctx, "suggest_change", kind="budget", category="Groceries", month="2026-09", planned_minor=45_000)
@@ -810,6 +853,20 @@ class ThreadSaveTest(Record):
         sent = after.requests[0][2]["messages"]
         self.assertEqual([m["role"] for m in sent], ["user", "assistant", "user"])
         self.assertEqual(self.texts(tid)[2:], [("user", "And eating out?"), ("assistant", "S$12.40.")])
+
+    def test_a_failure_outside_the_model_loop_still_ends_with_error_then_done(self):
+        # Audit: a turn that could not be saved (a full disk) or a record that
+        # would not open raised out of the stream, which then closed with
+        # neither an error nor a done line
+        quiet = self.enterContext(mock.patch("sys.stderr", new=io.StringIO()))
+        with mock.patch.object(copilot, "save", side_effect=OSError(28, "No space left on device")):
+            events = ask("How much on groceries?", Script(answer("S$100.00.")))
+        self.assertEqual([e["type"] for e in events], ["thread", "error", "done"])
+        self.assertNotIn("space", events[1]["message"])
+        with mock.patch.object(tools, "open_readonly", side_effect=sqlite3.OperationalError("unable to open")):
+            events = ask("How much on groceries?", Script(answer("S$100.00.")))
+        self.assertEqual([e["type"] for e in events], ["thread", "error", "done"])
+        self.assertIn("No space left", quiet.getvalue())     # the server log keeps the trace
 
     def test_a_question_overtaken_by_a_newer_one_does_not_overwrite_it(self):
         tid = ask("First", Script(answer("One.")))[0]["thread"]["id"]
