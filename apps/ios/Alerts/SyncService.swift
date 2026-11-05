@@ -136,10 +136,15 @@ enum SyncService {
                 }
                 try? context.save()
             }
+            // the hub send awaited: read the row again so a hold, or a
+            // currency a pairing moved onto it meanwhile, is what the
+            // statement match and the currency check below see
+            refresh(row)
+            let liveCurrency = row.currency.isEmpty ? planCurrency : row.currency
             guard row.state == "approved" || row.state == "failed" || row.state == "syncing"
             else { continue }
             if row.state == "approved",
-               let i = Dedup.coveredBy(amountCents: row.amountCents, currency: currency ?? "",
+               let i = Dedup.coveredBy(amountCents: row.amountCents, currency: liveCurrency ?? "",
                                        direction: row.direction, date: row.date,
                                        payee: row.payee, in: record, taken: taken) {
                 taken.insert(i)
@@ -157,11 +162,6 @@ enum SyncService {
                 row.state = "failed"; row.syncError = "no YNAB account mapped"
                 continue
             }
-            // the hub send awaited: read the row again so a currency a
-            // pairing moved onto it meanwhile is the one checked
-            refresh(row)
-            guard row.state == "approved" || row.state == "failed" || row.state == "syncing"
-            else { continue }
             guard row.checkCurrency(against: planCurrency) else {
                 try? context.save()
                 continue
