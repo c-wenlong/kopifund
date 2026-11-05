@@ -253,10 +253,12 @@ export function buildFlow(input: {
     // the gross bigger than the net, so the biggest positives fold into the
     // residual until the shown rest fits; what folds, refunds included, the
     // "Everything else" figure holds, never dropped.
+    // the answer's own "Everything else" row never shows on its own: the
+    // residual below holds it, so the slice draws one such node, not two
     const shown = new Set<FlowChild>();
     let covered = 0;
     for (const c of [...s.children].sort((a, b) => b.minor - a.minor)) {
-      if (c.minor > 0 && covered + c.minor <= s.minor) {
+      if (c.kind !== "rest" && c.minor > 0 && covered + c.minor <= s.minor) {
         shown.add(c);
         covered += c.minor;
       }

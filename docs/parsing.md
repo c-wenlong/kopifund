@@ -153,7 +153,13 @@ Debit-card rows print the merchant, a country slot and the purchase date on one
 line, and every one of them is typed `Debit Card Transaction`. The country slot
 is inconsistent: a 3-letter code, a 2-letter code, a US state, or `065` (the IDD
 code) for some Singapore merchants. All of it is normalised to ISO alpha-3 so
-one select value covers each country.
+one select value covers each country. A US state code reads as the USA, except
+`ID`, `IN` and `DE`, which are also Indonesia, India and Germany: those read as
+the country unless the town printed before them is a US city in the city table
+(with the data folder's `places.csv`, its prefix and exact rows alike). A card
+row's town is the last one to three words before the slot, the shortest that
+names a known town deciding, since the parser has collapsed the spacing that
+set it apart. Wallet merchants (`places.split_country`) follow the same rule.
 
 On the bank side, a row is a wallet load only when the statement names the
 wallet's own counterparty, never when the word appears in free text.
@@ -337,6 +343,12 @@ dated on the next printed row, with a note naming the window. A month whose
 opening differs from the previous statement's closing gets the same treatment
 with a row dated the first of the month, and the period then opens at the
 previous closing so that opening + in - out still equals the printed closing.
+
+A jump that the next printed row explains with its sign turned over is not a
+dropped row: that row's amount was read into Money In for Money Out, or the
+other way round, and a synthetic row of twice its size would hide the misread.
+No row is synthesised for it; the parser warns that the amount was read in the
+wrong column, the balance check fails on that row and the run stops.
 
 A synthetic row is `Internal - YouTrip` when its size is a known top-up size, or
 when it matches an exchange printed in another wallet over the same days.
@@ -736,7 +748,7 @@ which path is missing, and the suite still ends clean. Those modules also skip u
 | `test_parse_uob` | the UOB One and Stash layouts on invented statements from the public sample: a statement that balances, one that does not and is refused by the run, the table broken across pages with a carried and a brought forward balance, a credit and a debit on one day, a month brought forward from the last one's closing, and the One and savings statements filed apart |
 | `test_sniff` | every fixture here, the Tiger Brokers ones and the CPF ones read as exactly one layout and go to the right account and currency, with the config's numbers, with none and with statements already filed; two accounts it cannot tell apart, a number no account knows, a wallet currency with no folder and a file that reads as two statements all ask; a statement no layout reads is not supported and kept nowhere; an upload whose text names another account is refused |
 | `test_sample` | `finance.py sample` on every fixture here plus an invented bank's statement (`server/tests/fixtures/unknown/`): no name, address, account or card number, NRIC, email or phone number survives, every amount and date does, every line keeps its length; a random identifier of each kind planted in a fixture is always replaced; the text goes beside the PDF or where it is told, never into the repository, and the PDF is only read |
-| `test_youtrip_synthesis` | a jump inside a statement and a jump across a month boundary each produce the right synthetic row |
+| `test_youtrip_synthesis` | a jump inside a statement and a jump across a month boundary each produce the right synthetic row; an amount read in the wrong column fails the check instead |
 | `test_dates` | both printed date forms, including the consolidated layout keeping its own printed year |
 | `test_keys` | the fields `txn_key` hashes and how repeats are numbered, both frozen because Notion holds the current keys |
 | `test_card_duplicates` | card rows covered by an account statement are dropped, the card block's totals fall by what left, and an empty card statement is skipped |

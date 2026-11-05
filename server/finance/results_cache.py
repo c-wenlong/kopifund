@@ -15,6 +15,7 @@ import copy
 import json
 import re
 import threading
+from collections.abc import Mapping
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -160,11 +161,9 @@ _RESULTS_MEMO: dict = {}
 _RESULTS_LOCK = threading.Lock()
 
 
-def results(req=None):
-    """Every stat's current result, or {} before the first analysis, with any
-    account number the record knows masked to its last four digits. Masking
-    reads the request's connection when it has to work them out, so that
-    costs the request no second one."""
+def _shared(req=None):
+    """The memo's own results for this data version, worked out once: never
+    handed to a caller, which gets a copy (`results`) or a view (`results_view`)."""
     from . import api, page_cache
     version = page_cache.data_version()
     with _RESULTS_LOCK:                  # one works them out, the others wait for it
@@ -177,4 +176,38 @@ def results(req=None):
             results = api.masked(results, conn=req.maybe_record() if req else None) if results else {}
             _RESULTS_MEMO.clear()
             _RESULTS_MEMO[version] = results
-        return copy.deepcopy(results)
+        return results
+
+
+def results(req=None):
+    """Every stat's current result, or {} before the first analysis, with any
+    account number the record knows masked to its last four digits. Masking
+    reads the request's connection when it has to work them out, so that
+    costs the request no second one."""
+    return copy.deepcopy(_shared(req))
+
+
+class _View(Mapping):
+    """The results, each copied only when it is read."""
+
+    def __init__(self, shared):
+        self._shared = shared
+        self._read = {}
+
+    def __getitem__(self, stat_id):
+        if stat_id not in self._read:
+            self._read[stat_id] = copy.deepcopy(self._shared[stat_id])
+        return self._read[stat_id]
+
+    def __iter__(self):
+        return iter(self._shared)
+
+    def __len__(self):
+        return len(self._shared)
+
+
+def results_view(req=None) -> Mapping:
+    """`results`, read only, copying a stat's result only when it is read
+    (G26): a dashboard widget asks one question of one or two stats, once per
+    widget, and copying every stat for each would cost more than the answer."""
+    return _View(_shared(req))
