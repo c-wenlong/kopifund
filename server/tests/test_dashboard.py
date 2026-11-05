@@ -501,6 +501,19 @@ class EndpointTest(unittest.TestCase):
         with self.assertRaises(serve.Refused):
             self.post("/api/dashboard/goals/remove", {"id": "g-9"})
 
+    def test_a_goal_saved_with_a_binding_from_before_reads_unbound_and_still_edits(self):
+        with closing(db.connect()) as conn:
+            dashboard._put(conn, dashboard.GOALS_KEY, [{
+                "id": "g-1", "name": "Old", "target_minor": 100, "month": None, "note": "", "milestones": [],
+                "binding": {"source": "spending", "metric": "spend", "dimension": "month"}}])
+        goal = self.get("/api/dashboard/goals")["goals"][0]
+        self.assertNotIn("binding", goal)
+        self.assertIsNone(goal["current_minor"])
+        got = self.post("/api/dashboard/goals", {"id": "g-1", "name": "Renamed"})["goals"][0]
+        self.assertEqual((got["name"], got.get("binding")), ("Renamed", None))
+        got = self.post("/api/dashboard/goals", {"id": "g-1", "source": "net-worth", "metric": "total"})["goals"][0]
+        self.assertEqual(got["binding"], {"source": "net-worth", "metric": "total", "dimension": "month"})
+
     # ---- scenario preview
 
     def test_the_preview_is_ephemeral(self):

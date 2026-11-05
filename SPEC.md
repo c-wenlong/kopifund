@@ -1471,7 +1471,8 @@ resolved as `progress`, a fraction of target. A binding names a balance over
 time (`dashboard.GOAL_LEVELS`: net worth or its parts by month, savings-runway
 cash, CPF by year, a portfolio's value by period): a flow's last month is
 usually still running, a slice is no amount a goal reaches, and a
-projection's last figure is the future. Each state write reads what it
+projection's last figure is the future. A goal saved before with another
+binding reads as unbound and can still be edited. Each state write reads what it
 changes and writes it in one transaction, so a save from another tab waits
 rather than being lost, and the server stamps a layout's `updated_at` itself
 (a list write keeps the stamp of a layout it sends back unchanged). The allocation

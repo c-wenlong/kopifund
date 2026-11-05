@@ -780,10 +780,25 @@ def _check_goal(g, goal_id=None):
     return out
 
 
+def _is_level(binding):
+    """True for a binding GOAL_LEVELS names (a goal saved before them may hold another)."""
+    b = binding or {}
+    return b.get("metric") in GOAL_LEVELS.get(b.get("source"), {}).get(b.get("dimension") or "month", ())
+
+
+def _without_old_binding(g):
+    """A saved goal with a binding GOAL_LEVELS does not name (saved before
+    them) read as unbound, so it shows no figure that is not its progress and
+    can still be edited; a patch that names a new binding sets one."""
+    if not g.get("binding") or _is_level(g["binding"]):
+        return g
+    return {k: v for k, v in g.items() if k != "binding"}
+
+
 def _goal_current(conn, results, g):
     """A goal's progress: the last figure its binding resolves to, as cents."""
     b = g.get("binding")
-    if not b:
+    if not _is_level(b):
         return None
     try:
         answer = resolve(conn, results, {"source": b["source"], "metric": b["metric"],
@@ -801,7 +816,7 @@ def _goal_current(conn, results, g):
 def goals(conn, results):
     out = []
     for g in _doc(conn, GOALS_KEY, []) if conn else []:
-        g = dict(g)
+        g = dict(_without_old_binding(g))
         current = _goal_current(conn, results, g)
         g["current_minor"] = current
         g["progress"] = (current / g["target_minor"]
@@ -824,7 +839,8 @@ def _save_goal(conn, data):
     if data.get("id"):
         for i, g in enumerate(docs):
             if g["id"] == data["id"]:
-                docs[i] = _check_goal({**g, **{k: v for k, v in data.items() if k != "id"}}, g["id"])
+                docs[i] = _check_goal({**_without_old_binding(g), **{k: v for k, v in data.items() if k != "id"}},
+                                      g["id"])
                 break
         else:
             raise DashboardRefused(f"No goal {data['id']!r}")
