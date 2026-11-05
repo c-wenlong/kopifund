@@ -56,6 +56,25 @@ final class YNABClientTests: XCTestCase {
         XCTAssertEqual(payees.first?.name, "Kopitiam")
     }
 
+    func test_plan_currency_reads_the_settings_iso_code() async throws {
+        MockProtocol.handler = { req in
+            XCTAssertEqual(req.url?.path, "/v1/plans/p1/settings")
+            return respond(200, """
+            {"data":{"settings":{"date_format":{"format":"DD/MM/YYYY"},"currency_format":{"iso_code":"SGD","example_format":"123,456.78","decimal_digits":2,"decimal_separator":".","symbol_first":true,"group_separator":",","currency_symbol":"S$","display_symbol":true}}}}
+            """)
+        }
+        let code = try await client().planCurrency(planID: "p1")
+        XCTAssertEqual(code, "SGD")
+    }
+
+    func test_plan_currency_is_nil_when_ynab_sends_none() async throws {
+        MockProtocol.handler = { _ in
+            respond(200, #"{"data":{"settings":{"date_format":null,"currency_format":null}}}"#)
+        }
+        let code = try await client().planCurrency(planID: "p1")
+        XCTAssertNil(code)
+    }
+
     func test_create_transaction_posts_snake_case() async throws {
         MockProtocol.handler = { req in
             XCTAssertEqual(req.httpMethod, "POST")
@@ -136,5 +155,21 @@ final class ImportIDTests: XCTestCase {
         XCTAssertTrue(a.hasPrefix("al-"))
         let c = ImportID.make(date: d, milliunits: -4500, payee: "Other", source: "sms")
         XCTAssertNotEqual(a, c)
+    }
+
+    /// Review on #50: two real Wallet purchases of one amount at one merchant
+    /// on one day get different ids once each carries its capture moment;
+    /// without one, the id is the old build's, so a legacy retry matches.
+    func test_capture_moment_separates_same_day_purchases() {
+        let day = Date(timeIntervalSince1970: 1_800_000_000)
+        let morning = ImportID.make(date: day, milliunits: -4500, payee: "Kopitiam",
+                                    source: "wallet", capturedAt: day.addingTimeInterval(7 * 3600))
+        let evening = ImportID.make(date: day, milliunits: -4500, payee: "Kopitiam",
+                                    source: "wallet", capturedAt: day.addingTimeInterval(17 * 3600))
+        XCTAssertNotEqual(morning, evening)
+        XCTAssertLessThanOrEqual(morning.count, 36)
+        XCTAssertEqual(ImportID.make(date: day, milliunits: -4500, payee: "Kopitiam", source: "wallet"),
+                       ImportID.make(date: day, milliunits: -4500, payee: "Kopitiam", source: "wallet",
+                                     capturedAt: nil))
     }
 }

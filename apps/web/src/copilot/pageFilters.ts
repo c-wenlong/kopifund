@@ -1,5 +1,6 @@
-// G22: what a page shows that its address does not say. Spending keeps its
-// range, scope and split in state, Plan its budget month, Net worth its range;
+// G22: what a page shows that its address does not say. Spending's address
+// says its range but not the months it covers, Plan keeps its budget month in
+// state, Net worth its range;
 // a question asked beside them means what is on screen, so each page publishes
 // its effective selections here, in the names the copilot's tools take
 // (from/to as YYYY-MM, scope sg|all, by bucket|category|payee, month), and the

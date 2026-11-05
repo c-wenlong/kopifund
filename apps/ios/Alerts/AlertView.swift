@@ -87,9 +87,10 @@ struct AlertView: View {
                 }
 
                 NavigationLink {
-                    PatternBuilderView(sampleText: record.text, source: record.source) {
+                    PatternBuilderView(sampleText: record.text, source: record.source,
+                                       arrivedOn: record.arrivedOn) {
                         didSave = true
-                        onFinished(reIngestAndRemove())
+                        Task { onFinished(await reIngestAndRemove()) }
                     }
                 } label: {
                     Text("Teach a pattern")
@@ -138,12 +139,13 @@ struct AlertView: View {
 
     /// The saved pattern should also capture this alert: re-ingest so the
     /// spend reaches the queue, then drop the unmatched row.
-    private func reIngestAndRemove() -> String {
+    private func reIngestAndRemove() async -> String {
         var outcome = "unmatched"
         if let container = try? Store.container() {
-            outcome = (try? Ingest.alert(text: record.text, source: record.source,
-                                         receivedAt: record.receivedAt,
-                                         container: container)) ?? "unmatched"
+            outcome = (try? await Ingest.alert(text: record.text, source: record.source,
+                                               receivedAt: record.receivedAt,
+                                               arrivedOn: record.arrivedOn,
+                                               container: container)) ?? "unmatched"
         }
         context.delete(record)
         try? context.save()

@@ -6,21 +6,25 @@ anything under `server/finance/parsers/`. The one rule the whole pipeline rests 
 misparse is invisible unless a printed balance catches it, so every bank feed
 below is described down to the balance check it ends at.
 
-Four parsers in the `finance.parsers` package turn statement PDFs into two
+Six row parsers in the `finance.parsers` package turn statement PDFs into two
 CSVs with the same columns:
 [../server/finance/parsers/parse_statements.py](../server/finance/parsers/parse_statements.py) for the four
 DBS and POSB layouts,
+[../server/finance/parsers/parse_ocbc.py](../server/finance/parsers/parse_ocbc.py) for the OCBC 360 account,
+[../server/finance/parsers/parse_uob.py](../server/finance/parsers/parse_uob.py) for the UOB accounts,
 [../server/finance/parsers/parse_youtrip.py](../server/finance/parsers/parse_youtrip.py) for the YouTrip
 wallet, [../server/finance/parsers/parse_revolut.py](../server/finance/parsers/parse_revolut.py) for the
 Revolut wallets, and [../server/finance/parsers/parse_wise.py](../server/finance/parsers/parse_wise.py) for
-the Wise balances. `finance.py sync` runs all four over the whole tree on every
-run, and shows everything they print. They also run on their own, from
+the Wise balances. `finance.py sync` and `finance.py load` run all six over the whole tree on every
+run, and show everything they print. They also run on their own, from
 server/:
 
 ```bash
 (cd server && python3 -m finance.parsers.parse_statements)                       # extract and check, no CSVs
 (cd server && python3 -m finance.parsers.parse_statements --out /tmp/sync)       # also write the two CSVs
-(cd server && python3 -m finance.parsers.parse_statements statements/posb-everyday/2026/7.pdf)
+(cd server && python3 -m finance.parsers.parse_statements statements/posb-everyday/2026/2026-07.pdf)
+(cd server && python3 -m finance.parsers.parse_ocbc --out /tmp/sync/ocbc)
+(cd server && python3 -m finance.parsers.parse_uob --out /tmp/sync/uob)
 (cd server && python3 -m finance.parsers.parse_youtrip --out /tmp/sync/youtrip --wallet eur)
 (cd server && python3 -m finance.parsers.parse_revolut --out /tmp/sync/revolut --wallet eur)
 (cd server && python3 -m finance.parsers.parse_wise --out /tmp/sync/wise --wallet eur)
@@ -149,7 +153,13 @@ Debit-card rows print the merchant, a country slot and the purchase date on one
 line, and every one of them is typed `Debit Card Transaction`. The country slot
 is inconsistent: a 3-letter code, a 2-letter code, a US state, or `065` (the IDD
 code) for some Singapore merchants. All of it is normalised to ISO alpha-3 so
-one select value covers each country.
+one select value covers each country. A US state code reads as the USA, except
+`ID`, `IN` and `DE`, which are also Indonesia, India and Germany: those read as
+the country unless the town printed before them is a US city in the city table
+(with the data folder's `places.csv`, its prefix and exact rows alike). A card
+row's town is the last one to three words before the slot, the shortest that
+names a known town deciding, since the parser has collapsed the spacing that
+set it apart. Wallet merchants (`places.split_country`) follow the same rule.
 
 On the bank side, a row is a wallet load only when the statement names the
 wallet's own counterparty, never when the word appears in free text.
@@ -206,8 +216,12 @@ totals alone would never catch it. Every run therefore replays each
 account-month's chain against the printed opening, every printed intermediate
 balance and the printed closing, and reports every point where the running
 figure drifts. The chain resyncs onto the printed balance after a drift, so one
-wrong number is one report rather than N. The script exits non-zero if any chain
-fails, and `sync` writes nothing when it does.
+wrong number is one report rather than N. A block with a drift fails even when
+the resynced replay still reaches its closing, so the `reconciled` column of the
+CSVs the parser writes before it exits says False, and a reuse of those CSVs
+(`load`, `sync` or `doctor --csv`, `analyse --from-csv`) stops on
+`block-not-reconciled`. The script exits non-zero if any chain fails, and `sync`
+writes nothing when it does.
 
 Card statements print no balances at all, so their only check is the printed
 `GRAND TOTAL`, and a YouTrip month that prints "No transactions" carries no
@@ -232,8 +246,27 @@ at all, because the account statement carries every row.
 This is also why the file name matters. Account and wallet statements are named
 for the calendar month they cover; a debit-card statement closes on the 9th and
 is named for the month **before** its printed "As at" date, so the statement "As
-at 09 Jan 2025" is `2024/12.pdf`. A statement spanning several months takes the
-last one, so `posb-everyday/2025/1_2.pdf` runs Dec 2024 to Feb 2025.
+at 09 Jan 2025" is `2024-12.pdf`. A statement spanning several months is named
+for the first and the last, so `posb-everyday/2025/2025-01_2025-02.pdf` runs
+Jan to Feb 2025.
+
+## OCBC: the 360 account
+
+[../server/finance/parsers/parse_ocbc.py](../server/finance/parsers/parse_ocbc.py) reads the OCBC 360
+account and its statement-savings siblings. It was built from a public sample,
+not from a real statement, so the layout is "from a public sample" in the
+registry and on Setup until a real statement has parsed and balanced.
+
+| What | As the sample prints it |
+| --- | --- |
+| The statement | `STATEMENT OF ACCOUNT` and `<d> <MON> <yyyy> TO <d> <MON> <yyyy>` on the first page |
+| The account | `Account No. <digits>` under the product name |
+| Columns | Transaction Date, Value Date, Description, Cheque, Withdrawal, Deposit, Balance; a number's column is its position against the heading, re-read on every page |
+| Dates | `DD MON`, with no year: the year comes from the period |
+| The chain | `BALANCE B/F` opens it and `BALANCE C/F` closes it; a long description wraps onto lines with no date |
+
+The balance check replays every row's running balance in integer cents against
+the printed one and ends at `BALANCE C/F`. A chain that drifts stops the run.
 
 ## UOB: the One Account and the savings accounts
 
@@ -314,6 +347,12 @@ dated on the next printed row, with a note naming the window. A month whose
 opening differs from the previous statement's closing gets the same treatment
 with a row dated the first of the month, and the period then opens at the
 previous closing so that opening + in - out still equals the printed closing.
+
+A jump that the next printed row explains with its sign turned over is not a
+dropped row: that row's amount was read into Money In for Money Out, or the
+other way round, and a synthetic row of twice its size would hide the misread.
+No row is synthesised for it; the parser warns that the amount was read in the
+wrong column, the balance check fails on that row and the run stops.
 
 A synthetic row is `Internal - YouTrip` when its size is a known top-up size, or
 when it matches an exchange printed in another wallet over the same days.
@@ -458,6 +497,13 @@ thing about a row that never changes, so the keys stay stable across a
 re-export. The rows are then reversed into oldest first, which leaves a single
 day's rows in the order Wise applied them.
 
+A long statement runs over several pages. Every page ends with the licence block
+and a `ref:... 1/2` page counter, and the next page starts its own column header,
+so the parser skips from each licence block to the next header rather than
+stopping at the first one. The older rows sit on the later pages, and since Wise
+prints no opening, a parser that read only page 1 would derive an opening that
+absorbs the lost rows and still reconcile.
+
 | Row | Bank txn type | Flow class |
 | --- | --- | --- |
 | `Topped up account` | `Wise Top-up` | Internal - Wise |
@@ -509,8 +555,8 @@ three balances, a handful of rows and one block per balance-month.
 
 ## Tiger Brokers annual exports
 
-The brokerage is not a bank account and is not parsed by any of the four
-parsers above. Tiger Brokers exports one PDF per year, so
+The brokerage is not a bank account and is not parsed by any of the six
+row parsers above. Tiger Brokers exports one PDF per year, so
 [../server/finance/parsers/parse_tiger.py](../server/finance/parsers/parse_tiger.py) reads
 `statements/tiger/<year>/<year>-<first month>_<year>-<last month>.pdf` and hands the whole
 statement to the analytics layer as one dict per year. The filename says which
@@ -696,22 +742,24 @@ directory.
 
 The statement tree lives in the data folder, outside the repo, so a fresh clone
 has the scrubbed fixtures but not the statements. Every module that needs the tree skips itself with a line saying
-which path is missing, and the suite still ends clean.
+which path is missing, and the suite still ends clean. Those modules also skip unless the run sets
+`KOPIFUND_TEST_REAL_DATA=1` (or a folder), because the suite otherwise points the data folder at a throwaway one
+(AGENTS.md, "Commands").
 
 | Test | Pins down |
 | --- | --- |
 | `test_parse_layouts` | one fixture per DBS, POSB, PayLah, card and YouTrip layout: row count, every field of the first and last row, the block's opening, closing and totals, and which detail text makes a bank row a wallet load rather than spending |
-| `test_parse_balance_chain` | one printed number bent at a time reports exactly one drift, and the chain resyncs so one error does not become N |
+| `test_parse_balance_chain` | one printed number bent at a time reports exactly one drift, and the chain resyncs so one error does not become N; a drifted block fails, in the DBS, Revolut and Wise parsers, so its reused CSV is refused |
 | `test_parse_no_closing` | a card statement and an empty YouTrip month say in their note why they print no closing; any other block that does not is a problem |
 | `test_parse_page_break` | a consolidated card row whose detail lines fall behind a page break keeps its merchant, parses to the same rows and keeps the same keys, and nothing from the footer leaks into a row |
 | `test_parse_revolut` | the Revolut export: pages grouped into wallet sections, every row kind and the type it gets, a fee left inside the column amount, one block per month with the export month closing the section, the borrowed FX rate, the real export's five wallets all reconciled, a section with no balance summary stopping the parser before it writes anything, and that the shared city table is the same table whatever order the parsers are imported in |
-| `test_parse_wise` | the Wise export set: the column split at the real column positions, the currency read off the heading, every balance taking the SGD file's account number, every row kind and the type it gets, the transaction id as the reference, rows reversed into oldest first, one block per month plus the export month, the opening derived twice, the SEK rate off the conversion, the real export's three balances all reconciled, and a file with no printed closing stopping the parser before it writes anything |
+| `test_parse_wise` | the Wise export set: the column split at the real column positions, the currency read off the heading, every balance taking the SGD file's account number, every row kind and the type it gets, the transaction id as the reference, rows reversed into oldest first, one block per month plus the export month, the opening derived twice, the SEK rate off the conversion, the real export's three balances all reconciled, a statement over two pages read as one, and a file with no printed closing stopping the parser before it writes anything |
 | `test_parse_tiger` | the Tiger Brokers parser on five invented statements across the two layouts: the bare-symbol layout, the wrapped 2026 layout with every trade printed twice, and a quiet period with no trades, withdrawals or dividends: every field, the duplicated trades and the interrupted tables |
 | `test_parse_cpf` | the CPF parser on five invented yearly statements, one per layout plus a quiet year and a year whose transactions table is torn across a page break: every field, the positional column reading and the page furniture, and a year that does not reconcile left out of `parse_folder` and named |
 | `test_parse_uob` | the UOB One and Stash layouts on invented statements from the public sample: a statement that balances, one that does not and is refused by the run, the table broken across pages with a carried and a brought forward balance, a credit and a debit on one day, a month brought forward from the last one's closing, and the One and savings statements filed apart |
 | `test_sniff` | every fixture here, the Tiger Brokers ones and the CPF ones read as exactly one layout and go to the right account and currency, with the config's numbers, with none and with statements already filed; two accounts it cannot tell apart, a number no account knows, a wallet currency with no folder and a file that reads as two statements all ask; a statement no layout reads is not supported and kept nowhere; an upload whose text names another account is refused |
 | `test_sample` | `finance.py sample` on every fixture here plus an invented bank's statement (`server/tests/fixtures/unknown/`): no name, address, account or card number, NRIC, email or phone number survives, every amount and date does, every line keeps its length; a random identifier of each kind planted in a fixture is always replaced; the text goes beside the PDF or where it is told, never into the repository, and the PDF is only read |
-| `test_youtrip_synthesis` | a jump inside a statement and a jump across a month boundary each produce the right synthetic row |
+| `test_youtrip_synthesis` | a jump inside a statement and a jump across a month boundary each produce the right synthetic row; an amount read in the wrong column fails the check instead |
 | `test_dates` | both printed date forms, including the consolidated layout keeping its own printed year |
 | `test_keys` | the fields `txn_key` hashes and how repeats are numbered, both frozen because Notion holds the current keys |
 | `test_card_duplicates` | card rows covered by an account statement are dropped, the card block's totals fall by what left, and an empty card statement is skipped |

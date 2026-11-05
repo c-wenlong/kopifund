@@ -11,14 +11,14 @@ public enum Dedup {
     /// Case and punctuation out, letters and digits kept: "SGH - DIGESTIVE &
     /// LIVE" from the bank and "Sgh - Digestive & Live" from Apple's Wallet
     /// record both become "sghdigestivelive".
-    public static func normalizedPayee(_ s: String) -> String {
+    static func normalizedPayee(_ s: String) -> String {
         String(s.lowercased().filter { $0.isLetter || $0.isNumber })
     }
 
     /// Equal after normalising, or one name inside the other ("AMAZON SG" in
     /// "Amazon.sg Marketplace"). The short side needs a few letters before a
     /// containment counts, or every Grab and 7-Eleven would match.
-    public static func similarPayee(_ a: String, _ b: String) -> Bool {
+    static func similarPayee(_ a: String, _ b: String) -> Bool {
         let (x, y) = (normalizedPayee(a), normalizedPayee(b))
         guard !x.isEmpty, !y.isEmpty else { return false }
         if x == y { return true }
@@ -26,16 +26,15 @@ public enum Dedup {
         return short.count >= 4 && long.contains(short)
     }
 
-    /// The spend is the same when the amount and currency agree, the day
-    /// agrees (a parsed alert date is day-precise while a Wallet tap carries
-    /// a timestamp, so the comparison is on local calendar day), and the
-    /// payees read alike.
+    /// The spend is the same when the amount and currency agree, the
+    /// calendar day agrees (the alert's printed day, or the day a Wallet tap
+    /// happened where the phone was), and the payees read alike.
     public static func likelyDuplicate(amountCents: Int, currency: String,
-                                       date: Date, payee: String,
+                                       date: CalendarDate, payee: String,
                                        otherAmountCents: Int, otherCurrency: String,
-                                       otherDate: Date, otherPayee: String) -> Bool {
+                                       otherDate: CalendarDate, otherPayee: String) -> Bool {
         amountCents == otherAmountCents && currency == otherCurrency
-            && Calendar.current.isDate(date, inSameDayAs: otherDate)
+            && date == otherDate
             && similarPayee(payee, otherPayee)
     }
 
@@ -45,11 +44,12 @@ public enum Dedup {
     public struct RecordSpend: Equatable, Sendable {
         public var amountCents: Int
         public var currency: String
-        public var date: Date
+        /// The day the statement printed, read from the record's ISO date.
+        public var date: CalendarDate
         public var payee: String
         public var raw: String
 
-        public init(amountCents: Int, currency: String, date: Date,
+        public init(amountCents: Int, currency: String, date: CalendarDate,
                     payee: String, raw: String) {
             self.amountCents = amountCents
             self.currency = currency
@@ -67,14 +67,14 @@ public enum Dedup {
     /// agree. `taken` keeps the match one-to-one: a record spend already
     /// claimed by another alert row does not count again.
     public static func coveredBy(amountCents: Int, currency: String, direction: String,
-                                 date: Date, payee: String,
+                                 date: CalendarDate, payee: String,
                                  in record: [RecordSpend], taken: Set<Int>) -> Int? {
         record.indices.first { i in
             guard !taken.contains(i) else { return false }
             let r = record[i]
             let signMatches = direction == "outflow" ? r.amountCents < 0 : r.amountCents > 0
             guard signMatches, abs(r.amountCents) == amountCents, r.currency == currency,
-                  Calendar.current.isDate(r.date, inSameDayAs: date) else { return false }
+                  r.date == date else { return false }
             return similarPayee(payee, r.payee) || similarPayee(payee, r.raw)
         }
     }

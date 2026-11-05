@@ -82,6 +82,14 @@ public actor YNABClient {
         try await get("plans/\(planID)/payees", as: PayeesResponse.self).data.payees.filter { !$0.deleted }
     }
 
+    /// The ISO code of the currency the plan keeps ("SGD"), nil when YNAB
+    /// reports no currency format. The sync posts a row only in this
+    /// currency (G24 audit).
+    public func planCurrency(planID: String) async throws -> String? {
+        try await get("plans/\(planID)/settings", as: PlanSettingsResponse.self)
+            .data.settings.currencyFormat?.isoCode
+    }
+
     /// Post the queue's next transaction. `NewTransaction.amount` is already
     /// in milliunits; `importID` is what stops a retried post becoming a
     /// duplicate.
@@ -165,13 +173,18 @@ public enum Milliunits {
 /// caps it at 36 characters; the hash keeps the id stable for the same alert.
 public enum ImportID {
     /// `Alerts` prefix + a hash of date, milliunit amount, payee and source,
-    /// 32 hex chars: `al-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` is 35.
-    public static func make(date: Date, milliunits: Int, payee: String, source: String?) -> String {
+    /// 32 hex chars: `al-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` is 35. `capturedAt`,
+    /// when given, is the moment the row was captured, so two real purchases
+    /// of one amount at one merchant on one day get different ids; the id is
+    /// saved before the first send, so a retry still reuses it.
+    public static func make(date: Date, milliunits: Int, payee: String, source: String?,
+                            capturedAt: Date? = nil) -> String {
         var cal = Calendar(identifier: .gregorian)
         cal.timeZone = TimeZone(identifier: "UTC")!
         let c = cal.dateComponents([.year, .month, .day], from: date)
         let day = String(format: "%04d%02d%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
-        let key = "\(day)|\(milliunits)|\(payee.lowercased().trimmingCharacters(in: .whitespaces))|\(source ?? "")"
+        var key = "\(day)|\(milliunits)|\(payee.lowercased().trimmingCharacters(in: .whitespaces))|\(source ?? "")"
+        if let capturedAt { key += "|\(Int(capturedAt.timeIntervalSince1970.rounded(.down)))" }
         return "al-" + fnv1a(key)
     }
 
