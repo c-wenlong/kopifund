@@ -34,6 +34,8 @@ struct PatternBuilderView: View {
     @State private var buildError = ""
     @State private var accountOptions: [(String, String)] = []
     @State private var categoryOptions: [(String, String)] = []
+    // keeps a store refresh from re-keying the tab under this draft
+    @State private var draftHold = SyncService.DraftHold()
 
     private var tokens: [Token] { Tokenizer.tokenize(sampleText) }
     private var spans: [PatternBuilder.Span] { PatternBuilder.spans(from: tags, tokens: tokens) }

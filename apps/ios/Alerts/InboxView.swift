@@ -131,9 +131,11 @@ struct InboxView: View {
         do {
             // the view's own container: a second one on the same file would
             // not merge its save into this list
-            _ = try Ingest.alert(text: pasteText, source: "paste",
-                                 receivedAt: Date(), container: context.container)
+            let outcome = try Ingest.alert(text: pasteText, source: "paste",
+                                           receivedAt: Date(), container: context.container)
             pasteText = ""
+            // an auto-approving pattern queues the row approved
+            if outcome == "queued" { Task { await SyncService.flush(context: context) } }
         } catch {
             // keep the text so a failed ingest does not lose the alert
             ingestError = error.localizedDescription

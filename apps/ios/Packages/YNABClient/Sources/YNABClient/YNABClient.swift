@@ -171,4 +171,32 @@ public enum ImportID {
     public static func make(rowID: UUID) -> String {
         "al-" + rowID.uuidString.replacingOccurrences(of: "-", with: "").lowercased()
     }
+
+    /// The id builds before the per-row one minted from the row's content.
+    /// Only for a row such a build left `syncing` with no id saved: it set
+    /// the state, posted, and saved the id with the reply, so a kill in
+    /// between may have booked the charge under this id. Reusing it turns
+    /// the retry into a 409 instead of a second copy.
+    public static func legacy(date: Date, milliunits: Int, payee: String, source: String?) -> String {
+        var cal = Calendar(identifier: .gregorian)
+        cal.timeZone = TimeZone(identifier: "UTC")!
+        let c = cal.dateComponents([.year, .month, .day], from: date)
+        let day = String(format: "%04d%02d%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
+        let key = "\(day)|\(milliunits)|\(payee.lowercased().trimmingCharacters(in: .whitespaces))|\(source ?? "")"
+        return "al-" + fnv1a(key)
+    }
+
+    /// FNV-1a over UTF-8: two 64-bit halves seeded differently, hexed into
+    /// 32 chars, exactly as the earlier builds computed it.
+    private static func fnv1a(_ s: String) -> String {
+        func hash(_ seed: UInt64) -> UInt64 {
+            var h: UInt64 = seed
+            for b in s.utf8 {
+                h ^= UInt64(b)
+                h &*= 1099511628211
+            }
+            return h
+        }
+        return String(format: "%016x%016x", hash(1469598103934665603), hash(1099511628211))
+    }
 }

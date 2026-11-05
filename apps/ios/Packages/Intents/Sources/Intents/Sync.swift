@@ -173,15 +173,20 @@ public enum Sync {
             return nil
         }
         let prior = row.state
-        let importID = row.importID ?? ImportID.make(rowID: row.id)
+        let milli = Milliunits.from(Decimal(row.amountCents) / 100,
+                                    outflow: row.direction == "outflow")
+        // a row an earlier build left mid-send has no id saved, but YNAB may
+        // hold that send under the build's content id; every other row gets
+        // its own
+        let importID = row.importID ?? (prior == "syncing"
+            ? ImportID.legacy(date: row.date, milliunits: milli, payee: row.payee, source: row.source)
+            : ImportID.make(rowID: row.id))
         // id, state and attempt count are saved before the POST, so a killed
         // app or a lost reply retries with the same id
         row.importID = importID
         row.state = "syncing"
         row.syncAttempts += 1
         try? context.save()
-        let milli = Milliunits.from(Decimal(row.amountCents) / 100,
-                                    outflow: row.direction == "outflow")
         let txn = NewTransaction(accountID: accountID, date: ynabDate(row.date),
                                  amount: milli, payeeName: row.payee,
                                  categoryID: row.categoryID,

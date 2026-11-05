@@ -112,6 +112,35 @@ struct SyncTests {
         #expect(log.all[0] == ImportID.make(rowID: row.id))
     }
 
+    /// An earlier build saved `syncing` before its POST and the content id
+    /// only with the reply: a row it left mid-send retries under that same
+    /// id, so a send YNAB already booked answers 409, not a second copy.
+    @Test func aRowAnEarlierBuildLeftMidSendReusesItsContentID() async throws {
+        let context = ModelContext(try Store.memory())
+        let row = approved(context)
+        row.state = "syncing"
+        try? context.save()
+        let log = Log()
+        MockProtocol.handler = { req in
+            log.add(importID(of: req))
+            return respond(409)
+        }
+        _ = await Sync.run(context: context, client: client(), settings: settings)
+        let legacy = ImportID.legacy(date: row.date, milliunits: -4800, payee: row.payee,
+                                     source: row.source)
+        #expect(log.all == [legacy])
+        #expect(row.importID == legacy)
+        #expect(row.state == "synced")
+        // a fresh approval gets its own per-row id
+        let fresh = approved(context, payee: "Other")
+        MockProtocol.handler = { req in
+            log.add(importID(of: req))
+            return created("y1")
+        }
+        _ = await Sync.run(context: context, client: client(), settings: settings)
+        #expect(fresh.importID == ImportID.make(rowID: fresh.id))
+    }
+
     @Test func unauthorizedStopsAfterOneRequest() async throws {
         let context = ModelContext(try Store.memory())
         let rows = [approved(context), approved(context, payee: "B"), approved(context, payee: "C")]

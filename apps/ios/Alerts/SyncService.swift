@@ -1,4 +1,5 @@
 import Foundation
+import os
 import SwiftData
 import Storage
 import Matching
@@ -79,7 +80,10 @@ final class SyncService {
         guard !settings.planID.isEmpty,
               gate.allows(token: token, now: Date(), force: force) else { return }
         let outcome = await Sync.run(
-            context: context, client: YNABClient(token: token),
+            context: context,
+            // no quiet retries: a 429 must reach the gate after one request,
+            // not after four a second apart
+            client: YNABClient(token: token, retries: 0),
             settings: settings, force: force,
             beforeSend: { row in await hub?.prepare(row, context: context) })
         gate.record(outcome, token: token, now: Date())
@@ -117,9 +121,37 @@ final class SyncService {
     static func refresh(_ context: ModelContext) {
         let now = fingerprint(context)
         if let before = shared.fingerprintAtBackground, before != now {
-            shared.storeGeneration += 1
+            // a new identity rebuilds the tab and its navigation, so an open
+            // pattern draft would be lost: the re-key waits until it closes
+            if drafts.withLock({ $0 }) > 0 {
+                shared.rebuildOwed = true
+            } else {
+                shared.storeGeneration += 1
+            }
         }
         shared.fingerprintAtBackground = nil
+    }
+
+    @ObservationIgnored private var rebuildOwed = false
+    nonisolated static let drafts = OSAllocatedUnfairLock(initialState: 0)
+
+    /// Held by a pattern draft (the builder's state) for as long as it
+    /// lives, through tab switches and trips to the background.
+    final class DraftHold: Sendable {
+        init() { SyncService.drafts.withLock { $0 += 1 } }
+        deinit {
+            let last = SyncService.drafts.withLock { n -> Bool in
+                n = max(0, n - 1)
+                return n == 0
+            }
+            if last { Task { @MainActor in SyncService.shared.applyOwedRebuild() } }
+        }
+    }
+
+    private func applyOwedRebuild() {
+        guard rebuildOwed, Self.drafts.withLock({ $0 }) == 0 else { return }
+        rebuildOwed = false
+        storeGeneration += 1
     }
 
     /// Every row's id and state, and every unmatched alert's id. Fetching
@@ -142,7 +174,9 @@ final class SyncService {
 @MainActor
 final class HubLane {
     private let link: KopifundClient
-    private let record: [Dedup.RecordSpend]
+    /// The record's spends for `months`, fetched as rows need them.
+    private var record: [Dedup.RecordSpend] = []
+    private var months: Set<String> = []
     private var taken: Set<Int> = []
     private var done: Set<UUID> = []
 
@@ -153,21 +187,24 @@ final class HubLane {
         return f
     }()
 
-    private init(link: KopifundClient, record: [Dedup.RecordSpend]) {
+    private init(link: KopifundClient) {
         self.link = link
-        self.record = record
     }
 
     /// nil when the phone is not linked.
     static func start(context: ModelContext) async -> HubLane? {
         guard let link = LinkStore.live.client() else { return nil }
-        let rows = owedRows(context)
-        guard !rows.isEmpty else { return HubLane(link: link, record: []) }
-        // a linked phone asks the record first: a spend a loaded statement
-        // already covers is marked "kopifund", never posted
-        let record = await LinkDedupe.recordSpends(
-            client: link, months: Set(rows.map { LinkDedupe.monthKey($0.date) }))
-        return HubLane(link: link, record: record)
+        return HubLane(link: link)
+    }
+
+    /// Load the record's month for `date` once per run. A month is fetched
+    /// when an approved row first needs it, so a row approved mid-run from
+    /// a month no other row touched is still checked against the record.
+    private func loadMonth(of date: Date) async {
+        let month = LinkDedupe.monthKey(date)
+        guard months.insert(month).inserted else { return }
+        // appended, so the indexes already in `taken` stay valid
+        record += await LinkDedupe.recordSpends(client: link, months: [month])
     }
 
     /// kopifundError/kopifundID widen the net past YNAB's own states: a
@@ -179,9 +216,15 @@ final class HubLane {
                 || $0.kopifundError != nil || $0.kopifundID != nil }))) ?? []
     }
 
-    /// Every row the hub is owed, before the YNAB run starts.
+    /// Every row the hub is owed, before the YNAB run starts. The rows are
+    /// fetched again before each one: the fetch refreshes a row an intent
+    /// changed on disk while an earlier send was out (a Wallet capture
+    /// parked as a duplicate must not post), and `prepare` takes each row
+    /// once, so the loop ends.
     func sendOwed(context: ModelContext) async {
-        for row in Self.owedRows(context) { await prepare(row, context: context) }
+        while let row = Self.owedRows(context).first(where: { !done.contains($0.id) }) {
+            await prepare(row, context: context)
+        }
     }
 
     /// Post `row` to the hub when it owes a send, then park it as "kopifund"
@@ -217,8 +260,12 @@ final class HubLane {
             }
             try? context.save()
         }
-        if row.state == "approved",
-           let i = Dedup.coveredBy(amountCents: row.amountCents, currency: row.currency,
+        guard row.state == "approved" else { return }
+        // a linked phone asks the record first: a spend a loaded statement
+        // already covers is marked "kopifund", never posted to YNAB
+        await loadMonth(of: row.date)
+        if row.isDeleted || row.modelContext == nil || row.state != "approved" { return }
+        if let i = Dedup.coveredBy(amountCents: row.amountCents, currency: row.currency,
                                    direction: row.direction, date: row.date,
                                    payee: row.payee, in: record, taken: taken) {
             taken.insert(i)
