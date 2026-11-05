@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EyeOff, Pencil, Plus, X, type LucideIcon } from "lucide-react";
 import {
   postJSON, rowsChanged, useApi, type GroupRow, type GroupRows, type PinSet, type Relinked, type RulePreview, type RuleSavedEdit,
@@ -10,7 +10,7 @@ import { Button, buttonClass } from "../components/Button";
 import { Combobox } from "../components/Combobox";
 import { EmptyState } from "../components/EmptyState";
 import { Pager, usePager } from "../components/Pager";
-import { PinForm, pinnedText, savePin, undoRuleWrite, type PinDraft } from "../components/PinRow";
+import { PinForm, pinDirty, pinnedText, savePin, undoRuleWrite, type PinDraft } from "../components/PinRow";
 import { draftParams, ruleOf, type Draft } from "../components/RuleEditor";
 import { Select } from "../components/Select";
 import { Loading, Problem } from "../components/States";
@@ -19,7 +19,7 @@ import { Tile } from "../components/Tile";
 import { showToast } from "../components/Toast";
 import { useWide } from "../components/useWide";
 import { formatDate, formatDay, formatMonth, formatRange, formatWeekday } from "../dates";
-import { onLinkClick } from "../router";
+import { onLinkClick, useUnsavedGuard } from "../router";
 import { useUrlParams } from "../useUrlParams";
 import type { GroupKind, NeedClass } from "../types.gen";
 import { KIND_ICON, KindIcon, NEED_ICON, EYE_ICON, SCAM_FLAG_ICON, SCAM_ICON, TRIP_ICON } from "../icons";
@@ -226,15 +226,42 @@ export function Transactions() {
     data?.days.find((d) => d.date === date) ?? { date, count: 0, in_sgd: 0, out_sgd: 0, continued: false, continues: false };
   // what was typed into a row's own form, kept here so a change of layout (a tablet turned over) does not empty it
   const drafts = useRef<Record<string, PinDraft>>({});
+  // the rows whose More form is on screen
+  const shownForms = useRef(new Set<string>());
+  // the rows whose kept draft holds something unsaved: leaving asks while any does, the form open or not,
+  // and a save takes its row off
+  const [unsaved, setUnsaved] = useState<ReadonlySet<string>>(() => new Set());
+  const markUnsaved = useCallback((key: string, dirty: boolean) => setUnsaved((was) => {
+    if (was.has(key) === dirty) return was;
+    const now = new Set(was);
+    if (dirty) now.add(key); else now.delete(key);
+    return now;
+  }), []);
+  useUnsavedGuard(unsaved.size > 0);
+  // the rows whose own form is saving: its panel and form stay mounted, hidden if closed meanwhile, until the
+  // save lands, so the one form that sent it settles it and no second form opened meanwhile can disagree
+  const [savingRows, setSavingRows] = useState<ReadonlySet<string>>(() => new Set());
+  const markSaving = useCallback((key: string, on: boolean) => setSavingRows((was) => {
+    if (was.has(key) === on) return was;
+    const now = new Set(was);
+    if (on) now.add(key); else now.delete(key);
+    return now;
+  }), []);
   const pickable = (data?.categories ?? []).filter((c) => c !== "(none)");
   const cell = (t: Txn) => (
     <CategoryCell t={t} categories={pickable} picking={picking === t.key}
       onStart={() => setPicking(t.key)} onDone={() => setPicking((k) => (k === t.key ? null : k))} onPicked={() => setOpen(t.key)}
       onPinned={(pin) => {
         setPins((p) => ({ ...p, [t.key]: pin }));
-        // a form typed into before keeps its note and payee, with the category just picked
+        // a form typed into before keeps its note and payee, with the category just picked, which is now
+        // saved: the row is left unsaved only if something else typed still differs
         const typed = drafts.current[t.key];
-        if (pin && typed) drafts.current[t.key] = { ...typed, category: pin.category };
+        if (pin && typed) {
+          const next = { ...typed, category: pin.category, base: typed.base && { ...typed.base, category: pin.category } };
+          drafts.current[t.key] = next;
+          // (a form on screen reports for itself)
+          if (next.base && !shownForms.current.has(t.key)) markUnsaved(t.key, pinDirty(next, next.base));
+        }
       }} />
   );
 
@@ -363,9 +390,9 @@ export function Transactions() {
                             )}
                           </td>
                         </tr>
-                        {open === t.key && (
-                          <tr>
-                            <td colSpan={4} className="bg-tile px-3 py-2"><RowPanel txnKey={t.key} drafts={drafts.current} pin={pins[t.key]} onClose={() => setOpen(null)} /></td>
+                        {(open === t.key || savingRows.has(t.key)) && (
+                          <tr hidden={open !== t.key}>
+                            <td colSpan={4} className="bg-tile px-3 py-2"><RowPanel txnKey={t.key} drafts={drafts.current} shownForms={shownForms.current} onUnsaved={markUnsaved} onSaving={markSaving} pin={pins[t.key]} onClose={() => setOpen(null)} /></td>
                           </tr>
                         )}
                         </Fragment>
@@ -395,7 +422,7 @@ export function Transactions() {
                     {t.currency !== "SGD" && <span className="num ml-auto text-ink-3">{sgdValue(t)}</span>}
                   </div>
                   <ScamNote t={t} />
-                  {open === t.key && <div className="mt-2 rounded-md bg-tile px-3 py-2"><RowPanel txnKey={t.key} drafts={drafts.current} pin={pins[t.key]} onClose={() => setOpen(null)} /></div>}
+                  {(open === t.key || savingRows.has(t.key)) && <div hidden={open !== t.key} className="mt-2 rounded-md bg-tile px-3 py-2"><RowPanel txnKey={t.key} drafts={drafts.current} shownForms={shownForms.current} onUnsaved={markUnsaved} onSaving={markSaving} pin={pins[t.key]} onClose={() => setOpen(null)} /></div>}
                 </li>
                 </Fragment>
               ))}
@@ -574,8 +601,9 @@ function CategoryCell({ t, categories, picking, onStart, onDone, onPicked, onPin
 // into a rule for the rows like it ("Apply to 6 similar rows", the count from
 // the rule preview), and "More" for the payee, kind and note of the row's own
 // rule. A row a hand-edited rules file left unapplied offers Apply rules.
-function RowPanel({ txnKey, drafts, pin, onClose }: {
-  txnKey: string; drafts: Record<string, PinDraft>; onClose: () => void;
+function RowPanel({ txnKey, drafts, shownForms, onUnsaved, onSaving, pin, onClose }: {
+  txnKey: string; drafts: Record<string, PinDraft>; shownForms: Set<string>; onUnsaved: (key: string, dirty: boolean) => void;
+  onSaving: (key: string, on: boolean) => void; onClose: () => void;
   // what the pick just set, so the similar-rows chip need not wait for the row to be asked again;
   // null while the pick is still being saved, when there is nothing to preview yet
   pin?: PinSet | null;
@@ -583,6 +611,14 @@ function RowPanel({ txnKey, drafts, pin, onClose }: {
   const state = useApi<GroupRows>(`/api/rules/rows?${new URLSearchParams({ key: txnKey })}`);
   // a form opened before a change of layout (a tablet turned over) opens again with what was typed
   const [more, setMore] = useState(() => txnKey in drafts);
+  // the form's save on its way: the form stays mounted (hidden after Less) until it lands
+  const [formSaving, setFormSaving] = useState(false);
+  const mountForm = more || formSaving;
+  useEffect(() => {
+    if (!mountForm) return;
+    shownForms.add(txnKey);
+    return () => { shownForms.delete(txnKey); };
+  }, [mountForm, txnKey, shownForms]);
   const [busy, setBusy] = useState(false);
   // the pick's answer stands for the row's pin only until the row is asked again: after
   // that (a save through More, an Undo) the row's own pin is the newer word
@@ -658,9 +694,18 @@ function RowPanel({ txnKey, drafts, pin, onClose }: {
           <X size={14} aria-hidden />
         </button>
       </div>
-      {more && (
-        <PinForm row={row} categories={d.categories} kinds={d.kinds} draft={drafts[txnKey]}
-          onDraft={(x) => { drafts[txnKey] = x; }} onPinned={() => setMore(false)} />
+      {mountForm && (
+        <div hidden={!more}>
+          <PinForm row={row} categories={d.categories} kinds={d.kinds} draft={drafts[txnKey]}
+            onDraft={(x) => { drafts[txnKey] = x; }} onDirty={(dirty) => onUnsaved(txnKey, dirty)}
+            onSaving={(on) => { setFormSaving(on); onSaving(txnKey, on); }}
+            onPinned={() => {
+              // saved: More opens again on what the row has now, and nothing is left to ask about
+              delete drafts[txnKey];
+              onUnsaved(txnKey, false);
+              setMore(false);
+            }} />
+        </div>
       )}
     </div>
   );
