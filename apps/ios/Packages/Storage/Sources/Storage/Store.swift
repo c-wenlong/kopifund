@@ -71,7 +71,9 @@ public final class TransactionRecord {
     @Attribute(.unique) public var id: UUID
     public var payee: String
     public var amountCents: Int         // money is integer cents, never a float
-    public var currency: String         // "SGD"
+    /// The ISO code the source printed ("SGD", "USD"), or the plan's when
+    /// it printed none and the plan's is known; empty when neither is.
+    public var currency: String
     /// A calendar day, written as `CalendarDate.storedInstant`. Read and
     /// write it through `day`, never through a time zone.
     public var date: Date
@@ -113,7 +115,7 @@ public final class TransactionRecord {
         var scaled = t.amount * 100
         NSDecimalRound(&cents, &scaled, 0, .plain)
         amountCents = NSDecimalNumber(decimal: cents).intValue
-        currency = t.currency ?? "SGD"
+        currency = t.currency ?? ""
         date = t.date.storedInstant
         dateIsDay = true
         direction = t.direction.rawValue
@@ -134,11 +136,14 @@ public final class TransactionRecord {
         kopifundError = nil
     }
 
-    public init(walletAmountCents: Int, merchant: String, card: String?, date: Date, accountID: String) {
+    /// `currency` nil means the Wallet record did not say; the row then
+    /// stores "" rather than guessing one.
+    public init(walletAmountCents: Int, merchant: String, card: String?, date: Date,
+                accountID: String, currency: String? = nil) {
         id = UUID()
         payee = merchant
         amountCents = walletAmountCents
-        currency = "SGD"
+        self.currency = currency ?? ""
         // the tap's day where the phone was when it happened
         self.date = CalendarDate(date, in: .current).storedInstant
         dateIsDay = true
