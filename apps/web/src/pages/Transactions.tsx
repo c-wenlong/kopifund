@@ -103,6 +103,9 @@ export function scopeParts(s: Scope): { text: string; icons: LucideIcon[] }[] {
 // the category box's entry for "no category filter": a Combobox only takes a choice from its list
 const ALL_CATEGORIES = "All categories";
 
+// how long typing in the search box pauses before the search is asked for
+const SEARCH_PAUSE_MS = 250;
+
 // one family: every filter is a 32px box with the same border, fill and 13px text
 const FILTER_BOX = "flex-1 basis-36 sm:flex-none";
 
@@ -110,11 +113,31 @@ export function Transactions() {
   // G13: every filter, the page included, lives in the address. Back restores
   // them, a copied link shares them, and Home's "needs a category" banner and
   // every chart bar link here with ?category=, ?month= or ?q= to open the rows
-  const [params, patch] = useUrlParams();
+  const [params, patchUrl] = useUrlParams();
   const month = params.get("month") ?? "";
   const category = params.get("category") ?? "";
   const account = params.get("account") ?? "";
   const q = params.get("q") ?? "";
+  // the search box shows every key at once, and the address (so the server, and the kept answers) takes the
+  // text once typing pauses or on Enter: "starbucks" is one request, not nine, and no half-typed word's page
+  // pushes another page's answer out of the cache. Any change of the address fills the box from it, so a link
+  // (the sidebar's, Back, Clear filters) drops a search still waiting; every write this page makes takes the
+  // waiting search along (patch below), so a filter or a page picked here keeps it.
+  const where = params.toString();
+  const [box, setBox] = useState({ text: q, from: where });
+  if (box.from !== where) setBox({ text: q, from: where });
+  const typed = box.from !== where ? q : box.text;
+  const waitingSearch = useRef<string | null>(null);
+  waitingSearch.current = typed !== q ? typed : null;
+  const patch = useCallback((change: Record<string, string | null>) => {
+    const text = waitingSearch.current;
+    patchUrl(text !== null && !("q" in change) ? { q: text, ...change } : change);
+  }, [patchUrl]);
+  useEffect(() => {
+    if (typed === q) return;
+    const wait = window.setTimeout(() => patchUrl({ q: typed }), SEARCH_PAUSE_MS);
+    return () => window.clearTimeout(wait);
+  }, [typed, q, patchUrl]);
   // G13: a link from another page lists exactly the rows its figure counts: one payee by its exact
   // name, or particular rows by their keys (comma-separated). Each shows as a chip that clears it.
   const payee = params.get("payee") ?? "";
@@ -216,10 +239,11 @@ export function Transactions() {
   };
 
   // every filter off for this view; whether transfers show is left as it is
-  const clearFilters = () => patch({
+  // a search still waiting for the pause goes too, so it cannot come back after the clear
+  const clearFilters = () => { setBox({ text: "", from: where }); patch({
     q: null, payee: null, named: null, key: null, out: null, month: null, category: null, account: null, page: null, ...NO_SCOPE, synthetic: null,
     flag: null, missing_fx: null,
-  });
+  }); };
   const groups = useMemo(() => (data ? groupByDay(data.rows, data.days) : []), [data]);
   // the whole day's totals the server counted for a day on this page
   const dayOf = (date: string): TxnDay =>
@@ -268,7 +292,9 @@ export function Transactions() {
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2 text-[13px]">
-        <input type="search" placeholder="Search merchant, payee, memo" value={q} onChange={(e) => patch({ q: e.target.value })}
+        <input type="search" placeholder="Search merchant, payee, memo" value={typed}
+          onChange={(e) => setBox({ text: e.target.value, from: where })}
+          onKeyDown={(e) => { if (e.key === "Enter") patch({ q: typed }); }}
           aria-label="Search transactions" className="h-8 min-w-0 basis-full rounded-md border border-line bg-panel px-2.5 sm:min-w-56 sm:flex-1 sm:basis-auto" />
         <Combobox label="Category" value={category || ALL_CATEGORIES} options={[ALL_CATEGORIES, ...(data?.categories ?? [])]}
           className={`${FILTER_BOX} sm:w-48`} onChange={(v) => patch({ category: v === ALL_CATEGORIES ? null : v })} />

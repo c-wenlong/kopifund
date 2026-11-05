@@ -170,7 +170,8 @@ struct SettingsView: View {
                 }
                 AppIconSection()
                 Section("Data") {
-                    Button("Sync now") { Task { await SyncService.flush(context: context) } }
+                    // the user asked: retry failed rows now, past their backoff
+                    Button("Sync now") { Task { await SyncService.flush(context: context, force: true) } }
                     Button("Delete all data", role: .destructive) { deleteAll() }
                     Button("Revoke token", role: .destructive) {
                         token = ""

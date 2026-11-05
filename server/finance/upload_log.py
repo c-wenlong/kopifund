@@ -138,4 +138,5 @@ def check_summary(report):
     p = len(report["problems"])
     return (f"{report['statements']} statements, {report['rows']:,} rows: {report['to_add_count']} to add, "
             f"{report['recategorised_count']} recategorised, {report['to_archive_count']} to archive"
+            + (f", {report['rekeyed_count']} re-keyed" if report.get("rekeyed_count") else "")
             + (f"; {p} problem{'s' * (p != 1)}" if p else ""))

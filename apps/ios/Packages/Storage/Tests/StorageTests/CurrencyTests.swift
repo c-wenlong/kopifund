@@ -15,7 +15,7 @@ private func row(_ currency: String?, state: String = "approved") -> Transaction
     let t = ParsedTransaction(payee: "SHOP", amount: 12, date: CalendarDate(Date(), in: .current), direction: .outflow,
                               accountHint: nil, currency: currency, patternID: UUID(),
                               patternName: "P", alertText: "a", source: "sms", receivedAt: Date())
-    let r = TransactionRecord(from: t, accountID: "a1", categoryID: nil)
+    let r = try! TransactionRecord(from: t, accountID: "a1", categoryID: nil)
     r.state = state
     return r
 }

@@ -203,6 +203,15 @@ def dismiss(conn, import_id):
                      "WHERE import_id = ? AND state = 'waiting'", (import_id,))
 
 
+def dismiss_all(conn):
+    """Dismiss every waiting row; the number dismissed. Rows never expire on
+    their own (an alert's spend may wait weeks for its statement), so the
+    owner clears the ones no statement will confirm here, and Put back
+    undoes any one of them."""
+    with db.transaction(conn):
+        return conn.execute("UPDATE pending_txn SET state = 'dismissed' WHERE state = 'waiting'").rowcount
+
+
 def restore(conn, import_id):
     """Put a matched or dismissed row back to waiting. A row that was matched
     is also given the row it matched on its `rejected` list: the owner said it
