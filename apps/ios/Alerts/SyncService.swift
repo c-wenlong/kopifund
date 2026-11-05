@@ -86,14 +86,23 @@ final class SyncService {
         let posting = ((try? context.fetchCount(FetchDescriptor<TransactionRecord>(
             predicate: #Predicate {
                 $0.state == "approved" || $0.state == "failed" || $0.state == "syncing" }))) ?? 0) > 0
-        if let ynab, posting || settings.planCurrency == nil,
-           let code = try? await ynab.planCurrency(planID: planID) {
-            // a plan picked while the request was out has forgotten this
-            // reading: never write the old plan's currency back
-            if defaults.string(forKey: "planID") == planID {
-                PlanCurrency.remember(code, planID: planID)
-            }
-            settings.planCurrency = code
+        // a 401 or 429 here is the token's problem, as it would be on a
+        // send: it stops this run's YNAB half and reaches the gate and the
+        // banner; any other failure leaves the last reading standing
+        var stop: SyncStop?
+        if let ynab, posting || settings.planCurrency == nil {
+            do {
+                if let code = try await ynab.planCurrency(planID: planID) {
+                    // a plan picked while the request was out has forgotten
+                    // this reading: never write the old plan's currency back
+                    if defaults.string(forKey: "planID") == planID {
+                        PlanCurrency.remember(code, planID: planID)
+                    }
+                    settings.planCurrency = code
+                }
+            } catch let e as YNABError where e.kind == .unauthorized || e.kind == .rateLimited {
+                stop = e.kind == .unauthorized ? .unauthorized : .rateLimited
+            } catch {}
         }
 
         let hub = await HubLane.start(context: context, planCurrency: settings.planCurrency)
@@ -104,9 +113,14 @@ final class SyncService {
         // no YNAB configured: the pending post above still corroborates the
         // row on the hub; the spend itself stays parked here
         guard let ynab else { return }
-        let outcome = await Sync.run(
-            context: context, client: ynab, settings: settings, force: force,
-            beforeSend: { row in await hub?.prepare(row, context: context) })
+        var outcome = SyncOutcome()
+        if let stop {
+            outcome.stop = stop
+        } else {
+            outcome = await Sync.run(
+                context: context, client: ynab, settings: settings, force: force,
+                beforeSend: { row in await hub?.prepare(row, context: context) })
+        }
         gate.record(outcome, token: token, now: Date())
         switch outcome.stop {
         case .unauthorized: problem = .unauthorized
@@ -202,7 +216,10 @@ final class HubLane {
     private var record: [Dedup.RecordSpend] = []
     private var months: Set<String> = []
     private var taken: Set<Int> = []
-    private var done: Set<UUID> = []
+    /// Each row's fields as this run last checked them against the hub. A
+    /// row edited since (between the hub pass and its YNAB send) is checked
+    /// again, so the hub never keeps an older copy than YNAB gets.
+    private var checked: [UUID: String] = [:]
 
     private static let dateFmt: DateFormatter = {
         let f = DateFormatter()
@@ -253,7 +270,7 @@ final class HubLane {
         var seen: Set<UUID> = []
         while true {
             let ids = Self.owedRows(context).map(\.id)
-                .filter { !seen.contains($0) && !done.contains($0) }
+                .filter { !seen.contains($0) && checked[$0] == nil }
             if ids.isEmpty { return }
             for id in ids {
                 seen.insert(id)
@@ -267,7 +284,6 @@ final class HubLane {
     /// Post `row` to the hub when it owes a send, then park it as "kopifund"
     /// when the record covers it. Once per row per run.
     func prepare(_ row: TransactionRecord, context: ModelContext) async {
-        guard done.insert(row.id).inserted else { return }
         // what an intake saved since this context read the row
         Sync.reread(row, in: context)
         // A first send is owed only by rows in the YNAB lane (a sibling
@@ -284,6 +300,8 @@ final class HubLane {
         let signed = row.direction == "outflow" ? -row.amountCents : row.amountCents
         let currency = row.currency.isEmpty ? planCurrency : row.currency
         let sent = "\(day)|\(signed)|\(currency ?? "")|\(row.payee)"
+        guard checked[row.id] != sent else { return }
+        checked[row.id] = sent
         let inLane = row.state == "approved" || row.state == "failed" || row.state == "syncing"
         let owesHub = row.kopifundError != nil
             || (row.kopifundID == nil ? inLane : row.kopifundSent != sent)
@@ -314,7 +332,11 @@ final class HubLane {
         // a linked phone asks the record first: a spend a loaded statement
         // already covers is marked "kopifund", never posted to YNAB
         await loadMonth(of: row.date)
-        if row.isDeleted || row.modelContext == nil || row.state != "approved" { return }
+        if row.isDeleted || row.modelContext == nil { return }
+        // the month request awaited: a hold or a currency an intake saved
+        // meanwhile must be what the match below and the YNAB send see
+        Sync.reread(row, in: context)
+        if row.state != "approved" { return }
         let liveCurrency = row.currency.isEmpty ? planCurrency : row.currency
         if let i = Dedup.coveredBy(amountCents: row.amountCents, currency: liveCurrency ?? "",
                                    direction: row.direction, date: row.date,
