@@ -144,6 +144,45 @@ class AnswersTest(unittest.TestCase):
             status, _, _ = self.send("GET", "/api/health", headers)
             self.assertEqual(status, 200, headers)
 
+    def test_the_dashboard_reads_are_refused_to_another_site_too(self):
+        # G26's GETs sit under /api/ like the rest, so the same gate holds them
+        for path in ("/api/dashboard/layouts", "/api/dashboard/query?q=%7B%7D", "/api/dashboard/goals",
+                     "/api/dashboard/allocation", "/api/dashboard/game-pot"):
+            with mock.patch.object(serve, "answer") as answer:
+                status, headers, _ = self.send("GET", path, {"Sec-Fetch-Site": "cross-site"})
+            self.assertEqual(status, 403, path)
+            answer.assert_not_called()
+            self.assert_unframeable(headers, path)
+
+    def test_a_dashboard_write_that_raises_answers_500_json(self):
+        with mock.patch.object(serve, "write", side_effect=RuntimeError("x")), self.quietly():
+            status, headers, body = self.post("/api/dashboard/goals", b'{"name": "a", "target_minor": 1}')
+        self.assertEqual(status, 500)
+        self.assertIn("error", json.loads(body))
+        self.assert_unframeable(headers, "a dashboard failure")
+
+    # ------------------------------------------------------ G25: the link path
+
+    def test_the_link_paths_answers_forbid_framing(self):
+        linked = {"X-Forwarded-For": "100.64.0.2"}
+        status, headers, _ = self.send("GET", "/api/overview", linked)
+        self.assertEqual(status, 401)
+        self.assert_unframeable(headers, "an unpaired link read")
+        status, headers, _ = self.send("GET", "/api/health", linked)
+        self.assertEqual(status, 200)
+        self.assert_unframeable(headers, "the link's health")
+
+    def test_a_link_write_with_a_bad_length_is_400(self):
+        status, _, _ = self.send("POST", "/api/pair/redeem", {"X-Forwarded-For": "100.64.0.2", "Content-Length": "-5"})
+        self.assertEqual(status, 400)
+
+    def test_a_link_write_that_raises_answers_500_json(self):
+        with mock.patch.object(serve, "write", side_effect=RuntimeError("x")), self.quietly():
+            status, _, body = self.post("/api/pair/redeem", b'{"token": "t", "name": "n"}',
+                                        **{"X-Forwarded-For": "100.64.0.2"})
+        self.assertEqual(status, 500)
+        self.assertIn("error", json.loads(body))
+
     def test_a_page_opened_from_another_site_still_loads(self):
         status, _, _ = self.send("GET", "/settings", {"Sec-Fetch-Site": "cross-site"})
         self.assertEqual(status, 200)
