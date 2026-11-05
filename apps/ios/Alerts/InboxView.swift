@@ -106,14 +106,16 @@ struct InboxView: View {
     @State private var ingestError = ""
 
     private func ingestPaste() {
-        do {
-            let container = try Store.container()
-            _ = try Ingest.alert(text: pasteText, source: "paste",
-                                 receivedAt: Date(), container: container)
-            pasteText = ""
-        } catch {
-            // keep the text so a failed ingest does not lose the alert
-            ingestError = error.localizedDescription
+        Task {
+            do {
+                let container = try Store.container()
+                _ = try await Ingest.alert(text: pasteText, source: "paste",
+                                           receivedAt: Date(), container: container)
+                pasteText = ""
+            } catch {
+                // keep the text so a failed ingest does not lose the alert
+                ingestError = error.localizedDescription
+            }
         }
     }
 
