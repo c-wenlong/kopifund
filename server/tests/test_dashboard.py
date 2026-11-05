@@ -10,6 +10,7 @@ from pathlib import Path
 from unittest import mock
 
 import serve
+from analytics.stats import monthly_cashflow, needs_wants_savings, savings_runway
 from finance import dashboard, db
 from finance.errors import NotFound
 from test_db import SNAP, block, parsed, row
@@ -47,13 +48,14 @@ def rows():
 
 # A stat's cached result, invented: two months of the monthly cash flow,
 # a runway, a CPF year, all in cents under `<name>_minor` as G20 writes them.
+# A stat's points link through its own chart.links, as `common.result` writes them.
 RESULTS = {
-    "monthly-cashflow": {"data": {"months": [
+    "monthly-cashflow": {"chart": {"links": monthly_cashflow.LINKS}, "data": {"months": [
         {"month": "2026-07", "income_minor": 250_000, "spend_minor": 200_000,
          "investing_minor": 10_000, "net_minor": 40_000},
         {"month": "2026-08", "income_minor": 250_000, "spend_minor": 42_500,
          "investing_minor": 10_000, "net_minor": 197_500}]}},
-    "savings-runway": {"data": {"months": [
+    "savings-runway": {"chart": {"links": savings_runway.LINKS}, "data": {"months": [
         {"month": "2026-07", "cash_minor": 900_000, "spend_minor": 200_000, "runway_months": 4.5,
          "carried_amount_minor": 0, "complete": True},
         {"month": "2026-08", "cash_minor": 910_000, "spend_minor": 42_500, "runway_months": 5.2,
@@ -70,7 +72,7 @@ RESULTS = {
         "periods": [{"period_from": "2026-01-01", "period_to": "2026-06-30",
                      "value_sgd_minor": 1_000_000, "contributed_sgd_minor": 900_000,
                      "deposits_sgd_minor": 400_000, "value_base_minor": 700_000}]}},
-    "needs-wants-savings": {"data": {"months": [
+    "needs-wants-savings": {"chart": {"links": needs_wants_savings.LINKS}, "data": {"months": [
         {"month": "2026-08", "income_minor": 250_000, "need_minor": 100_000,
          "want_minor": 60_000, "savings_minor": 50_000,
          "need_share": 0.4, "want_share": 0.24, "savings_share": 0.2, "unclassified": 0.0}]}},
@@ -250,6 +252,11 @@ class StatSourceTest(unittest.TestCase):
         self.assertEqual(a["series"][0]["values_minor"], [250_000, 250_000])
         self.assertEqual(a["label_links"][0], {"from": "2026-07", "to": "2026-07", "income": "1"})
         self.assertEqual(minor_ints(a), [])
+        # net is income less spending, so its rows are those two and never the transfers
+        a = self.resolve({"source": "monthly-cashflow", "metric": "net"})
+        self.assertEqual(a["label_links"][1], {"from": "2026-08", "to": "2026-08", "income": "1", "spend": "1"})
+        # a stat with no link for a metric (a balance) gives its points none
+        self.assertNotIn("label_links", self.resolve({"source": "savings-runway", "metric": "cash"}))
 
     def test_ranges_clamp_by_the_dimensions_grain(self):
         a = self.resolve({"source": "monthly-cashflow", "metric": "income",

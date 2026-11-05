@@ -1430,7 +1430,16 @@ dimension or filter is a 4xx with the names it takes, never a blank chart.
 The answer (`WidgetAnswer`) is `labels`, `series` (one per name when a
 spending query `split`s by bucket, category, payee, account or need class), a
 `unit`, and `label_links`: the Transactions filters each point lists, the
-chart `links` idea carried to widgets. Money comes back under `values_minor`,
+chart `links` idea carried to widgets. A stat source's points take the stat's
+own `chart.links` entry for the metric's field (a month written as `from` and
+`to`), so the stat stays the one place that says which rows a figure adds up,
+and a metric the stat does not link (a balance, a share) links nowhere. A
+`spending` point's link carries the metric's flag (`hide_transfers=0` with
+`transfers` and `net`, whose transfer rows Transactions otherwise hides), the
+query's filters, and its slice's filter; the folded "Everything else" slice
+leaves out the shown names on top of any the query's own filters left out.
+`server/tests/test_stat_links.py` follows every point of every metric,
+dimension and split to the rows its link lists and holds the two to the cent. Money comes back under `values_minor`,
 integer cents with unit `sgd_minor`; anything else under `values` with its own
 unit (`months`, `fraction`, `percent`, the two share scales kept apart as
 they are everywhere).
