@@ -38,7 +38,7 @@ enum LiteralPattern {
         // A literal that ends its block does not count as glued: ending
         // its run early there would let the next block start inside a
         // reference and read its digits as the amount
-        let glued = !(literal.last?.isWhitespace ?? true)
+        let glued = trailingSpace && !(literal.last?.isWhitespace ?? true)
         let raw = literal.components(separatedBy: "\n")
         let lines = raw.enumerated().map { i, line in
             linePattern(for: line, gluedEnd: glued && i == raw.count - 1)

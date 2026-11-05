@@ -133,7 +133,8 @@ public enum Matcher {
                 case .ignore:
                     break
                 case .amount:
-                    pattern += noNumberBefore + #"(?<amount>-?(?:[A-Z]{3}|S\$|US\$|\$)\s*+[0-9][0-9,]*(?:\.\d{1,2})?|-?[0-9][0-9,]*(?:\.\d{1,2})?)"#
+                    pattern += #"(?<amount>"# + noLetterBefore + #"-?(?:[A-Z]{3}|S\$|US\$|\$)\s*+[0-9][0-9,]*(?:\.\d{1,2})?|"#
+                        + noNumberBefore + #"-?[0-9][0-9,]*(?:\.\d{1,2})?)"#
                 case .payee:
                     // a payee never spans lines, so the capture stays inside
                     // its own: it can neither swallow the next line's footer
@@ -162,6 +163,11 @@ public enum Matcher {
     /// digit run that stops early ("Ref 8|842") must not hand the rest of
     /// a reference to the capture as the amount.
     private static let noNumberBefore = #"(?<![0-9])(?<![0-9][.,])"#
+
+    /// A currency marker may follow a digit ("Ref 8842US$4.80") but never
+    /// starts inside a word: without this, "US$4.80" could be read from its
+    /// "S$" as SGD once a reference before it had grown over the "U".
+    private static let noLetterBefore = #"(?<![A-Za-z])"#
 
     /// The longest payee or account a lazy capture reads. YNAB caps a payee
     /// name at 200 characters, so a longer capture could never post; the
