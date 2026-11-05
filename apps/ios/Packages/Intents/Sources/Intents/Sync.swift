@@ -95,11 +95,11 @@ public struct SyncGate: Equatable, Sendable {
 
 @MainActor
 public enum Sync {
-    /// Post every due row, one at a time, until none is left. The queue is
-    /// fetched again before each row: the fetch refreshes rows another
-    /// process changed on disk (an intent that parked a row as a duplicate
-    /// after this run began) and picks up rows approved while a send was in
-    /// flight.
+    /// Post every due row, one at a time, until none is left. Each row is
+    /// re-read just before its send, so a row another process changed on
+    /// disk (an intent that parked it as a duplicate after this run began)
+    /// is seen as it is now, and rows approved while a send was in flight
+    /// are picked up in the next round.
     ///
     /// `beforeSend` runs on each row just before its YNAB post and may take
     /// the row out of the queue by changing its state (G25: the app posts it
@@ -114,29 +114,37 @@ public enum Sync {
         var outcome = SyncOutcome()
         var tried = Set<UUID>()
         guard !settings.planID.isEmpty else { return outcome }
+        // in rounds: one wide fetch gathers the due rows not tried yet, and
+        // each is fetched again by id just before its send. A row approved
+        // during a round is found by the next one; a quiet run ends after
+        // one more wide fetch, so a long queue is never re-read per row.
         while true {
-            if Task.isCancelled { outcome.stop = .cancelled; break }
-            let queue = (try? context.fetch(FetchDescriptor<TransactionRecord>(
+            let ids = ((try? context.fetch(FetchDescriptor<TransactionRecord>(
                 predicate: #Predicate {
                     $0.state == "approved" || $0.state == "failed" || $0.state == "syncing" },
-                sortBy: [SortDescriptor(\.receivedAt)]))) ?? []
-            guard let row = queue.first(where: {
-                !tried.contains($0.id) && isDue($0, now: now(), force: force)
-            }) else { break }
-            tried.insert(row.id)
-            // what an intake saved since this context last read the row: a
-            // park, a hold, or a currency a pairing moved onto it
-            reread(row, in: context)
-            guard ["approved", "failed", "syncing"].contains(row.state) else { continue }
-            if let beforeSend {
-                await beforeSend(row)
-                if row.isDeleted || row.modelContext == nil { continue }
-                guard ["approved", "failed", "syncing"].contains(row.state) else { continue }
-            }
-            if let stop = await send(row, context: context, client: client,
-                                     settings: settings, now: now, outcome: &outcome) {
-                outcome.stop = stop
-                break
+                sortBy: [SortDescriptor(\.receivedAt)]))) ?? [])
+                .filter { !tried.contains($0.id) && isDue($0, now: now(), force: force) }
+                .map(\.id)
+            if ids.isEmpty { break }
+            for id in ids {
+                if Task.isCancelled { outcome.stop = .cancelled; return outcome }
+                tried.insert(id)
+                guard let row = (try? context.fetch(FetchDescriptor<TransactionRecord>(
+                    predicate: #Predicate { $0.id == id })))?.first else { continue }
+                // what an intake saved since this context last read the row:
+                // a park, a hold, or a currency a pairing moved onto it
+                reread(row, in: context)
+                guard isDue(row, now: now(), force: force) else { continue }
+                if let beforeSend {
+                    await beforeSend(row)
+                    if row.isDeleted || row.modelContext == nil { continue }
+                    guard ["approved", "failed", "syncing"].contains(row.state) else { continue }
+                }
+                if let stop = await send(row, context: context, client: client,
+                                         settings: settings, now: now, outcome: &outcome) {
+                    outcome.stop = stop
+                    return outcome
+                }
             }
         }
         return outcome

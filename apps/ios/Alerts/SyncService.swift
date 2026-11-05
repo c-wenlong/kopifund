@@ -327,12 +327,15 @@ final class HubLane {
         guard row.state == "approved" else { return }
         // a linked phone asks the record first: a spend a loaded statement
         // already covers is marked "kopifund", never posted to YNAB
-        await loadMonth(of: row.day)
-        if row.isDeleted || row.modelContext == nil { return }
-        // the month request awaited: a hold or a currency an intake saved
-        // meanwhile must be what the match below and the YNAB send see
-        Sync.reread(row, in: context)
-        if row.state != "approved" { return }
+        // the month request awaits: a hold or a currency an intake saved
+        // meanwhile must be what the match below and the YNAB send see, and
+        // a date moved to another month during it needs that month too
+        repeat {
+            await loadMonth(of: row.day)
+            if row.isDeleted || row.modelContext == nil { return }
+            Sync.reread(row, in: context)
+            if row.state != "approved" { return }
+        } while !months.contains(LinkDedupe.monthKey(row.day))
         let liveCurrency = row.currency.isEmpty ? planCurrency : row.currency
         if let i = Dedup.coveredBy(amountCents: row.amountCents, currency: liveCurrency ?? "",
                                    direction: row.direction, date: row.day,
