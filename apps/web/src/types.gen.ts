@@ -1276,6 +1276,25 @@ export type AppIconPage = {
   chosen: string;
 };
 
+/**
+ * G23: how the running server was started: `make serve`, `make dev` (`--page` is
+ * set only there), or the desktop app's sidecar.
+ */
+export type ServerMode = "serve" | "dev" | "app";
+
+/**
+ * GET /api/server: the running server, for Settings' Server card. `started`
+ * is the process's own start in epoch seconds, so the card's "running for"
+ * resets on a restart.
+ */
+export type ServerInfo = {
+  version: string;
+  mode: ServerMode;
+  port: number;
+  pid: number;
+  started: number;
+};
+
 /** serve.py, CACHED: the GETs that answer with an ETag; everything else is asked afresh every time. */
 export const CACHED_PATHS: readonly string[] = [
   "/api/budgets",
@@ -1310,6 +1329,8 @@ export const NO_CHANGE_PATHS: readonly string[] = [
   "/api/pair/redeem",
   "/api/rules/suggest",
   "/api/run/check",
+  "/api/server/restart",
+  "/api/server/stop",
   "/api/uploads/start",
 ];
 

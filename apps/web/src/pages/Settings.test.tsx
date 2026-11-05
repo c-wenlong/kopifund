@@ -13,9 +13,22 @@ const scamChecks = {
 };
 const posts: { url: string; body?: string }[] = [];
 
+// G23: the Server card's answer; a stop write flips `up` so the next health check misses
 function stubFetch({ health = true, exports = [{ stamp: "2026-10-12", files: ["transactions.csv", "stats.json", "notes.txt"] }] } = {}) {
+  let up = health, pid = 4321;
+  const started = () => Math.floor(Date.now() / 1000) - 2 * 3600 - 5 * 60;
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
-    if (url === "/api/health") return health ? new Response(JSON.stringify({ ok: true }), { status: 200 }) : Promise.reject(new Error("down"));
+    if (url === "/api/health") return up ? new Response(JSON.stringify({ ok: true }), { status: 200 }) : Promise.reject(new Error("down"));
+    if (url.startsWith("/api/server/") && init?.method === "POST") {
+      posts.push({ url });
+      if (url.endsWith("/stop")) up = false;
+      if (url.endsWith("/restart")) pid += 1;
+      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+    }
+    if (url === "/api/server") {
+      if (!up) return Promise.reject(new Error("down"));
+      return new Response(JSON.stringify({ version: "0.1.0", mode: "serve", port: 8770, pid, started: started() }), { status: 200 });
+    }
     if (url.startsWith("/api/exports")) return new Response(JSON.stringify({ exports }), { status: 200 });
     // G22: the AI card has its own tests (AiCard.test.tsx); here it asks a server that is down along with the rest
     if (url.startsWith("/api/ai") && !health) return Promise.reject(new Error("down"));
@@ -245,5 +258,44 @@ describe("Scam checks saved from another tab", () => {
     expect(screen.getByRole("textbox", { name: "Repeated within" })).toHaveValue("21");
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
     expect(leaveAsks()).toBe(true);
+  });
+});
+
+// G23: the Server card
+describe("Server card", () => {
+  beforeEach(() => { posts.length = 0; });
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("says how long the server has run and what started it", async () => {
+    stubFetch();
+    render(<Settings />);
+    expect(await screen.findByText(/Running for/)).toHaveTextContent("Running for 2 hours 5 minutes");
+    expect(await screen.findByText(/Started by make serve on 127\.0\.0\.1:8770 · pid 4321/)).toBeInTheDocument();
+    expect(await screen.findByText("Server connected")).toBeInTheDocument();
+  });
+
+  it("stops the server after a confirm, then says how to start it", async () => {
+    stubFetch();
+    render(<Settings />);
+    await screen.findByText("Server connected");
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    expect(screen.getByText(/Every page goes offline/)).toBeInTheDocument();
+    expect(posts.some((p) => p.url === "/api/server/stop")).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Stop" }));
+    await waitFor(() => expect(posts.some((p) => p.url === "/api/server/stop")).toBe(true));
+    expect(await screen.findByText("Stopped.", {}, { timeout: 3000 })).toBeInTheDocument();
+    expect(screen.getByText(/make serve/)).toBeInTheDocument();
+    expect(await screen.findByText("Server offline")).toBeInTheDocument();
+  });
+
+  it("restarts the server and waits for the new process without the offline banner", async () => {
+    stubFetch();
+    render(<><Settings /><ServerBanner /></>);
+    await screen.findByText("Server connected");
+    fireEvent.click(screen.getByRole("button", { name: "Restart" }));
+    await waitFor(() => expect(posts.some((p) => p.url === "/api/server/restart")).toBe(true), { timeout: 3000 });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Restart" })).toBeEnabled(), { timeout: 3000 });
+    expect(screen.getByText(/Running for/)).toBeInTheDocument();
+    expect(screen.queryByText(/Can't reach Kopifund/)).not.toBeInTheDocument();
   });
 });

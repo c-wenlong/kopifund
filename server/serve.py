@@ -10,6 +10,8 @@ stats rebuild in server/finance/stats_rebuild.py, the upload steps in
 server/finance/upload_steps.py, and --reload in dev_reload.py.
 
     GET /api/health                 is the server up
+    GET /api/server                 G23: the server itself, for Settings' Server card: version, how it was
+                                    started (serve, dev or app), port, pid and its start time
     GET /api/overview               the home screen's figures
     GET /api/spending               ?from=&to=&scope=sg|all&by=bucket|category|payee: the Spending explorer
     GET /api/recurring              coming up this month (paid, due, late, different amount), active, stopped, marked recurring but irregular
@@ -141,6 +143,11 @@ privilege, never gain it.
     POST /api/link/pending/dismiss  G25: {import_id}: a waiting row is no spend, never matched (loopback)
     POST /api/link/pending/restore  G25: {import_id}: a matched or dismissed row back to waiting; a match
                                     it was in joins its rejected list and is never offered again (loopback)
+    POST /api/server/stop           G23: answer, then stop the server. Nothing can start it from the page
+                                    it served: the desktop shell's start page, or `make serve`, does
+    POST /api/server/restart        G23: answer, then run the same command line again in place of this
+                                    process: under --app the shell's hold on stdin and the new ready line
+                                    work as on first launch, so its window reloads itself
 
 G19: GET_ROUTES and POST_ROUTES, near the end of this file, are the one list of
 endpoints: a path (or a pattern like /api/uploads/<id>) and the function that
@@ -176,10 +183,12 @@ import contextvars
 import importlib
 import json
 import mimetypes
+import os
 import re
 import sqlite3
 import sys
 import threading
+import time
 from contextlib import closing, contextmanager
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -263,7 +272,9 @@ NO_CHANGE = frozenset({"/api/run/check", "/api/rules/suggest", "/api/uploads/sta
                        # G22: a question, a test request and a thread removed touch no page's data
                        "/api/copilot/ask", "/api/copilot/threads/remove", "/api/ai/test",
                        # G25: the device registry is no page's data either
-                       "/api/link/pair-token", "/api/pair/redeem", "/api/link/devices/revoke"})
+                       "/api/link/pair-token", "/api/pair/redeem", "/api/link/devices/revoke",
+                       # G23: nor is the server's own stop or restart (the next ask answers for itself)
+                       "/api/server/stop", "/api/server/restart"})
 # G18: but a check writes the upload history, and the overview's Needs your
 # eye reads where the latest upload stands, so after a check the app asks for
 # the overview again (and for nothing else). types.gen.ts carries this too.
@@ -642,6 +653,46 @@ def _get_health(req):
     return {"ok": True, "version": VERSION}
 
 
+# ----------------------------------------------- G23: the process itself
+
+STARTED = time.time()
+_MODE = "serve"                              # make_server sets it from how the server was started
+_PORT = PORT
+_SERVER: ThreadingHTTPServer | None = None
+_RESTART = False
+
+
+def _get_server(req):
+    return {"version": VERSION, "mode": _MODE, "port": _PORT, "pid": os.getpid(), "started": STARTED}
+
+
+def _after_response(fn: Callable[[], None]) -> None:
+    """Run `fn` once this request's answer has had a moment to leave, so the
+    stop or restart that ends this process never eats its own reply."""
+    threading.Timer(0.4, fn).start()
+
+
+def _stop() -> None:
+    if _SERVER is not None:
+        _SERVER.shutdown()
+
+
+def _restart() -> None:
+    global _RESTART
+    _RESTART = True
+    _stop()
+
+
+def _post_server_stop(req):
+    _after_response(_stop)
+    return {"ok": True}
+
+
+def _post_server_restart(req):
+    _after_response(_restart)
+    return {"ok": True}
+
+
 # ----------------------------------------------------- G19: the route tables
 
 # One table per method: a path, or a pattern with <names> in it, and the
@@ -654,6 +705,7 @@ def _get_health(req):
 # (POST) or server/analytics/api.py (Net worth and the projection).
 GET_ROUTES: dict[str, Route] = {
     "/api/health": Route(_get_health),
+    "/api/server": Route(_get_server),
     "/api/overview": Route(api.get_overview),
     "/api/spending": Route(api.get_spending),
     "/api/recurring": Route(api.get_recurring),
@@ -742,6 +794,8 @@ POST_ROUTES: dict[str, Route] = {
     "/api/link/transactions": Route(api_writes.post_link_transactions, json_body=True),
     "/api/link/pending/dismiss": Route(api_writes.post_pending_dismiss, json_body=True),
     "/api/link/pending/restore": Route(api_writes.post_pending_restore, json_body=True),
+    "/api/server/stop": Route(_post_server_stop),
+    "/api/server/restart": Route(_post_server_restart),
 }
 
 
@@ -797,8 +851,12 @@ def write(path: str, query: dict, body: bytes, device: dict | None = None) -> ob
     return _dispatch("POST", path, query, body, device=device)
 
 
-def make_server(port: int = PORT, dist: Path = DIST, page: str | None = None) -> ThreadingHTTPServer:
-    return ThreadingHTTPServer((HOST, port), make_handler(dist, page))
+def make_server(port: int = PORT, dist: Path = DIST, page: str | None = None, mode: str = "serve") -> ThreadingHTTPServer:
+    global _SERVER, _PORT, _MODE
+    _SERVER = ThreadingHTTPServer((HOST, port), make_handler(dist, page))
+    _PORT = _SERVER.server_address[1]
+    _MODE = mode
+    return _SERVER
 
 
 def stop_when_stdin_closes(server: ThreadingHTTPServer) -> None:
@@ -841,7 +899,7 @@ def main() -> None:
         dev_reload.reload_forever(port, page=args.page)
         return
     try:
-        server = make_server(port, page=args.page)
+        server = make_server(port, page=args.page, mode="app" if args.app else "dev" if args.page else "serve")
     except OSError as exc:
         print(f"Kopifund could not listen on {HOST}:{port}: {exc.strerror or exc}. "
               "Another program is using that port.", file=sys.stderr, flush=True)
@@ -860,6 +918,12 @@ def main() -> None:
         pass
     finally:
         server.server_close()
+    if _RESTART:
+        # the same command line in place of this process: fds 0-2 survive exec
+        # (the app's shell still holds stdin, and the new process's ready line
+        # reloads its window), while the listening socket is non-inheritable,
+        # so the new process binds the port afresh
+        os.execv(sys.executable, [sys.executable, str(Path(sys.argv[0]).resolve()), *sys.argv[1:]])
 
 
 if __name__ == "__main__":

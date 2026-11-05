@@ -323,7 +323,8 @@ class EndpointTest(unittest.TestCase):
                 ("/api/copilot/threads", {}, wire.CopilotThreads),
                 ("/api/link/devices", {}, wire.LinkDevices),
                 ("/api/link/pending", {}, wire.LinkPending),
-                ("/api/app-icon", {}, wire.AppIconPage)]
+                ("/api/app-icon", {}, wire.AppIconPage),
+                ("/api/server", {}, wire.ServerInfo)]
 
     def test_every_endpoint_answers_in_its_generated_shape(self):
         # several handlers leave their connection to the garbage collector; that is not this test's subject

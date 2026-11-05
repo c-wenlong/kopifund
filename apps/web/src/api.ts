@@ -23,7 +23,7 @@ export type {
   PlanProjection, PlanState, PlanTrip, Profile, ProfileAccount, ProfileFolder, ProjectionSettings, RecurringBase,
   NotRecurring, RecurringOff, RecurringPage, Rule, RuleChange, RuleGroup, RuleProblem, RuleRow, RulesState, ScamChecks, ScamCode,
   SeriesDetected, SeriesEdit, SeriesPayment, SeriesSlot, SeriesView, SeriesViewState, SlotStatus,
-  ScamFine, ScamFlag, ScamLine, ScamReason, ScamSettings, SeriesColour, StaleAccount, StepName, StepStatus,
+  ScamFine, ScamFlag, ScamLine, ScamReason, ScamSettings, SeriesColour, ServerInfo, ServerMode, StaleAccount, StepName, StepStatus,
   StoppedSeries, Suggestion, Tier, Trip, TripCategory, TripList, Txn, TxnAccount, TxnDay, TxnPage, UploadAlert,
   UploadPage, UploadStep, UploadStepOutline,
 } from "./types.gen";

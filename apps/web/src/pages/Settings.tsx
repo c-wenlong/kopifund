@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, FileJson, FileSpreadsheet, FileText } from "lucide-react";
 import { useSidebarMode, type SidebarMode } from "../components/sidebarMode";
-import { checkServer, postJSON, useApi, useLink, type ExportDone, type Exports, type ScamChecks, type ScamSettings } from "../api";
+import { checkServer, postJSON, useApi, useLink, type ExportDone, type Exports, type ScamChecks, type ScamSettings, type ServerInfo, type ServerMode } from "../api";
 import { centsText, formatSgd, parseCents } from "../money";
 import { formatDay } from "../dates";
 import { MoneyInput } from "../components/MoneyInput";
@@ -48,6 +48,7 @@ export function Settings() {
           {backend === "connected" ? "Server connected" : backend === "offline" ? "Server offline" : "Checking the server"}
         </StatusChip>
       </PageActions>
+      <ServerCard />
       {/* under 768px the sidebar is a drawer, so keep-open and hover mean nothing there */}
       {wide && (
         <Card title="Sidebar">
@@ -70,6 +71,123 @@ export function Settings() {
       <ScamChecksCard />
       <ExportCard />
     </div>
+  );
+}
+
+// G23: the server itself: how it was started, how long it has run, and a way
+// to stop or restart it. A stopped server answers nothing its own page could
+// use to start it again, so the stopped state says where the start is instead
+// of offering a button: the desktop app's own start page, or `make serve`.
+const SERVER_MODE: Record<ServerMode, string> = {
+  serve: "make serve",
+  dev: "make dev",
+  app: "the Kopifund app",
+};
+
+/** "for 4 days 2 hours", "for 3 minutes", "under a minute". */
+function runningFor(started: number, now: number): string {
+  const m = Math.floor(Math.max(0, Math.floor(now / 1000) - started) / 60);
+  const h = Math.floor(m / 60), d = Math.floor(h / 24);
+  const word = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;
+  if (d > 0) return h % 24 ? `${word(d, "day")} ${word(h % 24, "hour")}` : word(d, "day");
+  if (h > 0) return m % 60 ? `${word(h, "hour")} ${word(m % 60, "minute")}` : word(h, "hour");
+  return m > 0 ? word(m, "minute") : "under a minute";
+}
+
+function ServerCard() {
+  const { down } = useLink();
+  const { data, error } = useApi<ServerInfo>("/api/server");
+  const [now, setNow] = useState(() => Date.now());
+  const [acting, setActing] = useState<"restart" | "stop" | null>(null);
+  const [confirmStop, setConfirmStop] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!data) return;
+    const t = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(t);
+  }, [data]);
+
+  async function restart() {
+    if (!data) return;
+    // a re-exec keeps the pid, so the new process is known by its later `started`
+    const started = data.started;
+    setActing("restart");
+    setProblem(null);
+    try {
+      await postJSON("/api/server/restart");
+      // ask with a plain fetch: the gap in the middle is expected, and must
+      // not flash the offline banner on the way
+      for (let i = 0; i < 60; i++) {
+        await new Promise((r) => setTimeout(r, 500));
+        try {
+          const r = await fetch("/api/server", { cache: "no-store" });
+          if (r.ok && (await r.json()).started !== started) break;
+        } catch { /* still coming up */ }
+      }
+      await checkServer();
+    } catch (e) {
+      setProblem((e as Error).message);
+    } finally {
+      setActing(null);
+    }
+  }
+
+  async function stop() {
+    setActing("stop");
+    setConfirmStop(false);
+    setProblem(null);
+    try {
+      await postJSON("/api/server/stop");
+      // give the exit a moment, then ask: the miss is what flips the chip and
+      // the banner to offline
+      window.setTimeout(() => void checkServer(), 800);
+    } catch (e) {
+      setProblem((e as Error).message);
+      setActing(null);
+    }
+  }
+
+  if (down) {
+    return (
+      <Card title="Server">
+        <p className="m-0 text-[13px] text-ink-2">Stopped.</p>
+        <p className="m-0 mt-1 text-[13px] text-ink-3">
+          Start it again with <span className="font-medium">make serve</span> or <span className="font-medium">make dev</span>;
+          in the Kopifund app the window's Retry starts it. This page comes back on its own.
+        </p>
+      </Card>
+    );
+  }
+  if (error) return <Card title="Server"><p className="m-0 text-[13px] text-warn">{error}</p></Card>;
+  if (!data) return null;
+  return (
+    <Card title="Server" actions={
+      confirmStop ? (
+        <span className="flex items-center gap-2 text-[13px]">
+          Stop the server? Every page goes offline until it starts again.
+          <Button size="sm" variant="primary" disabled={acting !== null} onClick={() => void stop()}>Stop</Button>
+          <Button size="sm" disabled={acting !== null} onClick={() => setConfirmStop(false)}>Cancel</Button>
+        </span>
+      ) : (
+        <span className="flex gap-2">
+          <Button size="sm" disabled={acting !== null} onClick={() => void restart()}>
+            {acting === "restart" ? "Restarting…" : "Restart"}
+          </Button>
+          <Button size="sm" disabled={acting !== null} onClick={() => setConfirmStop(true)}>
+            {acting === "stop" ? "Stopping…" : "Stop"}
+          </Button>
+        </span>
+      )
+    }>
+      <p className="m-0 text-[13px]">
+        Running for <span className="num">{runningFor(data.started, now)}</span>
+      </p>
+      <p className="m-0 mt-1 text-[13px] text-ink-3">
+        Started by {SERVER_MODE[data.mode]} on 127.0.0.1:{data.port} · pid {data.pid}
+      </p>
+      {problem && <p role="alert" className="m-0 mt-1 text-[13px] text-danger">{problem}</p>}
+    </Card>
   );
 }
 

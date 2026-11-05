@@ -1437,8 +1437,18 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   remembered per browser. Under 768px, where the sidebar is a drawer, the
   Settings page does not show it. The **App icon** card picks one of the
   icon sets ("App icon" above). The local server's state is a chip in the
-  Settings header, and an export lists its files (the first five, then "Show
-  all") with an icon and a download button each. A **Scam checks** card holds
+  Settings header, and the **Server** card beside it says how long it has
+  run, what started it (`make serve`, `make dev` or the desktop app, which
+  `GET /api/server` answers) and its port and pid, with a Stop that asks
+  once ("Stop the server?") before `POST /api/server/stop` and a Restart
+  before `POST /api/server/restart`. Both answer first, then the process
+  ends or runs its command line again in its place (under `--app` the
+  shell's hold on stdin survives, and the new ready line reloads the
+  window). A stopped server answers nothing its own page could use to
+  start it, so there is no Start: the card's stopped state says where one
+  lives (the desktop app's own start page, or the terminal) while the
+  banner keeps asking until it is back. An export lists its files (the
+  first five, then "Show all") with an icon and a download button each. A **Scam checks** card holds
   the nine thresholds as one compact form in two rows, Transfers (big transfer
   in S$, how long a payee counts as new, how many repeated transfers within how
   many days) and Card and shop payments (abroad from S$, test charge up to S$
