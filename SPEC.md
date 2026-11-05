@@ -1973,8 +1973,14 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   budget, Past uploads), forms (the projection inputs), Needs your eye (at most
   four lines).
 - **Spending** opens on an explorer (`GET /api/spending`): a range (3, 6 or 12
-  months up to the record's last month, or all of it), Singapore only or
-  including overseas, and a split by bucket, category or payee. Spending is what
+  months up to the record's last month, never starting before its first, so a
+  record shorter than the range averages over the months it holds as Home does;
+  or all of it), Singapore only or including overseas, and a split by bucket,
+  category or payee. The three controls live in the address (`range=3`, `6` or
+  `all`, `scope=all`, `by=category` or `payee`; the defaults, 12 months,
+  Singapore only and by bucket, keep a clean address), so Back from the
+  transactions a figure opened lands on the view as it was left. The bare
+  request answers the default view, so opening the page asks once. Spending is what
   every stat counts (External, a Spend category, not synthetic; a refund lowers
   its month). Singapore only leaves out every row linked to a trip, which is how
   the pipeline already marks spending abroad (a foreign merchant country or a
