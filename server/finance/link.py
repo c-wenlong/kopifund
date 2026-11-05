@@ -128,15 +128,17 @@ def redeem(token, name="", nonce=""):
     one critical section so a token spends exactly once.
 
     `nonce` is a random the phone makes once per pairing and sends again on
-    a retry. A retry after a lost reply (the token already spent, still in
-    its life, the same nonce) gets a fresh bearer for the device the first
-    try made, and that device's old bearer stops answering. So a lost reply
-    leaves no second, orphan device, and a token seen in a QR is still no
-    use to anyone else once spent: they would need the phone's nonce too."""
+    a retry. With one, the bearer is derived from the token and the nonce,
+    so a retry after a lost reply (the token already spent, still in its
+    life, the same nonce) answers the very bearer of the device the first
+    try made, whichever of the two requests lands first: a lost reply
+    leaves no second, orphan device, and no late request can change a
+    bearer the phone already saved. A token seen in a QR is still no use
+    to anyone else once spent: they would need the phone's nonce too."""
     if not token:
         raise Refused("A pair token is needed")
-    if len(nonce) > 200:
-        raise ValueError("nonce is at most 200 characters")
+    if nonce and not 16 <= len(nonce) <= 200:
+        raise ValueError("nonce is 16 to 200 characters")
     now = time.time()
     holder = {}
 
@@ -144,7 +146,8 @@ def redeem(token, name="", nonce=""):
         for t in data["pair_tokens"]:
             if t.get("expires", 0) <= now or not hmac.compare_digest(t.get("hash", ""), _hash(token)):
                 continue
-            bearer = DEVICE_PREFIX + secrets.token_hex(24)
+            bearer = DEVICE_PREFIX + (hashlib.sha256(f"{token}:{nonce}".encode()).hexdigest()[:48]
+                                      if nonce else secrets.token_hex(24))
             if not t.get("used"):
                 t["used"] = True
                 device = {"id": "dev_" + secrets.token_hex(8), "name": name or "iPhone",
@@ -157,7 +160,6 @@ def redeem(token, name="", nonce=""):
             if nonce and t.get("nonce_hash") and hmac.compare_digest(t["nonce_hash"], _hash(nonce)):
                 for device in data["devices"]:
                     if device["id"] == t.get("device_id") and not device.get("revoked"):
-                        device["token_hash"] = _hash(bearer)
                         holder.update(bearer=bearer, device=device)
                         return
         raise Refused("That pair token is spent or stale: mint a new one on the Mac")

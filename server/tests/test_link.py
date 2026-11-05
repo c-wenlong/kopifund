@@ -84,33 +84,44 @@ class RegistryTest(unittest.TestCase):
 
     def test_a_retry_with_the_same_nonce_leaves_no_orphan_device(self):
         """A lost reply: the phone retries the spent token with its nonce and
-        gets a bearer for the same device row; the first bearer, which no
-        phone holds, stops answering."""
+        gets the same bearer for the same device row, so whichever request
+        lands last, the bearer the phone saved keeps working."""
         token, _ = link.mint_pair_token()
-        first, device = link.redeem(token, "Test iPhone", "n-1")
-        second, again = link.redeem(token, "Test iPhone", "n-1")
-        self.assertEqual(again["id"], device["id"])
-        self.assertNotEqual(first, second)
+        n1 = "n1-0123456789abcdef"
+        first, device = link.redeem(token, "Test iPhone", n1)
+        second, again = link.redeem(token, "Test iPhone", n1)
+        self.assertEqual((again["id"], second), (device["id"], first))
         self.assertEqual(len(link.list_devices()), 1)
-        self.assertIsNone(link.device_for(first))
-        self.assertEqual(link.device_for(second)["id"], device["id"])
+        self.assertEqual(link.device_for(first)["id"], device["id"])
         # a spent token is no use without the phone's nonce, or with none
-        for nonce in ("n-2", ""):
+        for nonce in ("n2-0123456789abcdef", ""):
             with self.assertRaises(Refused):
                 link.redeem(token, "Other", nonce)
+        with self.assertRaises(ValueError):
+            link.redeem(token, "Other", "short")
         # a new code minted meanwhile does not sweep the spent one away
         link.mint_pair_token()
-        link.redeem(token, "Test iPhone", "n-1")
+        self.assertEqual(link.redeem(token, "Test iPhone", n1)[0], first)
         # nor once the device is revoked, nor once the token's life is over
         link.revoke(device["id"])
         with self.assertRaises(Refused):
-            link.redeem(token, "Test iPhone", "n-1")
+            link.redeem(token, "Test iPhone", n1)
         token, _ = link.mint_pair_token()
-        link.redeem(token, "x", "n-3")
+        n3 = "n3-0123456789abcdef"
+        link.redeem(token, "x", n3)
         with mock.patch("time.time", return_value=time.time() + link.PAIR_LIFE + 1):
             with self.assertRaises(Refused):
-                link.redeem(token, "x", "n-3")
+                link.redeem(token, "x", n3)
         self.assertEqual(len(link.list_devices()), 2)
+
+    def test_the_retry_landing_first_leaves_the_bearer_working(self):
+        """The retry finishes before the delayed original: both answer the
+        same bearer, so the one the phone kept works either way."""
+        token, _ = link.mint_pair_token()
+        nonce = "n-0123456789abcdef"
+        answers = [link.redeem(token, "Test iPhone", nonce)[0] for _ in range(2)]
+        self.assertEqual(answers[0], answers[1])
+        self.assertIsNotNone(link.device_for(answers[0]))
 
     def test_revoking_flags_the_row_and_stops_the_bearer(self):
         token, _ = link.mint_pair_token()
@@ -329,11 +340,12 @@ class GateTest(unittest.TestCase):
     def test_a_redeem_retried_over_http_keeps_one_device(self):
         r, raw = self.call("POST", "/api/link/pair-token", {}, {"X-Kopifund": "1"})
         token = parse_qs(urlsplit(json.loads(raw)["payload"]).query)["token"][0]
-        body = {"token": token, "name": "Test iPhone", "nonce": "n-http"}
+        body = {"token": token, "name": "Test iPhone", "nonce": "n-http-0123456789abcdef"}
         r1, raw1 = self.call("POST", "/api/pair/redeem", body, self.XFF)
         r2, raw2 = self.call("POST", "/api/pair/redeem", body, self.XFF)
         self.assertEqual((r1.status, r2.status), (200, 200))
         self.assertEqual(json.loads(raw1)["device_id"], json.loads(raw2)["device_id"])
+        self.assertEqual(json.loads(raw1)["token"], json.loads(raw2)["token"])
         self.assertEqual(len(link.list_devices()), 1)
         r, _ = self.call("GET", "/api/link/check",
                          headers={**self.XFF, "Authorization": f"Bearer {json.loads(raw2)['token']}"})

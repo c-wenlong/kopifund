@@ -1308,9 +1308,10 @@ whois` on that IP names the tailnet caller when it matters.
   write happen under one `flock`, so a token spends exactly once even
   raced, and the answer is the device bearer. The phone also sends a
   `nonce`, a random it makes once per pairing: a retry after a lost reply
-  (the same token, still in its life, with the same nonce) gets a fresh
-  bearer for the device row the first try made, whose old bearer stops
-  answering, so a lost reply leaves no orphan device. A spent token with
+  (the same token, still in its life, with the same nonce) gets the same
+  bearer for the device row the first try made (the bearer is derived from
+  the token and the nonce), so a lost reply leaves no orphan device and the
+  order the two requests land in does not matter. A spent token with
   another nonce, or none, is still refused. `~/.kopifund/devices.json` is
   the registry (id, name, token hash, paired date, revoked flag), mode 600
   and never backed up. `GET /api/link/devices` lists it and
