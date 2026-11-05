@@ -41,6 +41,21 @@ class IsolationTest(unittest.TestCase):
                     self.assertEqual(folder, Path(real))
                 self.assertEqual(data_root(), throwaway)
 
+    def test_a_relative_real_folder_is_made_absolute(self):
+        with tempfile.TemporaryDirectory() as parent, \
+                mock.patch.dict(os.environ, {"KOPIFUND_TEST_REAL_DATA": "data-copy"}):
+            here = os.getcwd()
+            os.chdir(parent)
+            try:
+                folder = isolate.real_data_folder()
+                with isolate.real_data():
+                    named = os.environ["KOPIFUND_DATA"]
+            finally:
+                os.chdir(here)
+            self.assertTrue(folder.is_absolute(), folder)
+            self.assertEqual(folder.resolve(), (Path(parent) / "data-copy").resolve())
+            self.assertEqual(named, str(folder))
+
     def test_the_module_hooks_hand_the_folder_back(self):
         throwaway = data_root()
         with tempfile.TemporaryDirectory() as real, \

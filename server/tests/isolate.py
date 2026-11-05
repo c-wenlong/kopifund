@@ -42,7 +42,7 @@ if not os.environ.get("KOPIFUND_TEST_SCRATCH"):
 # reads the same folder rather than the throwaway one
 if os.environ.get("KOPIFUND_TEST_REAL_DATA") == "1":
     os.environ["KOPIFUND_TEST_REAL_DATA"] = str(
-        Path(os.environ.get("KOPIFUND_DATA") or Path.home() / ".kopifund").expanduser())
+        Path(os.environ.get("KOPIFUND_DATA") or Path.home() / ".kopifund").expanduser().absolute())
 os.environ["KOPIFUND_DATA"] = str(Path(os.environ["KOPIFUND_TEST_SCRATCH"]) / "data")
 os.environ["KOPIFUND_DB"] = str(Path(os.environ["KOPIFUND_TEST_SCRATCH"]) / "kopifund.db")
 os.environ["KOPIFUND_CACHE"] = str(Path(os.environ["KOPIFUND_TEST_SCRATCH"]) / "cache")
@@ -55,7 +55,10 @@ os.environ["KOPIFUND_DEVICES"] = str(Path(os.environ["KOPIFUND_TEST_SCRATCH"]) /
 def real_data_folder() -> Path | None:
     """The real data folder this run was asked to read, or None."""
     named = os.environ.get("KOPIFUND_TEST_REAL_DATA")
-    return Path(named).expanduser() if named else None
+    # absolute, so a child process started in another folder (the parsers
+    # run inside the statements folder) reads the same one, not a relative
+    # path that misses the scratch cache and writes beside the PDFs
+    return Path(named).expanduser().absolute() if named else None
 
 
 @contextmanager
