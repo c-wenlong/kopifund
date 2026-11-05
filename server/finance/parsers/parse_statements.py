@@ -40,6 +40,7 @@ import shutil
 import subprocess
 import sys
 from collections import Counter, defaultdict
+from datetime import date
 from pathlib import Path
 
 # the data folder's layout (server/finance/paths.py) decides where text dumps go
@@ -539,16 +540,17 @@ def enrich(r):
 def iso_date(raw, statement_date):
     """A dd/mm/yyyy row carries its own year and is taken at face value; the POSB
     "28 Dec" form has none, so a month later than the statement's rolls back a
-    year (a row cannot post after the statement that prints it)."""
+    year (a row cannot post after the statement that prints it). A day that does
+    not exist in that year ("29 Feb" on a 2025 statement) is a misread: ValueError."""
     yr = int(statement_date.split()[-1])
     if "/" in raw:
         d, m, y = raw.split("/")
-        return f"{int(y):04d}-{m}-{d}"
+        return _real_day(int(y), int(m), int(d), raw, statement_date)
     dd, mon = raw.split()
     mm = MONTHS[mon]
     if mm > MONTHS[statement_date.split()[1]]:   # a row cannot post after its statement
         yr -= 1
-    return f"{yr:04d}-{mm:02d}-{int(dd):02d}"
+    return _real_day(yr, mm, int(dd), raw, statement_date)
 
 
 def purchase_date(txn_date, tag):
@@ -559,7 +561,15 @@ def purchase_date(txn_date, tag):
     yr = int(txn_date[:4])
     if mm == 12 and int(txn_date[5:7]) == 1:
         yr -= 1
-    return f"{yr:04d}-{mm:02d}-{dd:02d}"
+    return _real_day(yr, mm, dd, tag, txn_date)
+
+
+def _real_day(y, m, d, raw, on):
+    """The ISO day, or ValueError naming the printed text when no such day exists."""
+    try:
+        return date(y, m, d).isoformat()
+    except ValueError:
+        raise ValueError(f"{raw!r} (on {on}) is not a real day: {y:04d}-{m:02d}-{d:02d}") from None
 
 
 def direction(amount):

@@ -95,7 +95,6 @@ _ALLOWED_ACTIONS = {sqlite3.SQLITE_SELECT, sqlite3.SQLITE_READ, sqlite3.SQLITE_F
 CHART_TYPES = ("bar", "stacked", "line", "scatter", "table")
 CHART_UNITS = ("sgd_minor", "count", "percent", "fraction", "months", "days", "number")
 CARD_KINDS = ("rule", "category", "budget", "trip")
-MONTH = re.compile(r"\d{4}-(0[1-9]|1[0-2])")
 
 
 class ToolRefused(Exception):
@@ -378,8 +377,10 @@ def fit(value, limit=RESULT_CHARS):
 def _check_month(v, name):
     if v in (None, ""):
         return None
-    if not isinstance(v, str) or not MONTH.fullmatch(v):
-        raise ToolRefused(f"{name} is a month, YYYY-MM")
+    try:
+        dates.add_months(v, 0)               # a real YYYY-MM month, year 0001 on
+    except (TypeError, ValueError):
+        raise ToolRefused(f"{name} is a month, YYYY-MM") from None
     return v
 
 
@@ -476,13 +477,14 @@ def tool_transactions(ctx, args):
     query["limit"] = str(max(1, min(MAX_TXNS, limit)))
     offset = args.get("offset") or 0
     query["offset"] = str(max(0, int(offset) if isinstance(offset, int) else 0))
+    filters = {k: v for k, v in query.items() if k not in ("limit", "offset")}
     try:
+        words = _filter_words(filters)           # a month that does not exist is refused here
         page = api.transactions(ctx.conn, query, ctx.folders, ctx.results)
     except ValueError as e:
         raise ToolRefused(str(e)) from None
-    filters = {k: v for k, v in query.items() if k not in ("limit", "offset")}
     link = href(filters)
-    ctx.offer_link(f"Transactions: {_filter_words(filters)}", link)
+    ctx.offer_link(f"Transactions: {words}", link)
     keys = [r["key"] for r in page["rows"]]
     texts = {}
     if keys:

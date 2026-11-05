@@ -1,6 +1,7 @@
-// G26: the waterfall change widget. A balance query's first figure opens the
-// bridge and its last closes it; every flow series sums over the range to one
-// step, inflows first. Each step draws as a floating range bar (Recharts Bar
+// G26: the waterfall change widget. A balance is a month's closing figure, so
+// the bridge opens on the close of the month before the flows start and closes
+// on the close of their last month; every flow series sums over those months
+// to one step, inflows first. Each step draws as a floating range bar (Recharts Bar
 // with a [low, high] dataKey), up in the good tone and down in danger, in
 // integer cents.
 import {
@@ -20,6 +21,7 @@ import { Loading, Problem } from "../../../components/States";
 import {
   cutName, GRID, KeyItem, Swatch, TipBox, X_AXIS, Y_AXIS,
 } from "../../../components/chartKit";
+import { shiftMonth } from "../../../dates";
 import { navigate } from "../../../router";
 import { tickLabel } from "../../../stats/hint";
 import { formatSgd, type Cents } from "../../../money";
@@ -40,8 +42,9 @@ export type WaterfallConfig = {
   title?: string;
   /**
    * the level the bridge starts and ends at (say savings-runway's cash by
-   * month): the answer's first series, its first figure opening and its last
-   * closing
+   * month): the answer's first series, each figure a month's close. The
+   * widget asks for it from the month before the range, whose close is the
+   * opening
    */
   balance: SeriesSpec;
   /** each series of these answers sums over the range to one step (a spending split gives several) */
@@ -50,14 +53,30 @@ export type WaterfallConfig = {
   range?: WidgetRange;
 };
 
-/** An example binding: cash one month, bridged by the month's net per bucket. */
+/**
+ * An example binding: cash bridged by each month's net per bucket. With no
+ * range the flows cover the record's last twelve months (the spending
+ * source's own default) and the balance the whole record, so the bridge
+ * follows the record, never a fixed month.
+ */
 export const DEFAULT_WATERFALL_CONFIG: WaterfallConfig = {
   id: "waterfall",
   title: "Where the money moved",
-  range: { from: "2026-08", to: "2026-08" },
   balance: { query: { source: "savings-runway", metric: "cash", dimension: "month" } },
   flows: [{ query: { source: "spending", metric: "net", dimension: "month", split: "bucket" } }],
 };
+
+/**
+ * The balance as the widget asks for it: from the month before its range,
+ * since the opening is that month's close. A balance with no range at all
+ * is asked for whole, which holds that month already.
+ */
+export function balanceSpec(config: WaterfallConfig): SeriesSpec {
+  const range = config.balance.query.range ?? config.range;
+  const before = range?.from ? shiftMonth(range.from, -1) : null;
+  if (!range || !before) return config.balance;
+  return { ...config.balance, query: { ...config.balance.query, range: { ...range, from: before } } };
+}
 
 /** One bar of the bridge: an endpoint's level, or a signed change from `before` to `after`. */
 export type WaterfallStep = {
@@ -71,34 +90,60 @@ export type WaterfallStep = {
   href: string | null;
 };
 
-/** A flow step's link: the whole range's rows behind its series, bounded by the series' own answer. */
-function stepHref(series: Frame["series"][number]): string | null {
-  if (!series.rangeLink) return null;
-  return `/transactions?${new URLSearchParams(series.rangeLink)}`;
+/** A flow step's link: the rows behind its series over the months it summed (`from`..`to`). */
+function stepHref(series: Frame["series"][number], from: string | undefined, to: string | undefined): string | null {
+  if (!series.rangeLink || !from || !to) return null;
+  return `/transactions?${new URLSearchParams({ ...series.rangeLink, from, to })}`;
+}
+
+/** The last index at or before `cap` (any, with no cap) whose figure is there, at or after `floor`; -1 for none. */
+function lastFigure(labels: string[], vals: (number | null)[], cap: string | null, floor = -1): number {
+  for (let i = vals.length - 1; i > floor; i--) {
+    if (vals[i] != null && (cap == null || labels[i]! <= cap)) return i;
+  }
+  return -1;
 }
 
 /**
- * The bridge: the balance's first figure opens it and its last closes it;
- * every flow series is one step between, the inflows first so the reader
- * climbs before falling. Steps do not have to reconcile to the balance: the
- * widget draws what its queries answered. Null when the balance answered no
- * figure at all: a chart then would read missing cash data as zero balances.
+ * The bridge. A balance figure is a month's close, so it already holds that
+ * month's flows: the bridge opens on the close of the month before the
+ * flows' first month (else the balance's first figure, the flows before it
+ * then left out), closes on the close of their last month (else the last
+ * figure before it), and each flow series sums over the months between,
+ * after the opening's month up to the closing's, as one step, the inflows
+ * first so the reader climbs before falling. Flows that cover every way the
+ * balance moves then reconcile it exactly. Null when the balance answered
+ * no figure at all: a chart then would read missing cash data as zero
+ * balances.
  */
 export function waterfallSteps(balance: Frame | null, flows: Frame | null): WaterfallStep[] | null {
   const level = balance?.series[0];
   const vals = level?.values ?? [];
-  const first = vals.findIndex((v) => v != null);
+  const labels = balance?.labels ?? [];
+  const months = flows?.labels ?? [];
+  const start = months.length ? shiftMonth(months[0]!, -1) : null;
+  const end = months.length ? months[months.length - 1]! : null;
+  let first = start == null ? vals.findIndex((v) => v != null) : lastFigure(labels, vals, start);
+  // nothing as early as the month before: open on the first figure up to the flows' end
+  if (first < 0) first = vals.findIndex((v, i) => v != null && (end == null || labels[i]! <= end));
   if (first < 0) return null;
-  const last = vals.length - 1 - [...vals].reverse().findIndex((v) => v != null);
+  const last = lastFigure(labels, vals, end, first - 1);
   const opening = vals[first]!;
   const closing = vals[last]!;
   const steps: WaterfallStep[] = [{
     name: "Opening", kind: "open", value: opening, before: 0, after: opening,
     href: level?.href[first] ?? null,
   }];
-  const deltas = (flows?.series ?? []).map((s) => ({
-    name: s.name, value: s.values.reduce<Cents>((a, v) => a + (v ?? 0), 0), href: stepHref(s),
-  }));
+  // the flow months the bridge spans: after the opening's month, up to the closing's
+  const spans = (m: string) => m > labels[first]! && m <= labels[last]!;
+  const deltas = (flows?.series ?? []).map((s) => {
+    const counted = months.flatMap((m, i) => (spans(m) && s.values[i] != null ? [m] : []));
+    return {
+      name: s.name,
+      value: s.values.reduce<Cents>((a, v, i) => a + (spans(months[i]!) ? v ?? 0 : 0), 0),
+      href: stepHref(s, counted[0], counted[counted.length - 1]),
+    };
+  });
   let run = opening;
   for (const d of [...deltas.filter((x) => x.value > 0), ...deltas.filter((x) => x.value <= 0)]) {
     steps.push({ name: d.name, kind: d.value >= 0 ? "in" : "out", value: d.value, before: run, after: run + d.value, href: d.href });
@@ -112,7 +157,7 @@ export function waterfallSteps(balance: Frame | null, flows: Frame | null): Wate
 }
 
 export function WaterfallWidget({ config = DEFAULT_WATERFALL_CONFIG }: { config?: WaterfallConfig }) {
-  const balance = useAnswers([config.balance], config.range);
+  const balance = useAnswers([balanceSpec(config)], config.range);
   const flows = useAnswers(config.flows, config.range);
   const title = config.title ?? "Waterfall";
   const loading = balance.loading || flows.loading;
