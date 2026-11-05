@@ -19,8 +19,10 @@ export function MaybeCard({ title, bare = false, actions, children }: {
   if (!bare) return <Card title={title} actions={actions}>{children}</Card>;
   return (
     <CardTitle.Provider value={title}>
-      {actions && <div className="mb-2 flex justify-end">{actions}</div>}
-      {children}
+      <div className="h-full min-h-0 overflow-y-auto">
+        {actions && <div className="mb-2 flex justify-end">{actions}</div>}
+        {children}
+      </div>
     </CardTitle.Provider>
   );
 }

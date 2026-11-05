@@ -130,6 +130,7 @@ export function BoundSeries({ widget }: WidgetProps) {
     title: widget.title,
     series: specList(o.series) ?? (widget.query ? [{ query: widget.query }] : DEFAULT_TIME_SERIES_CONFIG.series),
     range: rangeOf(o.range),
+    height: numOf(o.height) ?? cellHeight(widget),
   };
   return <TimeSeriesWidget config={config} bare />;
 }
@@ -142,6 +143,7 @@ export function BoundArea({ widget }: WidgetProps) {
     title: widget.title,
     series: specList(o.series) ?? (widget.query ? [{ query: widget.query }] : DEFAULT_STACKED_AREA_CONFIG.series),
     range: rangeOf(o.range),
+    height: numOf(o.height) ?? cellHeight(widget),
   };
   return <StackedAreaWidget config={config} bare />;
 }
@@ -155,6 +157,7 @@ export function BoundWaterfall({ widget }: WidgetProps) {
     balance: specOf(o.balance) ?? (widget.query ? { query: widget.query } : DEFAULT_WATERFALL_CONFIG.balance),
     flows: specList(o.flows) ?? DEFAULT_WATERFALL_CONFIG.flows,
     range: rangeOf(o.range),
+    height: numOf(o.height) ?? cellHeight(widget),
   };
   return <WaterfallWidget config={config} bare />;
 }

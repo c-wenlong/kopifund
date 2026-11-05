@@ -38,6 +38,8 @@ export type StackedAreaConfig = {
   series: SeriesSpec[];
   /** the range a query without its own inherits, e.g. a dashboard-level filter */
   range?: WidgetRange;
+  /** the chart's height; the widget's cell decides it on a dashboard, the viewport otherwise */
+  height?: number;
 };
 
 /** An example binding: net worth's parts by month, the Net worth page as a widget. */
@@ -52,7 +54,14 @@ export const DEFAULT_STACKED_AREA_CONFIG: StackedAreaConfig = {
 };
 
 export function StackedAreaWidget({ config = DEFAULT_STACKED_AREA_CONFIG, bare = false }: { config?: StackedAreaConfig; bare?: boolean }) {
+  // one hook per series, so a config that changes the count remounts here
+  // rather than change the hook list mid-life
+  return <StackedAreaLoad key={config.series.length} config={config} bare={bare} />;
+}
+
+function StackedAreaLoad({ config, bare }: { config: StackedAreaConfig; bare: boolean }) {
   const { frame, error, loading } = useAnswers(config.series, config.range);
+  const autoHeight = useChartHeight();
   const [view, setView] = useChartView<ChartView>(`widget-${config.id}`, VIEW_KEYS, "stacked");
   const title = config.title ?? "Composition over time";
   return (
@@ -63,7 +72,7 @@ export function StackedAreaWidget({ config = DEFAULT_STACKED_AREA_CONFIG, bare =
       {!loading && error && <Problem message={error} retry />}
       {frame && (frame.labels.length === 0
         ? <EmptyState title="Nothing to show yet">The series this widget asks about have no figures in the range.</EmptyState>
-        : <StackedAreaChart frame={frame} view={view} />)}
+        : <StackedAreaChart frame={frame} view={view} height={config.height ?? autoHeight} />)}
     </MaybeCard>
   );
 }
@@ -71,8 +80,9 @@ export function StackedAreaWidget({ config = DEFAULT_STACKED_AREA_CONFIG, bare =
 type Row = Record<string, number | string | null>;
 
 /** Stacked: the series piled up. Lines: each on its own scale. Total: the one line. */
-export function StackedAreaChart({ frame, view }: { frame: Frame; view: ChartView }) {
-  const height = useChartHeight();
+export function StackedAreaChart({ frame, view, height }: { frame: Frame; view: ChartView; height?: number }) {
+  const autoHeight = useChartHeight();
+  height ??= autoHeight;
   const { hidden, toggle } = useHidden(frame.series.map((s) => s.id));
   const shown = frame.series.filter((s) => !hidden.has(s.id));
   const total = view === "total";

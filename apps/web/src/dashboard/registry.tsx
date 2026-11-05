@@ -60,7 +60,20 @@ export const WIDGETS: readonly WidgetDef[] = [
     type: "waterfall", title: "A bridge between balances",
     blurb: "How a balance got from its first figure to its last, one step a flow.",
     size: { w: 8, h: 3 },
-    make: () => ({ options: { balance: DEFAULT_WATERFALL_CONFIG.balance, flows: DEFAULT_WATERFALL_CONFIG.flows } }),
+    make: () => {
+      // one shared range for the balance and its flows: left unset, the
+      // savings-runway balance answers its whole history while spending's
+      // flows answer only the last twelve months, and the bridge would span
+      // two different spans
+      const to = new Date();
+      const from = new Date(to.getFullYear(), to.getMonth() - 11, 1);
+      const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      return { options: {
+        range: { from: ym(from), to: ym(to) },
+        balance: DEFAULT_WATERFALL_CONFIG.balance,
+        flows: DEFAULT_WATERFALL_CONFIG.flows,
+      } };
+    },
     component: BoundWaterfall,
   },
   {

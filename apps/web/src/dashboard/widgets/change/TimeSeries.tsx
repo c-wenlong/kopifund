@@ -40,6 +40,8 @@ export type TimeSeriesConfig = {
   series: SeriesSpec[];
   /** the range a query without its own inherits, e.g. a dashboard-level filter */
   range?: WidgetRange;
+  /** the chart's height; the widget's cell decides it on a dashboard, the viewport otherwise */
+  height?: number;
 };
 
 /** An example binding: a year's income, spend and net off the monthly cashflow stat. */
@@ -54,7 +56,14 @@ export const DEFAULT_TIME_SERIES_CONFIG: TimeSeriesConfig = {
 };
 
 export function TimeSeriesWidget({ config = DEFAULT_TIME_SERIES_CONFIG, bare = false }: { config?: TimeSeriesConfig; bare?: boolean }) {
+  // one hook per series, so a config that changes the count remounts here
+  // rather than change the hook list mid-life
+  return <TimeSeriesLoad key={config.series.length} config={config} bare={bare} />;
+}
+
+function TimeSeriesLoad({ config, bare }: { config: TimeSeriesConfig; bare: boolean }) {
   const { frame, error, loading } = useAnswers(config.series, config.range);
+  const autoHeight = useChartHeight();
   const title = config.title ?? "Over time";
   return (
     <MaybeCard title={title} bare={bare}>
@@ -62,13 +71,14 @@ export function TimeSeriesWidget({ config = DEFAULT_TIME_SERIES_CONFIG, bare = f
       {!loading && error && <Problem message={error} retry />}
       {frame && (frame.labels.length === 0
         ? <EmptyState title="Nothing to show yet">The series this widget asks about have no figures in the range.</EmptyState>
-        : <TimeSeriesChart frame={frame} />)}
+        : <TimeSeriesChart frame={frame} height={config.height ?? autoHeight} />)}
     </MaybeCard>
   );
 }
 
-export function TimeSeriesChart({ frame }: { frame: Frame }) {
-  const height = useChartHeight();
+export function TimeSeriesChart({ frame, height }: { frame: Frame; height?: number }) {
+  const autoHeight = useChartHeight();
+  height ??= autoHeight;
   const { hidden, toggle } = useHidden(frame.series.map((s) => s.id));
   const drawn = frame.series.filter((s) => !hidden.has(s.id));
   const rows = frameRows(frame);

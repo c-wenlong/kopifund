@@ -201,11 +201,13 @@ describe("registry", () => {
       for (const def of WIDGETS) {
         const made = def.make?.();
         if (made?.query) expect(askedFor(made.query)).toBe(true);
-        const opts = (made?.options ?? {}) as { series?: { query?: WidgetQuery }[]; flows?: { query?: WidgetQuery }[]; balance?: { query?: WidgetQuery } };
+        const opts = (made?.options ?? {}) as { series?: { query?: WidgetQuery }[]; flows?: { query?: WidgetQuery }[]; balance?: { query?: WidgetQuery }; range?: WidgetQuery["range"] };
+        // the widgets fill in for a query without its own range, the way shared.tsx's queryWithRange does
+        const inherit = (q: WidgetQuery) => (opts.range && !q.range ? { ...q, range: opts.range } : q);
         for (const spec of [...(opts.series ?? []), ...(opts.flows ?? [])]) {
-          if (spec.query) expect(askedFor(spec.query)).toBe(true);
+          if (spec.query) expect(askedFor(inherit(spec.query))).toBe(true);
         }
-        if (opts.balance?.query) expect(askedFor(opts.balance.query)).toBe(true);
+        if (opts.balance?.query) expect(askedFor(inherit(opts.balance.query))).toBe(true);
       }
       // the flow widget asks its own income / spend / transfers trio
       expect(askedFor({ source: "spending", metric: "income", dimension: "month" })).toBe(true);

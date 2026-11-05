@@ -48,6 +48,8 @@ export type WaterfallConfig = {
   flows: SeriesSpec[];
   /** the range a query without its own inherits, e.g. a dashboard-level filter */
   range?: WidgetRange;
+  /** the chart's height; the widget's cell decides it on a dashboard, the viewport otherwise */
+  height?: number;
 };
 
 /** An example binding: cash one month, bridged by the month's net per bucket. */
@@ -112,8 +114,15 @@ export function waterfallSteps(balance: Frame | null, flows: Frame | null): Wate
 }
 
 export function WaterfallWidget({ config = DEFAULT_WATERFALL_CONFIG, bare = false }: { config?: WaterfallConfig; bare?: boolean }) {
+  // one hook per spec (the balance plus each flow), so a config that changes
+  // the count remounts here rather than change the hook list mid-life
+  return <WaterfallLoad key={config.flows.length + 1} config={config} bare={bare} />;
+}
+
+function WaterfallLoad({ config, bare }: { config: WaterfallConfig; bare: boolean }) {
   const balance = useAnswers([config.balance], config.range);
   const flows = useAnswers(config.flows, config.range);
+  const autoHeight = useChartHeight();
   const title = config.title ?? "Waterfall";
   const loading = balance.loading || flows.loading;
   const error = balance.error ?? flows.error;
@@ -130,7 +139,8 @@ export function WaterfallWidget({ config = DEFAULT_WATERFALL_CONFIG, bare = fals
         ? <EmptyState title="Nothing to show yet">The balance this widget asks about has no figures in the range.</EmptyState>
         : steps && steps.length <= 2
           ? <EmptyState title="Nothing to show yet">The flows this widget asks about have no figures in the range.</EmptyState>
-          : steps && <WaterfallChart steps={steps} unit={balance.frame.unit ?? "sgd_minor"} notes={notes} />)}
+          : steps && <WaterfallChart steps={steps} unit={balance.frame.unit ?? "sgd_minor"} notes={notes}
+            height={config.height ?? autoHeight} />)}
     </MaybeCard>
   );
 }
@@ -145,10 +155,11 @@ const span = (s: WaterfallStep): [Cents, Cents] =>
     : s.kind === "out" ? [s.after, s.before]
     : [Math.min(0, s.value), Math.max(0, s.value)];
 
-export function WaterfallChart({ steps, unit = "sgd_minor", notes }: {
-  steps: WaterfallStep[]; unit?: WidgetUnit; notes?: string[];
+export function WaterfallChart({ steps, unit = "sgd_minor", notes, height }: {
+  steps: WaterfallStep[]; unit?: WidgetUnit; notes?: string[]; height?: number;
 }) {
-  const height = useChartHeight();
+  const autoHeight = useChartHeight();
+  height ??= autoHeight;
   // a range bar, one rect a step: dataKey answers [low, high], so each bar
   // floats where its step crosses, no invisible baseline needed
   const rows: Row[] = steps.map((s) => {
