@@ -53,6 +53,14 @@ server/finance/upload_steps.py, and --reload in dev_reload.py.
     GET /api/link/pending           G25: the phone rows waiting for a statement, matched or dismissed
                                     (server/finance/pending.py); loopback only: the link path refuses
                                     every /api/link/ read
+    GET /api/dashboard/layouts      G26: the saved dashboard layouts, and the active one's id
+    GET /api/dashboard/layouts/<id> G26: one layout, 404 when the id is not one
+    GET /api/dashboard/query?q=     G26: a WidgetQuery as JSON, resolved to labels and series in
+                                    cents (server/finance/dashboard.py): the app's useWidgetData asks this
+    GET /api/dashboard/goals        G26: the goals, each with its milestones and the progress its
+                                    binding resolves to
+    GET /api/dashboard/allocation?month=  G26: the allocation template beside a month's actuals
+    GET /api/dashboard/game-pot     G26: the game pot's settings, and the accounts it may link
 
 Writes (POST) need the header `X-Kopifund: 1`, which a page on another site
 cannot send without a CORS preflight this server never answers, and an Origin,
@@ -148,6 +156,18 @@ privilege, never gain it.
     POST /api/server/restart        G23: answer, then run the same command line again in place of this
                                     process: under --app the shell's hold on stdin and the new ready line
                                     work as on first launch, so its window reloads itself
+    POST /api/dashboard/layouts     G26: {layouts, active?}: replace the whole list of layouts
+    POST /api/dashboard/layouts/<id> G26: {name, widgets?, active?}: one layout under the id the path names
+    POST /api/dashboard/query       G26: a WidgetQuery as the body, the same answer as the GET; it
+                                    writes nothing (NO_CHANGE)
+    POST /api/dashboard/goals       G26: {id?, name, target_minor, month?, note?, milestones?, source?,
+                                    metric?}: no id creates the goal, an id patches its fields
+    POST /api/dashboard/goals/remove G26: {id}: one goal gone
+    POST /api/dashboard/scenario/preview G26: {query, months?, delta_minor?}: the query's series drawn
+                                    ahead on its trailing monthly average: an estimate, nothing written
+    POST /api/dashboard/allocation  G26: {buckets: [{bucket, planned_minor}]}: the template, answered
+                                    with the month's actuals
+    POST /api/dashboard/game-pot    G26: {name, benchmark?, note?, account_ids?}: the pot's settings
 
 G19: GET_ROUTES and POST_ROUTES, near the end of this file, are the one list of
 endpoints: a path (or a pattern like /api/uploads/<id>) and the function that
@@ -253,6 +273,9 @@ CACHED = frozenset({
     "/api/overview", "/api/spending", "/api/recurring", "/api/recurring/series", "/api/transactions", "/api/trips",
     "/api/rules", "/api/rules/rows", "/api/budgets", "/api/categories", "/api/plan", "/api/profile",
     "/api/net-worth", "/api/growth", "/api/scam-checks", "/api/suggestions",
+    # G26: the dashboard's reads, whose answers hold only the record and the stats
+    "/api/dashboard/layouts", "/api/dashboard/query", "/api/dashboard/goals", "/api/dashboard/allocation",
+    "/api/dashboard/game-pot",
 })
 # and every stat's own result
 CACHED_PREFIX = "/api/results/"
@@ -274,7 +297,9 @@ NO_CHANGE = frozenset({"/api/run/check", "/api/rules/suggest", "/api/uploads/sta
                        # G25: the device registry is no page's data either
                        "/api/link/pair-token", "/api/pair/redeem", "/api/link/devices/revoke",
                        # G23: nor is the server's own stop or restart (the next ask answers for itself)
-                       "/api/server/stop", "/api/server/restart"})
+                       "/api/server/stop", "/api/server/restart",
+                       # G26: a widget query and a scenario preview read, they change nothing
+                       "/api/dashboard/query", "/api/dashboard/scenario/preview"})
 # G18: but a check writes the upload history, and the overview's Needs your
 # eye reads where the latest upload stands, so after a check the app asks for
 # the overview again (and for nothing else). types.gen.ts carries this too.
@@ -602,6 +627,7 @@ _REFUSALS = {
     "profile": ("finance.profile", "ProfileRefused"),
     "setup": ("finance.setup", "SetupRefused"),
     "ai": ("finance.ai", "AIRefused"),
+    "dashboard": ("finance.dashboard", "DashboardRefused"),
 }
 
 
@@ -739,6 +765,12 @@ GET_ROUTES: dict[str, Route] = {
     "/api/copilot/threads/<id>": Route(api.get_copilot_thread),
     "/api/link/devices": Route(api.get_link_devices),
     "/api/link/pending": Route(api.get_link_pending),
+    "/api/dashboard/layouts": Route(api.get_dashboard_layouts),
+    "/api/dashboard/layouts/<id>": Route(api.get_dashboard_layout),
+    "/api/dashboard/query": Route(api.get_dashboard_query),
+    "/api/dashboard/goals": Route(api.get_dashboard_goals),
+    "/api/dashboard/allocation": Route(api.get_dashboard_allocation),
+    "/api/dashboard/game-pot": Route(api.get_dashboard_game_pot),
 }
 
 POST_ROUTES: dict[str, Route] = {
@@ -796,6 +828,14 @@ POST_ROUTES: dict[str, Route] = {
     "/api/link/pending/restore": Route(api_writes.post_pending_restore, json_body=True),
     "/api/server/stop": Route(_post_server_stop),
     "/api/server/restart": Route(_post_server_restart),
+    "/api/dashboard/layouts": Route(api_writes.post_dashboard_layouts, "dashboard", json_body=True),
+    "/api/dashboard/layouts/<id>": Route(api_writes.post_dashboard_layout, "dashboard", json_body=True),
+    "/api/dashboard/query": Route(api_writes.post_dashboard_query, "dashboard", json_body=True),
+    "/api/dashboard/goals": Route(api_writes.post_dashboard_goal, "dashboard", json_body=True),
+    "/api/dashboard/goals/remove": Route(api_writes.post_dashboard_goal_remove, "dashboard", json_body=True),
+    "/api/dashboard/scenario/preview": Route(api_writes.post_dashboard_scenario_preview, "dashboard", json_body=True),
+    "/api/dashboard/allocation": Route(api_writes.post_dashboard_allocation, "dashboard", json_body=True),
+    "/api/dashboard/game-pot": Route(api_writes.post_dashboard_game_pot, "dashboard", json_body=True),
 }
 
 

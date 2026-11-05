@@ -624,3 +624,38 @@ def get_link_pending(req):
     names = {d["id"]: d["name"] for d in link.list_devices()}
     conn = req.maybe_record()
     return {"rows": pending.rows(conn, names) if conn else []}
+
+
+# ---------------------------------------------------------------- G26: the dashboard
+
+def get_dashboard_layouts(req):
+    from . import dashboard
+    return dashboard.layouts(req.maybe_record())
+
+
+def get_dashboard_layout(req):
+    from . import dashboard
+    return dashboard.layout(req.maybe_record(), req.args["id"])
+
+
+def get_dashboard_query(req):
+    """A WidgetQuery resolved to labels and series: `?q=` holds the query as
+    JSON, so the app's useWidgetData hook gets the ETag caching of every GET."""
+    from . import dashboard
+    return dashboard.resolve(req.maybe_record(), results_cache.results(req),
+                             dashboard.query_from_get(req.query))
+
+
+def get_dashboard_goals(req):
+    from . import dashboard
+    return dashboard.goals(req.maybe_record(), results_cache.results(req))
+
+
+def get_dashboard_allocation(req):
+    from . import dashboard
+    return dashboard.allocation(req.maybe_record(), req.query.get("month"))
+
+
+def get_dashboard_game_pot(req):
+    from . import dashboard
+    return dashboard.game_pot(req.maybe_record())

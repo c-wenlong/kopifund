@@ -1188,6 +1188,7 @@ this, and a figure kept from before a write is never shown after it.
 | `/api/results/<id>` | Yes | The stat results change only with an analysis |
 | `/api/transactions`, `/api/budgets`, `/api/categories`, `/api/plan` | Yes | The record; the URL carries every filter |
 | `/api/rules`, `/api/rules/rows` | Yes | The record and the rule files, both in the version |
+| `/api/dashboard/layouts`, `/api/dashboard/query`, `/api/dashboard/goals`, `/api/dashboard/allocation`, `/api/dashboard/game-pot` | Yes | The dashboard's reads: the record's settings and rows, and the stat results |
 | `/api/profile` | Yes | The version adds the statement folders |
 | `/api/health` | No | Whether the server is up |
 | `/api/run/status`, `/api/stats/rebuild` | No | Asked during a load or after a category edit, to see what is happening now |
@@ -1389,6 +1390,63 @@ icon** section in its Settings, kept on the phone: a pick calls
 `setAlternateIconName("AppIcon-<set>")`, the default `nil`, and
 `ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS` (project.yml) ships every
 `AppIcon-<set>` as an alternate.
+
+### The dashboard (G26)
+
+The dashboard is the owner-composed home the app is growing towards: saved
+layouts of widgets, each widget bound to one typed query. G26 lays the
+foundation: the query layer, the endpoints, and the record-held state the
+editor will write. The visual editor itself comes later.
+
+**A widget query** (`WidgetQuery`, `server/finance/types.py`) asks one
+question: a `source`, a `metric`, a `dimension` to spread it over, an optional
+`range` (`from`/`to` months `YYYY-MM` or days `YYYY-MM-DD`, a day resolving to
+its month) and optional `filters`, which are Transactions' own filter names
+(`need`, `bucket`, `categories`, `not_categories`, `not_payees`, `payee`,
+`account` by its id, `home`, `trip`, `scope`). `POST /api/dashboard/query`
+takes the query as its body; `GET /api/dashboard/query?q=` takes it as JSON in
+the address, so a widget loads through `useApi`'s cache and ETag like a page
+(`useWidgetData`, `apps/web/src/widgets.ts`). An unknown source, metric,
+dimension or filter is a 4xx with the names it takes, never a blank chart.
+
+The answer (`WidgetAnswer`) is `labels`, `series` (one per name when a
+spending query `split`s by bucket, category, payee, account or need class), a
+`unit`, and `label_links`: the Transactions filters each point lists, the
+chart `links` idea carried to widgets. Money comes back under `values_minor`,
+integer cents with unit `sgd_minor`; anything else under `values` with its own
+unit (`months`, `fraction`, `percent`, the two share scales kept apart as
+they are everywhere).
+
+**The sources** (`server/finance/dashboard.py`, `_CATALOGUE`): `spending`
+reads the record's `v_txn` with the Spending explorer's own WHEREs and its
+`sg` scope as the default (`filters.scope: all` or a `trip` filter widens it);
+its metrics are `spend`, `income`, `transfers` and `net` over the dimensions
+above. The other sources read the cached stat results, so a widget never
+re-runs a stat: `monthly-cashflow`, `needs-wants-savings`, `savings-runway`,
+`category-breakdown`, `portfolio` (by `holding` or `period`), `cpf` (by
+`year`), `forward-view` (a projection; its answers carry a `note` saying so)
+and `net-worth`, which recombines them through `server/finance/net_worth.py`
+(by `month` or by `part`). A stat that has not run answers 404.
+
+**The scenario preview** (`POST /api/dashboard/scenario/preview`) draws a
+money-by-month query `months` ahead on its trailing monthly average plus an
+optional `delta_minor` a month. It writes nothing: it describes an estimate,
+as the forward view does, and its `note` says so.
+
+**The state it keeps** lives in the record's `setting` table as JSON, the way
+the app icon and AI settings do, so no schema change was needed. Layouts
+(`GET/POST /api/dashboard/layouts`, `GET/POST /api/dashboard/layouts/<id>`)
+save the widget list whole with the active layout's id. Goals (`GET/POST
+/api/dashboard/goals`, `POST /api/dashboard/goals/remove`) hold a
+`target_minor`, an optional month and `milestones`, and an optional `binding`,
+the money-metric query whose last figure is `current_minor`; the endpoint
+answers it resolved as `progress`, a fraction of target. The allocation
+template (`GET/POST /api/dashboard/allocation?month=`) plans each spend
+bucket's cents a month and answers the template beside a month's actuals:
+income, per-bucket planned and actual, the actuals counted over every
+External spend row as `planning.budgets` does. The game pot (`GET/POST
+/api/dashboard/game-pot`) is metadata only for now: a name, the benchmark it
+plays against, a note, and the account ids it links.
 
 ### Layout
 

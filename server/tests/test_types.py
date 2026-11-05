@@ -22,8 +22,8 @@ from pathlib import Path
 from unittest import mock
 
 import serve
-from finance import (ai, copilot, db, gen_types, home, keys, pending, planning, recurring, rules_app, scam_checks,
-                     setup, upload_log)
+from finance import (ai, copilot, dashboard, db, gen_types, home, keys, pending, planning, recurring, rules_app,
+                     scam_checks, setup, upload_log)
 from finance import types as wire
 from test_db import block, parsed, row
 
@@ -294,6 +294,26 @@ class EndpointTest(unittest.TestCase):
             later = upload_log.start(conn, "upload")
             upload_log.record(conn, later, "check", upload_log.now(), "problems", "1 problem", {},
                               {"problems": [{"code": "unbalanced"}], "to_add_count": 0})
+            # G26: the dashboard's saved state, so every type it answers with is met
+            dashboard.save_layouts(conn, {
+                "layouts": [{"id": "main", "name": "Home",
+                             "widgets": [{"id": "w-spend", "type": "line", "title": "Spend",
+                                          "layout": {"x": 0, "y": 0, "w": 6, "h": 3},
+                                          "options": {"legend": False},
+                                          "query": {"source": "spending", "metric": "spend",
+                                                    "dimension": "bucket",
+                                                    "range": {"from": "2026-08", "to": "2026-08"}}}]}],
+                "active": "main"})
+            dashboard.save_goal(conn, RESULTS, {
+                "name": "A year aside", "target_minor": 6_000_000, "month": "2027-06",
+                "note": "invented", "milestones": [{"month": "2026-12", "target_minor": 1_500_000}],
+                "source": "spending", "metric": "spend", "dimension": "month"})
+            bucket = conn.execute("SELECT name FROM category_group WHERE kind = 'spend' "
+                                  "ORDER BY name LIMIT 1").fetchone()[0]
+            dashboard.save_allocation(conn, {"buckets": [{"bucket": bucket, "planned_minor": 50_000}]})
+            posb = conn.execute("SELECT id FROM account WHERE name = 'POSB'").fetchone()[0]
+            dashboard.save_game_pot(conn, {"name": "Punt", "benchmark": "VWRA", "note": "invented",
+                                           "account_ids": [posb]})
         cls.attempt = attempt
 
     @classmethod
@@ -324,7 +344,16 @@ class EndpointTest(unittest.TestCase):
                 ("/api/link/devices", {}, wire.LinkDevices),
                 ("/api/link/pending", {}, wire.LinkPending),
                 ("/api/app-icon", {}, wire.AppIconPage),
-                ("/api/server", {}, wire.ServerInfo)]
+                ("/api/server", {}, wire.ServerInfo),
+                # G26: the dashboard's state and one query resolved over the record
+                ("/api/dashboard/layouts", {}, wire.DashboardLayouts),
+                ("/api/dashboard/layouts/main", {}, wire.DashboardLayout),
+                ("/api/dashboard/query",
+                 {"q": json.dumps({"source": "spending", "metric": "spend", "dimension": "month"})},
+                 wire.WidgetAnswer),
+                ("/api/dashboard/goals", {}, wire.DashboardGoals),
+                ("/api/dashboard/allocation", {"month": "2026-08"}, wire.Allocation),
+                ("/api/dashboard/game-pot", {}, wire.GamePot)]
 
     def test_every_endpoint_answers_in_its_generated_shape(self):
         # several handlers leave their connection to the garbage collector; that is not this test's subject
@@ -387,10 +416,16 @@ class EndpointTest(unittest.TestCase):
         self.assertEqual([c["group"] for c in cats], [c["cost_type"] for c in cats])
 
     def test_endpoints_lists_every_answer_checked_here(self):
-        asked = {("/api/uploads/<id>" if p.startswith("/api/uploads/") else p) for p, _, _ in self.answers()}
+        def route(p):
+            if p.startswith("/api/uploads/"):
+                return "/api/uploads/<id>"
+            if p.startswith("/api/dashboard/layouts/"):
+                return "/api/dashboard/layouts/<id>"
+            return p
+        asked = {route(p) for p, _, _ in self.answers()}
         self.assertEqual(asked, set(wire.ENDPOINTS))
         for path, _, tp in self.answers():
-            self.assertIs(wire.ENDPOINTS["/api/uploads/<id>" if path.startswith("/api/uploads/") else path], tp)
+            self.assertIs(wire.ENDPOINTS[route(path)], tp)
 
 
 if __name__ == "__main__":
