@@ -26,6 +26,7 @@ from datetime import datetime, timezone
 from . import db, net_worth, spending
 from .dates import add_months
 from .errors import NotFound
+from .figures import div_cents
 from .money import stat_cents
 
 
@@ -556,7 +557,7 @@ def scenario_preview(conn, results, data):
     for s in base["series"]:
         seen = [v for v in s["values_minor"] if v is not None]
         tail = seen[-3:] or [0]
-        step = spending.per_month(sum(tail), len(tail)) + delta
+        step = div_cents(sum(tail), len(tail)) + delta
         series.append({"name": s["name"], "values_minor": list(s["values_minor"]) + [step] * months})
     return {**base, "labels": labels, "series": series,
             "projected_from": len(base["labels"]), "range": None,

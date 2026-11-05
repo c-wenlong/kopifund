@@ -947,9 +947,11 @@ them. Amounts are integer cents.
     (`10y`, `20y`, `30y` or `65`), today's or future dollars, spending a month
     (`spend_minor`) and a milestone (`milestone_minor`). Rates are stored as
     decimal text. Empty spending spends
-    the record's own average over its last 12 months
-    (`server/finance/spending.py`, `monthly_average`, the same spending definition as
-    the Spending explorer), which the box shows as its hint.
+    the record's own average over the full months among its last 12, ending at
+    its last full month (`server/finance/spending.py`, `monthly_average`, the same
+    spending definition as the Spending explorer and the same full months as
+    every stat, so a month that has only just begun, or one loaded since the
+    stats last ran, never counts as a whole one), which the box shows as its hint.
   - Every field is checked on save (`server/finance/planning.py`, `clean_plan`) and a
     refusal names it: "Income row 2 (Acme): the to date is before the from
     date", "Investing step 1: from is a month", "Inflation is between -10 and
@@ -1522,8 +1524,15 @@ Dashboard open in a second window never edits a board this one changed.
 first components bound to the query layer: a time series of one or more
 series over the answer's labels, a stacked area with the Net worth page's
 Stacked / Lines / Total switch (the choice remembered per widget instance),
-and a waterfall bridging a balance's first figure to its last through one
-step per flow series, inflows first. Each is config-driven: its config names
+and a waterfall bridging a balance through one step per flow series, inflows
+first. A balance figure is a month's close, so the bridge opens on the close
+of the month before the flows' first month (the widget asks for the balance
+from then) and closes on their last month's; each step sums its series over
+the months between, so flows that cover every way the balance moves land
+exactly on the closing figure. With no close before the flows (the record's
+first month) it opens on the first figure and leaves that month's flows out.
+Its default names no month: the flows cover the record's last twelve months.
+Each is config-driven: its config names
 the series' queries and an optional range a query without its own inherits,
 so a dashboard-level filter can move every series at once. A point's dot or
 a step's bar opens the Transactions rows it lists when the answer carried
