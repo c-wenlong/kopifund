@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
 import { revalidate, type DashboardLayout, type DashboardLayouts } from "../api";
 import { Toaster } from "../components/Toast";
 import { keepEditing, navigate } from "../router";
@@ -346,6 +347,51 @@ describe("Dashboard", () => {
     // no third post re-sending the board that went out on leaving
     expect(posts.length).toBe(2);
     expect((posts[0].body as DashboardLayout).widgets).toHaveLength(0);
+  });
+
+  it("saves under StrictMode, whose second setup must not leave the page marked gone", async () => {
+    const saved = {
+      layouts: [doc("default", "Default", [
+        { id: "w-note", type: "note", title: "A note", options: { text: "kept" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+      ])],
+      active: "default",
+    };
+    stubServer(saved);
+    render(<StrictMode><Dashboard /></StrictMode>);
+    await screen.findByText("kept");
+    fireEvent.click(screen.getByRole("button", { name: "Remove A note" }));
+    await waitFor(() => expect(saved.layouts[0].widgets).toHaveLength(0), { timeout: 3000 });
+  });
+
+  it("reports a save that was on the wire when the page was left and then failed", async () => {
+    const saved = {
+      layouts: [doc("default", "Default", [
+        { id: "w-note", type: "note", title: "A note", options: { text: "kept" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+      ])],
+      active: "default",
+    };
+    stubServer(saved);
+    const real = globalThis.fetch;
+    let fail: () => void = () => {};
+    let held = true;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (held && init?.method === "POST") {
+        held = false;
+        await new Promise<void>((r) => { fail = r; });
+        return new Response(JSON.stringify({ error: "disk full" }), { status: 500 });
+      }
+      return real(input, init);
+    });
+    const { unmount } = render(<><Dashboard /><Toaster /></>);
+    await screen.findByText("kept");
+    fireEvent.click(screen.getByRole("button", { name: "Remove A note" }));
+    await waitFor(() => expect(held).toBe(false), { timeout: 3000 });
+    unmount();
+    render(<Toaster />);
+    fail();
+    expect(await screen.findByText(/dashboard was not saved: disk full/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(saved.layouts[0].widgets).toHaveLength(0));
   });
 
   it("makes no board when the picker closes with nothing picked, and the Default one with the first widget", async () => {

@@ -32,24 +32,30 @@ function sending(id: string): number {
   return n;
 }
 
+/**
+ * A save that failed after its page was gone: say so in a toast (the app's
+ * Toaster outlives the page) whose Try again sends the same body, unless a
+ * newer save of the board (the page opened again) has gone out since, which
+ * holds the newer edit this older body would only overwrite.
+ */
+function reportLeft(id: string, body: string, mine: number, e: unknown) {
+  showToast({
+    message: e instanceof Error ? `The dashboard was not saved: ${e.message}` : "The dashboard was not saved.",
+    tone: "error",
+    action: {
+      label: "Try again",
+      onClick: () => {
+        if (sent.get(id) === mine) saveOnLeaving(id, body);
+        else showToast({ message: "A newer change to that board was saved since, so it was kept." });
+      },
+    },
+  });
+}
+
 /** Save a board after its page has gone; a failure says so in a toast that can try again. */
 function saveOnLeaving(id: string, body: string) {
   const mine = sending(id);
-  postJSON(`/api/dashboard/layouts/${id}`, body).catch((e: unknown) => {
-    showToast({
-      message: e instanceof Error ? `The dashboard was not saved: ${e.message}` : "The dashboard was not saved.",
-      tone: "error",
-      action: {
-        label: "Try again",
-        // a newer save of the board (the page opened again) holds the newer
-        // edit, so this older body would only overwrite it
-        onClick: () => {
-          if (sent.get(id) === mine) saveOnLeaving(id, body);
-          else showToast({ message: "A newer change to that board was saved since, so it was kept." });
-        },
-      },
-    });
-  });
+  postJSON(`/api/dashboard/layouts/${id}`, body).catch((e: unknown) => reportLeft(id, body, mine, e));
 }
 
 /** A layout id the server takes (`_check_id`): lowercase, digits, '-' and '_' only. */
@@ -124,12 +130,12 @@ export function Dashboard() {
           const b = pending.current.values().next().value as Board | undefined;
           if (!b) break;
           pending.current.delete(b.id);
+          // only the board on screen is the active one: an Undo on a board left
+          // behind saves it without making it the board the next visit opens
+          const body = JSON.stringify({ ...writeLayout(b), active: b.id === activeRef.current });
+          const mine = sending(b.id);
           try {
-            // only the board on screen is the active one: an Undo on a board left
-            // behind saves it without making it the board the next visit opens
-            sending(b.id);
-            const written = await postJSON<DashboardLayout>(`/api/dashboard/layouts/${b.id}`,
-              JSON.stringify({ ...writeLayout(b), active: b.id === activeRef.current }));
+            const written = await postJSON<DashboardLayout>(`/api/dashboard/layouts/${b.id}`, body);
             remember(written);
             // the write's own echo is the board's truth now, ahead of any read
             // still on its way -- unless a newer edit is already waiting
@@ -137,8 +143,13 @@ export function Dashboard() {
               setBoards((bs) => (bs ?? []).map((x) => (x.id === b.id ? readLayout(written) : x)));
             }
           } catch (e) {
+            // the page was left while this save was on the wire: report it the
+            // way a save made on leaving is, and send nothing more from here
+            if (gone.current) {
+              reportLeft(b.id, body, mine, e);
+              break;
+            }
             // retry the failed board only when nothing newer replaced it
-            if (gone.current) break;
             if (!pending.current.has(b.id)) pending.current.set(b.id, b);
             setFailed(true);
             showToast({
@@ -168,16 +179,20 @@ export function Dashboard() {
   // a pending save still lands when the page is left inside the wait: the app's
   // toast outlives the page, so a save that fails then says so and offers to
   // try again, the edit kept in its body
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-    // handed off once: the page's own save loop, if a slow reply still holds
-    // it, finds nothing left to send after the page is gone
-    gone.current = true;
-    const left = [...pending.current.values()];
-    pending.current.clear();
-    for (const b of left) {
-      saveOnLeaving(b.id, JSON.stringify({ ...writeLayout(b), active: b.id === activeRef.current }));
-    }
+  useEffect(() => {
+    // set up again (StrictMode runs setup, cleanup, setup): the page is here
+    gone.current = false;
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+      // handed off once: the page's own save loop, if a slow reply still holds
+      // it, finds nothing left to send after the page is gone
+      gone.current = true;
+      const left = [...pending.current.values()];
+      pending.current.clear();
+      for (const b of left) {
+        saveOnLeaving(b.id, JSON.stringify({ ...writeLayout(b), active: b.id === activeRef.current }));
+      }
+    };
   }, []);
 
   // leaving the page in the app saves what waits (the unmount above), so only a
