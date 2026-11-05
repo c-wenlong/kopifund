@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Download, FileJson, FileSpreadsheet, FileText } from "lucide-react";
 import { useSidebarMode, type SidebarMode } from "../components/sidebarMode";
-import { checkServer, postJSON, useApi, useLink, type ExportDone, type Exports, type ScamChecks, type ScamSettings, type ServerInfo, type ServerMode } from "../api";
+import { checkServer, postJSON, useApi, useLink, type ExportDone, type Exports, type ScamChecks, type ScamSettings, type ServerEnding, type ServerInfo, type ServerMode } from "../api";
 import { centsText, formatSgd, parseCents } from "../money";
 import { formatDay } from "../dates";
 import { MoneyInput } from "../components/MoneyInput";
@@ -94,6 +94,25 @@ function runningFor(started: number, now: number): string {
   return m > 0 ? word(m, "minute") : "under a minute";
 }
 
+/** "2 minutes", "30 seconds" */
+function waitAtMost(seconds: number): string {
+  return seconds >= 120 ? `${Math.round(seconds / 60)} minutes` : seconds >= 60 ? "a minute" : `${seconds} seconds`;
+}
+
+/** "a load and the stats rebuild" */
+function andList(words: string[]): string {
+  return words.length < 2 ? words.join("") : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
+/** Whether the server still answers, asked without flipping the offline banner. */
+async function serverAnswers(): Promise<boolean> {
+  try {
+    return (await fetch("/api/server", { cache: "no-store" })).ok;
+  } catch {
+    return false;
+  }
+}
+
 function ServerCard() {
   const { down } = useLink();
   const { data, error } = useApi<ServerInfo>("/api/server");
@@ -101,6 +120,8 @@ function ServerCard() {
   const [acting, setActing] = useState<"restart" | "stop" | null>(null);
   const [confirmStop, setConfirmStop] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  // the work a stop or restart waits for before the process ends
+  const [waiting, setWaiting] = useState<ServerEnding | null>(null);
 
   useEffect(() => {
     if (!data) return;
@@ -115,10 +136,13 @@ function ServerCard() {
     setActing("restart");
     setProblem(null);
     try {
-      await postJSON("/api/server/restart");
+      const ending = await postJSON<ServerEnding>("/api/server/restart");
+      setWaiting(ending);
       // ask with a plain fetch: the gap in the middle is expected, and must
-      // not flash the offline banner on the way
-      for (let i = 0; i < 60; i++) {
+      // not flash the offline banner on the way. The old process may first
+      // wait up to `timeout` seconds for work under way.
+      const tries = 60 + 2 * (ending.timeout ?? 0);
+      for (let i = 0; i < tries; i++) {
         await new Promise((r) => setTimeout(r, 500));
         try {
           const r = await fetch("/api/server", { cache: "no-store" });
@@ -130,6 +154,7 @@ function ServerCard() {
       setProblem((e as Error).message);
     } finally {
       setActing(null);
+      setWaiting(null);
     }
   }
 
@@ -138,10 +163,17 @@ function ServerCard() {
     setConfirmStop(false);
     setProblem(null);
     try {
-      await postJSON("/api/server/stop");
-      // give the exit a moment, then ask: the miss is what flips the chip and
-      // the banner to offline
-      window.setTimeout(() => void checkServer(), 800);
+      const ending = await postJSON<ServerEnding>("/api/server/stop");
+      setWaiting(ending);
+      // give the exit a moment, then ask until it misses: the miss is what
+      // flips the chip and the banner to offline. Work under way holds the
+      // exit back by up to `timeout` seconds.
+      const deadline = Date.now() + ((ending.timeout ?? 0) + 5) * 1000;
+      const ask = async () => {
+        if (!(await serverAnswers()) || Date.now() > deadline) void checkServer();
+        else window.setTimeout(() => void ask(), 1000);
+      };
+      window.setTimeout(() => void ask(), 800);
     } catch (e) {
       setProblem((e as Error).message);
       setActing(null);
@@ -186,6 +218,12 @@ function ServerCard() {
       <p className="m-0 mt-1 text-[13px] text-ink-3">
         Started by {SERVER_MODE[data.mode]} on 127.0.0.1:{data.port} · pid {data.pid}
       </p>
+      {acting && waiting && waiting.waiting_for.length > 0 && (
+        <p role="status" className="m-0 mt-1 text-[13px] text-ink-2">
+          Waiting for {andList(waiting.waiting_for)} to finish first ({waitAtMost(waiting.timeout)} at most).
+          Changes made meanwhile are refused until the server is back.
+        </p>
+      )}
       {problem && <p role="alert" className="m-0 mt-1 text-[13px] text-danger">{problem}</p>}
     </Card>
   );

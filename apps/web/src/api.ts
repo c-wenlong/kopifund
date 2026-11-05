@@ -679,6 +679,8 @@ export type PinSet = { payee: string; kind: string; country: string; category: s
 export type RuleUndone = { undone: string; relinked?: Relinked };
 // G9: export
 export type ExportDone = { folder: string; stamp: string; files: string[]; transactions: number };
+/** G23: POST /api/server/stop or /restart: the work the exit waits for, in words, and the most it waits (seconds). */
+export type ServerEnding = { ok: boolean; waiting_for: string[]; timeout: number };
 export type Exports = { exports: { stamp: string; files: string[] }[] };
 
 // G10: first run and profile

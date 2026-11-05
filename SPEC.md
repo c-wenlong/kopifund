@@ -1529,7 +1529,11 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   run, what started it (`make serve`, `make dev` or the desktop app, which
   `GET /api/server` answers) and its port and pid, with a Stop that asks
   once ("Stop the server?") before `POST /api/server/stop` and a Restart
-  before `POST /api/server/restart`. Both answer first, then the process
+  before `POST /api/server/restart`. Both answer first, naming the work
+  under way (a load, a save, the stats rebuild), then refuse new writes
+  (503) and wait for every request being answered and the stats rebuild to
+  finish, two minutes at most, so a load or a rebuild is never cut off
+  mid-run; the card says what it is waiting for. Then the process
   ends or runs its command line again in its place (under `--app` the
   shell's hold on stdin survives, and the new ready line reloads the
   window). A stopped server answers nothing its own page could use to
