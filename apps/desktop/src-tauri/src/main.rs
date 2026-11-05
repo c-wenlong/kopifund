@@ -21,6 +21,7 @@ use objc2_app_kit::{NSApplication, NSImage};
 #[cfg(target_os = "macos")]
 use objc2_foundation::NSString;
 use serde::Serialize;
+use tauri::webview::DownloadEvent;
 use tauri::{AppHandle, Manager, RunEvent, State, Url, WebviewWindowBuilder};
 
 /// The line serve.py prints once it is listening, then its address
@@ -383,6 +384,52 @@ fn open_in_browser(url: &Url) {
     });
 }
 
+/// Downloads the window has started, by URL, so a finished one can be shown:
+/// on macOS WebKit's finish event carries no path (tauri `DownloadEvent`).
+type Downloads = Arc<Mutex<Vec<(Url, PathBuf)>>>;
+
+/// Whether the window may save the file at `url`: the server's own files only
+/// (Settings' exports), never a file another site hands the window.
+fn may_download(url: &Url) -> bool {
+    url.scheme() == "http" && url.host_str() == Some("127.0.0.1")
+}
+
+/// A download the window asked for (Settings > Export's links). WebKit cancels
+/// every download when no handler is installed, so before this a click did
+/// nothing. The file goes where Safari puts it, the Downloads folder (wry picks
+/// a free name there), and Finder shows it once it is saved.
+fn on_download(downloads: &Downloads, event: DownloadEvent<'_>) -> bool {
+    match event {
+        DownloadEvent::Requested { url, destination } => {
+            if !may_download(&url) {
+                return false;
+            }
+            let mut list = downloads.lock().unwrap();
+            // a second click while the same file still downloads is refused: the
+            // finish event names only the URL, so two at once could not be told
+            // apart and Finder could show the other one's file
+            if list.iter().any(|(u, _)| *u == url) {
+                return false;
+            }
+            list.push((url, destination.clone()));
+            true
+        }
+        DownloadEvent::Finished { url, path, success } => {
+            let saved = {
+                let mut list = downloads.lock().unwrap();
+                list.iter().position(|(u, _)| *u == url).map(|i| list.remove(i).1)
+            };
+            if let (true, Some(file)) = (success, path.or(saved)) {
+                thread::spawn(move || {
+                    let _ = Command::new("/usr/bin/open").arg("-R").arg(file).status();
+                });
+            }
+            true
+        }
+        _ => true,
+    }
+}
+
 #[tauri::command]
 fn status(state: State<'_, Shared>) -> Status {
     let s = state.lock().unwrap();
@@ -419,7 +466,9 @@ fn main() {
                 .find(|w| w.label == "main")
                 .cloned()
                 .expect("tauri.conf.json describes the main window");
+            let downloads = Downloads::default();
             WebviewWindowBuilder::from_config(app.handle(), &config)?
+                .on_download(move |_, event| on_download(&downloads, event))
                 .on_navigation(|url| match navigation(url) {
                     Nav::Load => true,
                     Nav::Browser => {
@@ -563,5 +612,48 @@ mod tests {
         assert!(why.contains("/nonexistent/kopifund-worktree"));
         assert!(why.contains("build_macos.sh"));
         assert_eq!(missing_code(&repo()), None);
+    }
+}
+
+#[cfg(test)]
+mod download_tests {
+    use super::*;
+
+    #[test]
+    fn the_servers_own_files_download_and_another_sites_do_not() {
+        let downloads = Downloads::default();
+        let mut to = PathBuf::from("/Users/me/Downloads/transactions.csv");
+        let ours: Url = "http://127.0.0.1:8771/api/exports/2026-10-01/transactions.csv".parse().unwrap();
+        assert!(on_download(&downloads, DownloadEvent::Requested { url: ours.clone(), destination: &mut to }));
+        assert_eq!(downloads.lock().unwrap().len(), 1);
+
+        let theirs: Url = "https://example.com/file.pdf".parse().unwrap();
+        let mut elsewhere = PathBuf::from("/Users/me/Downloads/file.pdf");
+        assert!(!on_download(&downloads, DownloadEvent::Requested { url: theirs, destination: &mut elsewhere }));
+        assert_eq!(downloads.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_second_click_while_the_same_file_downloads_is_refused() {
+        let downloads = Downloads::default();
+        let url: Url = "http://127.0.0.1:8771/api/exports/x/a.csv".parse().unwrap();
+        let mut to = PathBuf::from("/nonexistent/a.csv");
+        assert!(on_download(&downloads, DownloadEvent::Requested { url: url.clone(), destination: &mut to }));
+        let mut again = PathBuf::from("/nonexistent/a-2.csv");
+        assert!(!on_download(&downloads, DownloadEvent::Requested { url: url.clone(), destination: &mut again }));
+        on_download(&downloads, DownloadEvent::Finished { url: url.clone(), path: None, success: false });
+        // once the first has finished, the file can be downloaded again
+        assert!(on_download(&downloads, DownloadEvent::Requested { url, destination: &mut again }));
+    }
+
+    #[test]
+    fn a_finished_download_is_forgotten() {
+        let downloads = Downloads::default();
+        let url: Url = "http://127.0.0.1:8771/api/exports/x/a.csv".parse().unwrap();
+        let mut to = PathBuf::from("/nonexistent/a.csv");
+        on_download(&downloads, DownloadEvent::Requested { url: url.clone(), destination: &mut to });
+        // a failed download reveals nothing, and is still taken off the list
+        on_download(&downloads, DownloadEvent::Finished { url, path: None, success: false });
+        assert!(downloads.lock().unwrap().is_empty());
     }
 }
