@@ -80,11 +80,11 @@ export const KNOWN: Record<string, Known> = {
   },
   "pinned-rows-gone": {
     headline: "A load would drop rows you saved something on",
-    next: "Their statement may have left the folder. Put it back, or take the trip pin, mark or rule off those rows, then check again.",
+    next: "Their statement may have left the folder. Put it back, or take the trip pin, mark, rule or phone match off those rows, then check again.",
   },
   "pinned-key-reused": {
     headline: "A load would move something you saved to another payment",
-    next: "The reader now gives a row's old key to a different row. Take the trip pin, mark or rule off that key, then check again and save it on the right row.",
+    next: "The reader now gives a row's old key to a different row. Take the trip pin, mark, rule or phone match off that key, then check again and save it on the right row.",
   },
   "orphan-blocks": {
     headline: "Months no longer in any statement",
