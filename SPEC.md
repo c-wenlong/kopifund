@@ -1394,9 +1394,24 @@ icon** section in its Settings, kept on the phone: a pick calls
 ### The dashboard (G26)
 
 The dashboard is the owner-composed home the app is growing towards: saved
-layouts of widgets, each widget bound to one typed query. G26 lays the
-foundation: the query layer, the endpoints, and the record-held state the
-editor will write. The visual editor itself comes later.
+layouts of widgets, each widget bound to one typed query. The query layer,
+the endpoints and the record-held state came first; the Dashboard page
+(`/dashboard`, in the sidebar's main group) is the editor over them.
+
+**The page** (`apps/web/src/dashboard/`) draws a layout on a twelve-column
+grid of fixed rows. A widget is dragged by the grip in its header and resized
+from its corner; every move is repacked by `layout.ts`'s `pack`, which settles
+each widget as high as it fits, so no hole stays. A change writes the layout
+back through `POST /api/dashboard/layouts/<id>` after a short debounce, so
+nothing waits on a Save. Under 768px the same widgets stack in one column in
+their saved order and do not drag. An empty record (or an empty board) offers
+the starter presets in `presets.ts`; Reset restores the default one, and a
+removal or a reset offers an Undo toast. Named layouts switch in the page's
+actions when the record holds more than one. A widget's `type` names its
+entry in `registry.tsx`: the component that draws it, its picker's words and
+the cell and query it starts with. The registered bodies are placeholders
+until the chart widgets land; a saved `type` the build does not know keeps
+its cell and says so, rather than failing the board.
 
 **A widget query** (`WidgetQuery`, `server/finance/types.py`) asks one
 question: a `source`, a `metric`, a `dimension` to spread it over, an optional

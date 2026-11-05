@@ -83,7 +83,7 @@ describe("the route table", () => {
 
   it("puts the sidebar's pages in the table's order, profile and settings in the bottom group", () => {
     expect(pages.map((p) => p.path)).toEqual([
-      "/", "/transactions", "/spending", "/recurring", "/trips", "/net-worth", "/plan", "/categories", "/upload", "/rules",
+      "/", "/dashboard", "/transactions", "/spending", "/recurring", "/trips", "/net-worth", "/plan", "/categories", "/upload", "/rules",
     ]);
     expect(bottomPages.map((p) => p.path)).toEqual(["/profile", "/settings"]);
     expect(pages.map((p) => p.label)).toContain("Net worth");

@@ -11,6 +11,7 @@ import {
   Eye,
   History,
   House,
+  LayoutDashboard,
   List,
   Plane,
   SlidersHorizontal,
@@ -24,6 +25,7 @@ import {
 import type { Loaded, Overview } from "./api";
 import { Problem, TilesSkeleton } from "./components/States";
 import { Categories } from "./pages/Categories";
+import { Dashboard } from "./dashboard/Dashboard";
 import { Home } from "./pages/Home";
 import { NetWorth } from "./pages/NetWorth";
 import { PastUploads } from "./pages/PastUploads";
@@ -78,6 +80,7 @@ function SpendingPage() {
 
 export const ROUTES: readonly Route[] = [
   { path: "/", title: "Home", nav: { icon: House, group: "main" }, api: ["/api/overview", "/api/net-worth"], component: HomePage },
+  { path: "/dashboard", title: "Dashboard", nav: { icon: LayoutDashboard, group: "main" }, api: ["/api/dashboard/layouts"], component: Dashboard },
   { path: "/transactions", title: "Transactions", nav: { icon: List, group: "main" }, component: Transactions },
   {
     path: "/spending", title: "Spending", nav: { icon: ChartPie, group: "main" },
