@@ -147,6 +147,39 @@ class SyntheticClassification(unittest.TestCase):
         self.assertIsNone(row["reference"])
 
 
+class AColumnMisreadIsNotSynthesised(unittest.TestCase):
+    """An amount read into the wrong column fails the balance check. Shifted
+    right, the 3 Oct Money Out amount ends nearer the Money In edge and reads
+    as a deposit; filling the gap with an "Unprinted" row of twice its size
+    would balance the chain and hide the misread (audit, parse_youtrip)."""
+
+    PRINTED = "$44.10                           $6.91"
+    SHIFTED = "            $44.10               $6.91"
+
+    @classmethod
+    def setUpClass(cls):
+        text = sup.text(PREVIOUS)
+        assert cls.PRINTED in text
+        cls.parsed = sup.run_youtrip([PREVIOUS], lines={PREVIOUS: text.replace(cls.PRINTED, cls.SHIFTED)})
+
+    def test_the_misread_is_read_as_money_in(self):
+        [row] = [r for r in self.parsed.rows if r["date"] == "2025-10-03" and abs(r["amount"]) == 44.10]
+        self.assertEqual(44.10, row["amount"])
+
+    def test_no_row_is_synthesised_for_it(self):
+        self.assertEqual([], synthetic(self.parsed))
+        self.assertEqual([], self.parsed.block()["gaps"])
+
+    def test_the_balance_check_fails_on_that_row(self):
+        self.assertEqual([("2025-10-03", 44.10)],
+                         [(r["date"], r["amount"]) for r in self.parsed.block()["misreads"]])
+        self.assertEqual(1, len(self.parsed.bad))
+        self.assertEqual("2025-10-03", self.parsed.bad[0][2])
+
+    def test_a_real_hidden_row_is_still_filled(self):
+        self.assertEqual([], sup.run_youtrip([GAP]).block()["misreads"])
+
+
 class SyntheticKeys(unittest.TestCase):
     """Synthetic rows are keyed like any other, so a re-import matches them."""
 

@@ -124,31 +124,68 @@ def period_month(block):
 
 
 def covered_months(snap):
-    """The months where every bank account that had started printed. Wallets
-    (Accounts subclass Wallet) are funded from the bank accounts and are never
-    expected, so a wallet that printed nothing leaves the month covered. The
-    months before the first phase are partial: they hold card rows only."""
+    """The months every open bank account covers, and at least one does
+    (decision 6). Wallets (Accounts subclass Wallet) are funded from the bank
+    accounts and are never expected, so a wallet that printed nothing leaves
+    the month covered, and a month only a wallet covers is not. A bank
+    statement covers its month and back to its earliest row (a row in the
+    last three days of the month just before is posting lag); an empty one
+    that opens where the last closed covers the whole gap, and after it the
+    next k - 1 months of its k-month cadence (at most 5), short of any later
+    statement. An account closes at
+    a last statement that leaves 0 in every currency. The months before the
+    first phase are partial: they hold card rows only."""
+    import calendar
     from analytics.stats.common import PHASES
     first_phase = PHASES[0]["from"]
-    wallets ={a["account_no"] for a in snap["accounts"] if a.get("subclass") == "Wallet"}
-    deposit = [b for b in snap["periods"] if not b["name"].endswith(" · card")]
-    first, present = {}, defaultdict(set)
-    for b in deposit:
-        m = period_month(b)
-        present[m].add(b["account_no"])
-        if b["account_no"] in wallets:
-            continue
-        first[b["account_no"]] = min(first.get(b["account_no"], m), m)
-    any_block = defaultdict(set)
+    wallets = {a["account_no"] for a in snap["accounts"] if a.get("subclass") == "Wallet"}
+    printed = defaultdict(lambda: defaultdict(list))
     for b in snap["periods"]:
-        any_block[period_month(b)].add(b["account_no"])
+        if not b["name"].endswith(" · card") and b["account_no"] not in wallets:
+            printed[b["account_no"]][period_month(b)].append(b)
+    own = {b["name"]: m for by_month in printed.values() for m, bs in by_month.items() for b in bs}
+    reach, rows_on = {}, set()
+    for r in snap["transactions"]:
+        name = r.get("period")
+        if name not in own or not r["date"]:
+            continue
+        rows_on.add(name)
+        m = r["date"][:7]
+        before = months_between(m, own[name])
+        last_day = calendar.monthrange(int(m[:4]), int(m[5:7]))[1]
+        if len(before) > 1 and not (len(before) == 2 and int(r["date"][8:10]) > last_day - 3):
+            reach[name] = min(reach.get(name, own[name]), m)
+    spans = {}
+    for account, by_month in printed.items():
+        months = sorted(by_month)
+        cover, held, idle = set(), {}, 0
+        for before, m in zip([None] + months, months):
+            blocks = by_month[m]
+            if idle > 1:
+                # an idle statement covers the months before its next was due, up to this one
+                ahead = months_between(before, f"{int(before[:4]) + 1}-{before[5:]}")
+                cover |= {x for x in ahead[1:min(idle, 6)] if x < m}
+            start, idle = min(reach.get(b["name"], m) for b in blocks), 0
+            if before:
+                gap = months_between(before, m)[1:]
+                start = max(start, gap[0])
+                opens = [b for b in blocks if b["opening_minor"] is not None]
+                if (not any(b["name"] in rows_on for b in blocks) and opens
+                        and all(b["opening_minor"] == held.get(b["currency"], 0) for b in opens)):
+                    start, idle = gap[0], len(gap)
+            cover |= set(months_between(start, m))
+            held.update({b["currency"]: b["closing_minor"] for b in blocks
+                         if b["has_balances"] and b["closing_minor"] is not None})
+        closed = bool(held) and not any(held.values())
+        if not closed and idle > 1:
+            ahead = months_between(months[-1], f"{int(months[-1][:4]) + 1}-{months[-1][5:]}")
+            cover |= set(ahead[1:min(idle, 6)])
+        spans[account] = (min(cover), months[-1] if closed else None, cover)
     full = []
     for m in every_month(snap):
-        have = present.get(m, set())
-        expect = {a for a, start in first.items() if start <= m}
-        partial = (m < first_phase or (bool(any_block.get(m)) and not have)
-                   or bool(expect - have) or not have)
-        if not partial:
+        expect = {a for a, (start, end, _) in spans.items() if start <= m and (end is None or m <= end)}
+        covering = {a for a in expect if m in spans[a][2]}
+        if not (m < first_phase or expect - covering or not covering):
             full.append(m)
     return full
 
@@ -412,11 +449,17 @@ class MonthlyCashflow(Recomputation):
                 got = next(p for p in res["data"]["phases"] if p["name"] == phase)
                 ms = [m for m in every_month(SNAP)
                       if first <= m and (last is None or m <= last)]
-                n = len(ms)
-                income = into([r for r in income_rows(SNAP) if r["month"] in ms])
-                spend = out([r for r in spend_rows(SNAP) if r["month"] in ms])
-                investing = out([r for r in investing_rows(SNAP) if r["month"] in ms])
-                self.assertEqual(got["months"], n)
+                # decision 6: a figure a month divides the full months' money
+                # by their number, or every month's when none is full
+                partial = {x["month"] for x in res["data"]["months"] if x["partial"]}
+                full = [m for m in ms if m not in partial]
+                averaged = full or ms
+                n = len(averaged)
+                income = into([r for r in income_rows(SNAP) if r["month"] in averaged])
+                spend = out([r for r in spend_rows(SNAP) if r["month"] in averaged])
+                investing = out([r for r in investing_rows(SNAP) if r["month"] in averaged])
+                self.assertEqual(got["months"], len(ms))
+                self.assertEqual(got["full_months"], len(full))
                 self.near(self.dollars(got, "income_per_month"), per_count(income, n))
                 self.near(self.dollars(got, "spend_per_month"), per_count(spend, n))
                 self.near(self.dollars(got, "investing_per_month"), per_count(investing, n))

@@ -47,6 +47,16 @@ describe("kpiOf", () => {
     expect(k.priorLabel).toBe("2026-08");
   });
 
+  it("steps over a month the answer calls partial, so half a month is not set against a whole one", () => {
+    const k = kpiOf({ ...BY_MONTH, partial: ["2026-10"] });
+    expect(k.value).toBe(175_000);
+    expect(k.prior).toBe(150_000);
+    expect(k.atLabel).toBe("2026-09");
+    expect(k.run).toEqual([150_000, 175_000]);
+    // a sum over the range still counts every month, the partial one included
+    expect(kpiOf({ ...BY_MONTH, partial: ["2026-10"] }, undefined, "sum").value).toBe(385_000);
+  });
+
   it("sums the answer when asked, and reads a named series", () => {
     const answer: WidgetAnswer = {
       ...BY_MONTH,
