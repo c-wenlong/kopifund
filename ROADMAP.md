@@ -29,8 +29,10 @@ comments (`// G5: ...`) so a search for `G5` finds everything that goal touched.
 | G21 | More banks | Someone who banks with UOB, as well as DBS, POSB or OCBC, can pick their banks in Setup and drop their statements in, and every one parses and balances; a statement from a bank no layout knows, Trust, GXS and MariBank included, is named as not supported and can be turned into a sample text for building its layout; each layout says whether a real statement has checked it or only a public sample; adding a bank is one parser module, its fixture and its tests | Done |
 | G22 | Copilot | A panel beside every page answers questions about the record in words and charts, through read-only tools over `kopifund.db`; exact rows leave the machine only after the owner turns that on in Settings; the model has no tool that writes, and a change it suggests is a card the owner confirms | Done |
 | G23 | Desktop app | The owner opens Kopifund from the Dock like any Mac app: no terminal, no command, no browser tab; the app starts and stops the server itself, every page works in its window, and later milestones make it something a friend can install | Not started |
-| G24 | Alerts to YNAB | A bank alert reaching the phone (bank SMS or email through a Shortcuts automation, an Apple Pay transaction through the Wallet trigger, the share sheet or a paste) is matched against the owner's own patterns, queued for review, and lands in YNAB as an unapproved transaction the owner confirms there | Not started |
+| G24 | Alerts to YNAB | A bank alert reaching the phone (bank SMS or email through a Shortcuts automation, an Apple Pay transaction through the Wallet trigger, the share sheet or a paste) is matched against the owner's own patterns, queued for review, and lands in YNAB as an unapproved transaction the owner confirms there | Done |
 | G25 | Phone link | The iOS app pairs with the server over Tailscale and reads the record's accounts and transactions; an alert row a loaded statement row already covers is marked instead of offered for posting; approved alert rows can land in the record as pending rows the next load confirms | Done |
+| G26 | Interactive visual dashboard | The owner composes their own board: drag-and-drop widgets over the record (state, change, flow, allocation, goals, scenarios, game pot) with layouts saved locally; epic [#4](https://github.com/c-wenlong/kopifund/issues/4), children [#5](https://github.com/c-wenlong/kopifund/issues/5) to [#15](https://github.com/c-wenlong/kopifund/issues/15) | Not started |
+| G27 | SRS tracked account | An SRS account tracked like CPF: a new account kind and statement layout, contributions against the yearly cap, tax relief by year of assessment, holdings inside SRS and SRS in net worth ([issue #16](https://github.com/c-wenlong/kopifund/issues/16)) | Not started |
 
 ## G13: the UI pass
 
@@ -330,3 +332,48 @@ Each line is one PR, in build order:
 - [x] The app's Kopifund screens: a Settings section that scans the QR or takes a paste, tests the connection and unlinks; an Accounts list (`/api/profile`) and a Transactions browser (`/api/transactions`)
 - [x] Alerts reads the record: an alert row whose amount, currency, date and payee a loaded statement row already covers is marked "already in kopifund" and never offered for posting; rows that share all four with more than one loaded row are left for the owner
 - [x] Phone rows into the record: `POST /api/link/transactions` lands an approved alert row as a `pending_txn` (`import_id` unique, so a retry never doubles), each load matches a pending row to one real row on amount, currency, date and payee (a statement row takes at most one pending row, and a pair the owner refuses is kept on the row's rejected list and never offered again), and Home's "Needs your eye" lists what is still waiting until it is matched, dismissed or restored
+
+## G26: interactive visual dashboard
+
+Every page today is fixed: Home, Spending, Net worth and the rest show the
+charts the app ships, in the order it ships them. This goal turns the app
+into a dashboard builder: the owner drags widgets onto a grid, each bound
+to a typed query over the record, and the layout is saved locally in
+`~/.kopifund`. State widgets (pie, treemap, KPI tiles) show where the
+money stands, change widgets (time series, stacked area, waterfall) show
+it over time, and a Sankey shows income flowing to buckets to categories.
+Goals with trajectories, a describe-only what-if editor, monthly
+allocation buckets and a game-pot tracker ride on the same widgets.
+Tracked in epic [#4](https://github.com/c-wenlong/kopifund/issues/4).
+Each line is one child issue, in build order:
+
+- [ ] Backend endpoints and local persistence, with the typed widget data-source and query layer ([#15](https://github.com/c-wenlong/kopifund/issues/15), [#6](https://github.com/c-wenlong/kopifund/issues/6))
+- [ ] Drag-and-drop layout engine with persisted layouts ([#5](https://github.com/c-wenlong/kopifund/issues/5))
+- [ ] State widgets: pie and donut, treemap, KPI cards ([#7](https://github.com/c-wenlong/kopifund/issues/7))
+- [ ] Change widgets: time series, stacked area, waterfall ([#8](https://github.com/c-wenlong/kopifund/issues/8))
+- [ ] Flow widget: Sankey income to buckets to categories ([#9](https://github.com/c-wenlong/kopifund/issues/9))
+- [ ] Visual editor UX: side panel, templates, presets ([#14](https://github.com/c-wenlong/kopifund/issues/14))
+- [ ] Monthly allocation-plan buckets (actual vs plan) ([#12](https://github.com/c-wenlong/kopifund/issues/12))
+- [ ] Goals and milestones model with trajectory visuals ([#10](https://github.com/c-wenlong/kopifund/issues/10))
+- [ ] Scenario and what-if editor (describe-only projections) ([#11](https://github.com/c-wenlong/kopifund/issues/11))
+- [ ] Game-pot experiment tracker vs benchmark ([#13](https://github.com/c-wenlong/kopifund/issues/13))
+
+## G27: an SRS tracked account
+
+The owner has no Supplementary Retirement Scheme account yet, but Kopifund
+should be ready the day they open one: contributions against the yearly
+cap, tax relief by year of assessment, holdings inside the account and SRS
+counted in net worth, the way cash, Tiger Brokers and CPF already are.
+The operators are the agent banks (DBS, POSB, OCBC, UOB); the
+contribution cap lives in local config, never hardcoded, since it differs
+for foreigners. Tracked in [#16](https://github.com/c-wenlong/kopifund/issues/16).
+
+SRS becomes a new account kind beside bank account, wallet, card,
+brokerage and CPF (`server/finance/parsers/layouts.py`), with its folder
+added in Setup like any other account. The parser registers through the
+G21 layout registry at SAMPLE status until a real or public-sample
+statement balances, and unsupported PDFs go through `finance.py sample`.
+Contributions and tax relief are tracked and shown in cents, describe
+only, and SRS joins `GET /api/net-worth`, the Net worth page and the
+projection where cash, Tiger Brokers and CPF already appear, so the G26
+widgets can bind it without a second data path.
