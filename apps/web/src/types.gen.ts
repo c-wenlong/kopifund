@@ -1361,6 +1361,8 @@ export type WidgetAnswer = {
   label_links?: (Record<string, string> | null)[];
   series: WidgetSeries[];
   note?: string;
+  /** A `spending` answer by month: the labels the monthly-cashflow stat calls partial (a bank account has not printed that month yet), so a widget reading "the latest month" can step back to a whole one. */
+  partial?: string[];
 };
 
 /**

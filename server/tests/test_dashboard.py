@@ -194,6 +194,16 @@ class SpendingSourceTest(unittest.TestCase):
             a = dashboard.resolve(self.conn, {}, {"source": "spending", "metric": metric})
             self.assertEqual(a["series"][0]["values_minor"], vals, metric)
 
+    def test_a_month_the_cash_flow_calls_partial_is_marked(self):
+        results = {"monthly-cashflow": {"data": {"months": [
+            {"month": "2026-07", "partial": False}, {"month": "2026-08", "partial": True}]}}}
+        a = dashboard.resolve(self.conn, results, {"source": "spending", "metric": "spend"})
+        self.assertEqual(a["partial"], ["2026-08"])
+        # no stat run yet, or a dimension that is not months: nothing to mark
+        self.assertNotIn("partial", dashboard.resolve(self.conn, {}, {"source": "spending", "metric": "spend"}))
+        self.assertNotIn("partial", dashboard.resolve(self.conn, results, {"source": "spending", "metric": "spend",
+                                                                           "dimension": "bucket"}))
+
     def test_a_month_query_split_by_category(self):
         a = dashboard.resolve(self.conn, {}, {"source": "spending", "metric": "spend",
                                               "split": "category"})
