@@ -1537,7 +1537,13 @@ export const NO_CHANGE_PATHS: readonly string[] = [
   "/api/uploads/start",
 ];
 
-/** serve.py, REREAD_AFTER (G18): the GETs a view asks for again after one of those writes. */
+/** serve.py, REREAD_AFTER (G18): after one of these writes, the GETs a view asks for again; nothing else kept is forgotten. */
 export const REREAD_AFTER: Readonly<Record<string, readonly string[]>> = {
+  "/api/dashboard/allocation": ["/api/dashboard/allocation"],
+  "/api/dashboard/game-pot": ["/api/dashboard/game-pot"],
+  "/api/dashboard/goals": ["/api/dashboard/goals"],
+  "/api/dashboard/goals/remove": ["/api/dashboard/goals"],
+  "/api/dashboard/layouts": ["/api/dashboard/layouts"],
+  "/api/dashboard/layouts/<id>": ["/api/dashboard/layouts"],
   "/api/run/check": ["/api/overview"],
 };
