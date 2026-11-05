@@ -21,7 +21,6 @@ import os
 import re
 import sqlite3
 import subprocess
-import tempfile
 import threading
 import time
 import urllib.error
@@ -32,6 +31,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from . import dotenv, keys
+from .atomic import write_private
 from .paths import cache_dir, data_root
 
 # provider -> (wire format, base URL, the variables its key usually lives in,
@@ -553,19 +553,12 @@ _CACHE_LOCK = threading.Lock()
 def _merge_cache(new):
     """Add answers to the cache file: reread it first, so answers another
     request saved meanwhile stay, then replace it through a temporary file of
-    this call's own."""
+    this call's own (write_private)."""
     with _CACHE_LOCK:
         cache = {**_load_cache(), **new}
         path = _cache_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".ai-suggestions-", suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:   # mkstemp makes it 600
-                json.dump(cache, fh, indent=1, sort_keys=True)
-            os.replace(tmp, path)
-        except BaseException:
-            os.unlink(tmp)
-            raise
+        write_private(path, json.dumps(cache, indent=1, sort_keys=True))
         return cache
 
 
@@ -870,10 +863,7 @@ def models(cfg, conn, provider=None, q="", get=None, now=None):
                   "fetched_at": datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                   "models": listed}
         path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".models-", suffix=".tmp")
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(cached, fh)
-        os.replace(tmp, path)
+        write_private(path, json.dumps(cached))
     q = (q or "").strip().lower()
     found = [{"id": m["id"], "label": m["label"]} for m in cached["models"]
              if not q or q in m["id"].lower() or q in m["label"].lower()]

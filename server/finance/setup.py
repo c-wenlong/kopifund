@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 
 from . import db
+from .atomic import write_private
 from .migrate import to_toml
 from .parsers import layouts
 from .paths import SERVER, config_path, data_root
@@ -77,8 +78,7 @@ def create(provider_ids, root=None):
     text = ("# Kopifund settings, written at setup. Folder paths are relative to the\n"
             "# data folder. Notion is off: add [data_sources] and a token to mirror.\n\n"
             + to_toml(config))
-    (root / "config.toml").write_text(text, encoding="utf-8")
-    os.chmod(root / "config.toml", 0o600)
+    write_private(root / "config.toml", text)
     conn = db.connect(root / "kopifund.db")
     shipped = json.loads((SERVER / "analytics" / "categories.json").read_text(encoding="utf-8"))
     db.import_user_tables(conn, {"categories": shipped["categories"]}, plan={})
