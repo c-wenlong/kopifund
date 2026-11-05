@@ -50,8 +50,10 @@ export async function savePin(body: { key: string; category: string; payee?: str
 // `draft` and `onDraft` let a page keep what was typed above the form, so the
 // form can be mounted again (a layout change, Less then More) without losing it.
 // A page that keeps drafts also guards them (`onDirty`): the typed work outlives
-// the form, so the question about leaving must too.
-export function PinForm({ row, categories, kinds, onPinned, draft, onDraft, onDirty }: {
+// the form, so the question about leaving must too. A save that ends after its
+// form was hidden is told to the page (`onSettledHidden`: what it sent, and
+// whether it was saved), since the form is not there to say it.
+export function PinForm({ row, categories, kinds, onPinned, draft, onDraft, onDirty, onSettledHidden }: {
   row: GroupRow;
   categories: string[];
   kinds: string[];
@@ -59,6 +61,7 @@ export function PinForm({ row, categories, kinds, onPinned, draft, onDraft, onDi
   draft?: PinDraft;
   onDraft?: (d: PinDraft) => void;
   onDirty?: (dirty: boolean) => void;
+  onSettledHidden?: (sent: PinFields, saved: boolean) => void;
 }) {
   // G13: opens on what the row already has: its category, and the kind the
   // rules page would suggest for the text it printed (a person only for a
@@ -84,6 +87,11 @@ export function PinForm({ row, categories, kinds, onPinned, draft, onDraft, onDi
   const holding = dirty || !!sending;
   useUnsavedGuard(!onDirty && holding);
   useEffect(() => { onDirty?.(holding); }, [holding]);
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const what = `the ${formatDay(row.date)} row`;
@@ -91,20 +99,18 @@ export function PinForm({ row, categories, kinds, onPinned, draft, onDraft, onDi
   async function save() {
     setSaving(true);
     setError(null);
+    const sent = { category, payee: payee.trim(), kind, note: note.trim() };
+    setSending(sent);
     try {
-      const sent = { category, payee: payee.trim(), kind, note: note.trim() };
-      setSending(sent);
       await savePin({ key: row.key, ...sent });
       // what was typed while the save was on its way was not sent: the form stays open on it, measured
       // against what was saved, and only a form with nothing left unsaved is done
-      const left = pinDirty(latest.current, sent);
-      // said straight away, not through the effect: a form hidden (Less, Close) while the save ran is not
-      // mounted to say it, and its page must not keep asking about it
-      onDirty?.(left);
-      if (left) setBase(sent);
+      // a form hidden (Less, Close) while the save ran leaves the outcome to its page, which keeps its draft
+      if (!mounted.current) onSettledHidden?.(sent, true);
+      else if (pinDirty(latest.current, sent)) setBase(sent);
       else onPinned?.();
     } catch (e) {
-      onDirty?.(pinDirty(latest.current, base));
+      if (!mounted.current) onSettledHidden?.(sent, false);
       setError((e as Error).message);
     } finally {
       setSending(null);

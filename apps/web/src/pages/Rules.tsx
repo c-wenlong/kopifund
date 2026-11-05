@@ -68,7 +68,8 @@ export function Rules() {
   const [history, setHistory] = useState(false);
   const [needsOpen, setNeedsOpen] = useState<string | null>(null);   // the needs-rule group whose rows are listed
   // G18: leaving with a rule typed into and not saved asks first, as every other form does
-  useUnsavedGuard(!!editing && !sameDraft(editing.draft, editing.start));
+  // (and a save on its way holds the page until it lands: one that fails leaves the rule unsaved)
+  useUnsavedGuard(!!editing && (!!editing.status?.saving || !sameDraft(editing.draft, editing.start)));
 
   const s = state.data;
   const byId = useMemo(() => new Map((s?.rules ?? []).map((r) => [r.id, r])), [s]);

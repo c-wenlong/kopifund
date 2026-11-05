@@ -10,7 +10,7 @@ import { Button, buttonClass } from "../components/Button";
 import { Combobox } from "../components/Combobox";
 import { EmptyState } from "../components/EmptyState";
 import { Pager, usePager } from "../components/Pager";
-import { PinForm, pinDirty, pinnedText, savePin, undoRuleWrite, type PinDraft } from "../components/PinRow";
+import { PinForm, pinDirty, pinnedText, savePin, undoRuleWrite, type PinDraft, type PinFields } from "../components/PinRow";
 import { draftParams, ruleOf, type Draft } from "../components/RuleEditor";
 import { Select } from "../components/Select";
 import { Loading, Problem } from "../components/States";
@@ -238,6 +238,15 @@ export function Transactions() {
     return now;
   }), []);
   useUnsavedGuard(unsaved.size > 0);
+  // a row save that ended after its form was hidden: what it saved becomes the kept draft's baseline, and a row
+  // whose form is not on screen is asked about only if its draft still differs (a form on screen says for itself)
+  const settleHidden = useCallback((key: string, sent: PinFields, saved: boolean) => {
+    const typed = drafts.current[key];
+    if (typed && saved) drafts.current[key] = { ...typed, base: sent };
+    if (shownForms.current.has(key)) return;
+    const now = drafts.current[key];
+    markUnsaved(key, !!now?.base && pinDirty(now, now.base));
+  }, [markUnsaved]);
   const pickable = (data?.categories ?? []).filter((c) => c !== "(none)");
   const cell = (t: Txn) => (
     <CategoryCell t={t} categories={pickable} picking={picking === t.key}
@@ -383,7 +392,7 @@ export function Transactions() {
                         </tr>
                         {open === t.key && (
                           <tr>
-                            <td colSpan={4} className="bg-tile px-3 py-2"><RowPanel txnKey={t.key} drafts={drafts.current} shownForms={shownForms.current} onUnsaved={markUnsaved} pin={pins[t.key]} onClose={() => setOpen(null)} /></td>
+                            <td colSpan={4} className="bg-tile px-3 py-2"><RowPanel txnKey={t.key} drafts={drafts.current} shownForms={shownForms.current} onUnsaved={markUnsaved} onSettledHidden={settleHidden} pin={pins[t.key]} onClose={() => setOpen(null)} /></td>
                           </tr>
                         )}
                         </Fragment>
@@ -413,7 +422,7 @@ export function Transactions() {
                     {t.currency !== "SGD" && <span className="num ml-auto text-ink-3">{sgdValue(t)}</span>}
                   </div>
                   <ScamNote t={t} />
-                  {open === t.key && <div className="mt-2 rounded-md bg-tile px-3 py-2"><RowPanel txnKey={t.key} drafts={drafts.current} shownForms={shownForms.current} onUnsaved={markUnsaved} pin={pins[t.key]} onClose={() => setOpen(null)} /></div>}
+                  {open === t.key && <div className="mt-2 rounded-md bg-tile px-3 py-2"><RowPanel txnKey={t.key} drafts={drafts.current} shownForms={shownForms.current} onUnsaved={markUnsaved} onSettledHidden={settleHidden} pin={pins[t.key]} onClose={() => setOpen(null)} /></div>}
                 </li>
                 </Fragment>
               ))}
@@ -592,8 +601,9 @@ function CategoryCell({ t, categories, picking, onStart, onDone, onPicked, onPin
 // into a rule for the rows like it ("Apply to 6 similar rows", the count from
 // the rule preview), and "More" for the payee, kind and note of the row's own
 // rule. A row a hand-edited rules file left unapplied offers Apply rules.
-function RowPanel({ txnKey, drafts, shownForms, onUnsaved, pin, onClose }: {
-  txnKey: string; drafts: Record<string, PinDraft>; shownForms: Set<string>; onUnsaved: (key: string, dirty: boolean) => void; onClose: () => void;
+function RowPanel({ txnKey, drafts, shownForms, onUnsaved, onSettledHidden, pin, onClose }: {
+  txnKey: string; drafts: Record<string, PinDraft>; shownForms: Set<string>; onUnsaved: (key: string, dirty: boolean) => void;
+  onSettledHidden: (key: string, sent: PinFields, saved: boolean) => void; onClose: () => void;
   // what the pick just set, so the similar-rows chip need not wait for the row to be asked again;
   // null while the pick is still being saved, when there is nothing to preview yet
   pin?: PinSet | null;
@@ -684,6 +694,7 @@ function RowPanel({ txnKey, drafts, shownForms, onUnsaved, pin, onClose }: {
       {more && (
         <PinForm row={row} categories={d.categories} kinds={d.kinds} draft={drafts[txnKey]}
           onDraft={(x) => { drafts[txnKey] = x; }} onDirty={(dirty) => onUnsaved(txnKey, dirty)}
+          onSettledHidden={(sent, saved) => onSettledHidden(txnKey, sent, saved)}
           onPinned={() => {
             // saved: More opens again on what the row has now, and nothing is left to ask about
             delete drafts[txnKey];

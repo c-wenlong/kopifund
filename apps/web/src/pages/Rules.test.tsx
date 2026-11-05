@@ -622,6 +622,26 @@ describe("Rules", () => {
     await waitFor(() => expect(leaveAsks()).toBe(true));
   });
 
+  it("asks before leaving while a rule's save is on its way, though nothing in it changed", async () => {
+    let refuse: () => void = () => {};
+    const slow = new Promise<void>((r) => { refuse = r; });
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url === "/api/rules") return new Response(JSON.stringify(STATE), { status: 200 });
+      if (url.startsWith("/api/rules/preview")) return new Response(JSON.stringify(PREVIEW), { status: 200 });
+      if (url === "/api/rules/save") { await slow; return new Response(JSON.stringify({ error: "Another tab changed that line." }), { status: 409 }); }
+      return new Response("{}", { status: 200 });
+    }));
+    render(<Rules />);
+    fireEvent.click(await screen.findByRole("button", { name: "Show the rules for Kopitiam" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit merchant KOPITIAM*" }));
+    expect(leaveAsks()).toBe(false);
+    fireEvent.click(await screen.findByRole("button", { name: "Save rule" }));
+    await waitFor(() => expect(leaveAsks()).toBe(true));
+    refuse();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await waitFor(() => expect(leaveAsks()).toBe(false));
+  });
+
   it("does not let a save from a cancelled editor reach the next one opened", async () => {
     let refuse: () => void = () => {};
     const slow = new Promise<void>((r) => { refuse = r; });
