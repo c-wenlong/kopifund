@@ -7,12 +7,24 @@ backticks. `make` on its own prints the one-line list; this page is the long
 form. The example rows are invented; the shapes of the terminal output are the
 real ones.
 
+The Notion targets (`plan`, `sync`, `report`, `rollup`, `payees`, `options`,
+`budget-plan`, `budget`, `refresh`) are the optional mirror. Without Notion the
+monthly run is `make doctor` then `make load`, and budgets, trips and accounts
+are edited in the app (the Plan, Trips and Your profile pages), which no Notion
+target reads back.
+
 The order below is the order you meet them: the list itself, then the monthly
 run, then the maintenance targets you run when something changes, then the rules
 and the analytics.
 
 - [make help](#make-help)
+- [make install](#make-install)
+- [make build](#make-build)
+- [make dev](#make-dev)
+- [make migrate FROM=](#make-migrate-from)
 - [make doctor](#make-doctor)
+- [make load](#make-load)
+- [make import-notion](#make-import-notion)
 - [make plan](#make-plan)
 - [make sync](#make-sync)
 - [make report](#make-report)
@@ -50,23 +62,106 @@ documented in the Makefile appears here without anything else being edited.
 
 ```text
 $ make help
-  help         list the commands
+  help             list the commands
+
+The app
+  install          install the web app's npm packages
+  build            build the web app into apps/web/dist
+  types            write apps/web/src/types.gen.ts from finance/types.py and serve.py (after changing what an endpoint sends)
+  serve            build the app, then serve it and the API at $(URL)
+  link             the phone link's checklist (G25): tailscale serve must proxy 443 to 127.0.0.1:$(PORT), and the API up
+  desktop          build Kopifund.app, the desktop app (G23), and put it in ~/Applications
+  app-icon         write app-icons/ into the web, iOS and desktop apps; SET=iso makes iso the default first
+  dev              the app with hot reload on http://localhost:5173 (port $(PORT) sends you there): the API restarts on a Python change, the page on a web change
+
+Checks
+  test             Python tests, then the web tests
+  check            the tests, the rules lint, the runbook table, the record schema doc, the parsing doc's layouts table, the TypeScript typecheck and the desktop shell's cargo check: run before every push
 
 Setup, once
-  setup        install pdftotext and check the token
-  check        everything that runs offline: tests and rules lint
+  setup            install pdftotext and check the token
+  migrate          copy a finance-tracking folder into $(DATA): make migrate FROM=<folder>
 
-The monthly run (new PDFs in the data folder's statements/ first)
-  doctor       parse, categorise, run every check, write nothing
-  plan         the full dry run: what sync would add, change, and what needs a rule
-  ...
+The monthly run (new PDFs into $(DATA)/statements/<account>/<year>/ first)
+  doctor           parse, categorise, run every check, write nothing
+  load             parse, check and write kopifund.db (the record); no Notion
+  import-notion    read categories, budgets, trips, accounts, cards and [plan] from Notion into kopifund.db
+  plan             the full dry run: what sync would add, change, and what needs a rule
+  sync             the run with Notion: refuses on a problem, reads back, writes kopifund.db, then Notion
+  report           current figures: rows, blocks, coverage, budgets, trips, needs a rule
+  rollup           redo trips, budget actuals, coverage and recurring flags (after editing a trip or budget)
+  payees           sync the Payees table from the rules (after adding or renaming payees)
+  options          add missing select options to Notion (doctor names them)
+  budget-plan      show the Budgets rows 'make budget' would seed: make budget-plan MONTH=2026-10
+  budget           create next month's Budgets rows, Planned = 6-month median, never overwrites a typed Planned
+
+Rules
+  lint             dead, shadowed or over-broad rules against the latest parsed rows (needs the data folder)
+  why              explain one row's payee and category: make why KEY=<txn_key>
+  _rules-input     the configured parsers' rows into $(CACHE)/rules-input.csv (and $(CACHE)/parsed)
+
+Analytics
+  analyse          build today's snapshot from kopifund.db (else Notion) if missing, run all 15 stats into $(CACHE)
+  refresh          force a fresh snapshot from Notion, then all stats
+  stats            print every stat's findings from the cache, no Notion access
+
+Notes and housekeeping
+  review           open the advisor review and the spending profile
+  open-items       what is still unexplained, assumed, or waiting on you
+  people           the person payees still masked or numeric, biggest first
+  backup           archive the record, rules, config and notes into $(DATA)/backups/ (no cache, no media, no secrets)
+  clean-cache      delete everything in $(CACHE): it all rebuilds
 ```
 
 **What it never does.** It runs no parser, no check and no Notion call, and it
 writes nothing: the whole recipe is one `awk`. A target with no
-`## ` comment on its line is left out on purpose, which is how `_rules-input`,
-the internal recipe `make lint` and `make why` call to rebuild the parsed CSV,
-stays off the list.
+`## ` comment on its line is left out. `_rules-input`, the internal recipe
+`make lint` and `make why` call to rebuild the parsed CSV, does carry one, so it
+appears in the list; you never run it yourself.
+
+## make install
+
+Installs the web app's npm packages from the lockfile. It runs
+`cd apps/web && npm ci`. Run it once after a clone, and again when
+`apps/web/package-lock.json` changes; `make serve`, `make dev`, `make test` and
+`make check` need the packages and do not install them.
+
+**What it never does.** It installs nothing outside `apps/web/node_modules`,
+reads no data folder and calls no network service other than the npm registry.
+
+## make build
+
+Builds the web app into `apps/web/dist`. It runs `cd apps/web && npm run build`.
+`make serve` and `make desktop` run it first, so call it yourself only to check
+that the build passes.
+
+**What it never does.** It touches nothing outside `apps/web/dist`, and it does
+not start a server.
+
+## make dev
+
+The app with hot reload, for working on it. It starts
+`python3 server/serve.py --reload --port 8770 --page http://localhost:5173` in
+the background and `npm run dev -- --port 5173 --strictPort` in `apps/web/` in
+the foreground. Open `http://localhost:5173`. Vite reloads the page on a web
+change and forwards `/api` to the server; the server restarts on a Python
+change and sends any page asked of port 8770 to 5173, so an old `apps/web/dist`
+build never shows. Ctrl-C stops both. `PORT=9000 make dev` moves the server.
+
+**What it never does.** It does not build the app, and it reads and writes the
+same data folder as `make serve`, so use `KOPIFUND_DATA=<a copy>` when you
+experiment.
+
+## make migrate FROM=
+
+Copies a finance-tracking folder into the data folder (`~/.kopifund`, or
+`KOPIFUND_DATA`). It runs `python3 server/finance.py migrate --from <folder>`
+and stops with a usage line when `FROM` is missing. Statements are renamed to
+the new layout and every copy is checked by sha256. Run it once, when you move
+over from the old repo.
+
+**What it never does.** It only reads the old folder: nothing there is moved,
+changed or deleted.
 
 ## make doctor
 
@@ -131,6 +226,42 @@ here costs a rerun and nothing else. It will not add a select option or create a
 payee for you, because both are the sort of thing you want to see before it
 happens. Every problem code and its fix text is listed in
 [runbook.md](runbook.md).
+
+## make load
+
+The monthly run without Notion. It runs `python3 server/finance.py load`: parse
+every statement folder, apply the rules, run the `doctor` checks, and write
+`kopifund.db`, the record. It needs no Notion token and no `[data_sources]` in
+the config. `--dry-run` goes through the same checks and prints how many rows
+from how many statements it would load, then stops.
+
+It refuses, with exit code 1 and nothing written, on the problems `doctor` finds
+in the statements, the folders and the balance chains. It skips `doctor`'s
+config coverage check (`unknown-account` and `unknown-card`, which want an
+account or card key under `[accounts]` or `[cards]` in config.toml), so a load
+can succeed where `make doctor` still names those. Run `make doctor` first and
+fix what it names. A clean load prints
+one line, `kopifund.db: N added, N updated, N archived, N rows on a trip`, and
+loading the same statements twice adds nothing. Categories, budgets, trips,
+accounts and the plan are never overwritten by a load: the record keeps what you
+typed in the app.
+
+**What it never does.** It makes no Notion call and no network call. It reads
+the statement PDFs and the rules and writes only `kopifund.db` and the cache in
+the data folder.
+
+## make import-notion
+
+Reads the fields you typed in Notion (categories, budgets, trips, accounts,
+cards) and the config's `[plan]` into `kopifund.db`. It runs
+`python3 server/finance.py import-notion` and needs Notion configured in the
+data folder (without it the command prints "nothing to import" and exits 3). Run it
+once, when you start using the record: from then on the app owns those fields
+and nothing is read back from Notion.
+
+**What it never does.** It writes nothing to Notion, and running it again
+replaces what you have since edited in the app with what Notion holds, so do
+not run it twice.
 
 ## make plan
 
@@ -354,7 +485,7 @@ say how far each account is loaded and which months have no statement.
 parsed
   2 card statement(s) fully covered by an account statement and skipped
   4352 transactions in 123 account-month blocks from 119 statements
-  rules: /Users/you/Documents/Finances/rules
+  rules: /Users/you/.kopifund/rules
   4308 of 4352 rows matched a rule
 
 unchanged: 4352 transactions, 123 blocks
@@ -462,7 +593,8 @@ property other than `Trip`. Run it after you add a trip, edit a budget or change
 the `recurring` column in the rules; `make sync` already runs it at the end of
 every monthly run. It calls `python3 server/finance.py rollup`.
 
-It reads Notion rather than a sync plan, so it is safe against a database this
+This is a Notion-mirror target: the app's Trips and Plan pages do not read what
+it writes. It reads Notion rather than a sync plan, so it is safe against a database this
 session has not touched. It reads everything a snapshot needs on the way, so it
 finishes by writing today's snapshot exactly as `make sync` does, from the pages
 it has just patched. Five things come out of it: `Trips Expenses.Dates`
@@ -692,7 +824,8 @@ only to the six select properties listed in `SELECT_CHECKS`.
 
 ## make budget-plan
 
-Shows the Budgets rows `make budget` would create for a month, and the Planned
+A Notion-mirror target: the app's Plan page is where planned amounts are typed
+and nothing here is read by it. Shows the Budgets rows `make budget` would create for a month, and the Planned
 number it would put in each one, without writing anything. It runs
 `python3 server/finance.py budget --seed <month> --dry-run`, so it reads Notion and
 parses no statement. Run it before the month starts, when you want to see the
@@ -850,15 +983,16 @@ new archive. The archive stays on this machine, so keep a copy of it, and of
 
 ## make clean-cache
 
-Deletes the analytics cache under `~/.kopifund/cache`: the dated snapshots,
-`latest.json`, the `results/` directory, the `parsed/` directory and
-`rules-input.csv`. Everything it removes is rebuilt on demand, by `make analyse`
+Deletes everything in the cache folder `~/.kopifund/cache` (`rm -rf` of its
+contents): the dated snapshots, `latest.json`, the `results/` directory, the
+`parsed/` directory, `rules-input.csv`, and the AI answer cache, the models
+cache and the rebuild lock. Everything it removes is rebuilt on demand, by `make analyse`
 from Notion and by `make lint` or `make why` from the statement PDFs. Reach for it
 when a snapshot has gone stale or a stat is reading numbers you know have moved.
 
 ```text
 $ make clean-cache
-rm -rf ~/.kopifund/cache/snapshot-*.json ~/.kopifund/cache/results ~/.kopifund/cache/latest.json ~/.kopifund/cache/parsed ~/.kopifund/cache/rules-input.csv
+rm -rf "/Users/you/.kopifund/cache"/*
 ```
 
 **What it never does.** It touches nothing in Notion and nothing outside
@@ -946,7 +1080,7 @@ Three of them have something to say here.
 ```text
 $ make lint
 cd server && python3 -m finance.parsers.categorise --lint ~/.kopifund/cache/rules-input.csv || true
-lint /Users/you/Documents/Finances/rules
+lint /Users/you/.kopifund/rules
   rules that never win (1)
     people.csv line 41  memo:SALARY PAYMENT -> lost to an earlier tier on all 4 rows it matched
   shadowed within a tier (1)
@@ -985,7 +1119,7 @@ otherwise.
 ```text
 $ make lint
 cd server && python3 -m finance.parsers.categorise --lint ~/.kopifund/cache/rules-input.csv || true
-lint /Users/you/Documents/Finances/rules
+lint /Users/you/.kopifund/rules
   clean
 ```
 
@@ -995,14 +1129,14 @@ finding never fails the target even though
 [categorise.py](../server/finance/parsers/categorise.py) exits 1. The reparse it always does
 first writes inside `~/.kopifund/cache/` and nowhere else, and it costs the time a full
 parse costs, which is why `make why` reuses
-[rules-input.csv](../~/.kopifund/cache/rules-input.csv) instead of rebuilding it.
+`~/.kopifund/cache/rules-input.csv` instead of rebuilding it.
 
 ## make why KEY=
 
 Explains one transaction: what each rule tier saw, which rules matched, and which
 one set the payee and category. It runs
 `cd server && python3 -m finance.parsers.categorise --why <txn_key> ~/.kopifund/cache/rules-input.csv`, and
-the key comes from [rules-input.csv](../~/.kopifund/cache/rules-input.csv) or from the
+the key comes from `~/.kopifund/cache/rules-input.csv` or from the
 Transactions row in Notion. Unlike `make lint` it reuses that CSV and only
 reparses when the file is missing, so run `make lint` first when the statements
 have moved on since it was written.
@@ -1075,14 +1209,17 @@ an earlier tier or an earlier line.
 
 ## make analyse
 
-Reads the eight Notion databases into one dated snapshot under `~/.kopifund/cache/`,
-then runs all 15 stat modules over it and writes one result JSON each. It runs
-`python3 server/finance.py analyse`, and it reuses today's snapshot if one is already on
-disk. After a `make sync` there always is one: the sync writes it from the pages
-it read, so the pass below starts at the stats and the eight databases are read
-once a day rather than twice.
+Builds one dated snapshot under `~/.kopifund/cache/`, then runs all 15 stat
+modules over it and writes one result JSON each. The snapshot is read from
+`kopifund.db` when the data folder has one, and from the eight Notion databases
+otherwise. It runs `python3 server/finance.py analyse`. A snapshot of
+`kopifund.db` is rebuilt every time, so a load since the last run always shows,
+including right after `make sync`. Only the Notion route reuses today's snapshot
+when one is already on disk: after a `make sync` there is one, written from the
+pages it read, so that pass starts at the stats. The walkthrough below shows the
+Notion route.
 
-This is the one analytics target that writes to Notion. The run ends by
+With Notion configured, the run ends by
 rewriting the hub page's `Metrics` and `Months` tables from the results, keyed
 on Name, with zero writes when nothing moved, and it only does so when
 `config.toml` names those two data sources.
@@ -1130,7 +1267,7 @@ snapshot: wrote snapshot-2026-09-04.json (4346 transactions)
   ... one line per stat, in the order below ...
   data-quality             41 of 2240 External rows have no category: S$1,500.00 out and S$0.00 in, 2.5 per cent of all-month spending S$60,000.00.
 
-15 stat(s) written to /Users/you/Documents/Finances/~/.kopifund/cache
+15 stat(s) written to /Users/you/.kopifund/cache
 hub page
   metrics: 0 created, 2 updated, 22 unchanged
   months: 0 created, 1 updated, 25 unchanged
@@ -1161,7 +1298,7 @@ snapshot: reusing snapshot-2026-09-04.json (4346 transactions, source notion)
   monthly-cashflow         Home (2025-01 to 2026-08, 20 months) averages S$4,200.00 in, S$2,650.00 out and S$500.00 invested, leaving S$1,050.00 a month.
   ... one line per stat ...
 
-15 stat(s) written to /Users/you/Documents/Finances/~/.kopifund/cache
+15 stat(s) written to /Users/you/.kopifund/cache
 ```
 
 Reading the results is `make stats` for the terminal, or `make serve` for the
@@ -1188,11 +1325,11 @@ in [SPEC.md](../server/analytics/SPEC.md).
 | `cpf` | CPF savings | what the yearly CPF statements hold across OA, SA and MA, who put it there (the member, the employer, the Government and interest), and cash plus investments plus CPF as a net worth |
 | `travel` | Trips | days, spend and spend per day for each trip, split by category |
 | `benchmarks-sg` | Against Singapore references | the owner's figures beside Singapore reference numbers, each with its source and as-of date |
-| `forward-view` | Forward view to the plan's last month | month-by-month cash to the plan's last month from `[plan]` in config.toml: pay segments, CPF, spending rate, investing transfer, planned trips, one-off payments |
+| `forward-view` | Forward view to the plan's last month | month-by-month cash to the plan's last month from the plan in `kopifund.db` (edited on the Plan page; `[plan]` in config.toml only until `import-notion` copies it over): pay segments, CPF, spending rate, investing transfer, planned trips, one-off payments |
 | `data-quality` | Data quality | rows with no category or payee, synthetic rows, unconverted currency, and months with gaps in coverage |
 
-**What it never does.** It writes to no Notion database: the eight are only read,
-the hub page's `Metrics` and `Months` tables are the only thing it writes back,
+**What it never does.** It writes to no Notion database but one: the eight are only read,
+the hub page's `Metrics` and `Months` tables are the only thing it writes back (and only with Notion configured),
 and every file it creates is inside `~/.kopifund/cache/`. A stat that raises is
 reported as `FAILED` and skipped, so one broken analysis does not cost the other
 fourteen. `--only` with an id that is not a stat stops before the snapshot is built
@@ -1231,7 +1368,7 @@ snapshot: wrote snapshot-2026-09-04.json (4392 transactions)
   ... one line per stat ...
   data-quality             38 of 2286 External rows have no category: S$1,380.00 out and S$0.00 in, 2.3 per cent of all-month spending S$60,000.00.
 
-15 stat(s) written to /Users/you/Documents/Finances/~/.kopifund/cache
+15 stat(s) written to /Users/you/.kopifund/cache
 hub page
   metrics: 0 created, 5 updated, 19 unchanged
   months: 0 created, 2 updated, 24 unchanged
