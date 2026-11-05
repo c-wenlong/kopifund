@@ -1,5 +1,6 @@
 """G25: `finance.py link` checks every piece `tailscale serve` needs, in
 order, and prints the fix for each missing one."""
+import isolate  # noqa: F401  first: no test writes the real record or cache
 import io
 import json
 import unittest

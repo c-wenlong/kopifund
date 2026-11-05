@@ -63,6 +63,72 @@ class PosbRollover(unittest.TestCase):
         self.assertEqual("2025-02-28", parsed.rows[-1]["date"])
 
 
+class ImpossibleRowDates(unittest.TestCase):
+    """A row date that does not exist is a misread statement: it stops the parse
+    rather than load a day like 2025-02-29 that breaks every reader after it."""
+
+    def test_29_feb_on_a_statement_after_a_non_leap_february_is_refused(self):
+        with self.assertRaisesRegex(ValueError, "29 Feb"):
+            ps.iso_date("29 Feb", "10 Mar 2025")
+
+    def test_29_feb_in_a_leap_year_reads(self):
+        self.assertEqual("2028-02-29", ps.iso_date("29 Feb", "10 Mar 2028"))
+        self.assertEqual("2028-02-29", ps.iso_date("29 Feb", "29 Feb 2028"))
+
+    def test_29_feb_rolls_back_to_the_leap_year_before_a_january_statement(self):
+        """February is after January, so on a January 2029 statement it is February 2028."""
+        self.assertEqual("2028-02-29", ps.iso_date("29 Feb", "15 Jan 2029"))
+        with self.assertRaises(ValueError):
+            ps.iso_date("29 Feb", "15 Jan 2026")            # February 2025 had 28 days
+
+    def test_a_december_row_on_a_1_january_statement_is_the_year_before(self):
+        self.assertEqual("2025-12-31", ps.iso_date("31 Dec", "01 Jan 2026"))
+        self.assertEqual("2025-12-01", ps.iso_date("01 Dec", "01 Jan 2026"))
+        self.assertEqual("2026-01-01", ps.iso_date("01 Jan", "01 Jan 2026"))
+
+    def test_days_past_the_month_end_are_refused(self):
+        for raw, statement in (("31 Apr", "30 Apr 2026"), ("30 Feb", "28 Feb 2026"), ("32 Jan", "31 Jan 2026"),
+                               ("00 Jan", "31 Jan 2026")):
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                ps.iso_date(raw, statement)
+
+    def test_a_printed_year_that_does_not_exist_is_refused(self):
+        for raw in ("29/02/2025", "31/04/2026", "00/01/2026", "15/13/2026", "15/00/2026"):
+            with self.subTest(raw=raw), self.assertRaises(ValueError):
+                ps.iso_date(raw, "31 Jan 2026")
+        self.assertEqual("2024-02-29", ps.iso_date("29/02/2024", "31 Mar 2024"))
+
+    def test_the_purchase_tag_cannot_be_an_impossible_day(self):
+        with self.assertRaisesRegex(ValueError, "29FEB"):
+            ps.purchase_date("2025-03-02", "29FEB")
+        with self.assertRaises(ValueError):
+            ps.purchase_date("2026-05-01", "31APR")
+        self.assertEqual("2028-02-29", ps.purchase_date("2028-03-02", "29FEB"))
+
+    def test_random_rows_are_real_days_in_the_twelve_months_up_to_the_statement(self):
+        import random
+        from datetime import date, timedelta
+        rng = random.Random(25)
+        names = list(ps.MONTHS)
+        for _ in range(3000):
+            stmt = date(2000, 1, 1) + timedelta(days=rng.randint(0, 12000))
+            statement = f"{stmt.day:02d} {names[stmt.month - 1]} {stmt.year}"
+            dd, mm = rng.randint(1, 31), rng.randint(1, 12)
+            year = stmt.year - (mm > stmt.month)
+            try:
+                want = date(year, mm, dd).isoformat()
+            except ValueError:
+                want = None
+            with self.subTest(row=(dd, mm), statement=statement):
+                if want is None:
+                    self.assertRaises(ValueError, ps.iso_date, f"{dd:02d} {names[mm - 1]}", statement)
+                    continue
+                got = ps.iso_date(f"{dd:02d} {names[mm - 1]}", statement)
+                self.assertEqual(got, want)
+                gap = (stmt.year * 12 + stmt.month) - (int(got[:4]) * 12 + int(got[5:7]))
+                self.assertTrue(0 <= gap < 12, gap)
+
+
 class PurchaseDates(unittest.TestCase):
     """Card rows print the purchase date as "29MAY", separate from the posting
     date, and with no year of its own."""
