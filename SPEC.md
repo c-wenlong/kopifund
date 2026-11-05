@@ -105,7 +105,17 @@ flowchart LR
   Content-Length that is not a whole number is a 400, and one over 25 MB a 413.
   The link path below gets the same headers, the same JSON on a failure and
   the same length check; its GETs are held by the device bearer instead of
-  `Sec-Fetch-Site`. The phone link ("Phone link (G25)"
+  `Sec-Fetch-Site`. The built app also carries a Content-Security-Policy in
+  `apps/web/index.html` (a meta tag, so `make serve` and the Mac app's window
+  both get it from the page itself): every script, style, font, image, fetch
+  and worker comes from the app's own origin, with `data:` and `blob:` images
+  allowed, no inline script, no plugin (`object-src 'none'`), no `<base>`, and
+  forms only to itself. Vite's dev server injects inline scripts, so
+  `vite.config.ts` drops the tag under `make dev`. The two policies split the
+  work: the meta tag owns what the page may load and run, and serve.py's
+  header owns only `frame-ancestors`, which a meta tag cannot set. A browser
+  enforces both at once, and neither names a directive the other does. The
+  phone link ("Phone link (G25)"
   below) is the only way a request reaches the API off this machine, and it
   arrives on loopback too, through `tailscale serve`. The routes are listed at the top of
   serve.py, and in it `GET_ROUTES` and `POST_ROUTES` are the one table that
@@ -1388,8 +1398,9 @@ whois` on that IP names the tailnet caller when it matters.
   (`/api/profile`, `/api/transactions`, `/api/categories`,
   `/api/overview`): the link path gates, it does not reshape answers.
   `GET /api/link/check` answers `{ok}` only to a paired, unrevoked bearer,
-  so the phone's Test says the link works rather than only that the hub
-  is up (`/api/health` answers a revoked phone too).
+  so the phone's Test (Settings, `LinkState.test`) says the link works
+  rather than only that the hub is up (`/api/health` answers a revoked
+  phone too); a 401 there reads "unpaired: pair again".
   Those reads are an allowlist (serve.py's `LINK_READS`): every other GET
   on the link path is refused 403 even with a bearer, so a lost phone,
   before it is revoked, cannot pull exports, upload steps, AI threads or
@@ -1731,6 +1742,25 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
     reach the server says it was not saved.
   - "Run the analysis" is shown only for a real 404 on a stat result. Any other
     failed load says what went wrong, with Try again.
+  - A page that fails as it draws (an answer in a shape this build does not
+    know) shows "Something on this page failed to draw." in its place, with
+    Try again, which forgets the kept answers (the one the page failed on
+    included), asks for them again and draws the page once they are back
+    (three seconds at most), so a page handed the shell's overview (Home)
+    reads the new one; the sidebar, the header and the
+    other pages keep working, and opening another page starts clean
+    (`ErrorBoundary.tsx`). Each copilot answer has its own such boundary, so a
+    part it cannot draw shows "This answer failed to draw." in its place while
+    the other answers, later replies, the History button and the box keep
+    working. Each Dashboard widget has one too: a widget that cannot draw
+    its answer shows "This widget failed to draw." on one line in its card,
+    with Try again (which asks for the answers afresh the same way), while
+    its Remove button and the rest of the board keep working.
+    Anything outside those fails to a whole-screen message with
+    Reload. Money formatters never throw while a page draws: a value that is
+    not integer cents is reported in the console and drawn rounded, or as "?"
+    when it is not a number, and a kind with no icon of its own draws a
+    generic one.
   - A card still loading is a fixed-height skeleton, so the cards below do not
     jump when its figures arrive.
   - A toast is a short message at the bottom of the screen in a polite live

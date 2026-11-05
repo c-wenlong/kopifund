@@ -1,5 +1,7 @@
 import { axisSgd, centsText, formatAmount, formatPlain, formatSgd, parseCents } from "./money";
 
+afterEach(() => vi.restoreAllMocks());
+
 describe("formatSgd", () => {
   it("formats whole dollars from cents", () => {
     expect(formatSgd(4_929_900)).toBe("S$49,299");
@@ -16,8 +18,16 @@ describe("formatSgd", () => {
     // U+2212 is a prefix character for line breaking, a hyphen is not
     expect(formatSgd(-1_200, { decimals: true })).toMatch(/^−S\$12\.00$/);
   });
-  it("refuses a float", () => {
-    expect(() => formatSgd(12.5)).toThrow(/integer cents/);
+  // Audit: a throw while a page draws blanked the app, so a bad value is said in the console and drawn as best it can be
+  it("rounds a float to whole cents and reports it, rather than throwing", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(formatSgd(1_234.6, { decimals: true })).toBe("S$12.35");
+    expect(error).toHaveBeenCalledWith(expect.stringMatching(/integer cents, got 1234.6/));
+  });
+  it("shows a question mark for what is not a number at all", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(formatSgd(NaN)).toBe("S$?");
+    expect(formatSgd(undefined as unknown as number)).toBe("S$?");
   });
 });
 
@@ -34,8 +44,10 @@ describe("formatAmount", () => {
   it("signs a negative foreign amount with the minus before the code", () => {
     expect(formatAmount(-1_200, "SEK")).toBe("−SEK 12.00");
   });
-  it("refuses a float", () => {
-    expect(() => formatAmount(12.5, "SEK")).toThrow(/integer cents/);
+  it("rounds a float to whole cents rather than throwing", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(formatAmount(12.5, "SEK")).toBe("SEK\u00a00.13");
+    expect(formatAmount(Infinity, "SEK")).toBe("SEK\u00a0?");
   });
 });
 
@@ -86,7 +98,9 @@ describe("centsText (G17)", () => {
     expect(centsText(0)).toBe("0");
     expect(centsText(-1_205)).toBe("-12.05");
   });
-  it("refuses a float", () => {
-    expect(() => centsText(12.5)).toThrow(/integer cents/);
+  it("rounds a float to whole cents and leaves the box empty for what is not a number", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(centsText(12.5)).toBe("0.13");
+    expect(centsText(NaN)).toBe("");
   });
 });
