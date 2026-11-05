@@ -777,6 +777,25 @@ describe("A series' own view, G16", () => {
     expect(within(region()).queryByText("Unsaved changes")).not.toBeInTheDocument();
   });
 
+  it("keeps a typed day with its cadence when another tab saves a cadence of the other kind", async () => {
+    let now = VIEW;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) =>
+      new Response(JSON.stringify(url.startsWith("/api/recurring/series") ? now : PAGE), { status: 200 })));
+    render(<Recurring />);
+    const head = await screen.findByRole("region", { name: "Gym" });
+    // the 20th of the month, typed
+    choose(within(head).getByRole("button", { name: "Day" }), "20");
+    // another tab makes it weekly, on Tuesdays
+    now = { ...VIEW, cadence: "weekly", day: 2, edit: { ...VIEW.edit, cadence: "weekly", day: 2 } };
+    await act(async () => notifyChanged());
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    const region = screen.getByRole("region", { name: "Gym" });
+    // the day typed is a day of the month: it stays with the monthly cadence it was typed under
+    expect(within(region).getByRole("button", { name: "How often" })).toHaveTextContent("Monthly");
+    expect(within(region).getByRole("button", { name: "Day" })).toHaveTextContent("20");
+    expect(within(region).getByText("Unsaved changes")).toBeInTheDocument();
+  });
+
   it("moves an amount typed as the saved one in other words along with another tab's save", async () => {
     let now = VIEW;
     vi.stubGlobal("fetch", vi.fn(async (url: string) =>

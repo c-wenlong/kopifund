@@ -391,6 +391,35 @@ describe("Transactions", () => {
     expect(leaveAsks()).toBe(true);
   });
 
+  it("keeps the question for a box cleared during a save, through Less and More before it lands", async () => {
+    stubFetch();
+    const answer = globalThis.fetch;
+    let release: (() => void) | null = null;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/rules/pin" && JSON.parse(String(init!.body)).note) {
+        const r = await answer(url, init);
+        return new Promise<Response>((done) => { release = () => done(r); });
+      }
+      return answer(url, init);
+    }));
+    render(<><Transactions /><Toaster /></>);
+    fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row/ }));
+    fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Donations" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Less" }));
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    // the same form, still measuring the clear against the note on its way
+    expect(screen.getByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).toHaveValue("");
+    expect(leaveAsks()).toBe(true);
+    await waitFor(() => expect(release).not.toBeNull());
+    await act(async () => release!());
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(leaveAsks()).toBe(true);
+  });
+
   it("stops asking when the category chip saves the only thing a hidden form held", async () => {
     stubFetch();
     render(<><Transactions /><Toaster /></>);

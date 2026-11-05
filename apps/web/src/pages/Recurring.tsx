@@ -547,9 +547,16 @@ const sameBox = (k: keyof Draft, a: string, b: string) => {
   const x = parseCents(a);
   return x != null && !Number.isNaN(x) && x === parseCents(b);
 };
-/** `d` moved from the values `from` to `to`: a box still holding its `from` value takes the new one, a box typed in keeps its text. */
-const follow = (d: Draft, from: Draft, to: Draft): Draft =>
-  Object.fromEntries(DRAFT_KEYS.map((k) => [k, sameBox(k, d[k], from[k]) ? to[k] : d[k]])) as Draft;
+/**
+ * `d` moved from the values `from` to `to`: a box still holding its `from` value takes the new one, a box typed in
+ * keeps its text. The day and how often go together: a day of the month is no weekday, so when only one of them
+ * would move and the day would then be read under the other kind of cadence, both keep what was typed.
+ */
+const follow = (d: Draft, from: Draft, to: Draft): Draft => {
+  const out = Object.fromEntries(DRAFT_KEYS.map((k) => [k, sameBox(k, d[k], from[k]) ? to[k] : d[k]])) as Draft;
+  const dayUnder = out.day === d.day ? d.cadence : to.cadence;
+  return sameKind(out.cadence, dayUnder) ? out : { ...out, cadence: d.cadence, day: d.day };
+};
 const sameKind = (a: string, b: string) => BY_WEEKDAY.includes(a) === BY_WEEKDAY.includes(b);
 const dayOptions = (c: string) => (BY_WEEKDAY.includes(c)
   ? WEEKDAYS.map((w, i) => ({ value: String(i + 1), label: w }))
