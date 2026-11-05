@@ -91,7 +91,21 @@ flowchart LR
   binds `127.0.0.1:8770` only, serves the built app from `apps/web/dist`, answers
   `/api/*` with JSON. Every write is a POST that must carry the header
   `X-Kopifund: 1` and, when the browser sends one, an Origin on this machine,
-  so a page on another site cannot write. The phone link ("Phone link (G25)"
+  so a page on another site cannot write. An `/api/` GET whose
+  `Sec-Fetch-Site` header names another site (`cross-site` or `same-site`) is
+  refused with a 403, so another page cannot start one of the GETs that run a
+  command or call a provider, or learn from a 200 or 404 what exists; the app's
+  own page, a typed address and a client that sends no such header are answered.
+  Every response carries `X-Frame-Options: DENY`,
+  `Content-Security-Policy: frame-ancestors 'none'` and
+  `X-Content-Type-Options: nosniff`, so no other site can frame the app. A
+  request that raises what its route did not expect still gets JSON: a 503
+  "the record is busy" when SQLite stayed locked, otherwise a 500 with a
+  sentence and no detail, while the traceback goes to the server's stderr. A
+  Content-Length that is not a whole number is a 400, and one over 25 MB a 413.
+  The link path below gets the same headers, the same JSON on a failure and
+  the same length check; its GETs are held by the device bearer instead of
+  `Sec-Fetch-Site`. The phone link ("Phone link (G25)"
   below) is the only way a request reaches the API off this machine, and it
   arrives on loopback too, through `tailscale serve`. The routes are listed at the top of
   serve.py, and in it `GET_ROUTES` and `POST_ROUTES` are the one table that
@@ -605,7 +619,10 @@ model and a load never waits on the network.
   `XAI_API_KEY`, ...) or `<PROVIDER>_API_KEY` in the environment, `.env` in
   the data folder, or a `key_file` such as the one a shell profile sources.
   Test on the card sends one short request and says whether the provider
-  answered. No test ever writes to the Keychain.
+  answered. No test ever writes to the Keychain. The key goes in a header
+  to the provider's own URL and nowhere else: a redirect is refused, not
+  followed with the key, and a provider error that repeats a key is shown
+  with it taken out.
 - **Model fields autocomplete** from the provider's own list of models
   (Anthropic's `GET /v1/models`, or `GET <base_url>/models` for an
   OpenAI-style provider), fetched by the server with the saved key, so the
@@ -641,7 +658,12 @@ changes the record.
   formats are spoken: Anthropic's `tool_use` blocks and the OpenAI-style
   `tool_calls`. The server answers with one line of JSON per event as it
   happens (the thread, each round's steps, then the answer with its charts,
-  links and cards), so the steps show while the model works.
+  links and cards), so the steps show while the model works. A tool call
+  whose arguments do not fit its schema (a list where a string goes) goes
+  back to the model as a tool error saying so, for it to call again; it never
+  ends the answer. Every stream ends with a `done` line, after an `error`
+  line when anything failed, the record not opening or the turn not saving
+  included.
 - **Steps.** Each answer shows its steps in order above the answer, every
   row collapsed until pressed: "Thought" (a round's summarized thinking,
   quiet, under a rule), "Used 2 tools" (the tools of one round, or of rounds
@@ -736,6 +758,8 @@ changes the record.
 - **Confirm cards** (the last G22 line). The model can suggest a rule, a
   row's category, a budget or a trip. The panel shows it as a card with the
   change and its preview (a rule lists the rows it would change), and the
+  card shows every field Confirm saves (a row's card names the payee it
+  would set, a new trip's card its notes). The
   existing write endpoint saves it only when the owner presses Confirm, with
   an Undo toast. Rules, a row's category and trips already have Undo. A
   budget card carries no undo of its own (`undo` is null), since the amount
@@ -947,9 +971,11 @@ them. Amounts are integer cents.
     (`10y`, `20y`, `30y` or `65`), today's or future dollars, spending a month
     (`spend_minor`) and a milestone (`milestone_minor`). Rates are stored as
     decimal text. Empty spending spends
-    the record's own average over its last 12 months
-    (`server/finance/spending.py`, `monthly_average`, the same spending definition as
-    the Spending explorer), which the box shows as its hint.
+    the record's own average over the full months among its last 12, ending at
+    its last full month (`server/finance/spending.py`, `monthly_average`, the same
+    spending definition as the Spending explorer and the same full months as
+    every stat, so a month that has only just begun, or one loaded since the
+    stats last ran, never counts as a whole one), which the box shows as its hint.
   - Every field is checked on save (`server/finance/planning.py`, `clean_plan`) and a
     refusal names it: "Income row 2 (Acme): the to date is before the from
     date", "Investing step 1: from is a month", "Inflation is between -10 and
@@ -1209,7 +1235,7 @@ this, and a figure kept from before a write is never shown after it.
 | Icons | lucide-react | Outline icons that match the sidebar mockup |
 | Calendar | react-day-picker 9 | The browser's own date picker is not styleable and differs per browser; this one draws the month grid, with the app's tokens, and leaves the box and the popover to `DateField` and `MonthField` |
 | Font | Inter, bundled with the app | One sans face everywhere, cached for offline use |
-| PWA | vite-plugin-pwa | Manifest and service worker; `/api` is never served from the cache |
+| PWA | vite-plugin-pwa | Manifest and service worker; `/api` is never served from the cache, and a page is always asked of the server (this build's precached `index.html` answers any page only when the server does not, so the app still opens offline, and no page an older build saved is ever served), so a new build shows on the first open after it; a page an older worker served reloads once the new worker takes over |
 | Tests | Vitest and Testing Library | Same config as the build |
 | Desktop (G23) | Tauri 2 | A 7 MB shell over the Mac's own WebKit that runs `serve.py` as a sidecar; Electron would add its own Chromium and an unused Node, and a Swift app would mean redrawing every page |
 
@@ -1249,11 +1275,21 @@ terminal and a browser tab. `apps/desktop/` holds a Tauri v2 shell; nothing in
 - **The starting page** ([apps/desktop/ui](apps/desktop/ui)) shows while the server
   starts, in the page colour of `apps/web/src/index.css`. If the server stops
   before or after its ready line, the window goes back to it with the
-  server's last 40 lines and a Retry button.
+  server's last 40 lines and a Retry button. A start has 45 seconds to print
+  its ready line: a profile line that waits for input, or a Python that hangs
+  before it listens, would otherwise leave the page on "Starting" for good, so
+  the shell kills the server and says it did not start. A start that takes
+  over five seconds shows what the server has printed so far. If the checkout
+  the app was built from is gone, the page says so and names it instead of
+  trying. Stopping the old server on Retry runs off the main thread, so the
+  window never freezes.
 - **The window** loads the page from the sidecar's address, so the page and
   `/api` share one origin and `serve.py`'s Origin and Host checks hold as they
   are. The shell adds no API of its own to the page. The service worker is not
-  registered inside the app, since the sidecar is always there.
+  registered inside the app, since the sidecar is always there:
+  `apps/web/src/serviceWorker.ts` registers it only outside the window (Tauri's
+  `__TAURI_INTERNALS__` or the fixed port 8771 marks the window) and removes
+  one an older build registered there.
 - **Drops and links.** Tauri's own drop handler is off (`dragDropEnabled:
   false`), so WebKit hands drops to the page as Safari does: PDFs dropped on
   Upload's drop area queue there, and in-page drags such as the Categories
@@ -1262,12 +1298,18 @@ terminal and a browser tab. `apps/desktop/` holds a Tauri v2 shell; nothing in
   window, a link to another site opens in the default browser, and anything
   else is refused, so a file dropped beside the drop area never replaces the
   app with the file.
+- **Downloads.** WebKit cancels any download a window has no handler for, so
+  the shell installs one: a file the server hands out (Settings' exports) is
+  saved to the Downloads folder under its own name (a free one if that is
+  taken) and shown in Finder once saved. A download from another site is
+  refused.
 - **One instance.** A second launch brings the open window forward. Quitting
   the app stops the server. The window keeps its size and place.
-- **Mac behaviour.** The standard menus (Edit for copy and paste, View for
-  reload, back and forward, Window), Cmd+, for Settings, PDFs dropped on the
-  window or the Dock icon queued on Upload, and links to other sites opened in
-  the default browser.
+- **Mac behaviour (planned, ROADMAP G23 line 3, not built yet).** Menus
+  of its own (View for reload, back and forward), Cmd+, for Settings, and
+  PDFs dropped on the Dock icon opening Upload with them queued. Today the
+  window has Tauri's default menu only; drops on the window and links to
+  other sites work as "Drops and links" above says.
 - **Where it runs from.** Until G23's self-contained line, the app runs
   `serve.py` from the checkout it was built from, with Homebrew's `python3`
   and `pdftotext`, against the same data folder as `make serve`.
@@ -1275,8 +1317,11 @@ terminal and a browser tab. `apps/desktop/` holds a Tauri v2 shell; nothing in
   named) under `~/Library/Application Support/Kopifund/builds` instead, so
   the app in `/Applications` keeps serving that version while the checkout
   changes branch; each build replaces the last, older copies are deleted, and
-  one Rust cache (`~/Library/Caches/Kopifund/cargo-target`) keeps rebuilds
-  quick. The later
+  one Rust cache (`~/Library/Caches/Kopifund/cargo-target`, shared with `make
+  desktop` and `make check`) keeps rebuilds quick. `build_macos.sh` and `make
+  desktop` take one build lock, since they share its bundle folder, and both
+  copy the new app beside the old one and swap it in, so a failed copy leaves
+  the old app. The later
   lines bundle Python and `pdftotext`, sign and notarise the app, add updates
   from GitHub Releases, and build for Windows.
 
@@ -1407,7 +1452,11 @@ grid of fixed rows. A widget is dragged by the grip in its header and resized
 from its corner; the same moves work from the keyboard, arrows on the grip
 shifting the widget a cell or past its neighbour and arrows on the corner
 growing or shrinking it. Every move is repacked by `layout.ts`'s `pack`, which
-settles each widget as high as it fits, so no hole stays; a widget's height
+settles each widget as high as it fits, so no hole stays. A drop settles
+the board its drag previewed (`settle`: the moved widget pinned to its cell,
+what it lands on pushed below it, then everything as high as it fits), so a
+widget dropped onto another's cell lands above it, as the preview showed; a
+widget's height
 is bounded (`MAX_H`), so a stray saved size cannot stall the page. A change
 writes the layout back through `POST /api/dashboard/layouts/<id>` after a
 short debounce, so nothing waits on a Save. Under 768px the same widgets stack in one column in
@@ -1428,7 +1477,9 @@ its month) and optional `filters`, which are Transactions' own filter names
 `account` by its id, `home`, `trip`, `scope`). `POST /api/dashboard/query`
 takes the query as its body; `GET /api/dashboard/query?q=` takes it as JSON in
 the address, so a widget loads through `useApi`'s cache and ETag like a page
-(`useWidgetData`, `apps/web/src/widgets.ts`). An unknown source, metric,
+(`useWidgetData`, `apps/web/src/widgets.ts`, which writes the query's keys in
+one order so one question is one address). A query copies only the stat
+results it reads (`results_cache.results_view`), not every stat's. An unknown source, metric,
 dimension or filter is a 4xx with the names it takes, never a blank chart.
 
 The answer (`WidgetAnswer`) is `labels`, `series` (one per name when a
@@ -1446,7 +1497,14 @@ leaves out the shown names on top of any the query's own filters left out.
 dimension and split to the rows its link lists and holds the two to the cent. Money comes back under `values_minor`,
 integer cents with unit `sgd_minor`; anything else under `values` with its own
 unit (`months`, `fraction`, `percent`, the two share scales kept apart as
-they are everywhere).
+they are everywhere). A `spending` answer by month lists in `partial` the
+months the monthly-cashflow stat calls partial (a bank has not printed them
+yet): a KPI reading the latest month steps over them as Home's tiles do, so
+half a month is never set against a whole one. A pie or treemap draws a share
+of a whole, so it leaves out a part at or below zero (a bucket whose refunds
+passed its spending) rather than draw it into the total, and the flow widget
+draws one "Everything else" under a bucket, holding the answer's own folded
+row with whatever else its refunds pushed out.
 
 **The sources** (`server/finance/dashboard.py`, `_CATALOGUE`): `spending`
 reads the record's `v_txn` with the Spending explorer's own WHEREs and its
@@ -1470,8 +1528,16 @@ the app icon and AI settings do, so no schema change was needed. Layouts
 save the widget list whole with the active layout's id. Goals (`GET/POST
 /api/dashboard/goals`, `POST /api/dashboard/goals/remove`) hold a
 `target_minor`, an optional month and `milestones`, and an optional `binding`,
-the money-metric query whose last figure is `current_minor`; the endpoint
-answers it resolved as `progress`, a fraction of target. The allocation
+the query whose last figure is `current_minor`; the endpoint answers it
+resolved as `progress`, a fraction of target. A binding names a balance over
+time (`dashboard.GOAL_LEVELS`: net worth or its parts by month, savings-runway
+cash, CPF by year, a portfolio's value by period): a flow's last month is
+usually still running, a slice is no amount a goal reaches, and a
+projection's last figure is the future. A goal saved before with another
+binding reads as unbound and can still be edited. Each state write reads what it
+changes and writes it in one transaction, so a save from another tab waits
+rather than being lost, and the server stamps a layout's `updated_at` itself
+(a list write keeps the stamp of a layout it sends back unchanged). The allocation
 template (`GET/POST /api/dashboard/allocation?month=`) plans each spend
 bucket's cents a month and answers the template beside a month's actuals:
 income, per-bucket planned and actual, the actuals counted over every
@@ -1489,8 +1555,15 @@ Dashboard open in a second window never edits a board this one changed.
 first components bound to the query layer: a time series of one or more
 series over the answer's labels, a stacked area with the Net worth page's
 Stacked / Lines / Total switch (the choice remembered per widget instance),
-and a waterfall bridging a balance's first figure to its last through one
-step per flow series, inflows first. Each is config-driven: its config names
+and a waterfall bridging a balance through one step per flow series, inflows
+first. A balance figure is a month's close, so the bridge opens on the close
+of the month before the flows' first month (the widget asks for the balance
+from then) and closes on their last month's; each step sums its series over
+the months between, so flows that cover every way the balance moves land
+exactly on the closing figure. With no close before the flows (the record's
+first month) it opens on the first figure and leaves that month's flows out.
+Its default names no month: the flows cover the record's last twelve months.
+Each is config-driven: its config names
 the series' queries and an optional range a query without its own inherits,
 so a dashboard-level filter can move every series at once. A point's dot or
 a step's bar opens the Transactions rows it lists when the answer carried
@@ -1590,7 +1663,9 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   `--scrim` token, Escape or the backdrop closes it, the focus moves in, stays
   in and goes back to the button that opened it, and the page behind is inert.
   With reduced motion it appears without sliding. A page with unsaved edits
-  (Net worth's inputs, Plan, Settings' scam checks, Profile's date of birth)
+  (Net worth's inputs, Plan, Settings' scam checks and AI card, Profile's date of birth, a
+  recurring series' form, a rule open in Rules' editor, a row's own form on Transactions or
+  under Needs a rule, and Upload while a PDF waits for its account or an upload runs)
   holds any move away, a sidebar or page link, `navigate`, or the browser's
   Back and Forward: a bar at the top of the page asks "Leave without saving?"
   with Keep editing, which stays, and Leave, which goes on. Saving or
@@ -1599,7 +1674,9 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   a Sheet with unsaved edits asks the same in its foot before it closes.
   Unsaved means typed on this page: a save from another tab moves a form
   nobody touched along with it and leaves it saved, keeps whatever was typed,
-  and a box typed back to its saved value counts as untouched. On a phone the
+  and a box typed back to its saved value counts as untouched. A save keeps
+  what was typed while it was on its way: the boxes it covered show what was
+  saved, and one changed meanwhile stays an edit, even back to the old value. Leaving while such a save is on its way asks too, since it may still fail. On a phone the
   question closes the menu as it comes up, so its buttons can be reached.
 - **Shared states** (`apps/web/src/components/States.tsx`, `ServerBanner.tsx`,
   `Toast.tsx`). Each page names the browser tab ("Spending, Kopifund").

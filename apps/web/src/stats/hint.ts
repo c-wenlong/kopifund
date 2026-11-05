@@ -1,6 +1,6 @@
 // G5: how a stat's result JSON becomes a chart. Every card reads its `chart`
 // hint the same way. Units: "percent" is a number already scaled to 0-100
-// (gain_pct 18.7), "fraction" is a ratio shown x100 (share 0.3, change_pct 0.25).
+// (gain_pct 18.7), "fraction" is a ratio shown x100 (share 0.3, change_share 0.25).
 // G20: money is "sgd_minor", integer cents in a field named `<name>_minor`,
 // and nothing else is money: a bare number is written as the plain number it is.
 import { formatDate, isoParts, MONTHS } from "../dates";
@@ -252,18 +252,14 @@ export function fmt(v: unknown, unit = "number", full = false): string {
   return plain.format(v);
 }
 
-// category-breakdown writes a ratio under a _pct name (change / prior, 0.25 for +25%).
-const FRACTION_PCT = new Set(["change_pct"]);
-
 /**
  * The percent unit a column name implies, or null. Scaled names (gain_pct,
- * share_pct) are "percent"; ratio names (share, need_share, change_pct) are
+ * share_pct) are "percent"; ratio names (share, need_share, change_share) are
  * "fraction". The name decides, never the size of the value, so 0.45 and 45
  * both read right in their own column.
  */
 export function percentUnitFor(column: string): "percent" | "fraction" | null {
   const k = column.toLowerCase();
-  if (FRACTION_PCT.has(k)) return "fraction";
   if (/(^|_)(pct|percent)(_|$)/.test(k)) return "percent";
   if (/share/.test(k)) return "fraction";
   return null;

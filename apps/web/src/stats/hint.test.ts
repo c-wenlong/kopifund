@@ -59,7 +59,9 @@ describe("chart hints", () => {
     expect(percentUnitFor("share")).toBe("fraction");
     expect(percentUnitFor("need_share")).toBe("fraction");
     expect(percentUnitFor("share_of_month")).toBe("fraction");
-    expect(percentUnitFor("change_pct")).toBe("fraction");
+    expect(percentUnitFor("change_share")).toBe("fraction");
+    // the name decides: a `_pct` column is always already a percent
+    expect(percentUnitFor("change_pct")).toBe("percent");
     expect(percentUnitFor("gain_pct")).toBe("percent");
     expect(percentUnitFor("share_pct")).toBe("percent");
     expect(percentUnitFor("cumulative_share_pct")).toBe("percent");

@@ -6,8 +6,20 @@
 import { useApi, postJSON, type Loaded } from "./api";
 import type { ScenarioPreview, WidgetAnswer, WidgetQuery } from "./types.gen";
 
+/**
+ * A query as JSON with its keys in one order at every depth, so two spellings
+ * of one question (a saved layout's order, a config's) are one address: one
+ * cache entry, one ETag, one request.
+ */
+export function canonicalJson(value: unknown): string {
+  return JSON.stringify(value, (_key, v: unknown) =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(Object.keys(v).sort().map((k) => [k, (v as Record<string, unknown>)[k]]))
+      : v);
+}
+
 export function widgetQueryUrl(query: WidgetQuery): string {
-  return `/api/dashboard/query?q=${encodeURIComponent(JSON.stringify(query))}`;
+  return `/api/dashboard/query?q=${encodeURIComponent(canonicalJson(query))}`;
 }
 
 /** A widget's answer to its query: the kept one at once, then the server's. */

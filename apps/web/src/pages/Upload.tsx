@@ -7,7 +7,7 @@ import {
 import type { Bank } from "../accounts";
 import { formatDateTime } from "../dates";
 import { accounts, findAccount, flag, type Account } from "../accounts";
-import { onLinkClick } from "../router";
+import { onLinkClick, useUnsavedGuard } from "../router";
 import { seedFrom, stepStates } from "../uploadState";
 import { BankMark } from "../components/BankMark";
 import { Button, buttonClass } from "../components/Button";
@@ -131,6 +131,10 @@ export function UploadPage() {
       });
     }
   }
+
+  // G18: a PDF waiting for its account is held in this page only, and an upload in progress stops with it:
+  // leaving asks first
+  useUnsavedGuard(busy === "upload" || uploads.some((u) => u.status === "needs-account"));
 
   if (status.loading) return <Loading what="Loading your statement folders" />;
   if (status.error || !status.data) return <Problem message={status.error ?? "No status"} retry />;

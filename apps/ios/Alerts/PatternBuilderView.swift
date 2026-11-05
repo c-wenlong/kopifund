@@ -2,6 +2,12 @@ import SwiftUI
 import SwiftData
 import Storage
 import Matching
+import os
+
+/// "Open builder" in Instruments' os_signpost track: from the first
+/// tokenize to the first laid-out document, so a slow open on a long alert
+/// is a number, not a feeling.
+private let signposter = OSSignposter(subsystem: "com.kopifund.alerts", category: "PatternBuilder")
 
 /// G24: the key screen, rebuilt around confirmation. The alert stays a
 /// readable document; detected fields arrive pre-tagged, weaker guesses stay
@@ -35,7 +41,12 @@ struct PatternBuilderView: View {
     @State private var accountOptions: [(String, String)] = []
     @State private var categoryOptions: [(String, String)] = []
 
-    private var tokens: [Token] { Tokenizer.tokenize(sampleText) }
+    // tokenized once per alert text, not per access: as a computed property
+    // every render re-tokenized the alert once per word, so a 4 KB email
+    // froze for many seconds on open and on every tap
+    @State private var tokens: [Token] = []
+    @State private var preparedText: String?
+    @State private var openInterval: OSSignpostIntervalState?
     private var spans: [PatternBuilder.Span] { PatternBuilder.spans(from: tags, tokens: tokens) }
     private var built: AlertPattern? { try? builtPattern() }
 
@@ -92,10 +103,14 @@ struct PatternBuilderView: View {
         // one confident guess per field becomes a pre-tag, ranked so "to
         // MERCHANT" beats "from BANK"; tokens an earlier candidate already
         // claimed stay with it ("ACME USD" must not eat "USD 4.80")
-        for field in [PatternBuilder.Field.amount, .payee, .date] {
+        for field in [PatternBuilder.Field.amount, .payee, .date, .account] {
             if let c = cands.filter({ $0.field == field && $0.confident })
                 .min(by: { $0.rank < $1.rank }) {
+                let before = tags
                 for i in c.tokenIndexes where tags[i] == nil { tags[i] = c.field }
+                // a card printed right against the payee cannot border it;
+                // that guess stays a dashed suggestion, not a broken pattern
+                if field == .account, cardCannotBorder() { tags = before }
             }
         }
         for c in cands {
@@ -104,6 +119,40 @@ struct PatternBuilderView: View {
             }
         }
         selected = nextMissingField() ?? .amount
+    }
+
+    /// The work that depends only on the alert text runs once per text.
+    /// `onAppear` fires again on every return to the tab, and re-running
+    /// detection there would restore pre-tags the user had removed.
+    private func prepare() {
+        guard preparedText != sampleText else { return }
+        preparedText = sampleText
+        openInterval = signposter.beginInterval("Open builder", id: signposter.makeSignpostID(),
+                                                "\(sampleText.count) chars")
+        tokens = Tokenizer.tokenize(sampleText)
+        tags = [:]
+        suggestions = [:]
+        applyCandidates()
+        dimmed = AlertText.boilerplateTokenIndexes(in: sampleText, tokens: tokens)
+        // nothing tappable lays out no atom, so no frame would end the
+        // interval: a blank paste ends it here
+        if !tokens.contains(where: \.isTappable), let open = openInterval {
+            signposter.endInterval("Open builder", open, "0 atoms")
+            openInterval = nil
+        }
+    }
+
+    private func cardCannotBorder() -> Bool {
+        do {
+            // the same build Save runs: only the card-beside-a-wildcard
+            // refusal undoes the pre-tag
+            _ = try builtPattern()
+            return false
+        } catch PatternBuilder.BuildError.wildcardBesideCard {
+            return true
+        } catch {
+            return false
+        }
     }
 
     private func spanText(for indexes: [Int]) -> String {
@@ -158,6 +207,10 @@ struct PatternBuilderView: View {
         }
         .navigationTitle("New pattern")
         .toolbar { progressBadge }
+        // the floating tab bar stacked under the dock and the Save button
+        // and together they hid a quarter of the screen; the builder is a
+        // task with its own way out, so the tabs step aside
+        .toolbar(.hidden, for: .tabBar)
         .safeAreaInset(edge: .bottom) { dock }
         .onChange(of: tags) {
             // a re-tagged payee renames the pattern too, until the name
@@ -169,9 +222,9 @@ struct PatternBuilderView: View {
             runTest()
         }
         .onChange(of: testText) { runTest() }
+        .onChange(of: sampleText) { prepare() }
         .onAppear {
-            applyCandidates()
-            dimmed = AlertText.boilerplateTokenIndexes(in: sampleText, tokens: tokens)
+            prepare()
             loadAccounts()
             loadCategories()
             if sourceMatch.isEmpty, let s = source { sourceMatch = s }
@@ -223,7 +276,13 @@ struct PatternBuilderView: View {
         .clipShape(RoundedRectangle(cornerRadius: 14))
         .coordinateSpace(name: "doc")
         .simultaneousGesture(dragToTag)
-        .onPreferenceChange(AtomFramesKey.self) { atomFrames = $0 }
+        .onPreferenceChange(AtomFramesKey.self) { frames in
+            atomFrames = frames
+            if !frames.isEmpty, let open = openInterval {
+                signposter.endInterval("Open builder", open, "\(frames.count) atoms")
+                openInterval = nil
+            }
+        }
     }
 
     /// Each atom reports its frame keyed by its FIRST token index. Token
