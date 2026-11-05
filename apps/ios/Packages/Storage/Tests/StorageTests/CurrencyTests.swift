@@ -66,8 +66,8 @@ private func row(_ currency: String?, state: String = "approved") -> Transaction
 @Test func postingInThePlanCurrencyReleasesAHeldRow() {
     let r = row("JPY")
     _ = r.checkCurrency(against: "SGD")
-    r.amountCents = 1100
-    r.postInPlanCurrency("SGD")
+    r.postInPlanCurrency("SGD", amountCents: 1100)
+    #expect(r.amountCents == 1100)
     #expect(r.currency == "SGD")
     #expect(r.state == "approved")
     #expect(r.syncError == nil)

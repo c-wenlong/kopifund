@@ -94,8 +94,11 @@ extension TransactionRecord {
     }
 
     /// The owner entered the plan-currency figure for a held foreign spend:
-    /// the row now counts in the plan's currency and joins the queue.
-    public func postInPlanCurrency(_ planCurrency: String) {
+    /// the row takes that amount, counts in the plan's currency and joins
+    /// the queue. The figure is required, so the foreign amount can never
+    /// post unchanged under the plan's code.
+    public func postInPlanCurrency(_ planCurrency: String, amountCents: Int) {
+        self.amountCents = amountCents
         currency = planCurrency
         syncError = nil
         state = "approved"

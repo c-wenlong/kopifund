@@ -152,8 +152,9 @@ matched and tap **Not a duplicate** if two real charges tripped the rule.
 A spend in another currency never posts as the plan's. Each sync reads the
 YNAB plan's currency; a row that printed a different one ("USD 12.00", or a
 Wallet tap whose shortcut passes Currency JPY) goes back to review with the
-reason on it, and nothing converts it. Open it, change Amount to the plan's
-figure and tap **Post in SGD** (the plan's code). A row whose source printed
+reason on it, and nothing converts it. Open it, type what it cost in the
+plan's currency under **Amount in SGD** (the plan's code) and tap **Post in
+SGD**; the button stays off until a figure is typed. A row whose source printed
 no currency counts in the plan's. The bundled Wallet shortcut does not pass a
 currency yet, so its taps count in the plan's currency; add the Currency
 field to the Ingest Wallet Transaction action to pass one.

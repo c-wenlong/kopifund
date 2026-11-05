@@ -8,6 +8,8 @@ struct TransactionDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("planID") private var planID = ""
     @State private var categoryOptions: [(id: String, label: String)] = []
+    /// The plan-currency figure the owner types for a held foreign spend.
+    @State private var converted: Double?
 
     var body: some View {
         Form {
@@ -104,17 +106,26 @@ struct TransactionDetailView: View {
                 // G24 audit: a foreign spend never posts as the plan's
                 // currency on its own; the owner types the converted figure
                 Section {
+                    HStack {
+                        Text("Amount in \(plan)")
+                        Spacer()
+                        TextField("Required", value: $converted, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                    }
                     Button("Post in \(plan)") {
-                        row.postInPlanCurrency(plan)
+                        guard let cents = convertedCents else { return }
+                        row.postInPlanCurrency(plan, amountCents: cents)
                         try? context.save()
                         Task { await SyncService.flush(context: context) }
                         dismiss()
                     }
+                    .disabled(convertedCents == nil)
                 } header: {
                     Text("Different currency")
                 } footer: {
                     Text("This spend is in \(row.currency) and the YNAB plan keeps \(plan). "
-                       + "Change Amount to the \(plan) figure first, then post it.")
+                       + "Type what it cost in \(plan), then post it.")
                 }
             } else if let err = row.syncError {
                 Section("Sync error") { Text(err).foregroundStyle(.red) }
@@ -168,6 +179,13 @@ struct TransactionDetailView: View {
     private func money(_ r: TransactionRecord) -> String {
         let sign = r.direction == "outflow" ? "-" : "+"
         return "\(sign)\(r.currency) \(String(format: "%.2f", Double(r.amountCents) / 100))"
+    }
+
+    /// The typed plan-currency figure as cents, nil until a positive one
+    /// is entered; the post button stays off until then.
+    private var convertedCents: Int? {
+        guard let c = converted, c.isFinite, c > 0, c < 1_000_000_000_000 else { return nil }
+        return Int((c * 100).rounded())
     }
 
     private var centsBinding: Binding<Double> {
