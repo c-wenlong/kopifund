@@ -464,7 +464,7 @@ default buckets (`category_groups`) and each category's own
   not fit (a phone, or eleven buckets on a laptop): the end that has more tabs
   past it fades out and shows a small arrow that scrolls that way, and an end
   with nothing past it shows neither. The tab is kept in the address (`?bucket=`, so a link
-  opens it, and the address wins) and in this browser; a name no bucket has
+  opens it, even while the page is open, and the address wins) and in this browser; a name no bucket has
   opens the first. Adding a bucket opens its tab, renaming one keeps its tab,
   and deleting one opens the bucket its categories went to. The row is a
   `Tabs` component (tablist, tab and tabpanel roles, arrows, Home and End).
@@ -2616,7 +2616,8 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   (`Combobox`) takes the highlighted option when you Tab or click away from
   half-typed text, and puts the last choice back only when no option contains
   what was typed. The search text, the view, the filters and the page are kept in the address
-  (`?q=`, `?view=order`, `?show=`, `?category=`, `?page=`), so a reload or Back lands where you were, and an edit in
+  (`?q=`, `?view=order`, `?show=`, `?category=`, `?page=`) and read from it, so a reload or Back lands where you were,
+  a link to the bare `/rules` while the page is open shows every rule, and an edit in
   progress survives the window crossing 768px.
 - **Type.** Sans serif only, never a mono font. Figures use tabular numerals so
   columns of money line up.
