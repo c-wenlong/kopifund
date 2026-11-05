@@ -78,6 +78,16 @@ enum LiteralPattern {
         }.joined(separator: #"\s+"#)
     }
 
+    /// A month name in any case ("Oct", "OCT", "oct"), with sentence
+    /// punctuation after it ignored: the builder drops one left at an edge
+    /// cut, where it would otherwise anchor the sample's month.
+    static func isMonthName(_ word: String) -> Bool {
+        let bare = word.trimmingCharacters(in: CharacterSet(charactersIn: ".,;:!?()"))
+        return monthsLower.contains(bare.lowercased())
+    }
+
+    private static let monthsLower = Set(months.map { $0.lowercased() })
+
     private static let months: Set<String> = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",
         "Sep", "Sept", "Oct", "Nov", "Dec",
