@@ -87,8 +87,9 @@ public enum Matcher {
     /// takes, so the builder's live test never says yes where a run says no.
     public static func test(_ pattern: AlertPattern, text: String,
                             receivedAt: Date = Date(),
-                            zone: TimeZone = .current) -> Result<ParsedTransaction, MatchError> {
-        apply(pattern, to: text, receivedAt: receivedAt, zone: zone, arrivedOn: nil)
+                            zone: TimeZone = .current,
+                            arrivedOn: CalendarDate? = nil) -> Result<ParsedTransaction, MatchError> {
+        apply(pattern, to: text, receivedAt: receivedAt, zone: zone, arrivedOn: arrivedOn)
     }
 
     // MARK: - regex

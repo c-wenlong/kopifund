@@ -87,7 +87,8 @@ struct AlertView: View {
                 }
 
                 NavigationLink {
-                    PatternBuilderView(sampleText: record.text, source: record.source) {
+                    PatternBuilderView(sampleText: record.text, source: record.source,
+                                       arrivedOn: record.arrivedOn) {
                         didSave = true
                         Task { onFinished(await reIngestAndRemove()) }
                     }
