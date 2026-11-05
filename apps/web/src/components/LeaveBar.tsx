@@ -29,6 +29,12 @@ export function sheetOpened(sheet: object): () => void {
 
 export const topSheet = top;
 
+/** For tests: no Sheet open. */
+export function resetSheets() {
+  sheets.length = 0;
+  watchers.forEach((w) => w());
+}
+
 export function LeaveBar({ owner = null }: { owner?: object | null }) {
   const asked = useLeaveAsked();
   const shownHere = useSyncExternalStore(subscribe, top) === owner;
