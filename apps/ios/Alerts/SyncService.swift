@@ -216,13 +216,16 @@ final class HubLane {
                 || $0.kopifundError != nil || $0.kopifundID != nil }))) ?? []
     }
 
-    /// Every row the hub is owed, before the YNAB run starts. The rows are
-    /// fetched again before each one: the fetch refreshes a row an intent
-    /// changed on disk while an earlier send was out (a Wallet capture
-    /// parked as a duplicate must not post), and `prepare` takes each row
-    /// once, so the loop ends.
+    /// Every row the hub is owed, before the YNAB run starts. The candidates
+    /// are gathered once, and each is fetched again just before its turn:
+    /// the fetch refreshes a row an intent changed on disk while an earlier
+    /// send was out (a Wallet capture parked as a duplicate must not post).
+    /// A row approved after this point reaches `prepare` through the YNAB
+    /// run's `beforeSend`.
     func sendOwed(context: ModelContext) async {
-        while let row = Self.owedRows(context).first(where: { !done.contains($0.id) }) {
+        for id in Self.owedRows(context).map(\.id) where !done.contains(id) {
+            guard let row = (try? context.fetch(FetchDescriptor<TransactionRecord>(
+                predicate: #Predicate { $0.id == id })))?.first else { continue }
             await prepare(row, context: context)
         }
     }
