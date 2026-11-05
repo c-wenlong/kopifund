@@ -8,7 +8,9 @@ public struct ParsedTransaction: Equatable, Sendable {
     /// post time. (A kept minus used to be negated again for an outflow, so
     /// "-S$4.50" posted as money in.)
     public var amount: Decimal
-    public var date: Date
+    /// The calendar date the alert printed, or the day it arrived (in the
+    /// phone's zone then) when it printed none. Never an instant.
+    public var date: CalendarDate
     public var direction: AlertPattern.Direction
     public var accountHint: String?
     /// The currency the amount printed, nil when the alert printed none.
@@ -21,7 +23,7 @@ public struct ParsedTransaction: Equatable, Sendable {
     public var source: String?
     public var receivedAt: Date
 
-    public init(payee: String, amount: Decimal, date: Date, direction: AlertPattern.Direction,
+    public init(payee: String, amount: Decimal, date: CalendarDate, direction: AlertPattern.Direction,
                 accountHint: String?, currency: String? = nil, patternID: UUID, patternName: String,
                 alertText: String, source: String?, receivedAt: Date) {
         self.payee = payee
@@ -54,8 +56,12 @@ public enum MatchOutcome: Equatable, Sendable {
 public enum Matcher {
 
     /// Highest priority pattern wins. Rejections are listed in priority order
-    /// too, so the most likely pattern's reason reads first.
+    /// too, so the most likely pattern's reason reads first. `zone` is where
+    /// the phone was when the alert arrived: it decides which day `receivedAt`
+    /// falls on, for an alert that prints no date or no year. `arrivedOn`,
+    /// when known (a re-read of a saved alert), is that day already and wins.
     public static func match(text: String, source: String?, receivedAt: Date,
+                             zone: TimeZone = .current, arrivedOn: CalendarDate? = nil,
                              patterns: [AlertPattern]) -> MatchOutcome {
         var rejections: [Rejection] = []
         for p in patterns.sorted(by: { $0.priority > $1.priority }) {
@@ -65,7 +71,7 @@ public enum Matcher {
                                             reason: #"source "\#(source ?? "")" lacks "\#(s)""#))
                 continue
             }
-            switch apply(p, to: text, receivedAt: receivedAt) {
+            switch apply(p, to: text, receivedAt: receivedAt, zone: zone, arrivedOn: arrivedOn) {
             case .success(let parsed):
                 var txn = parsed
                 txn.source = source
@@ -80,8 +86,10 @@ public enum Matcher {
     /// One pattern against one text. `test` is the same path the matcher
     /// takes, so the builder's live test never says yes where a run says no.
     public static func test(_ pattern: AlertPattern, text: String,
-                            receivedAt: Date = Date()) -> Result<ParsedTransaction, MatchError> {
-        apply(pattern, to: text, receivedAt: receivedAt)
+                            receivedAt: Date = Date(),
+                            zone: TimeZone = .current,
+                            arrivedOn: CalendarDate? = nil) -> Result<ParsedTransaction, MatchError> {
+        apply(pattern, to: text, receivedAt: receivedAt, zone: zone, arrivedOn: arrivedOn)
     }
 
     // MARK: - regex
@@ -214,8 +222,9 @@ public enum Matcher {
         return try expressions.value(for: key) { try expression(for: p) }
     }
 
-    private static func apply(_ p: AlertPattern, to text: String,
-                              receivedAt: Date) -> Result<ParsedTransaction, MatchError> {
+    private static func apply(_ p: AlertPattern, to text: String, receivedAt: Date,
+                              zone: TimeZone, arrivedOn known: CalendarDate?)
+        -> Result<ParsedTransaction, MatchError> {
         let re: NSRegularExpression
         do { re = try cachedExpression(for: p) } catch { return .failure(MatchError("pattern builds a bad regex")) }
         let ns = text as NSString
@@ -254,15 +263,16 @@ public enum Matcher {
             .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:-")), !py.isEmpty else {
             return .failure(MatchError("payee not readable"))
         }
-        let date: Date
+        let arrivedOn = known ?? CalendarDate(receivedAt, in: zone)
+        let date: CalendarDate
         if let raw = dateRaw, let f = dateFmt {
             guard let d = Dates.parse(raw.trimmingCharacters(in: .whitespaces), as: f,
-                                      fallback: receivedAt) else {
+                                      receivedOn: arrivedOn) else {
                 return .failure(MatchError("date not readable"))
             }
             date = d
         } else {
-            date = receivedAt
+            date = arrivedOn
         }
         // the hint's character class allows spaces, so a greedy capture can
         // keep padding around the digits

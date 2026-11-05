@@ -241,7 +241,7 @@ final class MatcherTests: XCTestCase {
         case .matched(let t):
             XCTAssertEqual(t.payee, "NTUC FAIRPRICE")
             XCTAssertEqual(t.amount, Decimal(string: "1234.50"))
-            XCTAssertEqual(Calendar.current.component(.day, from: t.date), 3)
+            XCTAssertEqual(t.date, CalendarDate(year: 2027, month: 1, day: 3))
         case .unmatched(let r): XCTFail("unmatched: \(r)")
         }
     }
@@ -282,7 +282,7 @@ final class MatcherTests: XCTestCase {
                              segments: segs, sampleText: sample)
         let when = Date(timeIntervalSince1970: 1_700_000_000)
         switch Matcher.match(text: sample, source: nil, receivedAt: when, patterns: [p]) {
-        case .matched(let t): XCTAssertEqual(t.date, when)
+        case .matched(let t): XCTAssertEqual(t.date, CalendarDate(when, in: .current))
         case .unmatched(let r): XCTFail("unmatched: \(r)")
         }
     }
@@ -326,7 +326,8 @@ final class MatcherTests: XCTestCase {
             XCTAssertEqual(t.accountHint, "6529")
             XCTAssertEqual(t.alertText, next)
             XCTAssertEqual(t.source, "sms")
-            XCTAssertEqual(Calendar.current.component(.day, from: t.date), 27)
+            XCTAssertEqual(t.date.day, 27)
+            XCTAssertEqual(t.date.month, 10)
         case .unmatched(let r): XCTFail("unmatched: \(r)")
         }
     }
@@ -346,27 +347,29 @@ final class DedupTests: XCTestCase {
     }
 
     func test_two_channels_of_one_spend_match() {
-        // a Wallet row's timestamp and an alert's day-precision date share a
-        // calendar day wherever the phone's zone puts midnight
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = .current
-        let late = cal.date(from: DateComponents(year: 2026, month: 10, day: 26, hour: 23))!
-        let early = cal.date(from: DateComponents(year: 2026, month: 10, day: 26, hour: 0))!
+        // a Wallet tap's day and an alert's printed day are both calendar
+        // days, so a tap late at night and the alert's date agree
+        let zone = TimeZone(identifier: "Asia/Singapore")!
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = zone
+        let lateTap = cal.date(from: DateComponents(year: 2026, month: 10, day: 26, hour: 23))!
         XCTAssertTrue(Dedup.likelyDuplicate(
-            amountCents: 4453, currency: "SGD", date: late, payee: "Sgh - Digestive & Live",
+            amountCents: 4453, currency: "SGD", date: CalendarDate(lateTap, in: zone),
+            payee: "Sgh - Digestive & Live",
             otherAmountCents: 4453, otherCurrency: "SGD",
-            otherDate: early, otherPayee: "SGH - DIGESTIVE & LIVE"))
+            otherDate: CalendarDate(year: 2026, month: 10, day: 26)!,
+            otherPayee: "SGH - DIGESTIVE & LIVE"))
     }
 
     func test_same_day_same_amount_different_payee_is_not_a_dupe() {
-        let day = Date(timeIntervalSince1970: 1_777_000_000)
+        let day = CalendarDate(year: 2026, month: 10, day: 26)!
         XCTAssertFalse(Dedup.likelyDuplicate(
             amountCents: 650, currency: "SGD", date: day, payee: "NTUC",
             otherAmountCents: 650, otherCurrency: "SGD", otherDate: day, otherPayee: "Grab"))
     }
 
     func test_different_day_or_amount_is_not_a_dupe() {
-        let day = Date(timeIntervalSince1970: 1_777_000_000)
-        let next = day.addingTimeInterval(2 * 86_400)
+        let day = CalendarDate(year: 2026, month: 10, day: 26)!
+        let next = day.adding(days: 2)
         XCTAssertFalse(Dedup.likelyDuplicate(
             amountCents: 4453, currency: "SGD", date: day, payee: "SGH",
             otherAmountCents: 4453, otherCurrency: "SGD", otherDate: next, otherPayee: "SGH"))
@@ -379,7 +382,7 @@ final class DedupTests: XCTestCase {
 /// G25: an alert is covered when a loaded statement row agrees on amount,
 /// currency, day and payee — and a record row covers at most one alert.
 final class RecordCoverTests: XCTestCase {
-    private let day = Date(timeIntervalSince1970: 1_777_000_000)
+    private let day = CalendarDate(year: 2026, month: 4, day: 24)!
 
     private func spend(_ amount: Int = -4453, _ currency: String = "SGD",
                        payee: String = "", raw: String = "") -> Dedup.RecordSpend {
@@ -410,7 +413,7 @@ final class RecordCoverTests: XCTestCase {
         XCTAssertNil(Dedup.coveredBy(amountCents: 4454, currency: "SGD", direction: "outflow",
                                      date: day, payee: "SGH", in: record, taken: []))
         XCTAssertNil(Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
-                                     date: day.addingTimeInterval(86_400), payee: "SGH",
+                                     date: day.adding(days: 1), payee: "SGH",
                                      in: record, taken: []))
         // two real purchases at one amount on one day: the payee still has to agree
         XCTAssertNil(Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
@@ -494,11 +497,49 @@ final class AmountAndDateTests: XCTestCase {
         }
     }
 
-    func test_partial_dates_take_the_fallback_year() {
-        let fallback = DateFormatter()
-        fallback.dateFormat = "yyyy-MM-dd"
-        let when = fallback.date(from: "2026-03-01")!
-        let d = Dates.parse("12 Oct", as: .ddMmm, fallback: when)
-        XCTAssertEqual(Calendar.current.component(.year, from: d!), 2026)
+    /// A yearless date takes the latest year that keeps it no later than
+    /// the day after the alert arrived. Mid-year the arrival's year is the
+    /// latest; across New Year the year rolls back.
+    func test_partial_dates_take_the_latest_year_not_after_arrival() {
+        func on(_ y: Int, _ m: Int, _ d: Int) -> CalendarDate { CalendarDate(year: y, month: m, day: d)! }
+        XCTAssertEqual(Dates.parse("12 Oct", as: .ddMmm, receivedOn: on(2026, 10, 27)), on(2026, 10, 12))
+        XCTAssertEqual(Dates.parse("12 Oct", as: .ddMmm, receivedOn: on(2027, 3, 1)), on(2026, 10, 12))
+        // "31 Dec" arriving just after midnight on New Year's Day is last year's
+        XCTAssertEqual(Dates.parse("31 Dec", as: .ddMmm, receivedOn: on(2027, 1, 1)), on(2026, 12, 31))
+        XCTAssertEqual(Dates.parse("31/12", as: .dmSlash, receivedOn: on(2027, 1, 1)), on(2026, 12, 31))
+        XCTAssertEqual(Dates.parse("28 Dec", as: .ddMmm, receivedOn: on(2027, 1, 2)), on(2026, 12, 28))
+        // a bank a zone ahead prints tomorrow: still this year's tomorrow
+        XCTAssertEqual(Dates.parse("1 Jan", as: .ddMmm, receivedOn: on(2026, 12, 31)), on(2027, 1, 1))
+        XCTAssertEqual(Dates.parse("30 Oct", as: .ddMmm, receivedOn: on(2026, 10, 29)), on(2026, 10, 30))
+        // two days ahead cannot be this year's
+        XCTAssertEqual(Dates.parse("31 Oct", as: .ddMmm, receivedOn: on(2026, 10, 29)), on(2025, 10, 31))
+    }
+
+    /// A day the year does not have is a misread, never rolled into the
+    /// next month.
+    func test_a_day_that_does_not_exist_is_refused() {
+        func on(_ y: Int, _ m: Int, _ d: Int) -> CalendarDate { CalendarDate(year: y, month: m, day: d)! }
+        XCTAssertNil(Dates.parse("29 Feb", as: .ddMmm, receivedOn: on(2027, 3, 1)))
+        XCTAssertEqual(Dates.parse("29 Feb", as: .ddMmm, receivedOn: on(2028, 3, 1)), on(2028, 2, 29))
+        XCTAssertNil(Dates.parse("31/02/2026", as: .dmy4Slash))
+        XCTAssertNil(Dates.parse("31 Apr 2026", as: .ddMmmYyyy))
+        XCTAssertNil(Dates.parse("2026-13-01", as: .ymdDash))
+        XCTAssertEqual(Dates.detectFormat("29 Feb"), .ddMmm, "a yearless leap day is still a date shape")
+    }
+
+    /// Every format reads to the same day, month names in any case, "Sept"
+    /// included.
+    func test_every_format_reads_its_day() {
+        let want = CalendarDate(year: 2026, month: 9, day: 7)!
+        let ref = CalendarDate(year: 2026, month: 10, day: 1)!
+        for (text, f) in [("7/9/2026", AlertPattern.DateFormat.dmy4Slash), ("07/09/26", .dmy2Slash),
+                          ("7 Sep 2026", .ddMmmYyyy), ("7 SEPTEMBER 2026", .ddMmmYyyy),
+                          ("7 Sept 2026", .ddMmmYyyy), ("7 sep 26", .ddMmmYy), ("7 Sep", .ddMmm),
+                          ("Sep 7, 2026", .mmmDdYyyy), ("September 7 2026", .mmmDdYyyy),
+                          ("7-9-2026", .dmy4Dash), ("07-09-26", .dmy2Dash), ("2026-09-07", .ymdDash),
+                          ("7/9", .dmSlash)] as [(String, AlertPattern.DateFormat)] {
+            XCTAssertEqual(Dates.parse(text, as: f, receivedOn: ref), want, text)
+        }
+        XCTAssertNil(Dates.parse("7 Septem 2026", as: .ddMmmYyyy))
     }
 }
