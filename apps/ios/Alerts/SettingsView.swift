@@ -288,14 +288,20 @@ struct SettingsView: View {
     }
 
     private func summarizeData() -> String {
-        let all = (try? context.fetchCount(FetchDescriptor<TransactionRecord>())) ?? 0
         // rows still on their way to YNAB; a duplicate or a row the record
         // already covers ("kopifund") never goes there
-        let unsynced = (try? context.fetchCount(FetchDescriptor<TransactionRecord>(
-            predicate: #Predicate { $0.state == "pending" || $0.state == "approved"
-                || $0.state == "syncing" || $0.state == "failed" }))) ?? 0
-        let patterns = (try? context.fetchCount(FetchDescriptor<PatternRecord>())) ?? 0
-        let unmatched = (try? context.fetchCount(FetchDescriptor<UnmatchedRecord>())) ?? 0
+        guard let all = try? context.fetchCount(FetchDescriptor<TransactionRecord>()),
+              let unsynced = try? context.fetchCount(FetchDescriptor<TransactionRecord>(
+                  predicate: #Predicate { $0.state == "pending" || $0.state == "approved"
+                      || $0.state == "syncing" || $0.state == "failed" })),
+              let patterns = try? context.fetchCount(FetchDescriptor<PatternRecord>()),
+              let unmatched = try? context.fetchCount(FetchDescriptor<UnmatchedRecord>())
+        else {
+            // an unknown count must not read as an empty store
+            return "The stored data could not be counted. This deletes every transaction, "
+                + "pattern, unmatched alert and ignored alert shape, whatever is there. "
+                + "The YNAB token stays. This cannot be undone."
+        }
         return "This deletes \(count(all, "transaction")) (\(unsynced) not in YNAB yet), "
             + "\(count(patterns, "pattern")), \(count(unmatched, "unmatched alert")) "
             + "and every ignored alert shape. The YNAB token stays. This cannot be undone."
