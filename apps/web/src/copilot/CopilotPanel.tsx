@@ -8,6 +8,8 @@ import { ArrowUp, History, LoaderCircle, Lock, Plus, Sparkles, Square, Trash2, X
 import { postJSON, refreshViews, revalidate, useApi, type Loaded } from "../api";
 import { Button, buttonClass } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { ErrorBoundary } from "../components/ErrorBoundary";
+import { Problem } from "../components/States";
 import { Sheet } from "../components/Sheet";
 import { showToast } from "../components/Toast";
 import { formatDay } from "../dates";
@@ -142,10 +144,35 @@ const ready = (ai: Loaded<AiSettings>) => (ai.data && gate(ai.data) === "ready" 
 
 const labelOf = (ai: AiSettings) => ai.providers.find((p) => p.name === ai.provider)?.label ?? ai.provider ?? "the provider";
 
+type BodyProps = { copilot: Copilot; page: CopilotPage; ai: Loaded<AiSettings>; onFollow?: () => void; extra?: ReactNode };
+
+export const ANSWER_FAILED = "This answer failed to draw.";
+
+export const PANEL_FAILED = "The panel failed to draw.";
+
+/**
+ * Audit: what the panel cannot draw stays in the panel instead of taking the page down. Each answer
+ * has its own boundary (AnswerTurn), so one bad answer leaves the others and later replies drawn;
+ * this one is the last resort for the rest, and keeps the History button (`extra`, the phone's only
+ * way to another thread) beside its message. Another thread or the history list starts it clean.
+ */
+function Body(props: BodyProps) {
+  const { copilot, extra } = props;
+  return (
+    <ErrorBoundary resetKey={`${copilot.thread}:${copilot.history}`}
+      fallback={(reset) => (
+        <div className="flex flex-col gap-2">
+          {extra && <div className="flex justify-end">{extra}</div>}
+          <Problem message={PANEL_FAILED} onRetry={reset} />
+        </div>
+      )}>
+      <Turns {...props} />
+    </ErrorBoundary>
+  );
+}
+
 /** `extra` sits at the right of the first line (the sheet's History button, whose header has no room for it). */
-function Body({ copilot, page, ai, onFollow, extra }: {
-  copilot: Copilot; page: CopilotPage; ai: Loaded<AiSettings>; onFollow?: () => void; extra?: ReactNode;
-}) {
+function Turns({ copilot, page, ai, onFollow, extra }: BodyProps) {
   const end = useRef<HTMLDivElement>(null);
   const last = copilot.turns[copilot.turns.length - 1];
   // follow the answer as it grows
@@ -188,7 +215,12 @@ function Body({ copilot, page, ai, onFollow, extra }: {
       {context}
       {copilot.turns.map((t, i) => t.role === "user"
         ? <UserTurn key={t.id} turn={t} />
-        : <AnswerTurn key={t.id} turn={t} copilot={copilot} page={page} latest={i === copilot.turns.length - 1} onFollow={onFollow} />)}
+        : (
+          <ErrorBoundary key={t.id} resetKey={`${t.status}:${t.charts.length}:${t.cards.length}:${t.links.length}`}
+            fallback={(reset) => <Problem message={ANSWER_FAILED} onRetry={reset} />}>
+            <AnswerTurn turn={t} copilot={copilot} page={page} latest={i === copilot.turns.length - 1} onFollow={onFollow} />
+          </ErrorBoundary>
+        ))}
       <div ref={end} />
     </div>
   );

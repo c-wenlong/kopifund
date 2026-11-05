@@ -3,7 +3,7 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Toaster } from "../components/Toast";
 import type { AiSettings, CopilotCard, CopilotEvent, CopilotThread } from "../types.gen";
-import { CopilotSide } from "./CopilotPanel";
+import { ANSWER_FAILED, CopilotSide } from "./CopilotPanel";
 import { GARBLED } from "./stream";
 import { CUT_SHORT, stepsOf, useCopilot } from "./useCopilot";
 
@@ -659,5 +659,38 @@ describe("a garbled answer", () => {
     await askIt("What happened?");
     expect(await screen.findByText(GARBLED)).toBeInTheDocument();
     expect(signal?.aborted).toBe(true);
+  });
+});
+
+describe("an answer the panel cannot draw", () => {
+  // Audit: a part in a shape this build does not know used to take the whole app down with it
+  it("shows a problem in the panel and keeps the box", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const odd = { type: "chart", chart: { title: "Odd", result: "not a result" } } as unknown as CopilotEvent;
+    stub(aiOn, (url) => (url === "/api/copilot/ask" ? lines([odd, { type: "done" }]) : undefined));
+    render(<Panel />);
+    await askIt("Show me something odd");
+    expect(await screen.findByText(ANSWER_FAILED)).toBeInTheDocument();
+    await waitFor(() => expect(box()).toBeEnabled());
+    vi.mocked(console.error).mockRestore();
+  });
+
+  // Greptile on #305: one bad answer used to hide every later reply in the thread
+  it("still draws the answers after it", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const odd = { type: "chart", chart: { title: "Odd", result: "not a result" } } as unknown as CopilotEvent;
+    let n = 0;
+    stub(aiOn, (url) => {
+      if (url !== "/api/copilot/ask") return undefined;
+      n += 1;
+      return n === 1 ? lines([odd, { type: "done" }]) : lines([{ type: "text", text: "S$42 on kopi" }, { type: "done" }]);
+    });
+    render(<Panel />);
+    await askIt("Show me something odd");
+    expect(await screen.findByText(ANSWER_FAILED)).toBeInTheDocument();
+    await askIt("And kopi?");
+    expect(await screen.findByText("S$42 on kopi")).toBeInTheDocument();
+    expect(screen.getAllByText(ANSWER_FAILED)).toHaveLength(1);
+    vi.mocked(console.error).mockRestore();
   });
 });

@@ -89,6 +89,9 @@ export function RuleEditor({ rule, initial, tiers, tierFiles, categories, kinds,
   const preview = useApi<RulePreview>(ready ? `/api/rules/preview?${asked}` : null);
   const p = ready ? preview.data : null;
   const current = asked === query && !preview.loading;
+  // Audit: an answer without the lists (an older server, an error answer) draws as empty lists, not a crash
+  const beaten = p?.beaten_by ?? [];
+  const sample = p?.sample ?? [];
 
   async function save() {
     report({ saving: true, error: null });
@@ -180,17 +183,17 @@ export function RuleEditor({ rule, initial, tiers, tierFiles, categories, kinds,
                 </span>
               )}
             </div>
-            {p.beaten_by!.length > 0 && (
+            {beaten.length > 0 && (
               <p className="m-0 text-warn">
                 {p.wins ? "Earlier rules match the rest first" : "Earlier rules match them first"}:{" "}
-                {p.beaten_by!.map((b) => `${tierLabel(b.tier)} ${b.pattern} in ${b.file} (${plural(b.rows, "row")})`).join("; ")}.
+                {beaten.map((b) => `${tierLabel(b.tier)} ${b.pattern} in ${b.file} (${plural(b.rows, "row")})`).join("; ")}.
               </p>
             )}
-            {p.sample!.length > 0 && (
+            {sample.length > 0 && (
               <div className="overflow-x-auto">
                 <table className="num w-full border-collapse text-[12px]">
                   <tbody>
-                    {p.sample!.map((s) => (
+                    {sample.map((s) => (
                       <tr key={s.key} className="border-t border-line">
                         <td className="whitespace-nowrap py-1 pr-3 text-ink-2">{formatDay(s.date)}</td>
                         <td className="max-w-64 truncate py-1 pr-3" title={s.text}>{s.text || "(no text)"}</td>
@@ -200,7 +203,7 @@ export function RuleEditor({ rule, initial, tiers, tierFiles, categories, kinds,
                     ))}
                   </tbody>
                 </table>
-                {p.changes! > p.sample!.length && <p className="m-0 text-ink-3">and {plural(p.changes! - p.sample!.length, "more")}.</p>}
+                {(p.changes ?? 0) > sample.length && <p className="m-0 text-ink-3">and {plural((p.changes ?? 0) - sample.length, "more")}.</p>}
               </div>
             )}
           </div>

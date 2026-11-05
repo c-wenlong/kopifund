@@ -56,10 +56,13 @@ import UIKit
         }
     }
 
-    /// /api/health on the linked hub: "reachable", or why not.
+    /// /api/link/check on the linked hub, with this phone's bearer:
+    /// "reachable" only when the hub answers this paired device, so a phone
+    /// revoked in Settings reads as unpaired, not reachable.
     func test() async -> String {
         guard let client else { return "not linked" }
-        do { return try await client.health() ? "reachable" : "no answer" }
+        do { return try await client.check() ? "reachable" : "no answer" }
+        catch let e as KopifundError where e.kind == .unpaired { return "unpaired: pair again" }
         catch { return describe(error) }
     }
 
