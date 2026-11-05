@@ -189,6 +189,16 @@ final class YNABClientTests: XCTestCase {
         XCTAssertEqual(MockProtocol.requests.count, 1)
     }
 
+    /// Review on #75: a shorter wait reported later never shortens a
+    /// longer one already in force.
+    func test_the_gate_keeps_the_later_deadline() {
+        let gate = RateGate()
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        gate.close(for: 3600, now: now)
+        gate.close(for: 120, now: now)
+        XCTAssertEqual(gate.remaining(now: now), 3600)
+    }
+
     /// Review on #75: a huge or non-numeric Retry-After never traps.
     func test_a_huge_retry_after_is_reported_not_trapped() async throws {
         MockProtocol.handler = { _ in respond(429, "{}", headers: ["Retry-After": "100000000000000000000"]) }

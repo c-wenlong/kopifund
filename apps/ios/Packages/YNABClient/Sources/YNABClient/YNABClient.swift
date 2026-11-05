@@ -42,7 +42,11 @@ public final class RateGate: @unchecked Sendable {
     }
 
     func close(for seconds: TimeInterval, now: Date = Date()) {
-        lock.withLock { notBefore = now.addingTimeInterval(seconds) }
+        // overlapping requests can report different waits: keep the later
+        lock.withLock {
+            let deadline = now.addingTimeInterval(seconds)
+            notBefore = max(notBefore ?? deadline, deadline)
+        }
     }
 }
 
