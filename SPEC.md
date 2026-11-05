@@ -1470,8 +1470,16 @@ the app icon and AI settings do, so no schema change was needed. Layouts
 save the widget list whole with the active layout's id. Goals (`GET/POST
 /api/dashboard/goals`, `POST /api/dashboard/goals/remove`) hold a
 `target_minor`, an optional month and `milestones`, and an optional `binding`,
-the money-metric query whose last figure is `current_minor`; the endpoint
-answers it resolved as `progress`, a fraction of target. The allocation
+the query whose last figure is `current_minor`; the endpoint answers it
+resolved as `progress`, a fraction of target. A binding names a balance over
+time (`dashboard.GOAL_LEVELS`: net worth or its parts by month, savings-runway
+cash, CPF by year, a portfolio's value by period): a flow's last month is
+usually still running, a slice is no amount a goal reaches, and a
+projection's last figure is the future. A goal saved before with another
+binding reads as unbound and can still be edited. Each state write reads what it
+changes and writes it in one transaction, so a save from another tab waits
+rather than being lost, and the server stamps a layout's `updated_at` itself
+(a list write keeps the stamp of a layout it sends back unchanged). The allocation
 template (`GET/POST /api/dashboard/allocation?month=`) plans each spend
 bucket's cents a month and answers the template beside a month's actuals:
 income, per-bucket planned and actual, the actuals counted over every
