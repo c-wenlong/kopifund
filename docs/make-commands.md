@@ -1537,7 +1537,9 @@ shell profile exports, are found as in a terminal. It shows a starting page
 until the server prints `KOPIFUND_READY`, then loads the app from
 `http://127.0.0.1:8771`. Quitting the app closes the server's standard input
 and the server stops. If the server stops on its own, the window goes back to
-the starting page with its last lines and a Retry button.
+the starting page with its last lines and a Retry button; so does a server
+that has not printed `KOPIFUND_READY` within 45 seconds (the shell kills it),
+and a checkout that is gone (the app names the folder it was built from).
 
 **What it never does.** It never copies or moves the data folder: the app
 reads and writes the same `~/.kopifund` (or `KOPIFUND_DATA`) as `make serve`,

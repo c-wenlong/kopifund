@@ -33,6 +33,7 @@
     font: inherit; font-weight: 600; color: var(--page); background: var(--ink);
     border: 0; border-radius: 8px; padding: 8px 16px; cursor: pointer;
   }
+  button:disabled { opacity: 0.4; cursor: default; }
   [hidden] { display: none !important; }
 </style>
 </head>
@@ -44,29 +45,62 @@
     <p>Opening your record.</p>
   </section>
   <section id="failed" hidden>
-    <h1>Kopifund's server stopped</h1>
-    <p>The last lines it printed:</p>
-    <pre id="log"></pre>
-    <button id="retry" type="button">Retry</button>
+    <h1 id="heading">Kopifund's server stopped</h1>
+    <p id="hint">The last lines it printed:</p>
   </section>
+  <pre id="log" hidden></pre>
+  <button id="retry" type="button" hidden>Retry</button>
 </main>
 <script>
   const invoke = window.__TAURI__.core.invoke;
-  const starting = document.getElementById("starting");
-  const failed = document.getElementById("failed");
-  const log = document.getElementById("log");
+  const $ = (id) => document.getElementById(id);
+  const HEADINGS = {
+    stopped: "Kopifund's server stopped",
+    timed_out: "Kopifund's server did not start",
+    code_gone: "Kopifund's code is gone",
+  };
+  // a start that takes longer than this shows what the server has printed so far
+  const SHOW_LOG_AFTER_MS = 5000;
+  let startedAt = Date.now();
 
-  async function poll() {
-    const s = await invoke("status");
-    starting.hidden = s.failed;
-    failed.hidden = !s.failed;
-    if (s.failed) log.textContent = s.log.join("\n") || "It printed nothing.";
-    else setTimeout(poll, 300);
+  function show(s) {
+    $("starting").hidden = s.failed;
+    $("failed").hidden = !s.failed;
+    $("retry").hidden = !s.failed;
+    if (s.failed) {
+      $("heading").textContent = HEADINGS[s.phase] || HEADINGS.stopped;
+      $("hint").hidden = s.phase === "code_gone";
+    }
+    const late = Date.now() - startedAt > SHOW_LOG_AFTER_MS;
+    $("log").hidden = !(s.failed || (late && s.log.length));
+    $("log").textContent = s.log.join("\n") || "It printed nothing.";
   }
 
-  document.getElementById("retry").addEventListener("click", async () => {
-    await invoke("retry");
-    poll();
+  async function poll() {
+    let s = null;
+    try {
+      s = await invoke("status");
+      show(s);
+    } catch (e) {
+      // the shell could not answer this once: ask again rather than stop asking
+    } finally {
+      if (!s || !s.failed) setTimeout(poll, 300);
+    }
+  }
+
+  $("retry").addEventListener("click", async () => {
+    const button = $("retry");
+    if (button.disabled) return;
+    button.disabled = true;
+    try {
+      await invoke("retry");
+    } catch (e) {
+      // the status poll below shows what happened
+    } finally {
+      button.disabled = false;
+      startedAt = Date.now();
+      poll();
+    }
   });
   poll();
 </script>
