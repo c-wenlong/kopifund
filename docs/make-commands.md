@@ -530,8 +530,10 @@ table in [runbook.md](runbook.md) no longer matches the `Problem` calls in
 `python3 -m docs.gen_parsing --check`, which fails when the layouts table in
 [parsing.md](parsing.md) no longer matches the layouts the parsers register in
 [layouts.py](../server/finance/parsers/layouts.py) (G21), then the
-TypeScript typecheck, and last `cargo check` on the desktop shell in
-[apps/desktop/src-tauri](../apps/desktop/src-tauri) (G23), skipped with a line saying so
+TypeScript typecheck, and last `cargo test --locked` on the desktop shell in
+[apps/desktop/src-tauri](../apps/desktop/src-tauri) (G23), which compiles it and runs its
+Rust tests in the shared Rust cache `~/Library/Caches/Kopifund/cargo-target` (or
+`CARGO_TARGET_DIR`), so a new checkout does not compile Tauri from cold; skipped with a line saying so
 off a Mac or where Rust is not installed (CI's Ubuntu runner has Rust but not
 the WebKit libraries a Linux build of the shell needs). Run it after editing a parser, a rule file or
 [sync.py](../server/finance/sync.py), and read the lint output for rules that never win,
@@ -1520,8 +1522,13 @@ loopback hub and pairing can start: see SPEC.md, "Phone link (G25)".
 
 Builds the web app, then `Kopifund.app` (G23): a Tauri shell in
 [apps/desktop/](../apps/desktop) that opens Kopifund in its own window. It runs
-`npm ci` and `npm run tauri -- build --bundles app` in `apps/desktop/`, then
-replaces `~/Applications/Kopifund.app` with the new build. Open it from
+`npm ci` and `npm run tauri -- build --bundles app -- --locked` in `apps/desktop/`,
+building in the Rust cache `make check` and `build_macos.sh` share
+(`~/Library/Caches/Kopifund/cargo-target`, or `CARGO_TARGET_DIR`), and takes the
+build lock `build_macos.sh` takes, so the two never build or install over each
+other. It removes the last build's bundle first and stops if the build leaves
+none, then copies the new app beside `~/Applications/Kopifund.app` and swaps it
+in, keeping the old app until the new one is in place. Open it from
 Launchpad or Spotlight and keep it in the Dock.
 
 On launch the app starts `python3 server/serve.py --app` from this checkout through
