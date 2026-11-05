@@ -100,16 +100,17 @@ US_STATES = set("AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA 
                 "MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC".split())
 
 
-def two_letter_country(cc, place=""):
+def two_letter_country(cc, place="", whole=False):
     """ISO alpha-3 for a 2-letter country slot. A US merchant prints its state
     there, so a state code reads as the USA; but ID, IN and DE are both a state
     and a country in ALPHA2 (Indonesia, India, Germany). Those read as the
     country unless `place`, the text printed before the code, ends in a town
     the city tables (places.py, with the data folder's places.csv, prefix and
-    exact rows alike) put in the USA."""
+    exact rows alike) put in the USA. `whole`: `place` is the town alone (a
+    wallet row's comma field), not a card line's merchant and town."""
     if cc in ALPHA2 and cc in US_STATES:
         from .places import trailing_town_country
-        return "USA" if place and trailing_town_country(place) == "USA" else ALPHA2[cc]
+        return "USA" if place and trailing_town_country(place, whole) == "USA" else ALPHA2[cc]
     return "USA" if cc in US_STATES else ALPHA2.get(cc, cc)
 
 NOISE = re.compile(

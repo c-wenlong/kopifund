@@ -227,25 +227,28 @@ def city_country(frag):
     return None
 
 
-def town_country(frag):
-    """The country of one town fragment: an exact entry first (the shipped
-    CITY_COUNTRY and places.csv's `exact` rows), then the prefix table."""
-    _ensure_loaded()
-    f = frag.strip().upper()
-    if f in CITY_COUNTRY:
-        return CITY_COUNTRY[f]
-    return city_country(f)
-
-
-def trailing_town_country(text):
+def trailing_town_country(text, whole=False):
     """The country of the town a merchant string ends in, or None. The town is
-    its last word, or last two or three (a card row prints the merchant and
-    the town in one run of text, single spaced once parsed); the shortest
-    tail that names a known town decides, so a merchant word earlier in the
-    line ("AUSTINS BAKERY DENPASAR") never outvotes the town itself."""
+    its last word, or last two or three: a card row prints the merchant and
+    the town in one run of text, single spaced once parsed, and a wallet row
+    gives the town alone (`whole`). A tail that names a town exactly (an exact
+    entry, or a city table name in full) decides first, the longest such tail
+    winning, so NORTH MANCHESTER is not read as MANCHESTER. Failing that, a
+    wallet's whole town is looked up as before, then the shortest tail that a
+    prefix entry matches decides, so a merchant word earlier in a card line
+    ("AUSTINS BAKERY DENPASAR") never outvotes the town itself."""
+    _ensure_loaded()
     words = text.split()
-    for k in range(1, min(3, len(words)) + 1):
-        if cc := town_country(" ".join(words[-k:])):
+    tails = [" ".join(words[-k:]) for k in range(1, min(3, len(words)) + 1)]
+    for t in reversed(tails):
+        u = t.strip().upper()
+        if u in CITY_COUNTRY:
+            return CITY_COUNTRY[u]
+        n = norm_city(t)
+        if cc := next((cc for city, cc in CITY_TABLE if city == n), None):
+            return cc
+    for t in ([text] if whole else []) + tails:
+        if cc := city_country(t):
             return cc
     return None
 
@@ -273,7 +276,7 @@ def split_country(name, fx_ccy, wallet):
     elif tail_u in ALPHA3:
         cc = tail_u
     elif len(tail_u) == 2 and (tail_u in ALPHA2 or tail_u in US_STATES):
-        cc = two_letter_country(tail_u, head.rpartition(",")[2])
+        cc = two_letter_country(tail_u, head.rpartition(",")[2], whole=True)
     elif (c := city_country(tail_u)):
         cc = c
     if cc is None:

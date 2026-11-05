@@ -81,6 +81,10 @@ class ThroughTheCardParser(unittest.TestCase):
     def test_an_unknown_town_reads_as_the_country(self):
         self.assertEqual(self.country("CORNER DINER     DENPASAR     ID 10 NOV"), "IDN")
 
+    def test_a_full_town_is_not_cut_to_a_shipped_city(self):
+        places_csv("NORTH MANCHESTER,USA,prefix\n")
+        self.assertEqual(self.country("CORNER DINER NORTH MANCHESTER IN 10 NOV"), "USA")
+
     def test_the_town_outvotes_a_us_city_earlier_in_the_name(self):
         self.assertEqual(self.country("CORNER DINER AUSTINS  DENPASAR  ID 10 NOV"), "IDN")
 
@@ -102,6 +106,13 @@ class WalletMerchant(unittest.TestCase):
         places.load(str(path))
         self.assertEqual(places.split_country("DINER,BOISE,ID", None, "SGD")[1], "USA")
         self.assertEqual(places.split_country("DINER,AUSTIN,TX", None, "SGD")[1], "USA")
+
+    def test_a_full_town_from_places_csv_is_not_cut_to_a_shipped_city(self):
+        places_csv("NORTH MANCHESTER,USA,prefix\n")
+        self.assertEqual(places.split_country("DINER,NORTH MANCHESTER,IN", None, "SGD")[1], "USA")
+
+    def test_a_cut_off_town_still_reads_by_its_prefix(self):
+        self.assertEqual(places.split_country("DINER,SAN FRANCIS,IN", None, "SGD")[1], "USA")
 
     def test_an_exact_us_town_keeps_the_state_reading(self):
         places_csv("BOISE,USA,exact\n")
