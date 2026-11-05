@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { WidgetAnswer } from "../../../types.gen";
 import {
   buildFlow, childrenFromAnswer, filtersLink, flowQueries, incomeLink, layoutFlow, OTHER_NAME, txnUrl,
-  type FlowSlice,
+  type FlowChild, type FlowSlice,
 } from "./flow";
 
 // Invented figures only (S$5,000 in, S$3,500 out), never real ledger data.
@@ -128,6 +128,40 @@ describe("buildFlow", () => {
     // unspent = income - spend - transfers drawn: the negative slices were never counted
     expect(r.nodes.find((n) => n.kind === "kept")?.minor).toBe(250_000);
   });
+
+  it("nets a refund row into Everything else so the children add to the slice", () => {
+    // S$1,000 of eating out and S$200 back in another category: the bucket nets S$800
+    const food: FlowSlice = {
+      name: "Food", minor: 80_000, link: { bucket: "Food" },
+      children: [
+        { name: "Eating out", minor: 100_000, kind: "category", link: { bucket: "Food", category: "Eating out" } },
+        { name: "Refund", minor: -20_000, kind: "category", link: { bucket: "Food", category: "Refund" } },
+      ],
+    };
+    const r = buildFlow({ income_minor: 500_000, incomeLink: null, slices: [food], transfers: [] });
+    const m = r.nodes.find((n) => n.label === "Food")!;
+    const kids = r.nodes.filter((n) => n.column === 2);
+    expect(kids.map((k) => [k.label, k.minor])).toEqual([[OTHER_NAME, 80_000]]);
+    expect(outflowOf(r, m.id)).toBe(80_000);
+    // the residual holds both rows: the link is the whole bucket, not one category
+    expect(kids[0].link).toEqual({ bucket: "Food" });
+  });
+
+  it("folds only what overshoots the slice, keeping the categories that still fit", () => {
+    const food: FlowSlice = {
+      name: "Food", minor: 80_000, link: { bucket: "Food" },
+      children: [
+        { name: "Groceries", minor: 60_000, kind: "category", link: { bucket: "Food", category: "Groceries" } },
+        { name: "Eating out", minor: 100_000, kind: "category", link: { bucket: "Food", category: "Eating out" } },
+        { name: "Refund", minor: -80_000, kind: "category", link: { bucket: "Food", category: "Refund" } },
+      ],
+    };
+    const r = buildFlow({ income_minor: 500_000, incomeLink: null, slices: [food], transfers: [] });
+    const kids = r.nodes.filter((n) => n.column === 2);
+    // Eating out alone beats the S$800 net, so only Groceries stays; the residual is 1000 - 800
+    expect(kids.map((k) => [k.label, k.minor])).toEqual([["Groceries", 60_000], [OTHER_NAME, 20_000]]);
+    expect(JSON.parse(kids[1].link!.not_categories!)).toEqual(["Groceries"]);
+  });
 });
 
 describe("childrenFromAnswer", () => {
@@ -164,6 +198,24 @@ describe("childrenFromAnswer", () => {
     expect(childrenFromAnswer(null, 7)).toEqual([]);
     const a = answer(["Eating out", "Empty", OTHER_NAME], [120_000, 0, 80_000]);
     expect(childrenFromAnswer(a, 7).map((c) => c.name)).toEqual(["Eating out", OTHER_NAME]);
+  });
+
+  it("keeps refund rows so buildFlow can net them against the slice", () => {
+    const a = answer(["Eating out", "Refund", OTHER_NAME], [120_000, -20_000, 80_000]);
+    const children = childrenFromAnswer(a, 7);
+    expect(children.map((c) => [c.name, c.minor])).toEqual([
+      ["Eating out", 120_000], ["Refund", -20_000], [OTHER_NAME, 80_000],
+    ]);
+  });
+
+  it("merges the filter's own exclusions into the residual's not_categories", () => {
+    const a = answer(["Eating out", "Groceries", "Coffee", OTHER_NAME], [120_000, 60_000, 30_000, 20_000]);
+    a.label_links![0] = { ...a.label_links![0], not_categories: '["Shopping"]' };
+    const children = childrenFromAnswer(a, 2);
+    const rest = children[2];
+    expect(rest.minor).toBe(50_000);
+    // Shopping stays excluded: the residual's rows never had it
+    expect(JSON.parse(rest.link!.not_categories!)).toEqual(["Shopping", "Eating out", "Groceries"]);
   });
 });
 
@@ -206,6 +258,23 @@ describe("layoutFlow", () => {
       expect(l.d).toContain("C ");
       expect(l.width).toBeGreaterThan(0);
     }
+  });
+
+  it("grows past the cap rather than crush a full column's bands to nothing", () => {
+    const many: FlowSlice = {
+      name: "Food", minor: 200_000, link: null,
+      children: Array.from({ length: 40 }, (_, i): FlowChild => ({
+        name: `Cat ${i}`, minor: 5_000, kind: "category", link: null,
+      })),
+    };
+    const big = buildFlow({ income_minor: 500_000, incomeLink: null, slices: [many], transfers: [] });
+    const tall = layoutFlow(big, 720);
+    expect(tall.height).toBeGreaterThan(560);
+    for (const n of tall.nodes) {
+      expect(n.y).toBeGreaterThanOrEqual(0);
+      expect(n.y + n.h).toBeLessThanOrEqual(tall.height);
+    }
+    for (const l of tall.links) expect(l.width).toBeGreaterThan(0);
   });
 });
 

@@ -195,7 +195,7 @@ export function FlowWidget({ config = defaultFlowConfig }: { config?: FlowConfig
 
   if (income.error) return <Problem message={income.error} retry />;
   if (middle.error) return <Problem message={middle.error} retry />;
-  if (transfers.error) return <Problem message={transfers.error} retry />;
+  if (queries.transfers != null && transfers.error) return <Problem message={transfers.error} retry />;
   if (!income.data || !middle.data || (queries.transfers != null && !transfers.data)) {
     return <CardSkeleton height={280} what="Loading the money flow" />;
   }
@@ -213,12 +213,16 @@ export function FlowWidget({ config = defaultFlowConfig }: { config?: FlowConfig
       link: md.label_links?.[i] ?? null,
       children: childrenFromAnswer(slices[name]?.data, cfg.maxCategories ?? 7),
     })),
-    transfers: (transfers.data?.labels ?? []).map((name, i): FlowSlice => ({
-      name,
-      minor: transfers.data?.series[0]?.values_minor?.[i] ?? 0,
-      link: transfers.data?.label_links?.[i] ?? null,
-      children: [],
-    })),
+    // a null query keeps its last answer in useWidgetData; transfers turned
+    // off read as none, or the old nodes and their cents would stay drawn
+    transfers: queries.transfers == null
+      ? []
+      : (transfers.data?.labels ?? []).map((name, i): FlowSlice => ({
+        name,
+        minor: transfers.data?.series[0]?.values_minor?.[i] ?? 0,
+        link: transfers.data?.label_links?.[i] ?? null,
+        children: [],
+      })),
   });
 
   return (

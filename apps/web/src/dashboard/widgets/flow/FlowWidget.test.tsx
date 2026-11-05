@@ -144,6 +144,16 @@ describe("FlowWidget", () => {
     expect(screen.getByText(/Unspent/)).toHaveTextContent("S$2,000");
   });
 
+  it("drops the transfer nodes when they are turned off after the answers arrived", async () => {
+    stubFetch();
+    const { rerender } = render(<FlowWidget config={{ range: RANGE }} />);
+    await waitFor(() => expect(screen.getByText(/Investments/)).toBeInTheDocument());
+    // the disabled query keeps its last answer in useWidgetData; none of it may stay drawn
+    rerender(<FlowWidget config={{ range: RANGE, transfers: false }} />);
+    await waitFor(() => expect(screen.queryByText(/Investments/)).not.toBeInTheDocument());
+    expect(screen.getByText(/Unspent/)).toHaveTextContent("S$2,000");
+  });
+
   it("says so plainly when the range holds nothing", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const q = JSON.parse(decodeURIComponent(url.slice(url.indexOf("?q=") + 3)));

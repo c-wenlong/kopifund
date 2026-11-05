@@ -18,9 +18,10 @@
 // smaller categories into an "Everything else" row (server/finance/
 // dashboard.py, spending.TOP) which is drawn as its own node, never dropped,
 // and a slice whose per-bucket answer failed or has not arrived shows the
-// same residual for its whole total. A slice with a negative total (refunds
-// over spend, or transfers that came back) is not drawn and its cents stay in
-// "Unspent".
+// same residual for its whole total. A refund row inside a slice (a category
+// back under zero) folds into that residual, so the children drawn still add
+// to the slice's net. A slice with a negative total (refunds over spend, or
+// transfers that came back) is not drawn and its cents stay in "Unspent".
 import { REST_COLOUR, seriesColour } from "../../../components/chartKit";
 import type { Cents } from "../../../money";
 import type { WidgetAnswer, WidgetQuery, WidgetRange } from "../../../types.gen";
@@ -145,11 +146,38 @@ export type FlowGraph = {
   transfers_minor: Cents;
 };
 
+/** The names a `not_categories` filter lists, [] when it is missing or unreadable. */
+function notCategories(raw: string | undefined): string[] {
+  try {
+    const v: unknown = JSON.parse(raw ?? "[]");
+    return Array.isArray(v) ? v.filter((n): n is string => typeof n === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * A residual child's rows: `base` minus its own category, excluding the shown
+ * names on top of what the filter already excluded (an empty shown list keeps
+ * the base's exclusions, which the query's rows already answered to).
+ */
+function restLink(base: Record<string, string> | null | undefined, shown: string[]): Record<string, string> | null {
+  if (!base || !Object.keys(base).length) return null;
+  const out = { ...base };
+  delete out.category;
+  const names = [...new Set([...notCategories(out.not_categories), ...shown])];
+  if (names.length) out.not_categories = JSON.stringify(names);
+  else delete out.not_categories;
+  return out;
+}
+
 /**
  * A category answer's rows as one middle node's children, capped at
  * `maxCategories`; the rest (and the answer's own folded row, when it is cut)
  * merge into one "Everything else" child whose link still names the rows it
- * holds: the same base filters with `not_categories` reset to what is shown.
+ * holds: the same base filters with `not_categories` reset to what is shown,
+ * on top of any the filter already carried. Refund rows (a category back
+ * under zero) stay in the list: buildFlow folds them into the residual.
  */
 export function childrenFromAnswer(answer: WidgetAnswer | null | undefined, maxCategories: number): FlowChild[] {
   if (!answer) return [];
@@ -161,18 +189,12 @@ export function childrenFromAnswer(answer: WidgetAnswer | null | undefined, maxC
       kind: name === OTHER_NAME ? "rest" : "category",
       link: answer.label_links?.[i] ?? null,
     }))
-    .filter((c) => c.minor > 0);
+    .filter((c) => c.minor !== 0);
   const cap = Math.max(0, Math.floor(maxCategories));
   if (all.length <= cap) return all;
   const shown = all.slice(0, cap);
   const folded = all.slice(cap);
-  const base = { ...(shown[0]?.link ?? folded.find((c) => c.link)?.link ?? {}) };
-  delete base.category;
-  const link: Record<string, string> | null = Object.keys(base).length
-    ? { ...base, not_categories: JSON.stringify(shown.map((c) => c.name)) }
-    : null;
-  // an empty shown list is no filter at all: the residual holds the whole slice
-  if (link && shown.length === 0) delete link.not_categories;
+  const link = restLink(shown[0]?.link ?? folded.find((c) => c.link)?.link, shown.map((c) => c.name));
   return [...shown, { name: OTHER_NAME, minor: folded.reduce((s, c) => s + c.minor, 0), kind: "rest", link }];
 }
 
@@ -180,7 +202,9 @@ export function childrenFromAnswer(answer: WidgetAnswer | null | undefined, maxC
  * The graph the Sankey draws, from the answers already read. `slices` are the
  * middle column's spend nodes in drawn order; `transfers` the middle nodes
  * money moved to savings sits in. Nodes at zero or below are not drawn
- * (a net-negative slice's cents stay in "Unspent").
+ * (a net-negative slice's cents stay in "Unspent"). Inside a slice the
+ * children drawn add to its own total: refund rows, and any positives that
+ * would overshoot it, fold into an "Everything else" that holds them, net.
  */
 export function buildFlow(input: {
   income_minor: Cents;
@@ -221,12 +245,28 @@ export function buildFlow(input: {
     const n: FlowNode = { id: `m${i}`, label: s.name, column: 1, minor: s.minor, colour: seriesColour(i), kind: "middle", link: s.link };
     nodes.push(n);
     fund(n);
-    const children = [...s.children];
-    const childSum = children.reduce((t, c) => t + c.minor, 0);
-    if (childSum < s.minor) {
-      children.push({ name: OTHER_NAME, minor: s.minor - childSum, kind: "rest", link: s.link });
+    // the children drawn must add to the slice's own total. Refund rows make
+    // the gross bigger than the net, so the biggest positives fold into the
+    // residual until the shown rest fits; what folds, refunds included, the
+    // "Everything else" figure holds, never dropped.
+    const shown = new Set<FlowChild>();
+    let covered = 0;
+    for (const c of [...s.children].sort((a, b) => b.minor - a.minor)) {
+      if (c.minor > 0 && covered + c.minor <= s.minor) {
+        shown.add(c);
+        covered += c.minor;
+      }
     }
-    children.filter((c) => c.minor > 0).forEach((c, j) => {
+    const children = s.children.filter((c) => shown.has(c));
+    const rest = s.minor - covered;
+    if (rest > 0) {
+      const folded = s.children.find((c) => !shown.has(c) && c.link);
+      children.push({
+        name: OTHER_NAME, minor: rest, kind: "rest",
+        link: restLink(children[0]?.link ?? folded?.link ?? s.link, children.map((c) => c.name)),
+      });
+    }
+    children.forEach((c, j) => {
       const child: FlowNode = {
         id: `m${i}c${j}`, label: c.name, column: 2, minor: c.minor,
         colour: c.kind === "rest" ? REST_COLOUR : n.colour, kind: c.kind === "rest" ? "rest" : "category",
@@ -280,13 +320,18 @@ export type FlowLayout = { width: number; height: number; nodes: LaidNode[]; lin
  * Nodes and link bands in pixels. Every column shares one cents-to-pixels
  * scale (the tightest column sets it), so a band's thickness means the same
  * money everywhere. Columns centre vertically; a node's own links stack from
- * its top, sorted so bands cross as little as the order allows.
+ * its top, sorted so bands cross as little as the order allows. The height
+ * cap holds only while every column fits: a fuller chart grows instead of
+ * crushing its bands to nothing.
  */
 export function layoutFlow(graph: FlowGraph, width: number): FlowLayout {
   const cols: FlowNode[][] = [[], [], []];
   for (const n of graph.nodes) cols[n.column].push(n);
   const maxCount = Math.max(1, ...cols.map((c) => c.length));
-  const height = Math.round(Math.min(FLOW_H_MAX, Math.max(FLOW_H_MIN, maxCount * FLOW_MIN_PITCH)));
+  // the gaps and one sliver a node bound the height from below; under them
+  // the cents-to-pixels scale would fall to nothing
+  const fit = 2 * FLOW_PAD_Y + (FLOW_GAP + FLOW_MIN_NODE_H) * maxCount - FLOW_GAP;
+  let height = Math.round(Math.max(FLOW_H_MIN, Math.min(FLOW_H_MAX, maxCount * FLOW_MIN_PITCH), fit));
 
   let ky = Infinity;
   for (const c of cols) {
@@ -296,11 +341,16 @@ export function layoutFlow(graph: FlowGraph, width: number): FlowLayout {
   }
   if (!Number.isFinite(ky) || ky <= 0) ky = 0;
 
+  // a column of small nodes sits mostly on the minimum height, which the
+  // scale did not pay for: grow until the tallest drawn column is inside
+  const stacks = cols.map((c) =>
+    c.reduce((s, n) => s + Math.max(FLOW_MIN_NODE_H, n.minor * ky), 0) + FLOW_GAP * Math.max(0, c.length - 1));
+  height = Math.max(height, Math.ceil(2 * FLOW_PAD_Y + Math.max(0, ...stacks)));
+
   const xOf = (col: number) => (col === 0 ? 0 : col === 1 ? (width - FLOW_NODE_W) / 2 : width - FLOW_NODE_W);
   const placed = new Map<string, LaidNode>();
   cols.forEach((c, col) => {
-    const used = c.reduce((s, n) => s + Math.max(FLOW_MIN_NODE_H, n.minor * ky), 0) + FLOW_GAP * (c.length - 1);
-    let y = Math.max(FLOW_PAD_Y, (height - used) / 2);
+    let y = Math.max(FLOW_PAD_Y, (height - stacks[col]) / 2);
     for (const n of c) {
       const h = Math.max(FLOW_MIN_NODE_H, n.minor * ky);
       placed.set(n.id, { ...n, x: xOf(col), y, w: FLOW_NODE_W, h });
