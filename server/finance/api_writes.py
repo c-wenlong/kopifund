@@ -430,7 +430,7 @@ def post_dashboard_query(req):
     """The same answer as the GET, for a caller that posts the query as the
     body. It writes nothing, so it sits in NO_CHANGE."""
     from . import dashboard
-    return dashboard.resolve(req.maybe_record(), results_cache.results(req), req.data)
+    return dashboard.resolve(req.maybe_record(), results_cache.results_view(req), req.data)
 
 
 def post_dashboard_goal(req):
@@ -447,7 +447,7 @@ def post_dashboard_scenario_preview(req):
     """The query's series drawn ahead: an estimate, and by design never
     written to the plan or anywhere else."""
     from . import dashboard
-    return dashboard.scenario_preview(req.maybe_record(), results_cache.results(req), req.data)
+    return dashboard.scenario_preview(req.maybe_record(), results_cache.results_view(req), req.data)
 
 
 def post_dashboard_allocation(req):

@@ -101,3 +101,9 @@ def months_apart(a, b):
     """How many months b is after a (both YYYY-MM): negative when b is before a."""
     (ya, ma), (yb, mb) = _month(a), _month(b)
     return (yb - ya) * 12 + mb - ma
+
+
+def months_between(first, last):
+    """Every month from `first` to `last` (YYYY-MM), both ends included, with no
+    gaps; empty when `last` is before `first`."""
+    return [add_months(first, n) for n in range(months_apart(first, last) + 1)]

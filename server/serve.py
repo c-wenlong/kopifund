@@ -216,6 +216,7 @@ import sqlite3
 import sys
 import threading
 import time
+import traceback
 from contextlib import closing, contextmanager
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -245,6 +246,26 @@ VERSION = "0.1.0"
 
 
 MAX_BODY = 25 * 1024 * 1024
+
+# Audit: what every response carries. No other site may frame the app (a
+# framed page is live, so a click on it is the owner's click), and no answer
+# is read as anything but its own Content-Type.
+NO_FRAMING = (("X-Frame-Options", "DENY"), ("Content-Security-Policy", "frame-ancestors 'none'"),
+              ("X-Content-Type-Options", "nosniff"))
+# Audit: the Sec-Fetch-Site values an /api/ GET may carry: the app's own page
+# (Vite's proxy under `make dev` passes the page's header on) and a typed
+# address or a download. A client that sends no such header (curl, the phone)
+# is answered as before.
+OWN_FETCH = frozenset({"same-origin", "none"})
+
+
+def _failure(exc: Exception) -> tuple[dict, HTTPStatus]:
+    """The answer to a request that raised what no route expected: the server's
+    log has the traceback, the page gets a sentence and no path or detail."""
+    if isinstance(exc, sqlite3.OperationalError) and ("locked" in str(exc) or "busy" in str(exc)):
+        return {"error": "The record is busy with another change; try again in a moment"}, \
+            HTTPStatus.SERVICE_UNAVAILABLE
+    return {"error": "Something went wrong on the server; try again"}, HTTPStatus.INTERNAL_SERVER_ERROR
 
 
 def _local_origin(origin: str | None) -> bool:
@@ -344,6 +365,38 @@ def make_handler(dist: Path, page: str | None = None) -> type[BaseHTTPRequestHan
     class Handler(BaseHTTPRequestHandler):
         server_version = f"Kopifund/{VERSION}"
 
+        def handle_one_request(self) -> None:
+            """Audit: a request that raises anything still gets an answer, a
+            JSON 500 when nothing was sent yet, instead of a closed socket."""
+            self.answering = False
+            try:
+                super().handle_one_request()
+            except (BrokenPipeError, ConnectionResetError):
+                self.close_connection = True            # the client went away
+            except Exception as exc:  # noqa: BLE001  the last stop before the socket closes
+                self.close_connection = True
+                try:
+                    where = urlsplit(getattr(self, "path", "")).path
+                except ValueError:                      # the target that failed may not parse either
+                    where = "(a request target that does not parse)"
+                print(f"kopifund: {getattr(self, 'command', '?')} {where} failed", file=sys.stderr)
+                traceback.print_exc()
+                if not self.answering:
+                    try:
+                        self.send_json(*_failure(exc))
+                        self.wfile.flush()
+                    except OSError:
+                        pass
+
+        def send_response(self, *args, **kwargs) -> None:
+            self.answering = True
+            super().send_response(*args, **kwargs)
+
+        def end_headers(self) -> None:
+            for name, value in NO_FRAMING:
+                self.send_header(name, value)
+            super().end_headers()
+
         def foreign_host(self) -> bool:
             if _local_host(self.headers.get("Host")):
                 return False
@@ -399,6 +452,11 @@ def make_handler(dist: Path, page: str | None = None) -> type[BaseHTTPRequestHan
             if self.foreign_host():
                 return
             if path.startswith("/api/"):
+                if self.headers.get("Sec-Fetch-Site", "none") not in OWN_FETCH:
+                    # Audit: another site's <img> or fetch; some GETs run a
+                    # command or call a provider, and a 200 or 404 says what exists
+                    self.send_json({"error": "This answer is only for the Kopifund app"}, HTTPStatus.FORBIDDEN)
+                    return
                 self.api(path)
             else:
                 self.static(path)
@@ -437,7 +495,12 @@ def make_handler(dist: Path, page: str | None = None) -> type[BaseHTTPRequestHan
                 self.send_json({"error": "Writes are only accepted from the Kopifund app"},
                                HTTPStatus.FORBIDDEN)
                 return
-            length = int(self.headers.get("Content-Length") or 0)
+            # HTTP allows spaces and tabs around a header's value
+            given = (self.headers.get("Content-Length") or "0").strip(" \t")
+            if not (given.isascii() and given.isdigit()):
+                self.send_json({"error": "The request's length is not a number"}, HTTPStatus.BAD_REQUEST)
+                return
+            length = int(given)
             if length > MAX_BODY:
                 self.send_json({"error": "That upload is too large"}, HTTPStatus.REQUEST_ENTITY_TOO_LARGE)
                 return
@@ -495,6 +558,9 @@ def make_handler(dist: Path, page: str | None = None) -> type[BaseHTTPRequestHan
                 self.send_header("Content-Length", "0")
                 self.end_headers()
                 return
+            if "\0" in path:
+                self.send_error(HTTPStatus.NOT_FOUND)
+                return
             target = (dist / path.lstrip("/")).resolve()
             if not target.is_relative_to(dist):
                 self.send_error(HTTPStatus.NOT_FOUND)
@@ -540,7 +606,6 @@ def make_handler(dist: Path, page: str | None = None) -> type[BaseHTTPRequestHan
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", out.kind)
             self.send_header("Cache-Control", "no-store")
-            self.send_header("X-Content-Type-Options", "nosniff")
             self.send_header("Connection", "close")
             self.end_headers()
             events = iter(out.events)

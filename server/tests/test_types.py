@@ -250,7 +250,7 @@ class EndpointTest(unittest.TestCase):
                                                "KOPIFUND_ENV_FILE": str(root / "keys.env"),
                                                "KOPIFUND_DEVICES": str(root / "devices.json")})
         cls.env.start()
-        cls.results = mock.patch("finance.results_cache.results", lambda req=None: RESULTS)
+        cls.results = mock.patch("finance.results_cache._shared", lambda req=None: RESULTS)
         cls.results.start()
         # G25: the tailnet URL is this machine's, so fake it rather than ask tailscale;
         # one paired phone so LinkDevice is checked too, not just the empty list
@@ -310,7 +310,7 @@ class EndpointTest(unittest.TestCase):
             dashboard.save_goal(conn, RESULTS, {
                 "name": "A year aside", "target_minor": 6_000_000, "month": "2027-06",
                 "note": "invented", "milestones": [{"month": "2026-12", "target_minor": 1_500_000}],
-                "source": "spending", "metric": "spend", "dimension": "month"})
+                "source": "net-worth", "metric": "total", "dimension": "month"})
             bucket = conn.execute("SELECT name FROM category_group WHERE kind = 'spend' "
                                   "ORDER BY name LIMIT 1").fetchone()[0]
             dashboard.save_allocation(conn, {"buckets": [{"bucket": bucket, "planned_minor": 50_000}]})

@@ -12,6 +12,7 @@ import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from analytics import publish
 from finance import results_cache
@@ -149,6 +150,27 @@ class TestFixtureCache(unittest.TestCase):
         Cache(FIXTURES).results_all()
         after = {p: p.stat().st_mtime for p in FIXTURES.rglob("*.json")}
         self.assertEqual(before, after)
+
+
+class TestResultsView(unittest.TestCase):
+    """G26: a widget's question copies only the stat results it reads."""
+
+    def test_a_view_copies_a_result_when_read_and_never_shares_the_memo(self):
+        shared = {"monthly-cashflow": {"data": {"months": [1]}}, "cpf": {"data": {"years": [2]}}}
+        with mock.patch.object(results_cache, "_shared", lambda req=None: shared), \
+                mock.patch.object(results_cache.copy, "deepcopy", wraps=results_cache.copy.deepcopy) as deep:
+            view = results_cache.results_view()
+            self.assertEqual(deep.call_count, 0)
+            self.assertEqual(sorted(view), ["cpf", "monthly-cashflow"])
+            got = view["cpf"]
+            self.assertEqual(deep.call_count, 1)
+            self.assertIs(view.get("cpf"), got)                  # read twice, copied once
+            self.assertIsNone(view.get("travel"))
+            got["data"]["years"].append(3)                       # a caller's change stays its own
+            self.assertEqual(shared["cpf"]["data"]["years"], [2])
+            # the whole-copy reader still copies everything
+            self.assertEqual(results_cache.results(), shared)
+            self.assertIsNot(results_cache.results()["cpf"], shared["cpf"])
 
 
 class TestMetrics(unittest.TestCase):
