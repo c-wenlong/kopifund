@@ -283,3 +283,14 @@ func everyDateFormatRoundTrips(format: AlertPattern.DateFormat) {
     #expect(!Suppression.contains("anything", in: nil))
     Suppression.clear(in: nil)
 }
+
+@Test func suppressionRemovesOneShapeAndKeepsTheRest() {
+    let (defaults, name) = scratchDefaults()
+    defer { defaults.removePersistentDomain(forName: name) }
+    Suppression.add("you spent # at", in: defaults)
+    Suppression.add("otp # for", in: defaults)
+    Suppression.remove("you spent # at", in: defaults)
+    #expect(Suppression.signatures(in: defaults) == ["otp # for"])
+    Suppression.remove("never added", in: defaults)
+    #expect(Suppression.signatures(in: defaults) == ["otp # for"])
+}

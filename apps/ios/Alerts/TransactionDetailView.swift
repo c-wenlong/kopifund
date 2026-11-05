@@ -8,6 +8,9 @@ struct TransactionDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("planID") private var planID = ""
     @State private var categoryOptions: [(id: String, label: String)] = []
+    // set by Delete: the row goes once this view is off screen, so no
+    // render ever reads a deleted model
+    @State private var deleteOnExit = false
 
     var body: some View {
         Form {
@@ -120,10 +123,17 @@ struct TransactionDetailView: View {
                 }
             }
             Button("Delete", role: .destructive) {
-                context.delete(row)
-                try? context.save()
+                deleteOnExit = true
                 dismiss()
             }
+            // a row in flight is still being written by the sync; deleting
+            // it under that write traps
+            .disabled(row.state == "syncing")
+        }
+        .onDisappear {
+            guard deleteOnExit else { return }
+            context.delete(row)
+            try? context.save()
         }
     }
 

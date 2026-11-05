@@ -69,7 +69,9 @@ nothing matched".
 Two exits leave noise without teaching anything: swipe for **Not an alert**
 to drop just that row, or **Always ignore** to remember the alert's shape
 (its opening words with every number folded to `#`) and drop the next one at
-intake, whichever channel carried it.
+intake, whichever channel carried it. Always ignore asks first, since it
+silences every alert of that template, and **Patterns** lists each ignored
+shape under "Ignored alert shapes"; swipe one there to stop ignoring it.
 
 **Teach a pattern** opens the builder with the confident guesses already
 tagged; the save button says what is still missing rather than sitting grey.

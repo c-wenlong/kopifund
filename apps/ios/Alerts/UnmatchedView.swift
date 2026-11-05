@@ -11,9 +11,15 @@ struct UnmatchedView: View {
     @Query(sort: \UnmatchedRecord.receivedAt, order: .reverse) private var rows: [UnmatchedRecord]
     @Environment(\.modelContext) private var context
     @State private var notice = ""
+    @State private var path: [UUID] = []
+    // "always ignore" silences a whole template, so a swipe only asks
+    @State private var confirmIgnore: UnmatchedRecord?
+    // a row the pushed AlertView finished with: deleted once the list is
+    // back on screen, never while a pushed view still shows it
+    @State private var pendingRemoval: UUID?
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 ForEach(rows) { r in
                     NavigationLink(value: r.id) {
@@ -24,12 +30,9 @@ struct UnmatchedView: View {
                             dismiss(r, andSay: "Alert dismissed")
                         }
                     }
-                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                        Button("Always ignore") {
-                            Suppression.add(AlertShape.signature(of: r.text))
-                            dismiss(r, andSay: "Ignored. Alerts like this won't queue")
-                        }
-                        .tint(.gray)
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        Button("Always ignore") { confirmIgnore = r }
+                            .tint(.gray)
                     }
                 }
                 if rows.isEmpty {
@@ -42,8 +45,21 @@ struct UnmatchedView: View {
             .task { await LinkDedupe.sweep(context: context) }
             .navigationDestination(for: UUID.self) { id in
                 if let r = rows.first(where: { $0.id == id }) {
-                    AlertView(record: r) { notice = $0 }
+                    AlertView(record: r) { finished(id, andSay: $0) }
                 }
+            }
+            .onAppear(perform: removePending)
+            .confirmationDialog("Always ignore alerts like this?",
+                                isPresented: Binding(get: { confirmIgnore != nil },
+                                                     set: { if !$0 { confirmIgnore = nil } }),
+                                titleVisibility: .visible, presenting: confirmIgnore) { r in
+                Button("Always ignore") {
+                    Suppression.add(AlertShape.signature(of: r.text))
+                    dismiss(r, andSay: "Ignored. Undo it under Patterns")
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text("Future alerts with the same shape are dropped, from any channel. Patterns lists them to undo.")
             }
             .overlay(alignment: .top) {
                 if !notice.isEmpty {
@@ -61,6 +77,26 @@ struct UnmatchedView: View {
                 }
             }
             .animation(.default, value: notice.isEmpty)
+        }
+    }
+
+    /// AlertView is done with its row: pop back to the list first, then
+    /// delete. Deleting the model a pushed view shows blanked that view (its
+    /// destination resolved to nothing) or crashed it on the next render.
+    private func finished(_ id: UUID, andSay toast: String) {
+        pendingRemoval = id
+        notice = toast
+        path.removeAll()
+    }
+
+    private func removePending() {
+        guard let id = pendingRemoval else { return }
+        pendingRemoval = nil
+        if let r = rows.first(where: { $0.id == id }) {
+            withAnimation {
+                context.delete(r)
+                try? context.save()
+            }
         }
     }
 
