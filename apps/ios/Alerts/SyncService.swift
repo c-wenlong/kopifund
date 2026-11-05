@@ -246,13 +246,21 @@ final class HubLane {
         record += await LinkDedupe.recordSpends(client: link, months: [month])
     }
 
-    /// kopifundError/kopifundID widen the net past YNAB's own states: a
-    /// synced row whose hub post failed or never got its reply is fetched
-    /// for the hub send alone.
+    /// The rows that can still owe the hub a send, so a run's work stays
+    /// with the queue rather than growing with every row ever posted:
+    /// - rows in the YNAB lane (a first send, or an interrupted one);
+    /// - any row whose last hub post failed or was held (`kopifundError`
+    ///   stays set until a post succeeds, so a synced row's failed post is
+    ///   retried too);
+    /// - a posted row that can still be edited, so an edit reposts. A synced
+    ///   row is read-only, and a "kopifund" row is one a loaded statement
+    ///   already covers, so neither is fetched once its post landed.
     private static func owedRows(_ context: ModelContext) -> [TransactionRecord] {
         (try? context.fetch(FetchDescriptor<TransactionRecord>(predicate: #Predicate {
             $0.state == "approved" || $0.state == "failed" || $0.state == "syncing"
-                || $0.kopifundError != nil || $0.kopifundID != nil }))) ?? []
+                || $0.kopifundError != nil
+                || ($0.kopifundID != nil && $0.state != "synced" && $0.state != "kopifund")
+        }))) ?? []
     }
 
     /// Every row the hub is owed, before the YNAB run starts. The candidates
