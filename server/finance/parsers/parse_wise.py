@@ -83,14 +83,14 @@ import argparse
 import calendar
 import csv
 import re
-import shutil
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from finance.pdftext import pdf_to_text, require as require_pdftotext
 from .parse_statements import (statement_folders, BAL_COLS, MONTHS, TXN_COLS, add_keys,
                               balance_summary, collect_pdfs, direction, money,
-                              pdf_to_text, report_duplicate_periods, warn)
+                              report_duplicate_periods, warn)
 from . import places  # (the city table and country split every feed shares)
 from .wallet_months import every_month, month_end, split_months
 from .layouts import CHECKED, Bank, Layout, Seen, by_download_day, register, register_bank
@@ -493,8 +493,7 @@ def main():
                     help="do not save the .txt dump beside each PDF")
     args = ap.parse_args()
 
-    if not shutil.which("pdftotext"):
-        sys.exit("pdftotext not found (brew install poppler)")
+    require_pdftotext()
     pdfs = collect_pdfs(args.paths or statement_folders("wise-"))
     if not pdfs:
         sys.exit("no PDFs found")

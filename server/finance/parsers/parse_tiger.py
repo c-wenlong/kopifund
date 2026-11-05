@@ -45,13 +45,12 @@ from the parsed rows, and no currency is converted by this script.
 import argparse
 import json
 import re
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 
 # the data folder's layout (server/finance/paths.py) decides where text dumps go
-from finance.paths import current_statements, statements_dir, text_dump_path
+from finance.paths import current_statements, statements_dir
+from finance.pdftext import pdf_to_text, require as require_pdftotext
 
 from .layouts import CHECKED, Bank, Layout, Seen, register, register_bank
 
@@ -570,17 +569,6 @@ def parse_text(text, file):
 
 # ---------------------------------------------------------------- files
 
-def pdf_to_text(pdf, write=True):
-    """The layout-preserved text of a PDF, the same call the DBS parser makes,
-    saved as a dump (finance.paths.text_dump_path) so a later run can be
-    checked against it."""
-    out = subprocess.run(["pdftotext", "-layout", str(pdf), "-"],
-                         capture_output=True, text=True, check=True).stdout
-    if write:
-        text_dump_path(pdf).write_text(out)
-    return out
-
-
 def parse_pdf(path, folder, write_text=True):
     """One statement, named by its path relative to the folder it sits in."""
     path, folder = Path(path), Path(folder)
@@ -625,8 +613,7 @@ def main():
                     help="do not save the .txt dump beside each PDF")
     args = ap.parse_args()
 
-    if not shutil.which("pdftotext"):
-        sys.exit("pdftotext not found (brew install poppler)")
+    require_pdftotext()
     folder = Path(args.folder)
     if not folder.is_dir():
         sys.exit(f"not a directory: {folder}")
