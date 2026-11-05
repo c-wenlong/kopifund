@@ -36,7 +36,7 @@ describe("Sidebar", () => {
 
   it("in hover mode rests as icons and expands on hover", async () => {
     render(<Sidebar path="/" />);
-    await userEvent.click(screen.getByRole("button", { name: "Expand on hover" }));
+    await userEvent.click(screen.getByRole("button", { name: "Expand sidebar on hover" }));
     expect(panel()).toHaveAttribute("data-expanded", "false");
     expect(screen.queryByText("Transactions")).not.toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Transactions" })).toBeInTheDocument();
@@ -49,11 +49,11 @@ describe("Sidebar", () => {
 
   it("remembers the choice across a reload", async () => {
     const { unmount } = render(<Sidebar path="/" />);
-    await userEvent.click(screen.getByRole("button", { name: "Expand on hover" }));
+    await userEvent.click(screen.getByRole("button", { name: "Expand sidebar on hover" }));
     unmount();
     render(<Sidebar path="/" />);
     expect(panel()).toHaveAttribute("data-expanded", "false");
-    expect(screen.getByRole("button", { name: "Keep sidebar open" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Expand sidebar on hover" })).toHaveAttribute("aria-pressed", "true");
   });
 
   it("does not expand on hover while kept open", () => {
@@ -87,7 +87,7 @@ describe("Needs your eye in the sidebar", () => {
 
   it("shows a dot in place of the count on the rail, and nothing when nothing is flagged", async () => {
     const { unmount } = render(<Sidebar path="/" eye={LINES} />);
-    await userEvent.click(screen.getByRole("button", { name: "Expand on hover" }));
+    await userEvent.click(screen.getByRole("button", { name: "Expand sidebar on hover" }));
     expect(screen.queryByTestId("eye-count")).not.toBeInTheDocument();
     expect(screen.getByTestId("eye-dot")).toHaveClass("bg-danger");
     unmount();
@@ -155,7 +155,7 @@ describe("Needs your eye in the sidebar", () => {
 
   it("keeps the rail open while its list is open", async () => {
     render(<Sidebar path="/" eye={LINES} />);
-    await userEvent.click(screen.getByRole("button", { name: "Expand on hover" }));
+    await userEvent.click(screen.getByRole("button", { name: "Expand sidebar on hover" }));
     await userEvent.click(item());
     fireEvent.mouseLeave(panel());
     expect(panel()).toHaveAttribute("data-expanded", "true");

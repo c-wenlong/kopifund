@@ -172,3 +172,12 @@ describe("ModelField", () => {
     expect(screen.queryByRole("option", { name: /claude-old/ })).not.toBeInTheDocument();
   });
 });
+
+// Audit: aria-controls named a list that is not there while closed
+describe("ModelField's ARIA", () => {
+  it("names no list while none is shown", () => {
+    stub(() => ({ models: [] }));
+    render(<Field />);
+    expect(box()).not.toHaveAttribute("aria-controls");
+  });
+});

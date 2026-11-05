@@ -4,6 +4,7 @@ import type { EyeLine } from "../api";
 import { SidebarBody, type Holdings } from "./Sidebar";
 import { eyeTone } from "./NeedsYourEye";
 import { useAppIconLogo } from "./appIcon";
+import { holdTab, KEEP_LIVE } from "./focusTrap";
 
 // G13: under 768px the sidebar would squeeze every page, so a slim bar takes
 // its place and the sidebar opens over the page as a drawer.
@@ -24,7 +25,7 @@ export function TopBar({ title, open, onOpen, buttonRef, eye = [], ask }: {
         onClick={onOpen}
         aria-label="Open menu"
         aria-expanded={open}
-        aria-controls={DRAWER_ID}
+        aria-controls={open ? DRAWER_ID : undefined}
         aria-describedby={eye.length ? said : undefined}
         className="grid size-9 shrink-0 place-items-center rounded-md text-ink-2 hover:bg-hover hover:text-ink"
       >
@@ -52,6 +53,7 @@ export function Drawer({ path, holdings, asOf, onClose, returnFocus, eye = [], e
 }) {
   const closeButton = useRef<HTMLButtonElement>(null);
   const logo = useAppIconLogo();
+  const panel = useRef<HTMLDivElement>(null);
   const [eyeOpen, setEyeOpen] = useState(eyeFirst);
 
   useEffect(() => {
@@ -63,7 +65,9 @@ export function Drawer({ path, holdings, asOf, onClose, returnFocus, eye = [], e
     // already scrolled itself into view, and the button sits at the top
     closeButton.current?.focus({ preventScroll: true });
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      // Audit: a list open inside the drawer keeps its own Escape, and Tab stays in the drawer, which says it is modal
+      if (e.key === "Escape" && !e.defaultPrevented) onClose();
+      else if (e.key === "Tab" && panel.current) holdTab(e, panel.current, [...document.querySelectorAll<HTMLElement>(`[${KEEP_LIVE}]`)]);
     };
     window.addEventListener("keydown", onKey);
     return () => {
@@ -76,6 +80,7 @@ export function Drawer({ path, holdings, asOf, onClose, returnFocus, eye = [], e
     <div className="fixed inset-0 z-40">
       <div data-testid="drawer-scrim" aria-hidden className="absolute inset-0 bg-scrim" onClick={onClose} />
       <div
+        ref={panel}
         id={DRAWER_ID}
         role="dialog"
         aria-modal="true"

@@ -69,7 +69,7 @@ export function Problem({ message, hint, retry = false, onRetry }: {
 }
 
 /** "Nothing there yet" is only a 404; any other failure says what went wrong. */
-export function NoResult({ status, error, what, hint = "Run the analysis from the Upload page, or `make analyse`." }: {
+export function NoResult({ status, error, what, hint = "Run the analysis from the Upload page." }: {
   status?: number; error: string | null; what: string; hint?: string;
 }) {
   if (error && status !== 404) return <Problem message={error} retry />;

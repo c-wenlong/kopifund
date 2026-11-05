@@ -4,7 +4,9 @@ import type { StatResult } from "./hint";
 
 // G13: the figures a few cards' findings used to carry as prose are tiles above
 // the chart. Every figure here is invented.
-const tile = (label: string) => within(screen.getByRole("group")).getByText(label).parentElement as HTMLElement;
+// the tiles' group; the chart's "Figures as a table" disclosure is a group too
+const TILES = /, in figures$/;
+const tile = (label: string) => within(screen.getByRole("group", { name: TILES })).getByText(label).parentElement as HTMLElement;
 
 describe("data quality tiles", () => {
   const result: StatResult = {
@@ -37,7 +39,7 @@ describe("data quality tiles", () => {
 
   it("draws no tiles when the result has no counts", () => {
     render(<StatCard result={{ ...result, data: { by_month: result.data!.by_month } }} />);
-    expect(screen.queryByRole("group")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: TILES })).not.toBeInTheDocument();
   });
 });
 
@@ -124,6 +126,6 @@ describe("a card without tiles", () => {
       id: "eating-out", title: "Eating out", chart: { type: "line", x: "week", series: ["spend_minor"], unit: "sgd_minor" },
       data: { weeks: [{ week: "2026-09-07", spend_minor: 10000 }] },
     }} />);
-    expect(screen.queryByRole("group")).not.toBeInTheDocument();
+    expect(screen.queryByRole("group", { name: TILES })).not.toBeInTheDocument();
   });
 });
