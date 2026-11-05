@@ -100,6 +100,20 @@ NOT_COUNTRY = {"LTD", "PTE", "INC", "LLC", "CO", "BHD", "SDN", "GMBH", "AB", "AG
 US_STATES = set("AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO "
                 "MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC".split())
 
+
+def two_letter_country(cc, place="", whole=False):
+    """ISO alpha-3 for a 2-letter country slot. A US merchant prints its state
+    there, so a state code reads as the USA; but ID, IN and DE are both a state
+    and a country in ALPHA2 (Indonesia, India, Germany). Those read as the
+    country unless `place`, the text printed before the code, ends in a town
+    the city tables (places.py, with the data folder's places.csv, prefix and
+    exact rows alike) put in the USA. `whole`: `place` is the town alone (a
+    wallet row's comma field), not a card line's merchant and town."""
+    if cc in ALPHA2 and cc in US_STATES:
+        from .places import trailing_town_country
+        return "USA" if place and trailing_town_country(place, whole) == "USA" else ALPHA2[cc]
+    return "USA" if cc in US_STATES else ALPHA2.get(cc, cc)
+
 NOISE = re.compile(
     r"Page \d+ of \d+|SG40020000876|DBS Co\. Reg|PDS_|CMTHE_|Message|"
     r"For Your Information|DEPOSIT INSURANCE|Transaction Details|Account Summary|"
@@ -477,7 +491,9 @@ def enrich_card(r):
     elif cc.isdigit():                             # "SINGAPORE 065"
         cc = "SGP" if "SINGAPORE" in name else None
     elif len(cc) == 2:
-        cc = "USA" if cc in US_STATES else ALPHA2.get(cc, cc)
+        # the town ends the text before the slot; parse_card has already
+        # collapsed the spacing that set it apart, so its last words are tried
+        cc = two_letter_country(cc, name)
     r["merchant"], r["merchant_country"] = name, cc
     r["purchase_date"] = purchase_date(r["date"], tag)
     return r
@@ -594,7 +610,11 @@ def add_keys(rows):
 # ---------------------------------------------------------------- validation
 
 def validate(rows, blocks):
-    """Replay each block's balance chain; return the drifts found."""
+    """Replay each block's balance chain; return the drifts found. A block
+    with a drift is not ok even when the replay, resynced onto each printed
+    balance, still reaches the closing: its `reconciled` column is what a
+    reused CSV is checked by (sync.check_blocks), and a row the chain
+    disagreed with must never load."""
     bad = []
     by_block = defaultdict(list)
     for r in rows:
@@ -603,6 +623,7 @@ def validate(rows, blocks):
         b.setdefault("closing", None)   # a layout that printed none still has the key
         rs = by_block.get((b["source"], b["account_no"], b["currency"]), [])
         run, tin, tout = (b["opening"] if b["opening"] is not None else 0.0), 0.0, 0.0
+        drifts = len(bad)
         for r in rs:
             run += r["amount"]
             tin += max(r["amount"], 0)
@@ -611,6 +632,7 @@ def validate(rows, blocks):
                 bad.append((b["source"], b["currency"], r["date"], r["bank_txn_type"],
                             round(run, 2), r["balance_after"]))
                 run = r["balance_after"]        # resync so one error is not N errors
+        drifted = len(bad) > drifts
         b.update(computed_closing=round(run, 2) if b["opening"] is not None else None,
                  computed_in=round(tin, 2), computed_out=round(tout, 2), n_txns=len(rs))
         if b.get("card_statement"):
@@ -633,7 +655,7 @@ def validate(rows, blocks):
                 b["ok"] = False
             else:
                 b["balance_state"] = "checked"
-                b["ok"] = abs(run - b["closing"]) < 0.005
+                b["ok"] = abs(run - b["closing"]) < 0.005 and not drifted
             b.setdefault("total_in", round(tin, 2))
             b.setdefault("total_out", round(tout, 2))
             b.setdefault("note", BALANCE_STATES[b["balance_state"]])

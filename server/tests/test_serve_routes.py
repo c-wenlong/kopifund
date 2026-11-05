@@ -1,5 +1,6 @@
 """G19: serve.py's route tables, its one body parser and its one connection per request."""
 import isolate  # noqa: F401  first: no test writes the real record or cache
+import contextlib
 import inspect
 import io
 import json
@@ -351,7 +352,7 @@ class ConnectionTest(Server):
         self.assertEqual(self.count["opened"], 0)
 
     def test_a_route_that_raises_closes_its_connection_too(self):
-        with mock.patch.object(self.server, "handle_error"):             # the traceback it would print
+        with contextlib.redirect_stderr(io.StringIO()):                  # the traceback it prints
             with mock.patch("finance.rules_app.categories", side_effect=RuntimeError("boom")):
                 self.assertEqual(self.seen("GET", "/api/rules"), (1, 1))
             with mock.patch("finance.planning.set_budget", side_effect=RuntimeError("boom")):

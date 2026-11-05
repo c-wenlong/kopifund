@@ -77,8 +77,9 @@ RESULTS = {
          "want_minor": 60_000, "savings_minor": 50_000,
          "need_share": 0.4, "want_share": 0.24, "savings_share": 0.2, "unclassified": 0.0}]}},
     "category-breakdown": {"data": {"categories": [
-        {"category": "Rent", "total_minor": 230_000, "monthly_avg_minor": 50_000,
-         "last3_avg_minor": 45_000, "prior6_avg_minor": 55_000, "share_pct": 47.9, "trend_pct": 5.8}]}},
+        {"category": "Rent", "total_minor": 230_000, "per_month_minor": 50_000,
+         "last3_per_month_minor": 45_000, "prior6_per_month_minor": 55_000, "change_minor": -10_000,
+         "share": 0.479, "change_share": -0.1818}]}},
     "forward-view": {"data": {"months": [
         {"month": "2026-09", "cash_minor": 950_000, "net_minor": 40_000, "spend_minor": 42_500,
          "take_home_minor": 210_000},
@@ -194,6 +195,16 @@ class SpendingSourceTest(unittest.TestCase):
             a = dashboard.resolve(self.conn, {}, {"source": "spending", "metric": metric})
             self.assertEqual(a["series"][0]["values_minor"], vals, metric)
 
+    def test_a_month_the_cash_flow_calls_partial_is_marked(self):
+        results = {"monthly-cashflow": {"data": {"months": [
+            {"month": "2026-07", "partial": False}, {"month": "2026-08", "partial": True}]}}}
+        a = dashboard.resolve(self.conn, results, {"source": "spending", "metric": "spend"})
+        self.assertEqual(a["partial"], ["2026-08"])
+        # no stat run yet, or a dimension that is not months: nothing to mark
+        self.assertNotIn("partial", dashboard.resolve(self.conn, {}, {"source": "spending", "metric": "spend"}))
+        self.assertNotIn("partial", dashboard.resolve(self.conn, results, {"source": "spending", "metric": "spend",
+                                                                           "dimension": "bucket"}))
+
     def test_a_month_query_split_by_category(self):
         a = dashboard.resolve(self.conn, {}, {"source": "spending", "metric": "spend",
                                               "split": "category"})
@@ -275,7 +286,7 @@ class StatSourceTest(unittest.TestCase):
         a = self.resolve({"source": "needs-wants-savings", "metric": "want_share"})
         self.assertEqual((a["unit"], a["series"][0]["values"]), ("fraction", [0.24]))
         a = self.resolve({"source": "category-breakdown", "metric": "share"})
-        self.assertEqual((a["unit"], a["series"][0]["values"]), ("percent", [47.9]))
+        self.assertEqual((a["unit"], a["series"][0]["values"]), ("fraction", [0.479]))
 
     def test_holdings_years_and_the_parts_of_net_worth(self):
         a = self.resolve({"source": "portfolio", "metric": "value", "dimension": "holding"})
@@ -296,6 +307,43 @@ class StatSourceTest(unittest.TestCase):
         a = self.resolve({"source": "forward-view", "metric": "cash"})
         self.assertIn("projection", a["note"])
         self.assertEqual(a["series"][0]["values_minor"], [950_000, 990_000])
+
+
+class StatFieldsTest(unittest.TestCase):
+    """Every metric a stat source offers names a field the stat really writes:
+    each stat runs on the analytics fixture here, so a renamed or reshaped
+    stat fails this rather than leaving a widget blank (RESULTS above is
+    invented, and only as right as whoever wrote it)."""
+
+    def test_every_stat_metric_is_a_field_of_the_stats_own_rows(self):
+        from analytics import stats
+        from analytics_fixture import cpf, portfolio, settings, snapshot as fixture
+        from finance.money import stat_cents
+        with settings():
+            snap = fixture(portfolio=portfolio(), cpf=cpf())
+            checked = 0
+            for source, spec in dashboard._CATALOGUE.items():
+                module = stats.by_id().get(source)
+                if module is None:
+                    continue                       # spending and net-worth are not stats
+                res = module.run(snap, None)
+                for dim, d in spec["dims"].items():
+                    rows = res["data"].get(d["rows"])
+                    with self.subTest(source=source, dimension=dim):
+                        self.assertIsInstance(rows, list)
+                        self.assertTrue(rows, f"{source} wrote no {d['rows']} on the fixture")
+                        self.assertIn(d["x"], rows[0])
+                        for metric, (field, unit) in d["metrics"].items():
+                            self.assertTrue(any(field in r for r in rows), f"{source} {metric}: no {field}")
+                            if unit == "sgd_minor":
+                                stat_cents(rows[0], field[:-6])
+                            checked += 1
+                        # and the answer reads it: not every figure blank
+                        a = dashboard.resolve(None, {source: res}, {"source": source, "dimension": dim,
+                                                                     "metric": next(iter(d["metrics"]))})
+                        vals = a["series"][0].get("values_minor") or a["series"][0].get("values") or []
+                        self.assertTrue(any(v is not None for v in vals), f"{source} by {dim} answered blank")
+        self.assertGreater(checked, 40)
 
 
 class ScenarioTest(unittest.TestCase):
@@ -340,7 +388,7 @@ class EndpointTest(unittest.TestCase):
         env.start()
         self.addCleanup(env.stop)
         self.addCleanup(self.tmp.cleanup)
-        results = mock.patch("finance.results_cache.results", lambda req=None: RESULTS)
+        results = mock.patch("finance.results_cache._shared", lambda req=None: RESULTS)
         results.start()
         self.addCleanup(results.stop)
         with closing(db.connect()) as conn:
