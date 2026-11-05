@@ -307,7 +307,7 @@ class EndpointTest(unittest.TestCase):
             dashboard.save_goal(conn, RESULTS, {
                 "name": "A year aside", "target_minor": 6_000_000, "month": "2027-06",
                 "note": "invented", "milestones": [{"month": "2026-12", "target_minor": 1_500_000}],
-                "source": "spending", "metric": "spend", "dimension": "month"})
+                "source": "net-worth", "metric": "total", "dimension": "month"})
             bucket = conn.execute("SELECT name FROM category_group WHERE kind = 'spend' "
                                   "ORDER BY name LIMIT 1").fetchone()[0]
             dashboard.save_allocation(conn, {"buckets": [{"bucket": bucket, "planned_minor": 50_000}]})
