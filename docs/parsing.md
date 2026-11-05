@@ -153,7 +153,13 @@ Debit-card rows print the merchant, a country slot and the purchase date on one
 line, and every one of them is typed `Debit Card Transaction`. The country slot
 is inconsistent: a 3-letter code, a 2-letter code, a US state, or `065` (the IDD
 code) for some Singapore merchants. All of it is normalised to ISO alpha-3 so
-one select value covers each country.
+one select value covers each country. A US state code reads as the USA, except
+`ID`, `IN` and `DE`, which are also Indonesia, India and Germany: those read as
+the country unless the town printed before them is a US city in the city table
+(with the data folder's `places.csv`, its prefix and exact rows alike). A card
+row's town is the last one to three words before the slot, the shortest that
+names a known town deciding, since the parser has collapsed the spacing that
+set it apart. Wallet merchants (`places.split_country`) follow the same rule.
 
 On the bank side, a row is a wallet load only when the statement names the
 wallet's own counterparty, never when the word appears in free text.

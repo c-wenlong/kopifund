@@ -88,7 +88,9 @@ struct AlertView: View {
 
                 NavigationLink {
                     PatternBuilderView(sampleText: record.text, source: record.source) {
-                        onFinished(reIngest())
+                        // the list drops the row only after the re-ingest
+                        // has read it
+                        Task { onFinished(await reIngest()) }
                     }
                 } label: {
                     Text("Teach a pattern")
@@ -130,12 +132,12 @@ struct AlertView: View {
     /// The saved pattern should also capture this alert: re-ingest so the
     /// spend reaches the queue. The list drops the unmatched row once this
     /// view is off screen.
-    private func reIngest() -> String {
+    private func reIngest() async -> String {
         var outcome = "unmatched"
         if let container = try? Store.container() {
-            outcome = (try? Ingest.alert(text: record.text, source: record.source,
-                                         receivedAt: record.receivedAt,
-                                         container: container)) ?? "unmatched"
+            outcome = (try? await Ingest.alert(text: record.text, source: record.source,
+                                               receivedAt: record.receivedAt,
+                                               container: container)) ?? "unmatched"
         }
         switch outcome {
         case "queued": return "Pattern saved. The alert is in your Inbox"
