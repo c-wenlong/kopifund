@@ -149,7 +149,7 @@ def render() -> str:
     parts.append(_strings("NO_CHANGE_PATHS", "serve.py, NO_CHANGE: the writes that change nothing a GET reads, "
                                              "so no view reloads after them.", serve.NO_CHANGE))
     reread = "".join(f"  {json.dumps(k)}: {json.dumps(sorted(v))},\n" for k, v in sorted(serve.REREAD_AFTER.items()))
-    parts.append(f"{_comment('serve.py, REREAD_AFTER (G18): the GETs a view asks for again after one of those writes.')}"
+    parts.append(f"{_comment('serve.py, REREAD_AFTER (G18): after one of these writes, the GETs a view asks for again; nothing else kept is forgotten.')}"
                  f"export const REREAD_AFTER: Readonly<Record<string, readonly string[]>> = {{\n{reread}}};\n")
     return "\n".join(parts)
 
