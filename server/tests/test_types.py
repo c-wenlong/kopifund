@@ -247,7 +247,7 @@ class EndpointTest(unittest.TestCase):
                                                "KOPIFUND_ENV_FILE": str(root / "keys.env"),
                                                "KOPIFUND_DEVICES": str(root / "devices.json")})
         cls.env.start()
-        cls.results = mock.patch("finance.results_cache.results", lambda req=None: RESULTS)
+        cls.results = mock.patch("finance.results_cache._shared", lambda req=None: RESULTS)
         cls.results.start()
         # G25: the tailnet URL is this machine's, so fake it rather than ask tailscale;
         # one paired phone so LinkDevice is checked too, not just the empty list

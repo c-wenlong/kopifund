@@ -2,7 +2,7 @@
 // Recharts draws in jsdom, a fetch stub that answers widget queries, and the
 // invented answers the widgets plot. Every figure is made up, in cents.
 import { vi } from "vitest";
-import { widgetQueryUrl } from "../../../widgets";
+import { canonicalJson, widgetQueryUrl } from "../../../widgets";
 import type { WidgetAnswer, WidgetQuery } from "../../../types.gen";
 
 export class SizedObserver {
@@ -24,7 +24,7 @@ export function useSizedCharts() {
 
 /** A fetch that answers every widget query from `answers` (by the query's JSON), a 400 for anything else. */
 export function stubQueries(answers: [WidgetQuery, WidgetAnswer | { error: string }][]) {
-  const byQuery = new Map(answers.map(([q, a]) => [JSON.stringify(q), a]));
+  const byQuery = new Map(answers.map(([q, a]) => [canonicalJson(q), a]));
   const seen: string[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
     seen.push(url);

@@ -333,7 +333,7 @@ class EndpointTest(unittest.TestCase):
         env.start()
         self.addCleanup(env.stop)
         self.addCleanup(self.tmp.cleanup)
-        results = mock.patch("finance.results_cache.results", lambda req=None: RESULTS)
+        results = mock.patch("finance.results_cache._shared", lambda req=None: RESULTS)
         results.start()
         self.addCleanup(results.stop)
         with closing(db.connect()) as conn:

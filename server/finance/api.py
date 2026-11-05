@@ -642,7 +642,7 @@ def get_dashboard_query(req):
     """A WidgetQuery resolved to labels and series: `?q=` holds the query as
     JSON, so the app's useWidgetData hook gets the ETag caching of every GET."""
     from . import dashboard
-    return dashboard.resolve(req.maybe_record(), results_cache.results(req),
+    return dashboard.resolve(req.maybe_record(), results_cache.results_view(req),
                              dashboard.query_from_get(req.query))
 
 
