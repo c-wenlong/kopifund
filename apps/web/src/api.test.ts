@@ -1,6 +1,6 @@
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { MAX_KEPT, OFFLINE, REVALIDATE_EVERY, getJSON, notifyChanged, postJSON, prefetch, resetLink, revalidate, useApi, useLink } from "./api";
+import { MAX_KEPT, OFFLINE, REVALIDATE_EVERY, getJSON, notifyChanged, postJSON, prefetch, rereadAfter, resetLink, revalidate, useApi, useLink } from "./api";
 
 describe("useApi", () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -71,6 +71,37 @@ describe("useApi", () => {
     // nothing else was forgotten: a page opened now paints its kept answer at once
     const again = renderHook(() => useApi<{ n: number }>("/api/rules"));
     expect(again.result.current.data).toEqual(rulesBefore);
+  });
+
+  it("after a dashboard layout save asks again only for the layouts, so no widget is asked afresh (G26)", async () => {
+    const asked: string[] = [];
+    let n = 0;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") return new Response("{}", { status: 200 });
+      asked.push(url);
+      return new Response(JSON.stringify({ n: ++n }), { status: 200 });
+    }));
+    const layouts = renderHook(() => useApi<{ n: number }>("/api/dashboard/layouts"));
+    const widget = renderHook(() => useApi<{ n: number }>("/api/dashboard/query?q=1"));
+    await waitFor(() => expect(layouts.result.current.data).not.toBeNull());
+    await waitFor(() => expect(widget.result.current.data).not.toBeNull());
+    const widgetBefore = widget.result.current.data;
+    for (const write of ["/api/dashboard/layouts/main", "/api/dashboard/layouts"]) {
+      asked.length = 0;
+      await act(async () => { await postJSON(write, "{}"); });
+      await waitFor(() => expect(asked).toEqual(["/api/dashboard/layouts"]));
+      expect(widget.result.current.data).toBe(widgetBefore);
+    }
+    // the widget's answer is still kept: a board opened now paints it at once
+    expect(renderHook(() => useApi<{ n: number }>("/api/dashboard/query?q=1")).result.current.data).toEqual(widgetBefore);
+  });
+
+  it("matches a write's route by its <id> segment and nothing longer", () => {
+    expect(rereadAfter("/api/dashboard/layouts/main")).toEqual(["/api/dashboard/layouts"]);
+    expect(rereadAfter("/api/dashboard/layouts")).toEqual(["/api/dashboard/layouts"]);
+    expect(rereadAfter("/api/dashboard/layouts/main/extra")).toBeUndefined();
+    expect(rereadAfter("/api/dashboard/layouts/")).toBeUndefined();
+    expect(rereadAfter("/api/run/load")).toBeUndefined();
   });
 
   it("asks afresh after a check even when an overview asked before it is still on its way (G18)", async () => {

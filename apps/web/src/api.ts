@@ -552,6 +552,20 @@ export type { StatResult };
 // serve.py's NO_CHANGE (G17: generated from it)
 const NO_CHANGE = NO_CHANGE_PATHS;
 
+/**
+ * The views serve.py's REREAD_AFTER asks again for after a write to `path`, or
+ * undefined. A key may end in a route's `<id>` (`/api/dashboard/layouts/<id>`),
+ * which stands for one segment of the path, as serve.py routes it.
+ */
+export function rereadAfter(path: string): readonly string[] | undefined {
+  for (const [route, views] of Object.entries(REREAD_AFTER)) {
+    const at = route.indexOf("<");
+    if (route === path) return views;
+    if (at > 0 && path.length > at && path.startsWith(route.slice(0, at)) && !path.slice(at).includes("/")) return views;
+  }
+  return undefined;
+}
+
 export async function postJSON<T>(url: string, body?: BodyInit, contentType = "application/json"): Promise<T> {
   const r = await reach(url, { method: "POST", body, headers: { "X-Kopifund": "1", "Content-Type": contentType } }, true);
   const data = await r.json().catch(() => ({}));
@@ -562,11 +576,12 @@ export async function postJSON<T>(url: string, body?: BodyInit, contentType = "a
   }
   // a check, a suggestion and a projection preview (G14) change nothing, so no view needs to reload.
   // G18: but a check moves the upload history, which the overview's Needs your eye reads: the views
-  // serve.py's REREAD_AFTER names ask again (with their tags), and nothing kept is forgotten. A load
+  // serve.py's REREAD_AFTER names ask again (with their tags), and nothing kept is forgotten. G26: a
+  // dashboard layout save is one of those too, so a drag does not ask every widget afresh. A load
   // or a mirror is a write, so every view reloads after it anyway.
-  const path = url.split("?")[0];
-  if (!NO_CHANGE.some((p) => url.startsWith(p))) notifyChanged();
-  else if (REREAD_AFTER[path]) refreshViews(REREAD_AFTER[path]);
+  const reread = rereadAfter(url.split("?")[0]);
+  if (reread) refreshViews(reread);
+  else if (!NO_CHANGE.some((p) => url.startsWith(p))) notifyChanged();
   if ((data as { stats?: string }).stats === "rebuilding") watchStatsRebuild();
   return data as T;
 }
