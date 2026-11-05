@@ -30,6 +30,33 @@ public enum Candidates {
         amounts(in: text, tokens: tokens)
             + dates(in: text, tokens: tokens)
             + payees(in: text, tokens: tokens)
+            + cards(in: text, tokens: tokens)
+    }
+
+    // MARK: - cards
+
+    /// "Card ending 1234", "card ending in 5678", "(Mobile ending 2468)":
+    /// the digits after "ending" name the card or account the money went
+    /// through, the one shape banks print the same way every time. Only the
+    /// digits are the span; "ending" stays as the literal that anchors it.
+    private static func cards(in text: String, tokens: [Token]) -> [Candidate] {
+        var out: [Candidate] = []
+        for i in tokens.indices where tokens[i].kind == .word
+            && tokens[i].text.lowercased() == "ending" {
+            guard var n = nextNonSpace(i, in: tokens) else { continue }
+            if tokens[n].kind == .word, ["in", "with"].contains(tokens[n].text.lowercased()),
+               let m = nextNonSpace(n, in: tokens) { n = m }
+            if tokens[n].kind == .punct, tokens[n].text == ":",
+               let m = nextNonSpace(n, in: tokens) { n = m }
+            // the digits sit on the anchor's own line
+            guard !tokens[(i + 1)..<n].contains(where: { $0.text.contains("\n") }),
+                  tokens[n].kind == .number,
+                  tokens[n].text.allSatisfy(\.isNumber),
+                  (3...6).contains(tokens[n].text.count) else { continue }
+            out.append(Candidate(field: .account, tokenIndexes: [n],
+                                 confident: out.isEmpty, rank: out.count))
+        }
+        return out
     }
 
     // MARK: - amounts
@@ -53,21 +80,22 @@ public enum Candidates {
                 if t.text.range(of: #"^\d{5,}$"#, options: .regularExpression) != nil { score -= 3 }
             } else if t.kind == .word,
                       t.text.range(of: #"^[A-Z]{2,3}\d+$"#, options: .regularExpression) != nil {
-                // "SGD44": the letters ride on the number, so check for a
-                // trailing ".53" split off as punct + number
-                span = [i]
-                score = 4
-                if let d = nextNonSpace(i, in: tokens), tokens[d].kind == .punct, tokens[d].text == ".",
-                   let n = nextNonSpace(d, in: tokens), tokens[n].kind == .number {
-                    span += [d, n]
-                    score += 2
-                }
+                // "SGD44": the letters ride on the number, split from its
+                // ".53" as punct + number. Without that decimal part it is
+                // as likely a reference ("AB123456") as money, so it is
+                // not proposed at all.
+                guard let d = nextNonSpace(i, in: tokens), tokens[d].kind == .punct, tokens[d].text == ".",
+                      let n = nextNonSpace(d, in: tokens), tokens[n].kind == .number
+                else { continue }
+                span = [i, d, n]
+                score = 6
             } else {
                 continue
             }
 
-            // absorb a currency on the left: "SGD 4.80", "S$ 4.50", "$ 4.50"
-            if let l = prevNonSpace(span.first!, in: tokens) {
+            // absorb a currency on the left: "SGD 4.80", "S$ 4.50", "$ 4.50";
+            // "SGD44.53" already carries its own
+            if t.kind == .number, let l = prevNonSpace(span.first!, in: tokens) {
                 let lt = tokens[l]
                 if lt.kind == .word, lt.text.range(of: #"^[A-Z]{2,3}$"#, options: .regularExpression) != nil {
                     span.insert(l, at: 0); score += 4
@@ -84,6 +112,11 @@ public enum Candidates {
             // purpose: the matcher's amount only reads currency up front, so
             // the code anchors better as literal text than as a capture
 
+            // Audit: only what the matcher can read is proposed, judged by
+            // the same grammar its capture uses (Amounts): "RM 45.20" reads,
+            // a 13-digit reference or a third decimal does not
+            let spanText = text[tokens[span.first!].range.lowerBound..<tokens[span.last!].range.upperBound]
+            guard let read = Amounts.read(String(spanText)), read.decimals <= 2 else { continue }
             if score >= 1 { scored.append((span, score)) }
         }
 
@@ -163,7 +196,7 @@ public enum Candidates {
     /// Only the payee scan: a row title needs the merchant guess and
     /// nothing else, so it should not pay for the amount and date windows
     /// too. `detect` callers reuse their result through `AlertText.title`.
-    public static func payeeCandidates(in text: String, tokens: [Token]) -> [Candidate] {
+    static func payeeCandidates(in text: String, tokens: [Token]) -> [Candidate] {
         payees(in: text, tokens: tokens)
     }
 

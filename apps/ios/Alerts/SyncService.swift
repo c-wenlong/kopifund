@@ -1,7 +1,7 @@
 import Foundation
 import SwiftData
-import Storage
 import Matching
+import Storage
 import KopifundClient
 import YNABClient
 
@@ -9,13 +9,6 @@ import YNABClient
 /// -> synced, or failed with the error kept on the row for a retry.
 @MainActor
 enum SyncService {
-    private static let dateFmt: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
-
     private static var flushing = false
 
     /// Flushes serialize: a second caller returns rather than racing the
@@ -34,7 +27,6 @@ enum SyncService {
             FetchDescriptor<TransactionRecord>(predicate: #Predicate {
                 $0.state == "approved" || $0.state == "failed" || $0.state == "syncing"
                     || $0.kopifundError != nil || $0.kopifundID != nil }))) ?? []
-        guard !approved.isEmpty else { return }
         let link = LinkStore.live.client()
         // YNAB may not be set up on this phone at all: the Kopifund pending
         // post and the statement dedupe need only the link, so they run
@@ -42,29 +34,67 @@ enum SyncService {
         let token = KeychainToken.value ?? ""
         let planID = UserDefaults.standard.string(forKey: "planID") ?? ""
         let ynab = (!token.isEmpty && !planID.isEmpty) ? YNABClient(token: token) : nil
+        // G24 audit: a row posts only in the plan's own currency. Read it
+        // fresh when posting, or once for a newly picked plan so intake can
+        // hold a foreign alert; fall back to this plan's last reading when
+        // YNAB can't be reached, and with neither, rows that state a
+        // currency wait
+        var planCurrency = planID.isEmpty ? nil : PlanCurrency.saved(planID: planID)
+        let posting = approved.contains {
+            $0.state == "approved" || $0.state == "failed" || $0.state == "syncing" }
+        if let ynab, posting || planCurrency == nil,
+           let code = try? await ynab.planCurrency(planID: planID) {
+            // a plan picked while the request was out has forgotten this
+            // reading: never write the old plan's currency back
+            if UserDefaults.standard.string(forKey: "planID") == planID {
+                PlanCurrency.remember(code, planID: planID)
+            }
+            planCurrency = code
+        }
+        guard !approved.isEmpty else { return }
         // G25: a linked phone asks the record first — a spend a loaded
         // statement already covers is marked "kopifund", never posted
         var record: [Dedup.RecordSpend] = []
         var taken: Set<Int> = []
         if let link {
             record = await LinkDedupe.recordSpends(
-                client: link, months: Set(approved.map { LinkDedupe.monthKey($0.date) }))
+                client: link,
+                months: Set(approved.map { LinkDedupe.monthKey($0.day) }))
         }
         let postApproved = UserDefaults.standard.bool(forKey: "postApproved")
         // a store view on its own context: an App Intent's dedup write lands
         // on the same file but never merges into this context's copies, so a
-        // row parked since the batch was fetched must be re-read before post
-        let storeView = try? ModelContext(Store.container())
-        for row in approved {
+        // row parked since the batch was fetched must be re-read before post.
+        // Each read takes a fresh context, which holds no cached copy of the
+        // row from an earlier read
+        let storeContainer = try? Store.container()
+        // what an intake wrote since the batch was fetched: a park or a hold
+        // moves the state, and a pairing can hand the kept row the currency
+        // only the parked capture stated, with the state unchanged
+        func refresh(_ row: TransactionRecord) {
             let rowID = row.id
-            if let storeView,
-               let live = (try? storeView.fetch(FetchDescriptor<TransactionRecord>(
-                   predicate: #Predicate { $0.id == rowID })))?.first,
-               live.state != row.state {
+            guard let storeContainer,
+                  let live = (try? ModelContext(storeContainer).fetch(FetchDescriptor<TransactionRecord>(
+                      predicate: #Predicate { $0.id == rowID })))?.first else { return }
+            var changed = false
+            if live.state != row.state {
                 row.state = live.state
                 row.duplicateOf = live.duplicateOf
-                try? context.save()
+                row.syncError = live.syncError
+                changed = true
             }
+            // a currency moves with its amount: a conversion saved from
+            // another context sets both, and the check below must never
+            // pass the plan's code on the foreign figure
+            if live.currency != row.currency || live.amountCents != row.amountCents {
+                row.currency = live.currency
+                row.amountCents = live.amountCents
+                changed = true
+            }
+            if changed { try? context.save() }
+        }
+        for row in approved {
+            refresh(row)
             // G25: the same row lands on the hub as a pending_txn a later
             // statement load confirms. A first send is owed only by rows in
             // the YNAB lane — a sibling parked as a duplicate meanwhile must
@@ -74,19 +104,30 @@ enum SyncService {
             // reply never came, or an edit since. The import_id is the row's
             // own, so every repost upserts the one pending row, and a row can
             // owe a retry in any state, so this runs before the YNAB gate.
-            let sent = "\(dateFmt.string(from: row.date))|" +
+            // a row whose source printed no currency counts in the plan's,
+            // as the YNAB post below does; with no plan read there is no
+            // code to send, and the hub accepts only a real one
+            let currency = row.currency.isEmpty ? planCurrency : row.currency
+            // the row's calendar day goes to the hub and YNAB as printed,
+            // with no zone applied, wherever the phone is when it syncs
+            let day = row.day
+            let sent = "\(day.iso)|" +
                 "\(row.direction == "outflow" ? -row.amountCents : row.amountCents)|" +
-                "\(row.currency)|\(row.payee)"
+                "\(currency ?? "")|\(row.payee)"
             let inLane = row.state == "approved" || row.state == "failed" || row.state == "syncing"
             let owesHub = row.kopifundError != nil
                 || (row.kopifundID == nil ? inLane : row.kopifundSent != sent)
-            if let link, owesHub {
+            if link != nil, owesHub, currency == nil {
+                row.kopifundError = "This spend states no currency, and no YNAB plan's "
+                    + "currency has been read to count it in. It is sent once one is."
+                try? context.save()
+            } else if let link, let currency, owesHub {
                 let pendingID = row.kopifundID ?? "kph_\(row.id.uuidString.lowercased())"
                 if row.kopifundID == nil { row.kopifundID = pendingID }
                 let post = PendingPost(
-                    importID: pendingID, date: dateFmt.string(from: row.date),
+                    importID: pendingID, date: day.iso,
                     amountMinor: row.direction == "outflow" ? -row.amountCents : row.amountCents,
-                    currency: row.currency, payee: row.payee)
+                    currency: currency, payee: row.payee)
                 do {
                     _ = try await link.postPending(post)
                     row.kopifundSent = sent
@@ -96,11 +137,19 @@ enum SyncService {
                 }
                 try? context.save()
             }
+            // the hub send awaited: read the row again so a hold, or a
+            // currency a pairing moved onto it meanwhile, is what the
+            // statement match and the currency check below see
+            refresh(row)
+            let liveCurrency = row.currency.isEmpty ? planCurrency : row.currency
             guard row.state == "approved" || row.state == "failed" || row.state == "syncing"
             else { continue }
+            // the detail screen stays editable while the hub send awaits:
+            // read the day again so a corrected date is the one sent
+            let postDay = row.day
             if row.state == "approved",
-               let i = Dedup.coveredBy(amountCents: row.amountCents, currency: row.currency,
-                                       direction: row.direction, date: row.date,
+               let i = Dedup.coveredBy(amountCents: row.amountCents, currency: liveCurrency ?? "",
+                                       direction: row.direction, date: postDay,
                                        payee: row.payee, in: record, taken: taken) {
                 taken.insert(i)
                 row.state = "kopifund"
@@ -117,17 +166,29 @@ enum SyncService {
                 row.state = "failed"; row.syncError = "no YNAB account mapped"
                 continue
             }
+            guard row.checkCurrency(against: planCurrency) else {
+                try? context.save()
+                continue
+            }
             row.state = "syncing"
             try? context.save()
             let outflow = row.direction == "outflow"
             let milli = Milliunits.from(Decimal(row.amountCents) / 100, outflow: outflow)
             // the first send's import_id is saved before posting, so an edit
             // or a lost reply can never mint a second one for the same row
-            let importID = row.importID ?? ImportID.make(date: row.date, milliunits: milli,
-                                                         payee: row.payee, source: row.source)
+            // a row an earlier build wrote keeps that build's hash input,
+            // its raw date, so a send it began and never recorded gets the
+            // same import_id on retry and YNAB refuses the duplicate. A new
+            // row adds the moment it was captured, so two real purchases of
+            // one amount at one merchant on one day never share an id
+            let importID = row.importID ?? (row.dateIsDay == true
+                ? ImportID.make(date: postDay.storedInstant, milliunits: milli,
+                                payee: row.payee, source: row.source, capturedAt: row.receivedAt)
+                : ImportID.make(date: row.date, milliunits: milli,
+                                payee: row.payee, source: row.source))
             row.importID = importID
             let txn = NewTransaction(accountID: accountID,
-                                     date: dateFmt.string(from: row.date),
+                                     date: postDay.iso,
                                      amount: milli, payeeName: row.payee,
                                      categoryID: row.categoryID,
                                      memo: row.memo.isEmpty ? nil : row.memo,

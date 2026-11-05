@@ -236,9 +236,13 @@ export function buildFlow(input: {
   const fund = (n: FlowNode) => {
     const fromIncome = Math.max(0, Math.min(n.minor, incomeLeft));
     incomeLeft -= fromIncome;
-    if (fromIncome > 0 && incomeNode) links.push({ source: incomeNode, target: n, minor: fromIncome, link: n.link });
     const rest = n.minor - fromIncome;
-    if (rest > 0 && beyondNode) links.push({ source: beyondNode, target: n, minor: rest, link: n.link });
+    // a band opens the node's rows only when it carries all of them: a node
+    // funded partly from income and partly from beyond it has no filter for
+    // either share, so neither band links (the node itself still does)
+    const whole = (minor: Cents) => (minor === n.minor ? n.link : null);
+    if (fromIncome > 0 && incomeNode) links.push({ source: incomeNode, target: n, minor: fromIncome, link: whole(fromIncome) });
+    if (rest > 0 && beyondNode) links.push({ source: beyondNode, target: n, minor: rest, link: whole(rest) });
   };
 
   slices.forEach((s, i) => {
@@ -249,10 +253,12 @@ export function buildFlow(input: {
     // the gross bigger than the net, so the biggest positives fold into the
     // residual until the shown rest fits; what folds, refunds included, the
     // "Everything else" figure holds, never dropped.
+    // the answer's own "Everything else" row never shows on its own: the
+    // residual below holds it, so the slice draws one such node, not two
     const shown = new Set<FlowChild>();
     let covered = 0;
     for (const c of [...s.children].sort((a, b) => b.minor - a.minor)) {
-      if (c.minor > 0 && covered + c.minor <= s.minor) {
+      if (c.kind !== "rest" && c.minor > 0 && covered + c.minor <= s.minor) {
         shown.add(c);
         covered += c.minor;
       }

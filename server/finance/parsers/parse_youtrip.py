@@ -347,13 +347,34 @@ def classify_synthetic(s, prev_date, next_date, topups, exchanges):
         s["reference"] = "known top-up size"
 
 
+def read_in_the_wrong_column(run, r):
+    """True when the row's own amount, with its sign turned over, is what
+    takes the running balance to the printed one: the amount was read into
+    Money In for Money Out or the other way round (split_amounts picks the
+    nearest column edge). That gap is the parser's own misread, twice the
+    row's amount, and never a row the export left out."""
+    return bool(r["amount"]) and abs(run - r["amount"] - r["balance_after"]) <= 0.005
+
+
 def synthesise(b, rs, topups, exchanges):
-    """Replay one statement; return (rows with synthetic ones inserted, gaps)."""
+    """Replay one statement; return (rows with synthetic ones inserted, gaps).
+
+    A gap that a row read in the wrong column explains is not filled: the
+    row is listed in b["misreads"] and left to fail the balance check
+    (validate), so the run stops rather than loading the misread beside a
+    synthetic row that hides it."""
     out, gaps = [], []
+    b["misreads"] = []
     run = b["opening"] if b["opening"] is not None else 0.0
     prev_date = b["period_start"]
     for r in rs:
         if r["balance_after"] is not None and abs(run + r["amount"] - r["balance_after"]) > 0.005:
+            if read_in_the_wrong_column(run, r):
+                b["misreads"].append(r)
+                run = r["balance_after"]
+                out.append(r)
+                prev_date = r["date"]
+                continue
             jump = r["balance_after"] - (run + r["amount"])
             s = synth_row(b, jump, r["date"], prev_date, r["date"], run + jump)
             classify_synthetic(s, prev_date, r["date"], topups, exchanges)
@@ -537,6 +558,11 @@ def main():
     for src, why in unparsed:
         print(f"  FAIL {src}: {why}")
 
+    for b in blocks:
+        for r in b.get("misreads", ()):
+            warn(b["source"], f"{r['date']} {r['currency']} {r['amount']:+,.2f} ({' '.join(r['lines'])[:40]}) "
+                              "balances only with its sign turned over: the amount was read in the wrong "
+                              "column, so no row is synthesised for it")
     for x in bad:
         warn(x[0], f"mid-chain balance mismatch left after synthesis: {x[1]} {x[2]} "
                    f"{x[3]} computed {x[4]:,.2f} against printed {x[5]:,.2f}")
