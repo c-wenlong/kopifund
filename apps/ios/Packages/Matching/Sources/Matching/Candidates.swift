@@ -190,7 +190,7 @@ public enum Candidates {
     /// Only the payee scan: a row title needs the merchant guess and
     /// nothing else, so it should not pay for the amount and date windows
     /// too. `detect` callers reuse their result through `AlertText.title`.
-    public static func payeeCandidates(in text: String, tokens: [Token]) -> [Candidate] {
+    static func payeeCandidates(in text: String, tokens: [Token]) -> [Candidate] {
         payees(in: text, tokens: tokens)
     }
 

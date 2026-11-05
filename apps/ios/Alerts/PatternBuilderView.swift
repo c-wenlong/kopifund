@@ -613,22 +613,8 @@ struct PatternBuilderView: View {
 
     private func builtPattern() throws -> AlertPattern {
         let spans = PatternBuilder.spans(from: tags, tokens: tokens)
-        // two "amount" spans would produce two captures the regex cannot read:
-        // only `ignore` may repeat
-        for f in PatternBuilder.Field.allCases where f != .ignore {
-            if spans.filter({ $0.field == f }).count > 1 {
-                throw PatternBuilder.BuildError.duplicateField(label(of: f).lowercased())
-            }
-        }
-        // `segment(for:)` fatalErrors on a date it cannot read; checking here
-        // keeps "tap a word as date" an error message, never a crash
-        for s in spans where s.field == .date {
-            let raw = PatternBuilder.spanText(in: sampleText, tokens: tokens, span: s)
-                .trimmingCharacters(in: .whitespaces)
-            if Dates.detectFormat(raw) == nil {
-                throw PatternBuilder.BuildError.unreadableDate(raw)
-            }
-        }
+        // the builder refuses a field tagged twice and an unreadable date
+        // span with a BuildError, shown below
         let segs = try PatternBuilder.segments(in: sampleText, tokens: tokens, spans: spans)
         return AlertPattern(name: name.isEmpty ? "Untitled" : name, direction: direction,
                             accountID: accountID,
