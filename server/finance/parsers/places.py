@@ -227,6 +227,29 @@ def city_country(frag):
     return None
 
 
+def town_country(frag):
+    """The country of one town fragment: an exact entry first (the shipped
+    CITY_COUNTRY and places.csv's `exact` rows), then the prefix table."""
+    _ensure_loaded()
+    f = frag.strip().upper()
+    if f in CITY_COUNTRY:
+        return CITY_COUNTRY[f]
+    return city_country(f)
+
+
+def trailing_town_country(text):
+    """The country of the town a merchant string ends in, or None. The town is
+    its last word, or last two or three (a card row prints the merchant and
+    the town in one run of text, single spaced once parsed); the shortest
+    tail that names a known town decides, so a merchant word earlier in the
+    line ("AUSTINS BAKERY DENPASAR") never outvotes the town itself."""
+    words = text.split()
+    for k in range(1, min(3, len(words)) + 1):
+        if cc := town_country(" ".join(words[-k:])):
+            return cc
+    return None
+
+
 def split_country(name, fx_ccy, wallet):
     """Split the trailing city fragment off a merchant string when it is
     recognisable as a country; otherwise leave the string whole."""

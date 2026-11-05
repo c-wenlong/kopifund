@@ -104,11 +104,12 @@ def two_letter_country(cc, place=""):
     """ISO alpha-3 for a 2-letter country slot. A US merchant prints its state
     there, so a state code reads as the USA; but ID, IN and DE are both a state
     and a country in ALPHA2 (Indonesia, India, Germany). Those read as the
-    country unless `place`, the town printed before the code, is a city the
-    city table (places.py, with the data folder's places.csv) puts in the USA."""
+    country unless `place`, the text printed before the code, ends in a town
+    the city tables (places.py, with the data folder's places.csv, prefix and
+    exact rows alike) put in the USA."""
     if cc in ALPHA2 and cc in US_STATES:
-        from .places import city_country
-        return "USA" if place and city_country(place) == "USA" else ALPHA2[cc]
+        from .places import trailing_town_country
+        return "USA" if place and trailing_town_country(place) == "USA" else ALPHA2[cc]
     return "USA" if cc in US_STATES else ALPHA2.get(cc, cc)
 
 NOISE = re.compile(
@@ -488,8 +489,9 @@ def enrich_card(r):
     elif cc.isdigit():                             # "SINGAPORE 065"
         cc = "SGP" if "SINGAPORE" in name else None
     elif len(cc) == 2:
-        # the town is the last field before the slot, set off by two spaces or more
-        cc = two_letter_country(cc, re.split(r"\s{2,}", name)[-1])
+        # the town ends the text before the slot; parse_card has already
+        # collapsed the spacing that set it apart, so its last words are tried
+        cc = two_letter_country(cc, name)
     r["merchant"], r["merchant_country"] = name, cc
     r["purchase_date"] = purchase_date(r["date"], tag)
     return r

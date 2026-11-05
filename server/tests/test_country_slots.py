@@ -11,6 +11,7 @@ from pathlib import Path
 
 from finance.parsers import parse_statements as ps
 from finance.parsers import places
+from tests import parse_support as sup
 
 
 def card_country(merchant):
@@ -47,6 +48,43 @@ class CardSlot(unittest.TestCase):
         self.assertEqual(card_country("KOPITIAM   SINGAPORE   SG 15 MAY")[1], "SGP")
 
 
+def places_csv(body):
+    path = Path(tempfile.mkdtemp()) / "places.csv"
+    path.write_text("place,country,match\n" + body, encoding="utf-8")
+    places.load(str(path))
+
+
+class ThroughTheCardParser(unittest.TestCase):
+    """parse_card collapses the spacing between the merchant and the town
+    before enrich_card reads the slot, so the town is found in the last
+    words of the line (review: card town separators are lost)."""
+
+    ROW = "OPENAI *CHATGPT SUBSCR SAN FRANCISCO CA 10 NOV"
+
+    def setUp(self):
+        places.load(None)
+        self.addCleanup(places.load, None)
+
+    def country(self, printed):
+        run = sup.run_statements(["card.txt"], lines={"card.txt": sup.edit_line("card.txt", [self.ROW], self.ROW, printed)})
+        [r] = [r for r in run.rows if r["merchant"].startswith("CORNER DINER")]
+        return r["merchant_country"]
+
+    def test_a_us_town_from_places_csv_reads_as_the_state(self):
+        places_csv("BOISE,USA,prefix\n")
+        self.assertEqual(self.country("CORNER DINER     BOISE        ID 10 NOV"), "USA")
+
+    def test_an_exact_us_town_reads_as_the_state(self):
+        places_csv("BOISE,USA,exact\n")
+        self.assertEqual(self.country("CORNER DINER     BOISE        ID 10 NOV"), "USA")
+
+    def test_an_unknown_town_reads_as_the_country(self):
+        self.assertEqual(self.country("CORNER DINER     DENPASAR     ID 10 NOV"), "IDN")
+
+    def test_the_town_outvotes_a_us_city_earlier_in_the_name(self):
+        self.assertEqual(self.country("CORNER DINER AUSTINS  DENPASAR  ID 10 NOV"), "IDN")
+
+
 class WalletMerchant(unittest.TestCase):
     """places.split_country, which every wallet parser uses, the same way."""
 
@@ -64,6 +102,10 @@ class WalletMerchant(unittest.TestCase):
         places.load(str(path))
         self.assertEqual(places.split_country("DINER,BOISE,ID", None, "SGD")[1], "USA")
         self.assertEqual(places.split_country("DINER,AUSTIN,TX", None, "SGD")[1], "USA")
+
+    def test_an_exact_us_town_keeps_the_state_reading(self):
+        places_csv("BOISE,USA,exact\n")
+        self.assertEqual(places.split_country("DINER,BOISE,ID", None, "SGD")[1], "USA")
 
 
 if __name__ == "__main__":
