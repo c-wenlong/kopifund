@@ -596,6 +596,22 @@ describe("A series' own view, G16", () => {
       body: { id: VIEW.id, amount: 5500, cadence: null, day: null, ended_on: null } });
   });
 
+  it("lists a charge taken twice on one day as two payments and two extras, with no clashing row keys", async () => {
+    const twice = { date: "2026-09-04", amount: 5000, regular: true };
+    const extra = { expected: "2026-09-04", status: "extra" as const, paid_on: "2026-09-04", paid_amount: 5000 };
+    stubSeries({ ...VIEW,
+      schedule: [{ ...extra, link: { key: "k1", hide_transfers: "0" } }, { ...extra, link: { key: "k2", hide_transfers: "0" } }],
+      payments: [{ ...twice, link: { key: "k1", hide_transfers: "0" } }, { ...twice, link: { key: "k2", hide_transfers: "0" } }] });
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<Recurring />);
+    await screen.findByRole("region", { name: "Gym" });
+    expect(within(section("Payments")).getAllByRole("link", { name: "S$50.00" }).map((a) => a.getAttribute("href")))
+      .toEqual(["/transactions?key=k1&hide_transfers=0", "/transactions?key=k2&hide_transfers=0"]);
+    expect(within(section("Schedule")).getAllByRole("listitem")).toHaveLength(2);
+    expect(warn.mock.calls.flat().join(" ")).not.toMatch(/same key/);
+    warn.mockRestore();
+  });
+
   it("marks a payment against the owner's amount, not the detected one", async () => {
     stubSeries({ ...VIEW, amount: 10000, usual_low: 7500, usual_high: 12500, edit: { ...VIEW.edit, amount: 10000 } });
     render(<Recurring />);

@@ -715,7 +715,7 @@ function ScheduleList({ v }: { v: SeriesAnswer }) {
     <Card title="Schedule" region>
       {v.schedule.length === 0 ? <EmptyState title="No schedule yet" /> : (
         <ul className="m-0 list-none p-0">
-          <CollapsibleRows rows={v.schedule} limit={COLLAPSED_ROWS.mid} keyOf={(r) => `${r.expected}-${r.status}`} render={(r) => {
+          <CollapsibleRows rows={v.schedule} limit={COLLAPSED_ROWS.mid} keyOf={(r, i) => r.link?.key ?? `${r.expected}-${r.status}-${i}`} render={(r) => {
             const chip = <StatusChip tone={SLOT_CHIP[r.status].tone} icon={COMING_ICON[r.status]}>{SLOT_CHIP[r.status].text}</StatusChip>;
             const figure = r.paid_amount != null ? money(r.paid_amount) : r.status === "skipped" ? "" : money(v.amount);
             return (
@@ -751,7 +751,7 @@ function PaymentList({ v }: { v: SeriesAnswer }) {
       <a href={all} onClick={onLinkClick(all)} className="text-[12px] text-ink-2 no-underline hover:underline">In Transactions</a>}>
       {v.payments.length === 0 ? <EmptyState title="No payments" /> : (
         <ul className="m-0 list-none p-0">
-          <CollapsibleRows rows={v.payments} limit={COLLAPSED_ROWS.mid} keyOf={(p) => `${p.date}-${p.amount}`} render={(p) => (
+          <CollapsibleRows rows={v.payments} limit={COLLAPSED_ROWS.mid} keyOf={(p, i) => p.link?.key ?? `${p.date}-${p.amount}-${i}`} render={(p) => (
             <li className="flex items-center justify-between gap-3 border-t border-line py-1.5 text-[13px] first:border-t-0">
               <span className="flex items-center gap-2">
                 <span className="num text-ink-2">{formatDay(p.date)}</span>
