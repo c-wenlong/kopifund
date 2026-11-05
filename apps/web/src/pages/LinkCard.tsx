@@ -4,7 +4,9 @@
 // one's bearer (SPEC.md, "Phone link (G25)"). The payload is also copyable
 // for the times a camera cannot take it. Last come the phone rows: spends a
 // paired phone posted before their statement landed, waiting, matched or
-// dismissed here.
+// dismissed here. Waiting rows never expire on their own, so several can be
+// dismissed at once. No code is minted while Tailscale cannot name the Mac:
+// it would carry no address, and the phone refuses it.
 import { useEffect, useRef, useState } from "react";
 import QRCode from "react-qr-code";
 import { Copy, Smartphone } from "lucide-react";
@@ -43,6 +45,8 @@ export function LinkCard() {
   // an answer without the devices (an older server, a test's stand-in) is no answer to draw
   const data = Array.isArray(list.data?.devices) ? list.data : null;
   const rows = Array.isArray(pending.data?.rows) ? pending.data.rows : null;
+  const waiting = rows ? rows.filter((r) => r.state === "waiting").length : 0;
+  const noAddress = data !== null && !data.url;
 
   async function mint() {
     setBusy(true);
@@ -76,13 +80,13 @@ export function LinkCard() {
 
   return (
     <Card title="Link a phone" actions={
-      <Button variant="primary" onClick={() => void mint()} disabled={busy}>
+      <Button variant="primary" onClick={() => void mint()} disabled={busy || noAddress}>
         {busy ? "Minting…" : pair ? "New pairing code" : "Pair a phone"}
       </Button>}>
       <div className="flex flex-col gap-3">
-        {data && !data.url && (
+        {noAddress && (
           <p className="m-0 text-[13px] text-ink-3">
-            Tailscale cannot name this Mac, so the code carries no address yet: <span className="num">make link</span> says what is missing.
+            Tailscale cannot name this Mac, so there is no address to pair with yet: <span className="num">make link</span> says what is missing.
           </p>
         )}
         {pair && expired && (
@@ -114,6 +118,9 @@ export function LinkCard() {
                 onError={setProblem} onRevoked={() => setVersion((v) => v + 1)} />
             ))}
           </ul>
+        )}
+        {waiting > 1 && (
+          <DismissAll count={waiting} onError={setProblem} onDone={() => setVersion((v) => v + 1)} />
         )}
         {rows && rows.length > 0 && (
           <ul aria-label="Phone rows" className="m-0 list-none rounded-lg border border-line p-0 text-[13px]">
@@ -175,6 +182,51 @@ function DeviceRow({ device, onRevoked, onError }: {
             {armed ? "Press again to revoke" : "Revoke"}
           </Button>}
     </li>
+  );
+}
+
+// every waiting row dismissed at once; the first press asks, as Revoke does,
+// and each row's Put back undoes it
+function DismissAll({ count, onDone, onError }: {
+  count: number; onDone: () => void; onError: (m: string | null) => void;
+}) {
+  const [armed, setArmed] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const disarm = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (disarm.current) clearTimeout(disarm.current);
+  }, []);
+
+  async function go() {
+    if (!armed) {
+      setArmed(true);
+      if (disarm.current) clearTimeout(disarm.current);
+      disarm.current = setTimeout(() => setArmed(false), 4000);
+      return;
+    }
+    if (disarm.current) clearTimeout(disarm.current);
+    setArmed(false);
+    setBusy(true);
+    onError(null);
+    try {
+      await postJSON("/api/link/pending/dismiss-all", JSON.stringify({}));
+      onDone();
+    } catch (e) {
+      onError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-ink-2">
+      <span className="min-w-0 flex-1">
+        {count} phone rows are waiting for a statement. They wait until one confirms them or you dismiss them.
+      </span>
+      <Button size="sm" disabled={busy} onBlur={() => setArmed(false)} onClick={() => void go()}>
+        {armed ? `Press again to dismiss ${count}` : "Dismiss all waiting"}
+      </Button>
+    </div>
   );
 }
 

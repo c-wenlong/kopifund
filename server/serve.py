@@ -50,6 +50,8 @@ server/finance/upload_steps.py, and --reload in dev_reload.py.
     GET /api/copilot/threads        G22: Ask Kopifund's saved threads, newest first
     GET /api/copilot/threads/<id>   G22: one thread with its messages
     GET /api/link/devices           G25: the paired phones, and the tailnet URL the pair QR carries
+    GET /api/link/check             G25: {ok}: the phone's Test: on the link path only a paired, unrevoked
+                                    bearer reaches it (401 otherwise), so it says the link works, not just the hub
     GET /api/link/pending           G25: the phone rows waiting for a statement, matched or dismissed
                                     (server/finance/pending.py); loopback only, like every read
                                     not in LINK_READS
@@ -144,13 +146,14 @@ privilege, never gain it.
                                     or sending rows is not turned on
     POST /api/copilot/threads/remove  G22: {id}: one thread gone, answers with the list
     POST /api/link/pair-token       G25: mint a single-use pair token for the Settings QR (loopback only)
-    POST /api/pair/redeem           G25: {token, name}: spend the pair token for a device bearer, once,
+    POST /api/pair/redeem           G25: {token, name, nonce?}: spend the pair token for a device bearer, once,
                                     under the registry's flock; the one link write with no bearer
     POST /api/link/devices/revoke   G25: {id}: flag a paired phone's row so its bearer stops answering
     POST /api/link/transactions     G25: {rows:[{import_id,date,amount_minor,currency,payee}]}: the phone's
                                     approved rows upsert into pending_txn, unique on import_id so a retry
                                     never doubles; link path, bearer required (server/finance/pending.py)
     POST /api/link/pending/dismiss  G25: {import_id}: a waiting row is no spend, never matched (loopback)
+    POST /api/link/pending/dismiss-all  G25: every waiting row dismissed at once, each can be put back (loopback)
     POST /api/link/pending/restore  G25: {import_id}: a matched or dismissed row back to waiting; a match
                                     it was in joins its rejected list and is never offered again (loopback)
     POST /api/server/stop           G23: answer, then stop the server. Nothing can start it from the page
@@ -291,7 +294,8 @@ LINK_BEARER_WRITES = frozenset({"/api/link/transactions"})
 # phone needs (SPEC.md, "Phone link (G25)"). An allowlist, so a route added
 # later stays off the link until it is listed here: a lost phone, before it
 # is revoked, must not pull exports, uploads, AI threads or folder paths.
-LINK_READS = frozenset({"/api/profile", "/api/transactions", "/api/categories", "/api/overview"})
+LINK_READS = frozenset({"/api/profile", "/api/transactions", "/api/categories", "/api/overview",
+                        "/api/link/check"})
 
 # The writes that change nothing a GET reads: a check, an AI suggestion, a
 # new upload attempt, a projection preview. A check and a new attempt write
@@ -773,6 +777,7 @@ GET_ROUTES: dict[str, Route] = {
     "/api/copilot/threads": Route(api.get_copilot_threads),
     "/api/copilot/threads/<id>": Route(api.get_copilot_thread),
     "/api/link/devices": Route(api.get_link_devices),
+    "/api/link/check": Route(api.get_link_check),
     "/api/link/pending": Route(api.get_link_pending),
     "/api/dashboard/layouts": Route(api.get_dashboard_layouts),
     "/api/dashboard/layouts/<id>": Route(api.get_dashboard_layout),
@@ -835,6 +840,7 @@ POST_ROUTES: dict[str, Route] = {
     "/api/link/transactions": Route(api_writes.post_link_transactions, json_body=True),
     "/api/link/pending/dismiss": Route(api_writes.post_pending_dismiss, json_body=True),
     "/api/link/pending/restore": Route(api_writes.post_pending_restore, json_body=True),
+    "/api/link/pending/dismiss-all": Route(api_writes.post_pending_dismiss_all),
     "/api/server/stop": Route(_post_server_stop),
     "/api/server/restart": Route(_post_server_restart),
     "/api/dashboard/layouts": Route(api_writes.post_dashboard_layouts, "dashboard", json_body=True),

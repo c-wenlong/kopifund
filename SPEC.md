@@ -1301,10 +1301,17 @@ whois` on that IP names the tailnet caller when it matters.
   pair token: `POST /api/link/pair-token` mints a single-use token with a
   ten-minute life, and Settings' "Link a phone" card shows it in a QR as
   `kopifund://pair?url=<tailnet url>&token=<token>` beside a copyable
-  payload. The phone posts it to `POST /api/pair/redeem`, the only
+  payload. While Tailscale cannot name the machine the mint is refused
+  (422, "run make link") and the card's button is off: a code with no
+  address pairs nothing. The phone posts it to `POST /api/pair/redeem`, the only
   unauthenticated link write: the token's consumption and the device row's
   write happen under one `flock`, so a token spends exactly once even
-  raced, and the answer is the device bearer. `~/.kopifund/devices.json` is
+  raced, and the answer is the device bearer. The phone also sends a
+  `nonce`, a random it makes once per pairing: a retry after a lost reply
+  (the same token, still in its life, with the same nonce) gets a fresh
+  bearer for the device row the first try made, whose old bearer stops
+  answering, so a lost reply leaves no orphan device. A spent token with
+  another nonce, or none, is still refused. `~/.kopifund/devices.json` is
   the registry (id, name, token hash, paired date, revoked flag), mode 600
   and never backed up. `GET /api/link/devices` lists it and
   `POST /api/link/devices/revoke` flags a row, both loopback-only, so a
@@ -1317,7 +1324,10 @@ whois` on that IP names the tailnet caller when it matters.
 - **Reads.** The phone reads the same endpoints the app does
   (`/api/profile`, `/api/transactions`, `/api/categories`,
   `/api/overview`): the link path gates, it does not reshape answers.
-  Those four are an allowlist (serve.py's `LINK_READS`): every other GET
+  `GET /api/link/check` answers `{ok}` only to a paired, unrevoked bearer,
+  so the phone's Test says the link works rather than only that the hub
+  is up (`/api/health` answers a revoked phone too).
+  Those reads are an allowlist (serve.py's `LINK_READS`): every other GET
   on the link path is refused 403 even with a bearer, so a lost phone,
   before it is revoked, cannot pull exports, upload steps, AI threads or
   settings, and a route added later stays off the link until it is listed.
@@ -1335,7 +1345,10 @@ whois` on that IP names the tailnet caller when it matters.
   eye lists what is still waiting; Settings' "Link a phone" card lists
   the rows themselves (`GET /api/link/pending`, loopback) with the two
   calls beside them: a waiting row dismissed (`POST
-  /api/link/pending/dismiss`) or a wrong match put back to waiting
+  /api/link/pending/dismiss`; `POST /api/link/pending/dismiss-all`, behind a
+  second press, dismisses every waiting row at once. A row never expires on
+  its own, since a spend can wait weeks for its statement, so the owner
+  clears the ones no statement will confirm) or a wrong match put back to waiting
   (`POST /api/link/pending/restore`, which rejects the pair it was
   matched to).
 
