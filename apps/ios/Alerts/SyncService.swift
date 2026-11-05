@@ -64,27 +64,48 @@ final class SyncService {
     }
 
     private func runOnce(context: ModelContext, force: Bool) async {
-        let hub = await HubLane.start(context: context)
+        let defaults = UserDefaults.standard
+        let token = KeychainToken.value ?? ""
+        var settings = SyncSettings(
+            planID: defaults.string(forKey: "planID") ?? "",
+            defaultAccountID: defaults.string(forKey: "defaultAccountID") ?? "",
+            postApproved: defaults.bool(forKey: "postApproved"))
+        // no quiet retries: a 429 must reach the gate after one request,
+        // not after four a second apart
+        let ynab = (!token.isEmpty && !settings.planID.isEmpty
+                    && gate.allows(token: token, now: Date(), force: force))
+            ? YNABClient(token: token, retries: 0) : nil
+
+        // G24 audit: a row posts only in the plan's own currency. Read it
+        // fresh when rows wait to post, or once for a newly picked plan so
+        // intake can hold a foreign alert; with YNAB out of reach this plan's
+        // last reading stands, and with neither, rows that state a currency
+        // wait
+        let planID = settings.planID
+        settings.planCurrency = planID.isEmpty ? nil : PlanCurrency.saved(planID: planID)
+        let posting = ((try? context.fetchCount(FetchDescriptor<TransactionRecord>(
+            predicate: #Predicate {
+                $0.state == "approved" || $0.state == "failed" || $0.state == "syncing" }))) ?? 0) > 0
+        if let ynab, posting || settings.planCurrency == nil,
+           let code = try? await ynab.planCurrency(planID: planID) {
+            // a plan picked while the request was out has forgotten this
+            // reading: never write the old plan's currency back
+            if defaults.string(forKey: "planID") == planID {
+                PlanCurrency.remember(code, planID: planID)
+            }
+            settings.planCurrency = code
+        }
+
+        let hub = await HubLane.start(context: context, planCurrency: settings.planCurrency)
         // the hub owes no YNAB setup: rows a linked phone still owes the
         // record go first, whatever their YNAB state
         if let hub { await hub.sendOwed(context: context) }
 
         // no YNAB configured: the pending post above still corroborates the
         // row on the hub; the spend itself stays parked here
-        guard let token = KeychainToken.value, !token.isEmpty else { return }
-        let defaults = UserDefaults.standard
-        let settings = SyncSettings(
-            planID: defaults.string(forKey: "planID") ?? "",
-            defaultAccountID: defaults.string(forKey: "defaultAccountID") ?? "",
-            postApproved: defaults.bool(forKey: "postApproved"))
-        guard !settings.planID.isEmpty,
-              gate.allows(token: token, now: Date(), force: force) else { return }
+        guard let ynab else { return }
         let outcome = await Sync.run(
-            context: context,
-            // no quiet retries: a 429 must reach the gate after one request,
-            // not after four a second apart
-            client: YNABClient(token: token, retries: 0),
-            settings: settings, force: force,
+            context: context, client: ynab, settings: settings, force: force,
             beforeSend: { row in await hub?.prepare(row, context: context) })
         gate.record(outcome, token: token, now: Date())
         switch outcome.stop {
@@ -174,6 +195,9 @@ final class SyncService {
 @MainActor
 final class HubLane {
     private let link: KopifundClient
+    /// The plan's currency: a row whose source printed none counts in it,
+    /// for the pending post and the statement match, as it does for YNAB.
+    private let planCurrency: String?
     /// The record's spends for `months`, fetched as rows need them.
     private var record: [Dedup.RecordSpend] = []
     private var months: Set<String> = []
@@ -187,14 +211,15 @@ final class HubLane {
         return f
     }()
 
-    private init(link: KopifundClient) {
+    private init(link: KopifundClient, planCurrency: String?) {
         self.link = link
+        self.planCurrency = planCurrency
     }
 
     /// nil when the phone is not linked.
-    static func start(context: ModelContext) async -> HubLane? {
+    static func start(context: ModelContext, planCurrency: String?) async -> HubLane? {
         guard let link = LinkStore.live.client() else { return nil }
-        return HubLane(link: link)
+        return HubLane(link: link, planCurrency: planCurrency)
     }
 
     /// Load the record's month for `date` once per run. A month is fetched
@@ -243,6 +268,8 @@ final class HubLane {
     /// when the record covers it. Once per row per run.
     func prepare(_ row: TransactionRecord, context: ModelContext) async {
         guard done.insert(row.id).inserted else { return }
+        // what an intake saved since this context read the row
+        Sync.reread(row, in: context)
         // A first send is owed only by rows in the YNAB lane (a sibling
         // parked as a duplicate meanwhile must never post), while a retry is
         // owed whenever what the hub last accepted (kopifundSent) differs
@@ -250,17 +277,25 @@ final class HubLane {
         // id persisted but whose reply never came, or an edit since. The
         // import_id is the row's own, so every repost upserts the one
         // pending row, and a row can owe a retry in any state.
+        // A row whose source printed no currency counts in the plan's; with
+        // no plan read there is no code to send, and the hub accepts only a
+        // real one.
         let day = Self.dateFmt.string(from: row.date)
         let signed = row.direction == "outflow" ? -row.amountCents : row.amountCents
-        let sent = "\(day)|\(signed)|\(row.currency)|\(row.payee)"
+        let currency = row.currency.isEmpty ? planCurrency : row.currency
+        let sent = "\(day)|\(signed)|\(currency ?? "")|\(row.payee)"
         let inLane = row.state == "approved" || row.state == "failed" || row.state == "syncing"
         let owesHub = row.kopifundError != nil
             || (row.kopifundID == nil ? inLane : row.kopifundSent != sent)
-        if owesHub {
+        if owesHub, currency == nil {
+            row.kopifundError = "This spend states no currency, and no YNAB plan's "
+                + "currency has been read to count it in. It is sent once one is."
+            try? context.save()
+        } else if owesHub, let currency {
             let pendingID = row.kopifundID ?? "kph_\(row.id.uuidString.lowercased())"
             if row.kopifundID == nil { row.kopifundID = pendingID }
             let post = PendingPost(importID: pendingID, date: day, amountMinor: signed,
-                                   currency: row.currency, payee: row.payee)
+                                   currency: currency, payee: row.payee)
             do {
                 _ = try await link.postPending(post)
                 if row.isDeleted || row.modelContext == nil { return }
@@ -271,13 +306,17 @@ final class HubLane {
                 row.kopifundError = (error as? KopifundError)?.message ?? error.localizedDescription
             }
             try? context.save()
+            // the send awaited: a hold, or a currency a pairing moved onto
+            // the row meanwhile, is what the statement match below must see
+            Sync.reread(row, in: context)
         }
         guard row.state == "approved" else { return }
         // a linked phone asks the record first: a spend a loaded statement
         // already covers is marked "kopifund", never posted to YNAB
         await loadMonth(of: row.date)
         if row.isDeleted || row.modelContext == nil || row.state != "approved" { return }
-        if let i = Dedup.coveredBy(amountCents: row.amountCents, currency: row.currency,
+        let liveCurrency = row.currency.isEmpty ? planCurrency : row.currency
+        if let i = Dedup.coveredBy(amountCents: row.amountCents, currency: liveCurrency ?? "",
                                    direction: row.direction, date: row.date,
                                    payee: row.payee, in: record, taken: taken) {
             taken.insert(i)

@@ -39,12 +39,19 @@ export const defaultKpiConfig: KpiStateConfig = {
 // the dimensions a KPI reads as a series over time, in catalogue order
 const TIME_DIMS = new Set(["month", "year", "period"]);
 
-/** What the tile shows for an answer: the figure, the point before it, and the run of figures. */
+/**
+ * What the tile shows for an answer: the figure, the point before it, and the
+ * run of figures. Reading the latest point, a month the answer calls partial
+ * (a bank has not printed it yet) is stepped over, as Home's tiles do: half a
+ * month's spending set against a whole one would read as a fall.
+ */
 export function kpiOf(answer: WidgetAnswer, seriesName?: string, aggregate: Aggregate = "latest") {
   // a named series that is gone shows nothing rather than another series' figure
   const series = seriesName === undefined ? answer.series[0] : answer.series.find((s) => s.name === seriesName);
-  const raw = series ? (series.values_minor ?? series.values ?? []) : [];
   const timed = TIME_DIMS.has(answer.dimension);
+  const partial = new Set(timed && aggregate === "latest" ? answer.partial ?? [] : []);
+  const raw = (series ? (series.values_minor ?? series.values ?? []) : [])
+    .map((v, i) => (partial.has(answer.labels[i] ?? "") ? null : v));
   let value: number | null = null;
   let prior: number | null = null;
   let atLabel: string | null = null;

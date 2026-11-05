@@ -17,11 +17,16 @@ public struct SyncSettings: Sendable {
     /// Used for a row whose pattern mapped no account.
     public var defaultAccountID: String
     public var postApproved: Bool
+    /// The plan's ISO currency, nil until a sync has read it. A row posts
+    /// only in this currency (`TransactionRecord.checkCurrency`).
+    public var planCurrency: String?
 
-    public init(planID: String, defaultAccountID: String, postApproved: Bool) {
+    public init(planID: String, defaultAccountID: String, postApproved: Bool,
+                planCurrency: String? = nil) {
         self.planID = planID
         self.defaultAccountID = defaultAccountID
         self.postApproved = postApproved
+        self.planCurrency = planCurrency
     }
 }
 
@@ -118,6 +123,10 @@ public enum Sync {
                 !tried.contains($0.id) && isDue($0, now: now(), force: force)
             }) else { break }
             tried.insert(row.id)
+            // what an intake saved since this context last read the row: a
+            // park, a hold, or a currency a pairing moved onto it
+            reread(row, in: context)
+            guard ["approved", "failed", "syncing"].contains(row.state) else { continue }
             if let beforeSend {
                 await beforeSend(row)
                 if row.isDeleted || row.modelContext == nil { continue }
@@ -130,6 +139,33 @@ public enum Sync {
             }
         }
         return outcome
+    }
+
+    /// Copy onto `row` what another context or process saved for it since
+    /// this context read it. A long-lived context can hand back its cached
+    /// copy, so the read takes a fresh context on the same container, which
+    /// goes to the store. A state moves with its duplicate link and reason,
+    /// and a currency with its amount: a conversion saved elsewhere sets
+    /// both, and the currency check must never pass the plan's code on the
+    /// foreign figure.
+    public static func reread(_ row: TransactionRecord, in context: ModelContext) {
+        let id = row.id
+        guard let live = (try? ModelContext(context.container).fetch(
+            FetchDescriptor<TransactionRecord>(predicate: #Predicate { $0.id == id })))?.first
+        else { return }
+        var changed = false
+        if live.state != row.state {
+            row.state = live.state
+            row.duplicateOf = live.duplicateOf
+            row.syncError = live.syncError
+            changed = true
+        }
+        if live.currency != row.currency || live.amountCents != row.amountCents {
+            row.currency = live.currency
+            row.amountCents = live.amountCents
+            changed = true
+        }
+        if changed { try? context.save() }
     }
 
     /// Approved rows and rows a killed app left `syncing` always go. A failed
@@ -170,6 +206,13 @@ public enum Sync {
             row.nextSyncAt = nil
             try? context.save()
             outcome.failed += 1
+            return nil
+        }
+        // a row posts only in the plan's own currency: a foreign one goes
+        // back to review with the reason, and a stated one waits while the
+        // plan's is unknown. No request was made, so no attempt counts.
+        guard row.checkCurrency(against: settings.planCurrency) else {
+            try? context.save()
             return nil
         }
         let prior = row.state

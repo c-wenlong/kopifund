@@ -56,6 +56,25 @@ final class YNABClientTests: XCTestCase {
         XCTAssertEqual(payees.first?.name, "Kopitiam")
     }
 
+    func test_plan_currency_reads_the_settings_iso_code() async throws {
+        MockProtocol.handler = { req in
+            XCTAssertEqual(req.url?.path, "/v1/plans/p1/settings")
+            return respond(200, """
+            {"data":{"settings":{"date_format":{"format":"DD/MM/YYYY"},"currency_format":{"iso_code":"SGD","example_format":"123,456.78","decimal_digits":2,"decimal_separator":".","symbol_first":true,"group_separator":",","currency_symbol":"S$","display_symbol":true}}}}
+            """)
+        }
+        let code = try await client().planCurrency(planID: "p1")
+        XCTAssertEqual(code, "SGD")
+    }
+
+    func test_plan_currency_is_nil_when_ynab_sends_none() async throws {
+        MockProtocol.handler = { _ in
+            respond(200, #"{"data":{"settings":{"date_format":null,"currency_format":null}}}"#)
+        }
+        let code = try await client().planCurrency(planID: "p1")
+        XCTAssertNil(code)
+    }
+
     func test_create_transaction_posts_snake_case() async throws {
         MockProtocol.handler = { req in
             XCTAssertEqual(req.httpMethod, "POST")

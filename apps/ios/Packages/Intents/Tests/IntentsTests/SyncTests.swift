@@ -141,6 +141,33 @@ struct SyncTests {
         #expect(fresh.importID == ImportID.make(rowID: fresh.id))
     }
 
+    /// A spend in another currency never posts: it goes back to review
+    /// with the reason. A stated currency waits, unsent, while the plan's is
+    /// unknown.
+    @Test func aForeignOrUncheckableCurrencyNeverPosts() async throws {
+        let context = ModelContext(try Store.memory())
+        let yen = approved(context, payee: "Lawson")
+        yen.currency = "JPY"
+        let usd = approved(context, payee: "Diner")
+        usd.currency = "USD"
+        try? context.save()
+        MockProtocol.handler = { _ in created("y1") }
+        var sgd = settings
+        sgd.planCurrency = "SGD"
+        _ = await Sync.run(context: context, client: client(), settings: sgd)
+        #expect(MockProtocol.requests.isEmpty)
+        #expect(yen.state == "pending" && usd.state == "pending")
+        #expect(yen.syncError?.contains("JPY") == true)
+
+        let held = approved(context, payee: "Cafe")
+        held.currency = "EUR"
+        try? context.save()
+        _ = await Sync.run(context: context, client: client(), settings: settings)
+        #expect(MockProtocol.requests.isEmpty)
+        #expect(held.state == "approved")
+        #expect(held.syncAttempts == 0)
+    }
+
     @Test func unauthorizedStopsAfterOneRequest() async throws {
         let context = ModelContext(try Store.memory())
         let rows = [approved(context), approved(context, payee: "B"), approved(context, payee: "C")]

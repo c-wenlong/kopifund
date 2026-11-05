@@ -92,6 +92,7 @@ struct SettingsView: View {
                         }
                         .onChange(of: planID) {
                             planName = plans.first { $0.id == planID }?.name ?? ""
+                            PlanCurrency.forget()   // G24 audit: read anew for this plan
                             Task { await fetchAccounts() }
                         }
                     }

@@ -71,7 +71,9 @@ public final class TransactionRecord {
     @Attribute(.unique) public var id: UUID
     public var payee: String
     public var amountCents: Int         // money is integer cents, never a float
-    public var currency: String         // "SGD"
+    /// The ISO code the source printed ("SGD", "USD"), or the plan's when
+    /// it printed none and the plan's is known; empty when neither is.
+    public var currency: String
     public var date: Date
     public var direction: String
     public var accountID: String
@@ -112,7 +114,7 @@ public final class TransactionRecord {
         var scaled = t.amount * 100
         NSDecimalRound(&cents, &scaled, 0, .plain)
         amountCents = NSDecimalNumber(decimal: cents).intValue
-        currency = t.currency ?? "SGD"
+        currency = t.currency ?? ""
         date = t.date
         direction = t.direction.rawValue
         self.accountID = accountID
@@ -132,11 +134,14 @@ public final class TransactionRecord {
         kopifundError = nil
     }
 
-    public init(walletAmountCents: Int, merchant: String, card: String?, date: Date, accountID: String) {
+    /// `currency` nil means the Wallet record did not say; the row then
+    /// stores "" rather than guessing one.
+    public init(walletAmountCents: Int, merchant: String, card: String?, date: Date,
+                accountID: String, currency: String? = nil) {
         id = UUID()
         payee = merchant
         amountCents = walletAmountCents
-        currency = "SGD"
+        self.currency = currency ?? ""
         self.date = date
         direction = "outflow"
         self.accountID = accountID

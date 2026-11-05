@@ -79,11 +79,14 @@ _CATALOGUE = {
     },
     "category-breakdown": {
         "dims": {"category": {"rows": "categories", "x": "category", "grain": "none",
-                              "metrics": {"total": _minor("total"), "monthly_avg": _minor("monthly_avg"),
-                                          "last3_avg": _minor("last3_avg"),
-                                          "prior6_avg": _minor("prior6_avg"),
-                                          "share": ("share_pct", "percent"),
-                                          "trend": ("trend_pct", "percent")}}},
+                              # the stat's own fields (category_breakdown.py's docstring);
+                              # test_dashboard holds every metric here to a real run of each stat
+                              "metrics": {"total": _minor("total"), "per_month": _minor("per_month"),
+                                          "last3_per_month": _minor("last3_per_month"),
+                                          "prior6_per_month": _minor("prior6_per_month"),
+                                          "change": _minor("change"),
+                                          "share": ("share", "fraction"),
+                                          "change_share": ("change_share", "fraction")}}},
     },
     "portfolio": {
         "dims": {
@@ -332,7 +335,7 @@ def _filters_link(filters):
     return out
 
 
-def _spend_series(conn, q):
+def _spend_series(conn, q, results=None):
     """A spending query: the metric's rows over v_txn, spread over the
     dimension (or, by month, split into a series per `split` name)."""
     first, last = (None, None)
@@ -359,7 +362,11 @@ def _spend_series(conn, q):
     base_link = {"from": frm, "to": to, **_METRIC_FLAG[q["metric"]], **_filters_link(q.get("filters") or {})}
 
     if q["dimension"] == "month":
-        return _spend_by_month(conn, q, where, fwhere, args, months)
+        out = _spend_by_month(conn, q, where, fwhere, args, months)
+        partial = _partial_months(results, months)
+        if partial:
+            out["partial"] = partial
+        return out
 
     expr = _DIM_EXPR[q["dimension"]]
     rows = conn.execute(f"SELECT {expr} AS k, SUM({value}) AS v FROM v_txn "
@@ -381,6 +388,15 @@ def _spend_series(conn, q):
             "unit": "sgd_minor", "labels": labels, "label_links": label_links,
             "series": [{"name": q["metric"], "values_minor": values}],
             "range": {"from": frm, "to": to}}
+
+
+def _partial_months(results, months):
+    """The months the monthly-cashflow stat calls partial (a bank account has
+    not printed them yet), among `months`: home.py's chart steps back over
+    them the same way."""
+    rows = (((results or {}).get("monthly-cashflow") or {}).get("data") or {}).get("months") or ()
+    partial = {r.get("month") for r in rows if r.get("partial")}
+    return [m for m in months if m in partial]
 
 
 def _dim_label(conn, dimension):
@@ -513,7 +529,7 @@ def resolve(conn, results, query):
     """The WidgetAnswer for a WidgetQuery (raw dict; parse_query checks it)."""
     q = parse_query(query)
     if q["source"] == "spending":
-        return _spend_series(conn, q)
+        return _spend_series(conn, q, results)
     if q["source"] == "net-worth":
         return _net_worth_series(results, q)
     return _stat_series(results, q)
