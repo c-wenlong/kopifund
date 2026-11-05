@@ -72,7 +72,33 @@ describe("the Link a phone card", () => {
   it("says the address is missing when tailscale cannot name the Mac", async () => {
     stub(devices([], ""));
     render(<LinkCard />);
-    expect(await within(await card()).findByText(/Tailscale cannot name this Mac/)).toBeInTheDocument();
+    const c = await card();
+    expect(await within(c).findByText(/Tailscale cannot name this Mac/)).toBeInTheDocument();
+    // a code with no address pairs nothing, so none is minted
+    expect(within(c).getByRole("button", { name: "Pair a phone" })).toBeDisabled();
+  });
+
+  it("dismisses every waiting row on the second press", async () => {
+    stub(devices([phone()]), {}, [pending(), pending({ import_id: "kfp_2", payee: "Kopitiam" }),
+      pending({ import_id: "kfp_3", payee: "Old", state: "matched", matched_txn_key: "k9" })]);
+    const fetchMock = vi.mocked(fetch);
+    const base = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation(async (url, init) => {
+      if (url === "/api/link/pending/dismiss-all") {
+        posts.push({ url: url as string, body: {} });
+        return new Response(JSON.stringify({ rows: [pending({ state: "dismissed" }),
+          pending({ import_id: "kfp_2", payee: "Kopitiam", state: "dismissed" }),
+          pending({ import_id: "kfp_3", payee: "Old", state: "matched", matched_txn_key: "k9" })] }), { status: 200 });
+      }
+      return base(url as string, init);
+    });
+    render(<LinkCard />);
+    const c = await card();
+    expect(await within(c).findByText(/2 phone rows are waiting for a statement/)).toBeInTheDocument();
+    await userEvent.click(within(c).getByRole("button", { name: "Dismiss all waiting" }));
+    expect(posts).toEqual([]);
+    await userEvent.click(within(c).getByRole("button", { name: "Press again to dismiss 2" }));
+    await waitFor(() => expect(posts).toEqual([{ url: "/api/link/pending/dismiss-all", body: {} }]));
   });
 
   it("lists paired phones and revokes one on the second press", async () => {

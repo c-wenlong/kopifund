@@ -79,6 +79,7 @@ final class KopifundClientTests: XCTestCase {
         let sent = try JSONSerialization.jsonObject(with: body(of: req)) as? [String: String]
         XCTAssertEqual(sent?["token"], "kfp_once")
         XCTAssertEqual(sent?["name"], "Test iPhone")
+        XCTAssertEqual(sent?["nonce"]?.count, 36)
     }
 
     func testSpentPairTokenIsAConflict() async {

@@ -405,6 +405,15 @@ describe("Upload page", () => {
       expect(screen.getByRole("button", { name: "Load" })).toBeEnabled();
       expect(stateOf("load")).toBe("done");
     });
+
+    it("counts rows the load will re-key as work still to load", async () => {
+      serve({ check: () => report({ rekeyed_count: 2 }) });
+      render(<UploadPage />);
+      fireEvent.click(await screen.findByRole("button", { name: "Check statements" }));
+      expect(await screen.findByRole("button", { name: "Load" })).toBeEnabled();
+      expect(screen.queryByText(/^Nothing new to load\./)).not.toBeInTheDocument();
+      expect(stateOf("load")).not.toBe("done");
+    });
   });
 
   describe("the load", () => {
