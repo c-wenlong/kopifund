@@ -14,6 +14,7 @@ import { onLinkClick } from "../router";
 import type { BucketIcon, NeedClass, SeriesColour } from "../types.gen";
 import { KindLabel, NEED_ICON } from "../icons";
 import { bucketLook, BucketMark } from "../components/BucketMark";
+import { useUrlParams } from "../useUrlParams";
 import { BucketStylePicker } from "../components/BucketStylePicker";
 
 // G8: categories on their own page, grouped into buckets. Every change lands
@@ -36,12 +37,12 @@ const kindNote = (to: CategoryGroup, from: CategoryGroup) =>
 const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-SG")} ${n === 1 ? one : many}`;
 
 // The tab shown is remembered in the address (?bucket=, so a link opens it) and
-// in this browser. The address wins; a name no bucket has falls back to the first.
+// in this browser. The address wins, and is read on every render, so a link or
+// Back to another tab while the page is open shows that tab; a name no bucket
+// has falls back to the first.
 const BUCKET_KEY = "kopifund.categories.bucket";
 
-function readBucket(): string | null {
-  const fromUrl = new URLSearchParams(window.location.search).get("bucket");
-  if (fromUrl) return fromUrl;
+function readStoredBucket(): string | null {
   try {
     return window.localStorage.getItem(BUCKET_KEY);
   } catch {
@@ -49,20 +50,12 @@ function readBucket(): string | null {
   }
 }
 
-function writeBucket(name: string) {
+function storeBucket(name: string) {
   try {
     window.localStorage.setItem(BUCKET_KEY, name);
   } catch {
     // private mode or blocked storage: the address still carries it
   }
-  writeBucketUrl(name);
-}
-
-// the address alone: a link to a bucket that is gone is corrected without touching the tab this browser remembers
-function writeBucketUrl(name: string) {
-  const url = new URL(window.location.href);
-  url.searchParams.set("bucket", name);
-  window.history.replaceState(window.history.state, "", url);
 }
 
 // what a write answers: the name as the server saved it (it collapses spaces), a note when the rules could not
@@ -77,7 +70,10 @@ export function Categories() {
   const [adding, setAdding] = useState(false);
   const [addingIn, setAddingIn] = useState<string | null>(null);   // the bucket whose "add a category" form is open
   const [dragging, setDragging] = useState<number | null>(null);   // the id of the category being dragged
-  const [selected, setSelected] = useState<string | null>(readBucket);
+  const [params, patch] = useUrlParams();
+  const inUrl = params.get("bucket");
+  const [stored, setStored] = useState<string | null>(readStoredBucket);
+  const selected = inUrl || stored;
   const shown = useRef<string | null>(null);
   // Writes go one at a time, in the order they were made: a move, then a need
   // class picked before the move's answer, both land. The same write made
@@ -94,12 +90,12 @@ export function Categories() {
   const settling = pending > 0 || stale;
   // A bucket that is gone (deleted here or in another tab, or named by an old link) leaves its name in the
   // address; once the list is current, the address says the tab that is actually shown.
+  // (the address alone: a link to a bucket that is gone is corrected without touching the tab this browser remembers)
   useEffect(() => {
     const now = shown.current;
     if (!data || stale || !now) return;
-    const inUrl = new URLSearchParams(window.location.search).get("bucket");
-    if (inUrl && inUrl !== now) writeBucketUrl(now);
-  }, [data, stale, selected]);
+    if (inUrl && inUrl !== now) patch({ bucket: now });
+  }, [data, stale, inUrl, patch]);
 
   if (loading && !data) return <Loading what="Loading your categories" />;
   if (error) return <Problem message={error} hint="Load your statements first, from the Upload page." retry />;
@@ -122,7 +118,10 @@ export function Categories() {
   const current = groups.find((g) => g.name === selected)
     ?? (stale ? groups.find((g) => g.name === shown.current) : undefined) ?? groups[0];
   shown.current = current?.name ?? null;
-  const pick = (name: string) => { setSelected(name); writeBucket(name); setAddingIn(null); };
+  // only the shown tab has an add form: one left open on a tab the address moved away from (a link, Back) is
+  // closed, as a tab click closes it, so going back does not reopen it empty
+  if (addingIn && current && addingIn !== current.name) setAddingIn(null);
+  const pick = (name: string) => { setStored(name); storeBucket(name); patch({ bucket: name }); setAddingIn(null); };
 
   function send(url: string, body: object, done?: string): Promise<false | Saved> {
     const key = url + JSON.stringify(body);

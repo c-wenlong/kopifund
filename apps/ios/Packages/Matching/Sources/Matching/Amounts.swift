@@ -21,8 +21,17 @@ public enum Amounts {
 
     /// A currency printed before the number, longest first so `US$` is not
     /// read as the letters "US": `US$`, `S$`, two or three capitals (`SGD`,
-    /// `RM`, `KWD`), or a bare `$`.
-    static let currency = #"US\$|S\$|[A-Z]{2,3}|\$"#
+    /// `RM`, `KWD`), or a bare `$`. A marker may follow a digit ("Ref
+    /// 8842US$4.80") or a word ("Paid$4.80") but never starts inside a
+    /// longer one: a code or `US$` never starts mid-word, `S$` never after
+    /// a `U`, `$` never after an `S` or a `U`, so "US$4.80" is never read
+    /// from its "S$" or "$" as SGD.
+    static let currency = #"(?<![A-Za-z])(?:US\$|[A-Z]{2,3})|(?<!U)S\$|(?<![SU])\$"#
+
+    /// A bare number never starts inside another: a skip or a reference
+    /// run that stops early ("Ref 8|842") must not hand the rest of a
+    /// reference to the capture as the amount.
+    static let noNumberBefore = #"(?<![0-9])(?<![0-9][.,])"#
 
     /// The number: thousands grouped by commas or not, at most twelve
     /// digits before the point (a longer figure is a misread, and would
@@ -32,7 +41,8 @@ public enum Amounts {
 
     /// What an amount capture reads: an optional minus, an optional
     /// currency, the number.
-    static let pattern = #"-?(?:(?:"# + currency + #")\s*+)?(?:"# + number + ")"
+    static let pattern = #"-?(?:"# + currency + #")\s*+(?:"# + number + #")|"#
+        + noNumberBefore + #"-?(?:"# + number + ")"
 
     private static let whole: NSRegularExpression = {
         // force-try: the grammar is a constant this package's tests compile

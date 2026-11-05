@@ -106,12 +106,15 @@ struct InboxView: View {
     @State private var ingestError = ""
 
     private func ingestPaste() {
+        // the box can be reopened while the match runs: clear only the
+        // draft this ingest took, never a newer one
+        let text = pasteText
         Task {
             do {
                 let container = try Store.container()
-                _ = try await Ingest.alert(text: pasteText, source: "paste",
+                _ = try await Ingest.alert(text: text, source: "paste",
                                            receivedAt: Date(), container: container)
-                pasteText = ""
+                if pasteText == text { pasteText = "" }
             } catch {
                 // keep the text so a failed ingest does not lose the alert
                 ingestError = error.localizedDescription
