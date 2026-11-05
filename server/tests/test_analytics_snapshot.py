@@ -8,7 +8,7 @@ The last class is the exception: it drives a FakeNotion, because the two doors
 into a Notion snapshot (read it yourself, or flatten pages someone else read)
 can only be compared against each other with pages in hand.
 """
-import isolate  # noqa: F401  first: no test writes the real record or cache
+import isolate  # first: no test writes the real record or cache
 import argparse
 import contextlib
 import importlib.util
@@ -32,13 +32,15 @@ REPO = Path(__file__).resolve().parent.parent
 # The parsers run over the owner's own statement tree, so this module needs
 # both the real config and data/, neither of which a clone has. A module-level
 # SkipTest makes unittest skip the module rather than error on import.
+# Audit: the real data folder only when the run asks (KOPIFUND_TEST_REAL_DATA=1, server/tests/isolate.py).
 from finance.paths import statements_dir  # noqa: E402
-if not statements_dir().is_dir():
-    raise unittest.SkipTest("no statements in the data folder; the snapshot tests parse them")
-try:
-    CFG = load_config()
-except ConfigMissing as e:
-    raise unittest.SkipTest(str(e))
+with isolate.real_data():
+    if not statements_dir().is_dir():
+        raise unittest.SkipTest("no statements in the data folder; the snapshot tests parse them")
+    try:
+        CFG = load_config()
+    except ConfigMissing as e:
+        raise unittest.SkipTest(str(e))
 
 RULES = sync.default_rules(CFG)
 TEMPS = []
@@ -66,7 +68,15 @@ def csv_dir():
     return _PARSED["dir"]
 
 
+_REAL_UP, _REAL_DOWN = isolate.real_data_for_module()
+
+
+def setUpModule():
+    _REAL_UP()
+
+
 def tearDownModule():
+    _REAL_DOWN()
     for path in TEMPS:
         shutil.rmtree(path, ignore_errors=True)
 

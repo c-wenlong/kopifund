@@ -170,7 +170,7 @@ struct InboxView: View {
             }
         }
         private func caption(_ r: TransactionRecord) -> String {
-            r.date.formatted(date: .abbreviated, time: .omitted)
+            r.day.formatted(date: .abbreviated, time: .omitted)
                 + (accountName.map { " · \($0)" } ?? "")
                 + (r.source.map { " · \($0)" } ?? "")
         }

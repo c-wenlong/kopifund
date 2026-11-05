@@ -146,17 +146,30 @@ final class MilliunitsTests: XCTestCase {
 }
 
 final class ImportIDTests: XCTestCase {
-    func test_stable_per_row_and_short() {
-        let row = UUID()
-        let a = ImportID.make(rowID: row)
-        XCTAssertEqual(a, ImportID.make(rowID: row))
-        XCTAssertEqual(a.count, 35)
+    func test_deterministic_and_short() {
+        let d = Date(timeIntervalSince1970: 1_800_000_000)
+        let a = ImportID.make(date: d, milliunits: -4500, payee: "Kopitiam", source: "sms")
+        let b = ImportID.make(date: d, milliunits: -4500, payee: "Kopitiam", source: "sms")
+        XCTAssertEqual(a, b)
         XCTAssertLessThanOrEqual(a.count, 36)
         XCTAssertTrue(a.hasPrefix("al-"))
+        let c = ImportID.make(date: d, milliunits: -4500, payee: "Other", source: "sms")
+        XCTAssertNotEqual(a, c)
     }
 
-    func test_identical_charges_get_distinct_ids() {
-        // two rows for two real S$4.80 coffees at one stall on one day
-        XCTAssertNotEqual(ImportID.make(rowID: UUID()), ImportID.make(rowID: UUID()))
+    /// Review on #50: two real Wallet purchases of one amount at one merchant
+    /// on one day get different ids once each carries its capture moment;
+    /// without one, the id is the old build's, so a legacy retry matches.
+    func test_capture_moment_separates_same_day_purchases() {
+        let day = Date(timeIntervalSince1970: 1_800_000_000)
+        let morning = ImportID.make(date: day, milliunits: -4500, payee: "Kopitiam",
+                                    source: "wallet", capturedAt: day.addingTimeInterval(7 * 3600))
+        let evening = ImportID.make(date: day, milliunits: -4500, payee: "Kopitiam",
+                                    source: "wallet", capturedAt: day.addingTimeInterval(17 * 3600))
+        XCTAssertNotEqual(morning, evening)
+        XCTAssertLessThanOrEqual(morning.count, 36)
+        XCTAssertEqual(ImportID.make(date: day, milliunits: -4500, payee: "Kopitiam", source: "wallet"),
+                       ImportID.make(date: day, milliunits: -4500, payee: "Kopitiam", source: "wallet",
+                                     capturedAt: nil))
     }
 }

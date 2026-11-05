@@ -221,13 +221,6 @@ final class HubLane {
     /// again, so the hub never keeps an older copy than YNAB gets.
     private var checked: [UUID: String] = [:]
 
-    private static let dateFmt: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
-
     private init(link: KopifundClient, planCurrency: String?) {
         self.link = link
         self.planCurrency = planCurrency
@@ -242,8 +235,8 @@ final class HubLane {
     /// Load the record's month for `date` once per run. A month is fetched
     /// when an approved row first needs it, so a row approved mid-run from
     /// a month no other row touched is still checked against the record.
-    private func loadMonth(of date: Date) async {
-        let month = LinkDedupe.monthKey(date)
+    private func loadMonth(of day: CalendarDate) async {
+        let month = LinkDedupe.monthKey(day)
         guard months.insert(month).inserted else { return }
         // appended, so the indexes already in `taken` stay valid
         record += await LinkDedupe.recordSpends(client: link, months: [month])
@@ -296,7 +289,9 @@ final class HubLane {
         // A row whose source printed no currency counts in the plan's; with
         // no plan read there is no code to send, and the hub accepts only a
         // real one.
-        let day = Self.dateFmt.string(from: row.date)
+        // the row's calendar day goes to the hub as printed, with no zone
+        // applied, wherever the phone is when it syncs
+        let day = row.day.iso
         let signed = row.direction == "outflow" ? -row.amountCents : row.amountCents
         let currency = row.currency.isEmpty ? planCurrency : row.currency
         let sent = "\(day)|\(signed)|\(currency ?? "")|\(row.payee)"
@@ -331,7 +326,7 @@ final class HubLane {
         guard row.state == "approved" else { return }
         // a linked phone asks the record first: a spend a loaded statement
         // already covers is marked "kopifund", never posted to YNAB
-        await loadMonth(of: row.date)
+        await loadMonth(of: row.day)
         if row.isDeleted || row.modelContext == nil { return }
         // the month request awaited: a hold or a currency an intake saved
         // meanwhile must be what the match below and the YNAB send see
@@ -339,7 +334,7 @@ final class HubLane {
         if row.state != "approved" { return }
         let liveCurrency = row.currency.isEmpty ? planCurrency : row.currency
         if let i = Dedup.coveredBy(amountCents: row.amountCents, currency: liveCurrency ?? "",
-                                   direction: row.direction, date: row.date,
+                                   direction: row.direction, date: row.day,
                                    payee: row.payee, in: record, taken: taken) {
             taken.insert(i)
             row.state = "kopifund"

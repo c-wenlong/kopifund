@@ -36,6 +36,7 @@ EXPECTED = {
     "statements/youtrip-empty.txt": ("youtrip", "youtrip", "EUR", "statements/youtrip-eur"),
     "statements/revolut-all.txt": ("revolut", "revolut", "", "statements/revolut"),
     "statements/wise-sgd.txt": ("wise", "wise", "SGD", "statements/wise-sgd"),
+    "statements/wise-sgd-pages.txt": ("wise", "wise", "SGD", "statements/wise-sgd"),
     "statements/wise-usd.txt": ("wise", "wise", "USD", "statements/wise-usd"),
     "statements/wise-nok.txt": ("wise", "wise", "NOK", "statements/wise-nok"),
     "tiger/legacy.txt": ("tiger", "tiger", "", "statements/tiger"),

@@ -1,4 +1,5 @@
 import Foundation
+import Matching
 import Storage
 import SwiftData
 import YNABClient
@@ -184,15 +185,6 @@ public enum Sync {
         }
     }
 
-    /// The YNAB `date` is the calendar day the alert printed, as yyyy-MM-dd.
-    /// `Dates.parse` stores that day as midnight in the phone's zone, so it is
-    /// read back in the phone's zone. If the stored form changes, this is the
-    /// one place to change with it.
-    public static func ynabDate(_ date: Date) -> String {
-        let c = Calendar(identifier: .gregorian).dateComponents([.year, .month, .day], from: date)
-        return String(format: "%04d-%02d-%02d", c.year ?? 0, c.month ?? 0, c.day ?? 0)
-    }
-
     /// Send one row. Returns a stop when the run must end here.
     private static func send(_ row: TransactionRecord, context: ModelContext,
                              client: YNABClient, settings: SyncSettings,
@@ -218,19 +210,26 @@ public enum Sync {
         let prior = row.state
         let milli = Milliunits.from(Decimal(row.amountCents) / 100,
                                     outflow: row.direction == "outflow")
-        // a row an earlier build left mid-send has no id saved, but YNAB may
-        // hold that send under the build's content id; every other row gets
-        // its own
-        let importID = row.importID ?? (prior == "syncing"
-            ? ImportID.legacy(date: row.date, milliunits: milli, payee: row.payee, source: row.source)
-            : ImportID.make(rowID: row.id))
+        // the calendar day the row printed, read now, so a date corrected
+        // on the detail screen is the one sent; no zone is applied
+        let day = row.day
+        // A row an earlier build wrote keeps that build's hash input, its
+        // raw date, so a send it began and never recorded gets the same
+        // import_id on retry and YNAB refuses the duplicate. A new row adds
+        // the moment it was captured, so two real purchases of one amount at
+        // one merchant on one day never share an id.
+        let importID = row.importID ?? (row.dateIsDay == true
+            ? ImportID.make(date: day.storedInstant, milliunits: milli, payee: row.payee,
+                            source: row.source, capturedAt: row.receivedAt)
+            : ImportID.make(date: row.date, milliunits: milli, payee: row.payee,
+                            source: row.source))
         // id, state and attempt count are saved before the POST, so a killed
         // app or a lost reply retries with the same id
         row.importID = importID
         row.state = "syncing"
         row.syncAttempts += 1
         try? context.save()
-        let txn = NewTransaction(accountID: accountID, date: ynabDate(row.date),
+        let txn = NewTransaction(accountID: accountID, date: day.iso,
                                  amount: milli, payeeName: row.payee,
                                  categoryID: row.categoryID,
                                  memo: row.memo.isEmpty ? nil : row.memo,

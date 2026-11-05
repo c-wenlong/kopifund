@@ -68,19 +68,30 @@ struct SyncTests {
         MockProtocol.requests = []
     }
 
-    @Test func importIDIsPerRowAndFitsYNAB() {
-        let id = UUID()
-        let a = ImportID.make(rowID: id)
-        #expect(a == ImportID.make(rowID: id))
-        #expect(a != ImportID.make(rowID: UUID()))
-        #expect(a.count <= 36)
-        #expect(a.hasPrefix("al-"))
+    /// The id a new row gets: its day, amount, payee and source with the
+    /// moment it was captured, so it fits YNAB and two captures differ.
+    @MainActor
+    private func newRowID(_ row: TransactionRecord) -> String {
+        ImportID.make(date: row.day.storedInstant,
+                      milliunits: Milliunits.from(Decimal(row.amountCents) / 100, outflow: true),
+                      payee: row.payee, source: row.source, capturedAt: row.receivedAt)
+    }
+
+    @Test func importIDIsPerCaptureAndFitsYNAB() throws {
+        let context = ModelContext(try Store.memory())
+        let a = approved(context)
+        let b = approved(context, at: day.addingTimeInterval(60))
+        #expect(newRowID(a) == newRowID(a))
+        #expect(newRowID(a) != newRowID(b))
+        #expect(newRowID(a).count <= 36)
+        #expect(newRowID(a).hasPrefix("al-"))
     }
 
     @Test func twoIdenticalChargesBothReachYNAB() async throws {
         let context = ModelContext(try Store.memory())
+        // two taps a minute apart: same day, amount and stall
         let a = approved(context)
-        let b = approved(context)
+        let b = approved(context, at: day.addingTimeInterval(60))
         let log = Log()
         MockProtocol.handler = { req in
             log.add(importID(of: req))
@@ -109,7 +120,7 @@ struct SyncTests {
         #expect(row.state == "synced")
         #expect(log.all.count == 2)
         #expect(log.all[0] == log.all[1])
-        #expect(log.all[0] == ImportID.make(rowID: row.id))
+        #expect(log.all[0] == newRowID(row))
     }
 
     /// An earlier build saved `syncing` before its POST and the content id
@@ -118,6 +129,8 @@ struct SyncTests {
     @Test func aRowAnEarlierBuildLeftMidSendReusesItsContentID() async throws {
         let context = ModelContext(try Store.memory())
         let row = approved(context)
+        // as an earlier build left it: a raw date, no day mark, no id saved
+        row.dateIsDay = nil
         row.state = "syncing"
         try? context.save()
         let log = Log()
@@ -126,19 +139,19 @@ struct SyncTests {
             return respond(409)
         }
         _ = await Sync.run(context: context, client: client(), settings: settings)
-        let legacy = ImportID.legacy(date: row.date, milliunits: -4800, payee: row.payee,
-                                     source: row.source)
+        let legacy = ImportID.make(date: row.date, milliunits: -4800, payee: row.payee,
+                                   source: row.source)
         #expect(log.all == [legacy])
         #expect(row.importID == legacy)
         #expect(row.state == "synced")
-        // a fresh approval gets its own per-row id
+        // a fresh approval gets the per-capture id
         let fresh = approved(context, payee: "Other")
         MockProtocol.handler = { req in
             log.add(importID(of: req))
             return created("y1")
         }
         _ = await Sync.run(context: context, client: client(), settings: settings)
-        #expect(fresh.importID == ImportID.make(rowID: fresh.id))
+        #expect(fresh.importID == newRowID(fresh))
     }
 
     /// A spend in another currency never posts: it goes back to review
@@ -300,7 +313,7 @@ struct SyncTests {
         #expect(row.state == "approved")
         #expect(row.syncError == nil)
         // the id stays, so a send that did land turns the retry into a 409
-        #expect(row.importID == ImportID.make(rowID: row.id))
+        #expect(row.importID == newRowID(row))
     }
 
     @Test func aRowDeletedDuringItsSendIsLeftAlone() async throws {
