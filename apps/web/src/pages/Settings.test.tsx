@@ -130,7 +130,7 @@ describe("Settings", () => {
     stubFetch({ health: false });
     render(<><Settings /><ServerBanner /></>);
     expect(await screen.findByText("Server offline")).toBeInTheDocument();
-    expect(await screen.findByText(/Can't reach Kopifund\. Is/)).toBeInTheDocument();
+    expect(await screen.findByText(/Can't reach Kopifund\. Quit and reopen/)).toBeInTheDocument();
   });
 
   it("says connected again once the server is back, as the banner goes", async () => {
@@ -146,7 +146,7 @@ describe("Settings", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
     expect(await screen.findByText("Server connected")).toBeInTheDocument();
     expect(screen.queryByText("Server offline")).not.toBeInTheDocument();
-    expect(screen.queryByText(/Can't reach Kopifund\. Is/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Can't reach Kopifund\. Quit and reopen/)).not.toBeInTheDocument();
   });
 
   it("offers the two sidebar modes with no hint lines under them", async () => {
