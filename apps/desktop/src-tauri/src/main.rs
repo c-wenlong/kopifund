@@ -185,9 +185,17 @@ impl Sidecar {
 
 type Shared = Arc<Mutex<Sidecar>>;
 
-/// One start at a time: a start stops the old server before it launches the
-/// new one, so two would race for port 8771.
+/// Held by whatever is stopping or starting a server: a start (it stops the
+/// old server before it launches the new one, so two would race for port
+/// 8771), the startup timer killing a hung server, and quitting. Quitting
+/// takes it before it looks for the child, so a stop under way on another
+/// thread finishes before the app exits and no hung server outlives it.
+/// Always taken before the state's lock, never while holding it.
 static STARTING: Mutex<()> = Mutex::new(());
+
+fn one_at_a_time() -> std::sync::MutexGuard<'static, ()> {
+    STARTING.lock().unwrap_or_else(|e| e.into_inner())
+}
 
 #[derive(Serialize)]
 struct Status {
@@ -234,7 +242,7 @@ fn start(app: &AppHandle, state: &Shared) {
     let app = app.clone();
     let state = state.clone();
     thread::spawn(move || {
-        let _one = STARTING.lock().unwrap_or_else(|e| e.into_inner());
+        let _one = one_at_a_time();
         stop_child(old);
         launch(&app, &state, generation);
     });
@@ -277,6 +285,7 @@ fn launch(app: &AppHandle, state: &Shared, generation: u64) {
     let timer = state.clone();
     thread::spawn(move || {
         thread::sleep(STARTUP_TIMEOUT);
+        let _one = one_at_a_time();
         let hung = {
             let mut s = timer.lock().unwrap();
             if !s.time_out(generation) {
@@ -284,7 +293,11 @@ fn launch(app: &AppHandle, state: &Shared, generation: u64) {
             }
             s.child.take()
         };
-        stop_child(hung);
+        // hung before it listens, so it may never read its closed stdin: killed at once
+        if let Some(mut child) = hung {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     });
 
     let outs = state.clone();
@@ -425,6 +438,9 @@ fn main() {
     app.run(|app, event| {
         if let RunEvent::Exit = event {
             let state = app.state::<Shared>();
+            // waits for a stop or start under way on another thread (a Retry, the
+            // startup timer) to finish, so its child is gone or stored here
+            let _one = one_at_a_time();
             let child = {
                 let mut s = state.lock().unwrap();
                 s.quitting = true;
