@@ -96,8 +96,9 @@ download yourself. Nothing leaves the machine unless you switch it on or use it:
   rule matched, and a rounded typical amount unless `send_amounts = false`
   under `[ai]`, go to the model provider you set in Settings. Turn AI off in Settings to stop it;
   `[ai] enabled = false` only turns it off while Settings has not picked a provider.
-- **Copilot.** Dates, amounts, payees, categories and account display names of
-  the rows a question needs go to that provider, only after you turn on "Send
+- **Copilot.** Dates, amounts, payees, categories, trip names, account display
+  names and, for a row with no payee, the statement's merchant text, of the rows
+  a question needs go to that provider, only after you turn on "Send
   matching rows" in Settings (a model on this machine needs no switch).
 - **The iOS app.** The transactions you approve go to `api.ynab.com`, your YNAB
   plan, with the personal access token you give it.

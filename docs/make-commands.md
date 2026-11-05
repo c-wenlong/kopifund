@@ -1212,10 +1212,12 @@ an earlier tier or an earlier line.
 Builds one dated snapshot under `~/.kopifund/cache/`, then runs all 15 stat
 modules over it and writes one result JSON each. The snapshot is read from
 `kopifund.db` when the data folder has one, and from the eight Notion databases
-otherwise. It runs `python3 server/finance.py analyse`, and it reuses today's
-snapshot if one is already on disk. After a `make sync` there always is one: the
-sync writes it from the pages it read, so the pass below starts at the stats.
-The walkthrough below shows the Notion route.
+otherwise. It runs `python3 server/finance.py analyse`. A snapshot of
+`kopifund.db` is rebuilt every time, so a load since the last run always shows,
+including right after `make sync`. Only the Notion route reuses today's snapshot
+when one is already on disk: after a `make sync` there is one, written from the
+pages it read, so that pass starts at the stats. The walkthrough below shows the
+Notion route.
 
 With Notion configured, the run ends by
 rewriting the hub page's `Metrics` and `Months` tables from the results, keyed
