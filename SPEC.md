@@ -105,7 +105,17 @@ flowchart LR
   Content-Length that is not a whole number is a 400, and one over 25 MB a 413.
   The link path below gets the same headers, the same JSON on a failure and
   the same length check; its GETs are held by the device bearer instead of
-  `Sec-Fetch-Site`. The phone link ("Phone link (G25)"
+  `Sec-Fetch-Site`. The built app also carries a Content-Security-Policy in
+  `apps/web/index.html` (a meta tag, so `make serve` and the Mac app's window
+  both get it from the page itself): every script, style, font, image, fetch
+  and worker comes from the app's own origin, with `data:` and `blob:` images
+  allowed, no inline script, no plugin (`object-src 'none'`), no `<base>`, and
+  forms only to itself. Vite's dev server injects inline scripts, so
+  `vite.config.ts` drops the tag under `make dev`. The two policies split the
+  work: the meta tag owns what the page may load and run, and serve.py's
+  header owns only `frame-ancestors`, which a meta tag cannot set. A browser
+  enforces both at once, and neither names a directive the other does. The
+  phone link ("Phone link (G25)"
   below) is the only way a request reaches the API off this machine, and it
   arrives on loopback too, through `tailscale serve`. The routes are listed at the top of
   serve.py, and in it `GET_ROUTES` and `POST_ROUTES` are the one table that
