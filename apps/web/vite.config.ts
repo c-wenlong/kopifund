@@ -51,7 +51,7 @@ export default defineConfig({
         runtimeCaching: [{
           urlPattern: ({ request, url }) => request.mode === "navigate" && !url.pathname.startsWith("/api/"),
           handler: "NetworkOnly",
-          options: { networkTimeoutSeconds: 5, precacheFallback: { fallbackURL: "index.html" } },
+          options: { precacheFallback: { fallbackURL: "index.html" } },
         }],
         // set by the plugin only when it injects the register script itself:
         // a new worker takes over at once instead of waiting for every tab to close
