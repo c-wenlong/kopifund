@@ -9,13 +9,13 @@ import Intents
 /// loud) and every row gets a way out, not just a way in.
 struct AlertView: View {
     let record: UnmatchedRecord
-    /// Fires back to the list so a toast can say what happened.
+    /// Fires back to the list with the toast to show. The list pops this
+    /// view and only then deletes the row: deleting the record here, under
+    /// a pushed view that still shows it, blanked the page or crashed it.
     var onFinished: (String) -> Void = { _ in }
 
     @Environment(\.modelContext) private var context
-    @Environment(\.dismiss) private var dismiss
     @State private var showDismissChoices = false
-    @State private var didSave = false
 
     private var lines: [String] { record.text.components(separatedBy: .newlines) }
 
@@ -89,8 +89,9 @@ struct AlertView: View {
                 NavigationLink {
                     PatternBuilderView(sampleText: record.text, source: record.source,
                                        arrivedOn: record.arrivedOn) {
-                        didSave = true
-                        Task { onFinished(await reIngestAndRemove()) }
+                        // the list drops the row only after the re-ingest
+                        // has read it
+                        Task { onFinished(await reIngest()) }
                     }
                 } label: {
                     Text("Teach a pattern")
@@ -108,16 +109,15 @@ struct AlertView: View {
         }
         .confirmationDialog("Dismiss this alert?", isPresented: $showDismissChoices,
                             titleVisibility: .visible) {
-            Button("Just this alert") { dismissRecord(andSay: "Alert dismissed") }
+            Button("Just this alert") { onFinished("Alert dismissed") }
             Button("Always ignore alerts like this") {
                 Suppression.add(AlertShape.signature(of: record.text))
-                dismissRecord(andSay: "Ignored. Alerts like this won't queue")
+                onFinished("Ignored. Undo it under Patterns")
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("\"Always ignore\" drops future alerts with the same shape, from any channel.")
+            Text("\"Always ignore\" drops future alerts with the same shape, from any channel. Patterns lists them to undo.")
         }
-        .onChange(of: didSave) { dismiss() }
         .task {
             // the record's text is read on the actor, the scan itself runs
             // on a detached task so the push animation never waits on it
@@ -130,16 +130,10 @@ struct AlertView: View {
         }
     }
 
-    private func dismissRecord(andSay toast: String) {
-        context.delete(record)
-        try? context.save()
-        onFinished(toast)
-        dismiss()
-    }
-
     /// The saved pattern should also capture this alert: re-ingest so the
-    /// spend reaches the queue, then drop the unmatched row.
-    private func reIngestAndRemove() async -> String {
+    /// spend reaches the queue. The list drops the unmatched row once this
+    /// view is off screen.
+    private func reIngest() async -> String {
         var outcome = "unmatched"
         if let container = try? Store.container() {
             outcome = (try? await Ingest.alert(text: record.text, source: record.source,
@@ -147,8 +141,6 @@ struct AlertView: View {
                                                arrivedOn: record.arrivedOn,
                                                container: container)) ?? "unmatched"
         }
-        context.delete(record)
-        try? context.save()
         // a pattern that auto-approves queues the row approved: send it now,
         // not at the next return to the front
         if outcome == "queued" { Task { await SyncService.flush(context: context) } }

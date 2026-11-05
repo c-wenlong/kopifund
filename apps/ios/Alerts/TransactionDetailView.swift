@@ -14,6 +14,9 @@ struct TransactionDetailView: View {
     // a typed conversion is a draft: a store refresh waits to re-key the
     // Inbox (and drop this screen) until the screen is gone
     @State private var draftHold = SyncService.DraftHold()
+    // set by Delete: the row goes once this view is off screen, so no
+    // render ever reads a deleted model
+    @State private var deleteOnExit = false
 
     var body: some View {
         Form {
@@ -161,10 +164,21 @@ struct TransactionDetailView: View {
                 }
             }
             Button("Delete", role: .destructive) {
-                context.delete(row)
-                try? context.save()
+                deleteOnExit = true
                 dismiss()
             }
+            // a row in flight is still being written by the sync; deleting
+            // it under that write traps
+            .disabled(row.state == "syncing")
+        }
+        .onDisappear {
+            guard deleteOnExit else { return }
+            // a sync that picked the row up meanwhile re-reads it before each
+            // write and leaves a deleted row alone (Sync.run, HubLane), so
+            // the delete need not wait, and the row never lingers in the
+            // list to be reopened
+            context.delete(row)
+            try? context.save()
         }
     }
 
