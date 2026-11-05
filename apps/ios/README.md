@@ -51,7 +51,8 @@ change the ids, whichever your account allows.
 2. Tap **Fetch plans & accounts**, pick your plan, then pick the default
    account Wallet transactions post to.
 3. Build a pattern: **Patterns > +**, paste a real bank alert. The detector
-   pre-tags its best guesses for the amount, the payee and the date; dashed
+   pre-tags its best guesses for the amount, the payee, the date and the card
+   (the digits after "ending", as in "Card ending 1234"); dashed
    words are weaker guesses that accept with one tap. Pick a field chip and
    tap or drag across words to fix anything, watch "This pattern reads",
    then save with the account it maps to.
@@ -63,7 +64,8 @@ change the ids, whichever your account allows.
 
 An alert no pattern takes waits in Unmatched. Rows lead with the merchant
 the detector reads out of the alert (falling back to its first telling
-line), and a chip shows the detector's best money guess when one exists. Tapping a row opens
+line), and a neutral chip shows the detector's best money guess when one
+exists (no colour: the direction is unknown until a pattern says it). Tapping a row opens
 the alert itself first: mail chrome dimmed, the detector's summary up top
 ("amount, date found"), and the matcher rejections tucked behind "Why
 nothing matched".

@@ -97,7 +97,11 @@ read) run on a small thread pool, but the pace is shared: about three requests a
 second in total, whatever the thread count, with retries on rate limits. The pool
 only removes the per-request latency, so a run is bounded by Notion's limit
 (about 1,000 writes in six minutes). Every write is one page, so an interrupted
-run leaves a state the next run's diff finishes. `pace` and `workers` under
+run leaves a state the next run's diff finishes. A page create is the one call
+never sent twice: when its answer is lost (a timeout, a 5xx) Notion may already
+have made the page, so the run stops there rather than risk a second page with
+the same key, and the next run creates it if it is still missing. A create is
+retried only on a rate limit or a connection that never opened. `pace` and `workers` under
 `[notion]` in `config.toml` tune it; `workers = 1` is the old sequential
 behaviour.
 
