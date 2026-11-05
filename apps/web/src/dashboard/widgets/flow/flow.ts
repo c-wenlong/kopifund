@@ -236,9 +236,13 @@ export function buildFlow(input: {
   const fund = (n: FlowNode) => {
     const fromIncome = Math.max(0, Math.min(n.minor, incomeLeft));
     incomeLeft -= fromIncome;
-    if (fromIncome > 0 && incomeNode) links.push({ source: incomeNode, target: n, minor: fromIncome, link: n.link });
     const rest = n.minor - fromIncome;
-    if (rest > 0 && beyondNode) links.push({ source: beyondNode, target: n, minor: rest, link: n.link });
+    // a band opens the node's rows only when it carries all of them: a node
+    // funded partly from income and partly from beyond it has no filter for
+    // either share, so neither band links (the node itself still does)
+    const whole = (minor: Cents) => (minor === n.minor ? n.link : null);
+    if (fromIncome > 0 && incomeNode) links.push({ source: incomeNode, target: n, minor: fromIncome, link: whole(fromIncome) });
+    if (rest > 0 && beyondNode) links.push({ source: beyondNode, target: n, minor: rest, link: whole(rest) });
   };
 
   slices.forEach((s, i) => {
