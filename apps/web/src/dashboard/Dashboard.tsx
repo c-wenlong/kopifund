@@ -23,6 +23,17 @@ import { widgetDef, WIDGETS } from "./registry";
 
 const SAVE_AFTER = 700;
 
+/** Save a board after its page has gone; a failure says so in a toast that can try again. */
+function saveOnLeaving(id: string, body: string) {
+  postJSON(`/api/dashboard/layouts/${id}`, body).catch((e: unknown) => {
+    showToast({
+      message: e instanceof Error ? `The dashboard was not saved: ${e.message}` : "The dashboard was not saved.",
+      tone: "error",
+      action: { label: "Try again", onClick: () => saveOnLeaving(id, body) },
+    });
+  });
+}
+
 /** A layout id the server takes (`_check_id`): lowercase, digits, '-' and '_' only. */
 function newLayoutId(taken: readonly string[]): string {
   for (let i = 0; ; i++) {
@@ -130,12 +141,13 @@ export function Dashboard() {
     timer.current = setTimeout(() => void flush(), SAVE_AFTER);
   }, [flush]);
 
-  // a pending save still lands if the page is left before the guard asks
+  // a pending save still lands when the page is left inside the wait: the app's
+  // toast outlives the page, so a save that fails then says so and offers to
+  // try again, the edit kept in its body
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
     for (const b of pending.current.values()) {
-      void postJSON(`/api/dashboard/layouts/${b.id}`,
-        JSON.stringify({ ...writeLayout(b), active: b.id === activeRef.current })).catch(() => {});
+      saveOnLeaving(b.id, JSON.stringify({ ...writeLayout(b), active: b.id === activeRef.current }));
     }
   }, []);
 

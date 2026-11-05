@@ -257,6 +257,31 @@ describe("Dashboard", () => {
     keepEditing();
   });
 
+  it("says so, and can try again, when the save made on leaving fails", async () => {
+    const saved = {
+      layouts: [doc("default", "Default", [
+        { id: "w-note", type: "note", title: "A note", options: { text: "kept" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+      ])],
+      active: "default",
+    };
+    stubServer(saved);
+    const { unmount } = render(<><Dashboard /><Toaster /></>);
+    await screen.findByText("kept");
+    fireEvent.click(screen.getByRole("button", { name: "Remove A note" }));
+    const real = globalThis.fetch;
+    let fail = true;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) =>
+      fail && init?.method === "POST"
+        ? new Response(JSON.stringify({ error: "disk full" }), { status: 500 })
+        : real(input, init));
+    unmount();
+    render(<Toaster />);
+    expect(await screen.findByText(/dashboard was not saved: disk full/)).toBeInTheDocument();
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(saved.layouts[0].widgets).toHaveLength(0));
+  });
+
   it("makes no board when the picker closes with nothing picked, and the Default one with the first widget", async () => {
     const saved = { layouts: [] as DashboardLayout[], active: null as string | null };
     const posts = stubServer(saved);
