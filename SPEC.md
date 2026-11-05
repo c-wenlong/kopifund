@@ -1403,7 +1403,11 @@ grid of fixed rows. A widget is dragged by the grip in its header and resized
 from its corner; the same moves work from the keyboard, arrows on the grip
 shifting the widget a cell or past its neighbour and arrows on the corner
 growing or shrinking it. Every move is repacked by `layout.ts`'s `pack`, which
-settles each widget as high as it fits, so no hole stays; a widget's height
+settles each widget as high as it fits, so no hole stays. A drop settles
+the board its drag previewed (`settle`: the moved widget pinned to its cell,
+what it lands on pushed below it, then everything as high as it fits), so a
+widget dropped onto another's cell lands above it, as the preview showed; a
+widget's height
 is bounded (`MAX_H`), so a stray saved size cannot stall the page. A change
 writes the layout back through `POST /api/dashboard/layouts/<id>` after a
 short debounce, so nothing waits on a Save. Under 768px the same widgets stack in one column in
