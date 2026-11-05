@@ -141,6 +141,34 @@ class StatementsWithRows(NoPhases):
         self.assertEqual(partial_months(s), fx.MONTHS[7:])
 
 
+class TheCashHeadline(NoPhases):
+    """Greptile on #39: savings-runway's complete month is coverage's, and two more."""
+
+    def test_a_statement_with_no_usable_balance_is_not_current_cash(self):
+        """B2 prints December in USD with no SGD rate: its November balance would be
+        carried and called current, so December is not complete."""
+        months = fx.MONTHS
+        blocks = [bank(m, 50_000, 50_000, currency="USD") for m in months]
+        blocks[-1].update(closing_sgd_minor=None)
+        s = with_second_bank(*blocks)
+        self.assertEqual(savings_runway.run(s)["data"]["summary"]["as_of_complete"], "2025-11")
+
+    def test_an_idle_account_between_half_yearly_statements_does_not_freeze_it(self):
+        s = with_second_bank(bank("2025-01", 0, 50_000), bank("2025-07", 50_000, 50_000))
+        self.assertEqual(savings_runway.run(s)["data"]["summary"]["as_of_complete"], "2025-12")
+
+    def test_a_wallet_month_after_every_bank_closed_is_not_complete(self):
+        s = fx.snapshot()
+        main = next(b for b in s["periods"] if b["name"] == f"{fx.MAIN} · SGD · 2025-12")
+        main.update(closing_minor=0, closing_sgd_minor=0)
+        wallet = dict(next(b for b in s["periods"] if b["name"] == f"{fx.WALLET} · NOK · 2025-12"),
+                      name=f"{fx.WALLET} · NOK · 2026-01", period_end="2026-01-28")
+        s["periods"].append(wallet)
+        self.assertEqual(c.coverage(s)["2026-01"]["expected"], [])
+        self.assertTrue(c.coverage(s)["2026-01"]["partial"])
+        self.assertEqual(savings_runway.run(s)["data"]["summary"]["as_of_complete"], "2025-12")
+
+
 class WalletOnlyMonths(NoPhases):
 
     def test_months_only_a_wallet_covers_are_partial(self):

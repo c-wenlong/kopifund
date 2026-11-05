@@ -59,13 +59,17 @@ def _check_month(v, name):
     return s
 
 
-def partial_months(results):
-    """The months the stats call partial, from the monthly-cashflow result
-    (server/analytics/stats/common.py, `coverage`: a month some open bank account's
-    statements do not cover yet, such as the one that has only just begun).
-    Empty before the first analysis."""
+def full_months(results):
+    """The months the stats call full, from the monthly-cashflow result
+    (server/analytics/stats/common.py, `coverage`), or None before the first
+    analysis. A month the result does not list (loaded since the stats last
+    ran, such as one that has only just begun) is not full: nothing has
+    checked its statements yet."""
     cashflow = ((results or {}).get("monthly-cashflow") or {}).get("data") or {}
-    return {m.get("month") for m in cashflow.get("months") or () if m.get("partial")}
+    listed = [m for m in cashflow.get("months") or () if isinstance(m, dict) and m.get("month")]
+    if not listed:
+        return None
+    return {m["month"] for m in listed if not m.get("partial")}
 
 
 def monthly_average(conn, months=12, results=None):
@@ -76,15 +80,16 @@ def monthly_average(conn, months=12, results=None):
 
     It averages the full months among the `months` months that end at the
     record's last full month, the same full months every stat averages over
-    (`partial_months` of the stats' `results`), so a month that has only just
-    begun never counts as a whole month of a few days' spending. `months` in
-    the answer is how many it divided by. With no results yet, or no full
-    month at all, it averages every month of the last `months`."""
+    (`full_months` of the stats' `results`), so a month that has only just
+    begun, or one loaded since the stats last ran, never counts as a whole
+    month of a few days' spending. `months` in the answer is how many it
+    divided by. With no results yet, or no full month at all, it averages
+    every month of the last `months`."""
     first, last = conn.execute("SELECT MIN(month), MAX(month) FROM v_txn").fetchone()
     if not first:
         return None
-    partial = partial_months(results)
-    full = [m for m in months_between(first, last) if m not in partial]
+    known = full_months(results)
+    full = [m for m in months_between(first, last) if known is None or m in known]
     if full:
         used = [m for m in full if m >= add_months(full[-1], -(months - 1))]
     else:

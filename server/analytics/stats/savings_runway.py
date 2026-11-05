@@ -119,6 +119,7 @@ def run(snapshot, benchmarks=None):
     closed = {a: s["to"] for a, s in c.statement_spans(snapshot).items() if s["to"]}
 
     printed, started = printed_by_month(closings)
+    wallets = c.wallet_accounts(snapshot)
     # each account's name in this stat, from its label: one per account even
     # where two labels meet, and never one of a month row's own fields, so a
     # balance never lands in another account's column or in the cash total
@@ -140,11 +141,17 @@ def run(snapshot, benchmarks=None):
                "carried_amount_minor": c.sum_cents(by_account[a] for a in carried),
                "not_started": sorted(name[a] for a, start in started.items()
                                      if m < start),
-               # a month is complete when no open bank account is missing
-               # from it; a carried wallet balance does not make it
-               # incomplete, since a wallet that printed nothing was not used
-               # and the last balance it printed is the balance it holds
-               "complete": not cov[m]["missing"],
+               # a month is complete when some open bank account covers it,
+               # none is missing from it, and none printed a statement this
+               # stat cannot read a balance from (its carried figure would be
+               # stale). A carried wallet balance does not make it incomplete,
+               # since a wallet that printed nothing was not used and the last
+               # balance it printed is the balance it holds; nor does an idle
+               # account between its half-yearly statements, which printed
+               # nothing and holds what it last printed
+               "complete": (bool(cov[m]["expected"]) and not cov[m]["missing"]
+                            and not [a for a in carried
+                                     if a not in wallets and a in cov[m]["accounts"]]),
                "partial": cov[m]["partial"]}
         # one column per account, in the order of the names shown
         for account_no, value in sorted(by_account.items(), key=lambda kv: name[kv[0]]):

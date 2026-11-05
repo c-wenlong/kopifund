@@ -82,6 +82,13 @@ class Explorer(unittest.TestCase):
         self.assertEqual(spending.monthly_average(self.conn, results=results),
                          {"per_month": (10000 - 500 + 1) // 2, "from": "2026-07", "to": "2026-09", "months": 2})
 
+    def test_a_month_loaded_since_the_stats_ran_is_not_full(self):
+        """Greptile on #39: a sync adds August after the stats ran; the saved result
+        lists only July, so August is not counted as a whole month."""
+        results = {"monthly-cashflow": {"data": {"months": [{"month": "2026-07", "partial": False}]}}}
+        self.assertEqual(spending.monthly_average(self.conn, results=results),
+                         {"per_month": 10000, "from": "2026-07", "to": "2026-07", "months": 1})
+
     def test_with_no_full_month_the_average_falls_back_to_every_month(self):
         results = {"monthly-cashflow": {"data": {"months": [
             {"month": "2026-07", "partial": True}, {"month": "2026-08", "partial": True}]}}}

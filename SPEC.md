@@ -950,8 +950,8 @@ them. Amounts are integer cents.
     the record's own average over the full months among its last 12, ending at
     its last full month (`server/finance/spending.py`, `monthly_average`, the same
     spending definition as the Spending explorer and the same full months as
-    every stat, so a month that has only just begun never counts as a whole
-    one), which the box shows as its hint.
+    every stat, so a month that has only just begun, or one loaded since the
+    stats last ran, never counts as a whole one), which the box shows as its hint.
   - Every field is checked on save (`server/finance/planning.py`, `clean_plan`) and a
     refusal names it: "Income row 2 (Acme): the to date is before the from
     date", "Investing step 1: from is a month", "Inflation is between -10 and
