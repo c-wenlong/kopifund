@@ -11,6 +11,9 @@ struct TransactionDetailView: View {
     @State private var categoryOptions: [(id: String, label: String)] = []
     /// The plan-currency figure the owner types for a held foreign spend.
     @State private var converted: Double?
+    // a typed conversion is a draft: a store refresh waits to re-key the
+    // Inbox (and drop this screen) until the screen is gone
+    @State private var draftHold = SyncService.DraftHold()
 
     var body: some View {
         Form {
