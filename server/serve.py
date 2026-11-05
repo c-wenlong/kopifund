@@ -51,8 +51,8 @@ server/finance/upload_steps.py, and --reload in dev_reload.py.
     GET /api/copilot/threads/<id>   G22: one thread with its messages
     GET /api/link/devices           G25: the paired phones, and the tailnet URL the pair QR carries
     GET /api/link/pending           G25: the phone rows waiting for a statement, matched or dismissed
-                                    (server/finance/pending.py); loopback only: the link path refuses
-                                    every /api/link/ read
+                                    (server/finance/pending.py); loopback only, like every read
+                                    not in LINK_READS
     GET /api/dashboard/layouts      G26: the saved dashboard layouts, and the active one's id
     GET /api/dashboard/layouts/<id> G26: one layout, 404 when the id is not one
     GET /api/dashboard/query?q=     G26: a WidgetQuery as JSON, resolved to labels and series in
@@ -69,8 +69,10 @@ when there is one, on this machine.
 G25: a request carrying `X-Forwarded-For` arrived through `tailscale serve`
 (SPEC.md, "Phone link (G25)"), which forwards HTTPS from the tailnet to
 loopback. Those requests take the link path instead of the rules above:
-every GET needs `Authorization: Bearer <device token>` of a paired phone
-(`server/finance/link.py`), pages are never served, and the only writes are
+`/api/health` stays open, every other GET needs `Authorization: Bearer
+<device token>` of a paired phone (`server/finance/link.py`) and is answered
+only for the reads in LINK_READS (profile, transactions, categories,
+overview), pages are never served, and the only writes are
 `/api/pair/redeem` (unauthenticated: the one-time token is the credential)
 and `/api/link/transactions` under a bearer. A request
 without the header keeps the loopback path, so the header can only lose
@@ -285,6 +287,11 @@ CACHED_PREFIX = "/api/results/"
 # LINK_BEARER_WRITES needs a device bearer like the link GETs.
 LINK_WRITES = frozenset({"/api/pair/redeem"})
 LINK_BEARER_WRITES = frozenset({"/api/link/transactions"})
+# G25: the only GETs the link path answers to a paired bearer, the reads the
+# phone needs (SPEC.md, "Phone link (G25)"). An allowlist, so a route added
+# later stays off the link until it is listed here: a lost phone, before it
+# is revoked, must not pull exports, uploads, AI threads or folder paths.
+LINK_READS = frozenset({"/api/profile", "/api/transactions", "/api/categories", "/api/overview"})
 
 # The writes that change nothing a GET reads: a check, an AI suggestion, a
 # new upload attempt, a projection preview. A check and a new attempt write
@@ -353,17 +360,19 @@ def make_handler(dist: Path, page: str | None = None) -> type[BaseHTTPRequestHan
             if self._proxied():
                 # G25: the link path. Health stays open so an app can check
                 # reachability before it pairs; every other answer needs a
-                # paired device's bearer, and pages are never served.
-                if path != "/api/health" and self._link_device() is None:
+                # paired device's bearer, and then only the reads in
+                # LINK_READS are served. Pages never are.
+                if path == "/api/health":
+                    self.api(path)
+                    return
+                if self._link_device() is None:
                     self._unpaired()
                     return
-                if path.startswith("/api/link/"):
-                    # G25: the link's admin routes (the registry) stay on the
-                    # Mac; a phone only needs the data it is paired to read.
+                if path in LINK_READS:
+                    self.api(path)
+                elif path.startswith("/api/"):
                     self.send_json({"error": "This route is not served on the link"},
                                    HTTPStatus.FORBIDDEN)
-                elif path.startswith("/api/"):
-                    self.api(path)
                 else:
                     self.send_json({"error": "Pages are not served on the link"},
                                    HTTPStatus.FORBIDDEN)

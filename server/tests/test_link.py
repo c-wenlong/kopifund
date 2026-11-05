@@ -9,6 +9,7 @@ when it forwards the tailnet's HTTPS to loopback.
 import http.client
 import json
 import os
+import re
 import stat
 import tempfile
 import threading
@@ -154,23 +155,52 @@ class GateTest(unittest.TestCase):
         self.assertEqual(r.status, 200)
 
     def test_a_link_get_needs_a_paired_devices_bearer(self):
-        r, _ = self.call("GET", "/api/countries", headers=self.XFF)
+        r, _ = self.call("GET", "/api/categories", headers=self.XFF)
         self.assertEqual(r.status, 401)
         self.assertEqual(r.getheader("WWW-Authenticate"), 'Bearer realm="kopifund"')
-        r, _ = self.call("GET", "/api/countries", headers={**self.XFF, "Authorization": "Bearer kfd_wrong"})
+        r, _ = self.call("GET", "/api/categories", headers={**self.XFF, "Authorization": "Bearer kfd_wrong"})
         self.assertEqual(r.status, 401)
 
     def test_pair_and_read_end_to_end(self):
         bearer = self.pair()
-        r, raw = self.call("GET", "/api/countries", headers={**self.XFF, "Authorization": f"Bearer {bearer}"})
+        r, raw = self.call("GET", "/api/categories", headers={**self.XFF, "Authorization": f"Bearer {bearer}"})
         self.assertEqual(r.status, 200)
-        self.assertIn("countries", json.loads(raw))
+        self.assertIn("groups", json.loads(raw))
         # the registry is an admin view: loopback only, bearer or not
         r, _ = self.call("GET", "/api/link/devices", headers={**self.XFF, "Authorization": f"Bearer {bearer}"})
         self.assertEqual(r.status, 403)
         r, raw = self.call("GET", "/api/link/devices")
         self.assertEqual(r.status, 200)
         self.assertEqual([d["name"] for d in json.loads(raw)["devices"]], ["Test iPhone"])
+
+    def test_a_bearer_reads_only_the_link_reads(self):
+        """The link path is an allowlist: the phone's four reads answer, and
+        every other GET route is refused even to a paired bearer, so a lost
+        phone cannot pull exports, uploads, AI threads or the key's tail."""
+        bearer = self.pair()
+        auth = {**self.XFF, "Authorization": f"Bearer {bearer}"}
+        for path in sorted(serve.LINK_READS):
+            r, _ = self.call("GET", path, headers=auth)
+            self.assertNotIn(r.status, (401, 403), path)
+            # the same read needs the bearer
+            r, _ = self.call("GET", path, headers=self.XFF)
+            self.assertEqual(r.status, 401, path)
+        refused = [route for route in serve.GET_ROUTES
+                   if route not in serve.LINK_READS and route != "/api/health"]
+        self.assertIn("/api/exports/<stamp>/<file>", refused)
+        for route in refused:
+            path = re.sub(r"<[a-z_]+>", "x", route)
+            r, raw = self.call("GET", path, headers=auth)
+            self.assertEqual(r.status, 403, path)
+            self.assertEqual(json.loads(raw), {"error": "This route is not served on the link"}, path)
+        # a real export file name, and a stat result, are refused just the same
+        for path in ("/api/exports/2026-08-01T000000/transactions.csv", "/api/results/monthly-cashflow",
+                     "/api/ai", "/api/copilot/threads", "/api/server", "/api/run/status"):
+            r, _ = self.call("GET", path, headers=auth)
+            self.assertEqual(r.status, 403, path)
+        # loopback still answers what the link refuses
+        r, _ = self.call("GET", "/api/countries")
+        self.assertEqual(r.status, 200)
 
     def test_pages_are_never_served_on_the_link_path(self):
         bearer = self.pair()
@@ -208,7 +238,7 @@ class GateTest(unittest.TestCase):
         device_id = json.loads(raw)["devices"][0]["id"]
         r, _ = self.call("POST", "/api/link/devices/revoke", {"id": device_id}, {"X-Kopifund": "1"})
         self.assertEqual(r.status, 200)
-        r, _ = self.call("GET", "/api/countries", headers={**self.XFF, "Authorization": f"Bearer {bearer}"})
+        r, _ = self.call("GET", "/api/categories", headers={**self.XFF, "Authorization": f"Bearer {bearer}"})
         self.assertEqual(r.status, 401)
 
     def test_a_phone_row_posts_over_the_link_and_lists_on_loopback(self):
