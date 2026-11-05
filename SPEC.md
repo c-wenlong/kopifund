@@ -1433,7 +1433,14 @@ spending query `split`s by bucket, category, payee, account or need class), a
 chart `links` idea carried to widgets. Money comes back under `values_minor`,
 integer cents with unit `sgd_minor`; anything else under `values` with its own
 unit (`months`, `fraction`, `percent`, the two share scales kept apart as
-they are everywhere).
+they are everywhere). A `spending` answer by month lists in `partial` the
+months the monthly-cashflow stat calls partial (a bank has not printed them
+yet): a KPI reading the latest month steps over them as Home's tiles do, so
+half a month is never set against a whole one. A pie or treemap draws a share
+of a whole, so it leaves out a part at or below zero (a bucket whose refunds
+passed its spending) rather than draw it into the total, and the flow widget
+draws one "Everything else" under a bucket, holding the answer's own folded
+row with whatever else its refunds pushed out.
 
 **The sources** (`server/finance/dashboard.py`, `_CATALOGUE`): `spending`
 reads the record's `v_txn` with the Spending explorer's own WHEREs and its

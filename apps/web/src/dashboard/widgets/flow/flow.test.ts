@@ -109,6 +109,24 @@ describe("buildFlow", () => {
     expect(sum(d.nodes.filter((n) => n.column === 0))).toBe(sum(d.nodes.filter((n) => n.column === 1)));
   });
 
+  it("draws one Everything else under a slice whose refunds push its folded row out", () => {
+    // the answer's own folded row (300) fits, a category (200) does not once a refund nets the slice to 1000
+    const slice: FlowSlice = {
+      name: "Food", minor: 100_000, link: { bucket: "Food" },
+      children: [
+        { name: "Eating out", minor: 60_000, kind: "category", link: { category: "Eating out", bucket: "Food" } },
+        { name: OTHER_NAME, minor: 30_000, kind: "rest", link: { not_categories: '["Eating out","Groceries"]', bucket: "Food" } },
+        { name: "Groceries", minor: 20_000, kind: "category", link: { category: "Groceries", bucket: "Food" } },
+        { name: "Refunds", minor: -10_000, kind: "category", link: { category: "Refunds", bucket: "Food" } },
+      ],
+    };
+    const d = buildFlow({ income_minor: 500_000, incomeLink: null, slices: [slice], transfers: [] });
+    const kids = d.nodes.filter((n) => n.column === 2);
+    expect(kids.filter((n) => n.label === OTHER_NAME)).toHaveLength(1);
+    expect(kids.map((n) => [n.label, n.minor])).toEqual([["Eating out", 60_000], ["Groceries", 20_000], [OTHER_NAME, 20_000]]);
+    expect(sum(kids)).toBe(100_000);
+  });
+
   it("shows the whole slice as Everything else when its categories never arrived", () => {
     const empty: FlowSlice = { ...FOOD, children: [] };
     const r = buildFlow({ income_minor: 500_000, incomeLink: null, slices: [empty], transfers: [] });
