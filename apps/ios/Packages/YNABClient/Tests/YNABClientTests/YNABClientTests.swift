@@ -157,7 +157,7 @@ final class YNABClientTests: XCTestCase {
         let waits = Waits()
         MockProtocol.handler = { _ in respond(429, "{}", headers: ["Retry-After": "3600"]) }
         let c = YNABClient(token: "t", session: MockProtocol.session(), retryDelay: 1,
-                           sleep: { waits.record($0) })
+                           gate: RateGate(), sleep: { waits.record($0) })
         do {
             _ = try await c.plans()
             XCTFail("should throw")
@@ -168,6 +168,42 @@ final class YNABClientTests: XCTestCase {
         }
         XCTAssertEqual(MockProtocol.requests.count, 1)
         XCTAssertTrue(waits.all.isEmpty)
+    }
+
+    /// Review on #75: after a long wait is asked, the rest of the sync (and
+    /// the next client) sends nothing until it is over.
+    func test_a_long_wait_holds_every_later_request() async throws {
+        let gate = RateGate()
+        MockProtocol.handler = { _ in respond(429, "{}", headers: ["Retry-After": "3600"]) }
+        let first = YNABClient(token: "t", session: MockProtocol.session(), retryDelay: 1,
+                               gate: gate, sleep: { _ in })
+        _ = try? await first.plans()
+        MockProtocol.handler = { _ in respond(200, #"{"data":{"plans":[]}}"#) }
+        let second = YNABClient(token: "t", session: MockProtocol.session(), gate: gate)
+        do {
+            _ = try await second.plans()
+            XCTFail("should not send during the wait")
+        } catch let e as YNABError {
+            XCTAssertEqual(e.kind, .rateLimited)
+        }
+        XCTAssertEqual(MockProtocol.requests.count, 1)
+    }
+
+    /// Review on #75: a huge or non-numeric Retry-After never traps.
+    func test_a_huge_retry_after_is_reported_not_trapped() async throws {
+        MockProtocol.handler = { _ in respond(429, "{}", headers: ["Retry-After": "100000000000000000000"]) }
+        let c = YNABClient(token: "t", session: MockProtocol.session(), retryDelay: 1,
+                           gate: RateGate(), sleep: { _ in })
+        do {
+            _ = try await c.plans()
+            XCTFail("should throw")
+        } catch let e as YNABError {
+            XCTAssertEqual(e.kind, .rateLimited)
+            XCTAssertTrue(e.message.contains("100000000000000000000"))
+        }
+        let http = HTTPURLResponse(url: YNAB.base, statusCode: 429, httpVersion: nil,
+                                   headerFields: ["Retry-After": "inf"])!
+        XCTAssertNil(YNABClient.retryAfter(http))
     }
 
     func test_retry_after_reads_seconds_and_http_dates() {

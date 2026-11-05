@@ -22,6 +22,30 @@ public struct YNABError: Error, Equatable, Sendable {
     public var retryAfter: TimeInterval? = nil
 }
 
+/// When YNAB next accepts a request after a 429 asked for a long wait.
+/// Shared by every client in the process (each sync makes its own), so the
+/// rest of a sync, and the next one, send nothing until the wait is over
+/// instead of burning more of the hour's quota.
+public final class RateGate: @unchecked Sendable {
+    public static let shared = RateGate()
+    private let lock = NSLock()
+    private var notBefore: Date?
+
+    public init() {}
+
+    /// Seconds still to wait, or nil when requests may go.
+    func remaining(now: Date = Date()) -> TimeInterval? {
+        lock.withLock {
+            guard let notBefore, notBefore > now else { return nil }
+            return notBefore.timeIntervalSince(now)
+        }
+    }
+
+    func close(for seconds: TimeInterval, now: Date = Date()) {
+        lock.withLock { notBefore = now.addingTimeInterval(seconds) }
+    }
+}
+
 public actor YNABClient {
     private let token: String
     private let session: URLSession
@@ -35,12 +59,15 @@ public actor YNABClient {
     /// Waits between tries; injected in tests to read the requested waits.
     /// Throws `CancellationError` when the calling task is cancelled.
     private let sleep: @Sendable (UInt64) async throws -> Void
+    private let gate: RateGate
 
     public init(token: String, session: URLSession = .shared, retries: Int = 3,
                 retryDelay: UInt64 = 1_000_000_000, maxRetryAfter: TimeInterval = 30,
+                gate: RateGate = .shared,
                 sleep: @escaping @Sendable (UInt64) async throws -> Void = {
                     try await Task.sleep(nanoseconds: $0)
                 }) {
+        self.gate = gate
         self.token = token
         self.session = session
         self.retries = retries
@@ -87,7 +114,7 @@ public actor YNABClient {
     static func retryAfter(_ http: HTTPURLResponse, now: Date = Date()) -> TimeInterval? {
         guard let raw = http.value(forHTTPHeaderField: "Retry-After")?
             .trimmingCharacters(in: .whitespaces), !raw.isEmpty else { return nil }
-        if let seconds = TimeInterval(raw) { return seconds >= 0 ? seconds : nil }
+        if let seconds = TimeInterval(raw) { return seconds.isFinite && seconds >= 0 ? seconds : nil }
         let f = DateFormatter()
         f.locale = Locale(identifier: "en_US_POSIX")
         f.timeZone = TimeZone(identifier: "GMT")
@@ -96,11 +123,21 @@ public actor YNABClient {
         return max(0, date.timeIntervalSince(now))
     }
 
+    /// "rate limited: YNAB asks to wait 3600 s", formatted without an
+    /// integer conversion that a huge header could overflow.
+    static func waitMessage(_ seconds: TimeInterval) -> String {
+        "rate limited: YNAB asks to wait \(String(format: "%.0f", seconds.rounded(.up))) s"
+    }
+
     private func get<T: Decodable>(_ path: String, as type: T.Type) async throws -> T {
         try await request(path, method: "GET", body: nil)
     }
 
     private func request<T: Decodable>(_ path: String, method: String, body: Data?) async throws -> T {
+        // a long wait YNAB asked for earlier still holds: send nothing
+        if let left = gate.remaining() {
+            throw YNABError(kind: .rateLimited, message: Self.waitMessage(left), retryAfter: left)
+        }
         var attempt = 0
         while true {
             var url = URLRequest(url: YNAB.base.appendingPathComponent(path))
@@ -144,9 +181,9 @@ public actor YNABClient {
                     try await sleep(asked.map { UInt64($0 * 1_000_000_000) } ?? retryDelay)
                     continue
                 }
+                if let asked, asked > maxRetryAfter { gate.close(for: asked) }
                 throw YNABError(kind: .rateLimited,
-                                message: asked.map { "rate limited: YNAB asks to wait \(Int($0.rounded(.up))) s" }
-                                    ?? "rate limited",
+                                message: asked.map(Self.waitMessage) ?? "rate limited",
                                 retryAfter: asked)
             default:
                 throw YNABError(kind: .http(http.statusCode), message: "HTTP \(http.statusCode)")
