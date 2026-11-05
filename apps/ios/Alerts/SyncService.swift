@@ -95,9 +95,12 @@ enum SyncService {
             }
             guard row.state == "approved" || row.state == "failed" || row.state == "syncing"
             else { continue }
+            // the detail screen stays editable while the hub send awaits:
+            // read the day again so a corrected date is the one sent
+            let postDay = row.day
             if row.state == "approved",
                let i = Dedup.coveredBy(amountCents: row.amountCents, currency: row.currency,
-                                       direction: row.direction, date: day,
+                                       direction: row.direction, date: postDay,
                                        payee: row.payee, in: record, taken: taken) {
                 taken.insert(i)
                 row.state = "kopifund"
@@ -120,11 +123,15 @@ enum SyncService {
             let milli = Milliunits.from(Decimal(row.amountCents) / 100, outflow: outflow)
             // the first send's import_id is saved before posting, so an edit
             // or a lost reply can never mint a second one for the same row
-            let importID = row.importID ?? ImportID.make(date: day.storedInstant, milliunits: milli,
-                                                         payee: row.payee, source: row.source)
+            // a row an earlier build wrote keeps that build's hash input,
+            // its raw date, so a send it began and never recorded gets the
+            // same import_id on retry and YNAB refuses the duplicate
+            let importID = row.importID ?? ImportID.make(
+                date: row.dateIsDay == true ? postDay.storedInstant : row.date,
+                milliunits: milli, payee: row.payee, source: row.source)
             row.importID = importID
             let txn = NewTransaction(accountID: accountID,
-                                     date: day.iso,
+                                     date: postDay.iso,
                                      amount: milli, payeeName: row.payee,
                                      categoryID: row.categoryID,
                                      memo: row.memo.isEmpty ? nil : row.memo,

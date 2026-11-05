@@ -171,14 +171,28 @@ public final class UnmatchedRecord {
     /// is noise rather than something to teach a pattern for. Optional so
     /// old stores migrate on their own.
     public var inKopifund: Bool?
+    /// The calendar day the alert arrived where the phone was then, as a
+    /// `CalendarDate.storedInstant`: a yearless date it prints reads against
+    /// this day even after the phone has moved zones. Nil on rows an earlier
+    /// build wrote. Read it through `arrivedOn`.
+    public var receivedDay: Date?
 
-    public init(text: String, source: String?, receivedAt: Date, reasons: String) {
+    public init(text: String, source: String?, receivedAt: Date, reasons: String,
+                zone: TimeZone = .current) {
         id = UUID()
         self.text = text
         self.source = source
         self.receivedAt = receivedAt
         self.reasons = reasons
         inKopifund = false
+        receivedDay = CalendarDate(receivedAt, in: zone).storedInstant
+    }
+
+    /// The day the alert arrived: the saved one, or for an older row the
+    /// day `receivedAt` falls on in the phone's zone now.
+    public var arrivedOn: CalendarDate {
+        receivedDay.map { CalendarDate(stored: $0, isDay: true) }
+            ?? CalendarDate(receivedAt, in: .current)
     }
 }
 

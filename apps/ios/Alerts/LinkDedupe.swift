@@ -60,9 +60,9 @@ enum LinkDedupe {
         var guesses: [(row: UnmatchedRecord, cents: Int, currency: String,
                        date: CalendarDate, payee: String)] = []
         for u in unmatched {
-            // a yearless date reads against the day the alert arrived, as
-            // the matcher reads one
-            if let g = guess(u.text, receivedOn: CalendarDate(u.receivedAt, in: .current)) {
+            // a yearless date reads against the day the alert arrived, where
+            // the phone was then, as the matcher reads one
+            if let g = guess(u.text, receivedOn: u.arrivedOn) {
                 months.insert(monthKey(g.date))
                 guesses.append((u, g.cents, g.currency, g.date, g.payee))
             }

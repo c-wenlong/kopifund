@@ -316,3 +316,16 @@ func everyDateFormatRoundTrips(format: AlertPattern.DateFormat) {
     #expect(!Suppression.contains("anything", in: nil))
     Suppression.clear(in: nil)
 }
+
+@Test func anUnmatchedAlertKeepsTheDayItArrivedOn() {
+    // review on #50: just after midnight on 30 Oct in Kiritimati is still
+    // 28 Oct in Los Angeles; the day saved at arrival does not move with
+    // the phone, so a printed "30 Oct" keeps this year
+    let arrived = Date(timeIntervalSince1970: 1_793_268_000)   // 2026-10-29T10:00Z
+    let kiritimati = TimeZone(identifier: "Pacific/Kiritimati")!
+    let u = UnmatchedRecord(text: "t", source: nil, receivedAt: arrived, reasons: "",
+                            zone: kiritimati)
+    #expect(u.arrivedOn.iso == "2026-10-30")
+    u.receivedDay = nil
+    #expect(u.arrivedOn == CalendarDate(arrived, in: .current))
+}
