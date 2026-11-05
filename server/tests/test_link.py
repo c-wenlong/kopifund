@@ -124,6 +124,8 @@ class GateTest(unittest.TestCase):
         tailnet = mock.patch("finance.link.tailnet_url", return_value="https://mac.tail-abc.ts.net")
         tailnet.start()
         self.addCleanup(tailnet.stop)
+        # a record to read, so a bearer read answers whatever order the tests run in
+        db.connect().close()
         self.server = serve.make_server(0, serve.DIST)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.shutdown)
