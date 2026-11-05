@@ -23,6 +23,41 @@ import { widgetDef, WIDGETS } from "./registry";
 
 const SAVE_AFTER = 700;
 
+// how many saves of each board this app has sent: a retry of a save made on
+// leaving stands only while no later save of that board has gone out
+const sent = new Map<string, number>();
+function sending(id: string): number {
+  const n = (sent.get(id) ?? 0) + 1;
+  sent.set(id, n);
+  return n;
+}
+
+/**
+ * A save that failed after its page was gone: say so in a toast (the app's
+ * Toaster outlives the page) whose Try again sends the same body, unless a
+ * newer save of the board (the page opened again) has gone out since, which
+ * holds the newer edit this older body would only overwrite.
+ */
+function reportLeft(id: string, body: string, mine: number, e: unknown) {
+  showToast({
+    message: e instanceof Error ? `The dashboard was not saved: ${e.message}` : "The dashboard was not saved.",
+    tone: "error",
+    action: {
+      label: "Try again",
+      onClick: () => {
+        if (sent.get(id) === mine) saveOnLeaving(id, body);
+        else showToast({ message: "A newer change to that board was saved since, so it was kept." });
+      },
+    },
+  });
+}
+
+/** Save a board after its page has gone; a failure says so in a toast that can try again. */
+function saveOnLeaving(id: string, body: string) {
+  const mine = sending(id);
+  postJSON(`/api/dashboard/layouts/${id}`, body).catch((e: unknown) => reportLeft(id, body, mine, e));
+}
+
 /** A layout id the server takes (`_check_id`): lowercase, digits, '-' and '_' only. */
 function newLayoutId(taken: readonly string[]): string {
   for (let i = 0; ; i++) {
@@ -37,6 +72,8 @@ export function Dashboard() {
   const [boards, setBoards] = useState<Board[] | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
+  // a save the server refused or never answered: the one edit leaving could lose
+  const [failed, setFailed] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
 
   // the latest state for the save timer and the toast callbacks, which run after this render
@@ -52,6 +89,8 @@ export function Dashboard() {
   // the write on the wire; saves go one at a time, so a slow reply can never
   // land after a newer edit and overwrite it
   const saving = useRef<Promise<void> | null>(null);
+  // the page has been left: its save loop sends nothing more
+  const gone = useRef(false);
   // every document a write of ours put on the server, and the newest
   // updated_at one carried. A reload's answer is a stale echo only when it is
   // one of those documents; another tab writing in the same whole second (the
@@ -82,6 +121,8 @@ export function Dashboard() {
   const flush = useCallback((): Promise<void> => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
+    // the page is gone: what waited went out on leaving, and a later save would be older than it
+    if (gone.current) return Promise.resolve();
     if (saving.current) return saving.current;
     const run = (async () => {
       try {
@@ -89,9 +130,12 @@ export function Dashboard() {
           const b = pending.current.values().next().value as Board | undefined;
           if (!b) break;
           pending.current.delete(b.id);
+          // only the board on screen is the active one: an Undo on a board left
+          // behind saves it without making it the board the next visit opens
+          const body = JSON.stringify({ ...writeLayout(b), active: b.id === activeRef.current });
+          const mine = sending(b.id);
           try {
-            const written = await postJSON<DashboardLayout>(`/api/dashboard/layouts/${b.id}`,
-              JSON.stringify({ ...writeLayout(b), active: true }));
+            const written = await postJSON<DashboardLayout>(`/api/dashboard/layouts/${b.id}`, body);
             remember(written);
             // the write's own echo is the board's truth now, ahead of any read
             // still on its way -- unless a newer edit is already waiting
@@ -99,8 +143,15 @@ export function Dashboard() {
               setBoards((bs) => (bs ?? []).map((x) => (x.id === b.id ? readLayout(written) : x)));
             }
           } catch (e) {
+            // the page was left while this save was on the wire: report it the
+            // way a save made on leaving is, and send nothing more from here
+            if (gone.current) {
+              reportLeft(b.id, body, mine, e);
+              break;
+            }
             // retry the failed board only when nothing newer replaced it
             if (!pending.current.has(b.id)) pending.current.set(b.id, b);
+            setFailed(true);
             showToast({
               message: e instanceof Error ? e.message : "The layout was not saved.", tone: "error",
               action: { label: "Try again", onClick: () => void flush() },
@@ -109,6 +160,7 @@ export function Dashboard() {
           }
         }
         setDirty(pending.current.size > 0);
+        if (!pending.current.size) setFailed(false);
       } finally {
         saving.current = null;
       }
@@ -124,15 +176,38 @@ export function Dashboard() {
     timer.current = setTimeout(() => void flush(), SAVE_AFTER);
   }, [flush]);
 
-  // a pending save still lands if the page is left before the guard asks
-  useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
-    for (const b of pending.current.values()) {
-      void postJSON(`/api/dashboard/layouts/${b.id}`, JSON.stringify({ ...writeLayout(b), active: true })).catch(() => {});
-    }
+  // a pending save still lands when the page is left inside the wait: the app's
+  // toast outlives the page, so a save that fails then says so and offers to
+  // try again, the edit kept in its body
+  useEffect(() => {
+    // set up again (StrictMode runs setup, cleanup, setup): the page is here
+    gone.current = false;
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+      // handed off once: the page's own save loop, if a slow reply still holds
+      // it, finds nothing left to send after the page is gone
+      gone.current = true;
+      const left = [...pending.current.values()];
+      pending.current.clear();
+      for (const b of left) {
+        saveOnLeaving(b.id, JSON.stringify({ ...writeLayout(b), active: b.id === activeRef.current }));
+      }
+    };
   }, []);
 
-  useUnsavedGuard(dirty);
+  // leaving the page in the app saves what waits (the unmount above), so only a
+  // save that failed asks first; closing the tab inside the short wait before
+  // a save gets the browser's own question, as it cannot wait for the write
+  useUnsavedGuard(failed);
+  useEffect(() => {
+    if (!dirty || failed) return;
+    const ask = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", ask);
+    return () => window.removeEventListener("beforeunload", ask);
+  }, [dirty, failed]);
 
   const board = boards?.find((b) => b.id === activeId) ?? boards?.[0] ?? null;
 
@@ -163,14 +238,21 @@ export function Dashboard() {
     const def = widgetDef(type);
     if (!def) return;
     setPickerOpen(false);
-    mutate((b) => {
+    const widget = (on: DashboardWidget[]): DashboardWidget => {
       const made = def.make?.() ?? {};
-      const w: DashboardWidget = { id: newWidgetId(), type, title: def.title, layout: firstFit(b.widgets, def.size) };
+      const w: DashboardWidget = { id: newWidgetId(), type, title: def.title, layout: firstFit(on, def.size) };
       if (made.query) w.query = made.query;
       if (made.options) w.options = made.options;
-      return { ...b, widgets: pack([...b.widgets, w]) };
-    });
-  }, [mutate]);
+      return w;
+    };
+    // with no board yet, the first widget picked makes the Default board, so
+    // a picker closed with nothing picked leaves no empty board behind
+    if (!boardsRef.current?.length) {
+      createBoard("Default", [widget([])]);
+      return;
+    }
+    mutate((b) => ({ ...b, widgets: pack([...b.widgets, widget(b.widgets)]) }));
+  }, [mutate, createBoard]);
 
   const removeWidget = useCallback((id: string) => {
     const b = boardsRef.current?.find((x) => x.id === activeRef.current);
@@ -202,15 +284,18 @@ export function Dashboard() {
   const chooseLayout = useCallback((id: string) => {
     if (id === activeRef.current) return;
     void (async () => {
-      // save what is pending under the old layout, then the list write marks the new one active
+      // save what is pending under the old layout, then mark the new one
+      // active by writing it alone: a write of this tab's whole list would put
+      // its older copies of the other boards over another tab's edits
       await flush();
       setActiveId(id);
+      const b = boardsRef.current?.find((x) => x.id === id);
+      if (!b) return;
       try {
-        const out = await postJSON<DashboardLayouts>("/api/dashboard/layouts", JSON.stringify({
-          layouts: (boardsRef.current ?? []).map((x) => ({ id: x.id, ...writeLayout(x) })),
-          active: id,
-        }));
-        out.layouts.forEach(remember);
+        sending(id);
+        const written = await postJSON<DashboardLayout>(`/api/dashboard/layouts/${id}`,
+          JSON.stringify({ ...writeLayout(b), active: true }));
+        remember(written);
       } catch (e) {
         showToast({ message: e instanceof Error ? e.message : "The layout was not saved.", tone: "error" });
       }
@@ -237,11 +322,8 @@ export function Dashboard() {
     </Sheet>
   );
 
-  // "Add a widget" on an empty record makes the Default board first, then opens the picker
-  const startAdding = () => {
-    if (!board) createBoard("Default", []);
-    setPickerOpen(true);
-  };
+  // "Add a widget" on an empty record opens the picker; the widget picked makes the Default board
+  const startAdding = () => setPickerOpen(true);
 
   return (
     <>

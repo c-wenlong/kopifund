@@ -26,7 +26,7 @@ STAGE = {"parse": "parse", "_run_parser": "parse", "categorise": "parse",
          "check_environment": "doctor", "check_statements": "doctor", "check_statement_files": "doctor",
          "check_blocks": "doctor", "check_config_coverage": "doctor",
          "check_options": "doctor", "check_relations": "doctor",
-         "check_insert_size": "doctor", "check_orphans": "doctor",
+         "check_insert_size": "doctor", "check_orphans": "doctor", "check_pinned_rows": "doctor",
          "verify": "verify", "block_checks": "verify", "cmd_payees": "payees"}
 
 

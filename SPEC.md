@@ -346,7 +346,22 @@ shipped table, so a shipped city wins a prefix both could match
   one to one.
 - **Keys carry over verbatim.** Existing `txn_key` values are imported as they
   are, and a `txn_key_alias` table records any later re-key so overrides and
-  trips never detach.
+  trips never detach. A load writes it: a live row no parsed key covers is the
+  same row as a parsed key the record has never held when its account,
+  currency, date, amount and running balance match (`db.rekeys`; a row with no
+  account number never pairs; one each pairs only when no reference, card or
+  purchase date both print disagrees, and, with no running balance to vouch
+  for it, the statement file is the same; several alike pair only when their
+  statement, reference, card and purchase date tell them apart or nothing does,
+  so an uneven or ambiguous group is not guessed). The row keeps its id and
+  takes the new key, and the old key goes into `txn_key_alias`, so trip pins,
+  rows marked fine, series edits, matched phone rows (G25) and `keys.csv` rules
+  on the old key follow it. A row that would still be archived while it carries
+  one of those stops
+  doctor, `load` and the app's Load with `pinned-rows-gone`, and an old key
+  the run now gives to a different row while something is saved on it stops
+  them with `pinned-key-reused`; the command line loads past both with
+  `--archive-orphans`.
 - **Stored versus derived.** Tables hold what a statement printed or a person
   typed. What Notion computes today (`amount_sgd`, month, reconciled, budget
   actual and variance, payee counts, trip spend) becomes SQL views.
@@ -1354,10 +1369,18 @@ whois` on that IP names the tailnet caller when it matters.
   pair token: `POST /api/link/pair-token` mints a single-use token with a
   ten-minute life, and Settings' "Link a phone" card shows it in a QR as
   `kopifund://pair?url=<tailnet url>&token=<token>` beside a copyable
-  payload. The phone posts it to `POST /api/pair/redeem`, the only
+  payload. While Tailscale cannot name the machine the mint is refused
+  (422, "run make link") and the card's button is off: a code with no
+  address pairs nothing. The phone posts it to `POST /api/pair/redeem`, the only
   unauthenticated link write: the token's consumption and the device row's
   write happen under one `flock`, so a token spends exactly once even
-  raced, and the answer is the device bearer. `~/.kopifund/devices.json` is
+  raced, and the answer is the device bearer. The phone also sends a
+  `nonce`, a random it makes once per pairing: a retry after a lost reply
+  (the same token, still in its life, with the same nonce) gets the same
+  bearer for the device row the first try made (the bearer is derived from
+  the token and the nonce), so a lost reply leaves no orphan device and the
+  order the two requests land in does not matter. A spent token with
+  another nonce, or none, is still refused. `~/.kopifund/devices.json` is
   the registry (id, name, token hash, paired date, revoked flag), mode 600
   and never backed up. `GET /api/link/devices` lists it and
   `POST /api/link/devices/revoke` flags a row, both loopback-only, so a
@@ -1370,7 +1393,10 @@ whois` on that IP names the tailnet caller when it matters.
 - **Reads.** The phone reads the same endpoints the app does
   (`/api/profile`, `/api/transactions`, `/api/categories`,
   `/api/overview`): the link path gates, it does not reshape answers.
-  Those four are an allowlist (serve.py's `LINK_READS`): every other GET
+  `GET /api/link/check` answers `{ok}` only to a paired, unrevoked bearer,
+  so the phone's Test says the link works rather than only that the hub
+  is up (`/api/health` answers a revoked phone too).
+  Those reads are an allowlist (serve.py's `LINK_READS`): every other GET
   on the link path is refused 403 even with a bearer, so a lost phone,
   before it is revoked, cannot pull exports, upload steps, AI threads or
   settings, and a route added later stays off the link until it is listed.
@@ -1388,7 +1414,10 @@ whois` on that IP names the tailnet caller when it matters.
   eye lists what is still waiting; Settings' "Link a phone" card lists
   the rows themselves (`GET /api/link/pending`, loopback) with the two
   calls beside them: a waiting row dismissed (`POST
-  /api/link/pending/dismiss`) or a wrong match put back to waiting
+  /api/link/pending/dismiss`; `POST /api/link/pending/dismiss-all`, behind a
+  second press, dismisses every waiting row at once. A row never expires on
+  its own, since a spend can wait weeks for its statement, so the owner
+  clears the ones no statement will confirm) or a wrong match put back to waiting
   (`POST /api/link/pending/restore`, which rejects the pair it was
   matched to).
 
@@ -1467,7 +1496,15 @@ widget dropped onto another's cell lands above it, as the preview showed; a
 widget's height
 is bounded (`MAX_H`), so a stray saved size cannot stall the page. A change
 writes the layout back through `POST /api/dashboard/layouts/<id>` after a
-short debounce, so nothing waits on a Save. Under 768px the same widgets stack in one column in
+short debounce, so nothing waits on a Save; a move that leaves every widget
+where it was writes nothing, and a drag the pointer cancels or Escape drops
+leaves the board as it was. Only the board on screen is saved as the active
+one (an Undo on a board left behind does not change which board opens next),
+and switching boards writes the chosen board alone, never this tab's copies
+of the others. Leaving the page saves what waits, so only a save that failed
+asks before leaving; a save made on leaving that fails says so in a toast
+that can try again. With no board yet, the first widget picked makes the
+Default board. One status line says where a moved widget landed. Under 768px the same widgets stack in one column in
 their saved order and do not drag. An empty record (or an empty board) offers
 the starter presets in `presets.ts`; Reset restores the default one, and a
 removal or a reset offers an Undo toast. Named layouts switch in the page's
@@ -2119,7 +2156,8 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   shown as cards.
 - **Transactions** (`/transactions`, `GET /api/transactions`) is the ledger,
   newest first, paged (the rows-per-page choice under Long lists), with a search box, month, category and
-  account filters. The four filters are one family of 32px boxes: the search
+  account filters. The search box shows each key at once and asks for the search once typing pauses
+  (250 ms) or on Enter, so a word typed is one request, not one a letter. The four filters are one family of 32px boxes: the search
   box, a combobox for the category and the app's Select for the month (only the
   months the record holds) and the account. Every filter and the page live in
   the address (`q`, `category`, `month`, `account`, `hide_transfers=1` or `0`,

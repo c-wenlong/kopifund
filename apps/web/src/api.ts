@@ -747,6 +747,8 @@ export type CheckReport = {
   to_add_count: number;
   recategorised_count: number;
   to_archive_count: number;
+  /** rows the load will give a new key, keeping their id (an older report has none) */
+  rekeyed_count?: number;
   needs_rule: NeedsRule[];
 };
 export type LoadResult = {

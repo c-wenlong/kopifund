@@ -4,7 +4,7 @@
 // `interactive` off (a phone's width) the same widgets stack in one column in
 // their saved order, keeping only their remove buttons. Drag feedback is a
 // dashed outline and a ring: no motion, so reduced-motion changes nothing.
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GripVertical, X } from "lucide-react";
 import type { DashboardWidget } from "../api";
 import { cellOf, clampCell, COLS, pack, settle, type Cell } from "./layout";
@@ -40,6 +40,31 @@ export function Grid({ widgets, interactive, onArrange, onRemove }: {
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
+  // the one line a screen reader hears: where the widget just moved landed
+  const [said, setSaid] = useState("");
+
+  // a move that lands every widget where it was is no edit: nothing to save
+  const arrange = (next: DashboardWidget[], id: string) => {
+    const was = new Map(widgets.map((w) => [w.id, cellOf(w)]));
+    const moved = next.some((w) => {
+      const a = cellOf(w), b = was.get(w.id);
+      return !b || a.x !== b.x || a.y !== b.y || a.w !== b.w || a.h !== b.h;
+    });
+    if (!moved) return;
+    const w = next.find((v) => v.id === id);
+    if (w) setSaid(`${w.title ?? widgetDef(w.type)?.title ?? w.type}: ${whereOf(cellOf(w))}`);
+    onArrange(next);
+  };
+
+  // Escape lets go of a drag, leaving the board as it was
+  useEffect(() => {
+    if (!drag) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setDrag(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [drag]);
 
   const metrics = () => {
     const r = ref.current!.getBoundingClientRect();
@@ -76,7 +101,12 @@ export function Grid({ widgets, interactive, onArrange, onRemove }: {
   const end = (e: React.PointerEvent) => {
     if (!drag || e.pointerId !== drag.pointerId) return;
     setDrag(null);
-    onArrange(settle(widgets, drag.id, drag.cell));
+    arrange(settle(widgets, drag.id, drag.cell), drag.id);
+  };
+
+  // a cancelled pointer (the system took it, the window lost it) is no drop
+  const cancel = (e: React.PointerEvent) => {
+    if (drag && e.pointerId === drag.pointerId) setDrag(null);
   };
 
   // the same moves as a drag, for the keyboard: arrows on the Move grip shift
@@ -89,11 +119,11 @@ export function Grid({ widgets, interactive, onArrange, onRemove }: {
     e.preventDefault();
     const c = cellOf(w);
     if (kind === "resize") {
-      onArrange(settle(widgets, w.id, { ...c, w: c.w + d[0], h: c.h + d[1] }));
+      arrange(settle(widgets, w.id, { ...c, w: c.w + d[0], h: c.h + d[1] }), w.id);
       return;
     }
     if (d[0] !== 0) {
-      onArrange(settle(widgets, w.id, { ...c, x: c.x + d[0] }));
+      arrange(settle(widgets, w.id, { ...c, x: c.x + d[0] }), w.id);
       return;
     }
     const beside = widgets.filter((v) => v.id !== w.id)
@@ -101,12 +131,12 @@ export function Grid({ widgets, interactive, onArrange, onRemove }: {
       .filter(({ t }) => t.x < c.x + c.w && c.x < t.x + t.w);
     if (d[1] > 0) {
       const below = beside.filter(({ t }) => t.y >= c.y + c.h).sort((a, b) => a.t.y - b.t.y)[0];
-      onArrange(settle(widgets, w.id, { ...c, y: below ? below.t.y + below.t.h : c.y + 1 }));
+      arrange(settle(widgets, w.id, { ...c, y: below ? below.t.y + below.t.h : c.y + 1 }), w.id);
       return;
     }
     const above = beside.filter(({ t }) => t.y + t.h <= c.y)
       .sort((a, b) => b.t.y + b.t.h - (a.t.y + a.t.h))[0];
-    onArrange(settle(widgets, w.id, { ...c, y: above ? above.t.y : 0 }));
+    arrange(settle(widgets, w.id, { ...c, y: above ? above.t.y : 0 }), w.id);
   };
 
   if (!interactive) {
@@ -137,13 +167,17 @@ export function Grid({ widgets, interactive, onArrange, onRemove }: {
         <WidgetCard key={w.id} widget={w} cell={cellOf(w)} dragging={drag?.id === w.id}
           onMove={(e) => begin(e, w, "move")} onResize={(e) => begin(e, w, "resize")}
           onKeyMove={(e) => nudge(w, "move", e)} onKeyResize={(e) => nudge(w, "resize", e)}
-          onDragMove={move} onDragEnd={end} onRemove={onRemove} />
+          onDragMove={move} onDragEnd={end} onDragCancel={cancel} onRemove={onRemove} />
       ))}
+      <p className="sr-only" role="status">{said}</p>
     </div>
   );
 }
 
-function WidgetCard({ widget, cell, dragging = false, onMove, onResize, onKeyMove, onKeyResize, onDragMove, onDragEnd, onRemove }: {
+/** Where a widget sits, said aloud after a move and in the grips' names. */
+const whereOf = (cell: Cell) => `column ${cell.x + 1}, row ${cell.y + 1}, ${cell.w} by ${cell.h}`;
+
+function WidgetCard({ widget, cell, dragging = false, onMove, onResize, onKeyMove, onKeyResize, onDragMove, onDragEnd, onDragCancel, onRemove }: {
   widget: DashboardWidget;
   cell?: Cell;                       // given in the grid; a stacked card sizes itself
   dragging?: boolean;
@@ -153,14 +187,14 @@ function WidgetCard({ widget, cell, dragging = false, onMove, onResize, onKeyMov
   onKeyResize?: (e: React.KeyboardEvent) => void;
   onDragMove?: (e: React.PointerEvent) => void;
   onDragEnd?: (e: React.PointerEvent) => void;
+  onDragCancel?: (e: React.PointerEvent) => void;
   onRemove: (id: string) => void;
 }) {
   const def = widgetDef(widget.type);
   const title = widget.title ?? def?.title ?? widget.type;
   const Body = def?.component;
   const editing = !!onMove;
-  // where the widget sits, said aloud when an arrow moves it and in the grips' names
-  const where = cell ? `column ${cell.x + 1}, row ${cell.y + 1}, ${cell.w} by ${cell.h}` : "";
+  const where = cell ? whereOf(cell) : "";
   return (
     <article
       aria-label={title}
@@ -170,7 +204,7 @@ function WidgetCard({ widget, cell, dragging = false, onMove, onResize, onKeyMov
         <div className="mb-2 flex items-center gap-1.5">
           {editing && (
             <button type="button" aria-label={`Move ${title}: ${where}`}
-              onPointerDown={onMove} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
+              onPointerDown={onMove} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragCancel}
               onKeyDown={onKeyMove}
               className="-ml-1 grid size-7 shrink-0 cursor-grab touch-none place-items-center rounded-md text-ink-3 hover:bg-hover hover:text-ink active:cursor-grabbing">
               <GripVertical size={15} aria-hidden />
@@ -191,11 +225,10 @@ function WidgetCard({ widget, cell, dragging = false, onMove, onResize, onKeyMov
         </div>
         {editing && (
           <button type="button" aria-label={`Resize ${title}: ${where}`}
-            onPointerDown={onResize} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
+            onPointerDown={onResize} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragCancel}
             onKeyDown={onKeyResize}
             className="absolute right-1.5 bottom-1.5 size-4 cursor-nwse-resize touch-none rounded-br-md border-r-2 border-b-2 border-ink-3 hover:border-ink" />
         )}
-        {editing && cell && <p className="sr-only" role="status">{`${title}: ${where}`}</p>}
       </section>
     </article>
   );

@@ -13,7 +13,7 @@ or a paste box inside the app.
 | Folder | What it is |
 | --- | --- |
 | `Packages/Matching` | Pure Swift, no UI, no dependencies: tokenizer, alert-reading helpers (boilerplate, field candidates, shape signatures), tap-to-pattern builder, regex matcher, unit tests |
-| `Packages/YNABClient` | `api.ynab.com` over `URLSession` + `Codable`: plans, accounts, categories, payees, transaction creation, milliunits, `import_id` |
+| `Packages/YNABClient` | `api.ynab.com` over `URLSession` + `Codable`: plans, the plan's currency, accounts, categories, transaction creation, milliunits, `import_id`; a 429 waits as long as `Retry-After` asks, up to 30 s |
 | `Packages/KopifundClient` | The phone link (G25): pairs with the Mac's Kopifund server over Tailscale with a device token, reads its profile, transactions, categories and overview, and posts approved alert rows to it |
 | `Packages/Storage` | SwiftData models, the shared App Group store, and the suppressed alert-shape set |
 | `Packages/Intents` | `Ingest Alert` and `Ingest Wallet Transaction` App Intents |
@@ -163,8 +163,20 @@ Matches wait in the Inbox. Edit payee, amount, date, category or memo, then
 approve (or approve all). Approved rows sync to YNAB as uncleared and
 unapproved so YNAB still shows them for review; a setting flips that. Rows
 carry their sync state (pending, approved, syncing, synced, failed,
-duplicate) and a
-deterministic `import_id`, so a retried sync never duplicates a transaction.
+duplicate) and an `import_id` minted on the row's first send and kept, so a
+retried sync never duplicates a transaction. It hashes the day, amount, payee
+and source with the moment the row was captured, so two real charges with the
+same amount, payee and day still post as two (a row an earlier build wrote
+keeps that build's formula).
+
+The app owns each sync run, so leaving a tab never cancels one. A run starts
+at launch, whenever the app comes back to the front, and after an approval;
+it keeps going until no approved row is left. A failed row waits before it is
+retried on its own: one minute, doubling up to six hours, and after eight
+attempts, or after an error YNAB will repeat every time (a bad account or
+category), it waits for **Sync now** in Settings, which retries everything at
+once. A rejected token or a rate limit stops the run after one request and
+shows a banner in the Inbox; rows stay approved, not failed.
 
 A row's date is a calendar day (`CalendarDate`), never a moment: the day
 the alert printed, or the day the Wallet tap or the alert arrived where the
