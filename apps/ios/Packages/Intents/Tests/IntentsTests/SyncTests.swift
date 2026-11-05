@@ -47,7 +47,9 @@ private let settings = SyncSettings(planID: "p1", defaultAccountID: "", postAppr
 private let day = Date(timeIntervalSince1970: 1_800_000_000)
 
 private func client() -> YNABClient {
-    YNABClient(token: "t", session: MockProtocol.session(), retries: 0, retryDelay: 1)
+    // its own rate gate: a 429 in one test must not hold the next one's sends
+    YNABClient(token: "t", session: MockProtocol.session(), retries: 0, retryDelay: 1,
+               gate: RateGate())
 }
 
 @MainActor
@@ -73,7 +75,7 @@ struct SyncTests {
     @MainActor
     private func newRowID(_ row: TransactionRecord) -> String {
         ImportID.make(date: row.day.storedInstant,
-                      milliunits: Milliunits.from(Decimal(row.amountCents) / 100, outflow: true),
+                      milliunits: Milliunits.from(cents: row.amountCents, outflow: true) ?? 0,
                       payee: row.payee, source: row.source, capturedAt: row.receivedAt)
     }
 

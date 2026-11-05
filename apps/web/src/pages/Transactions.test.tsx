@@ -1,6 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { notifyChanged } from "../api";
+import { navigate } from "../router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HIDE_TRANSFERS_KEY, Transactions } from "./Transactions";
 import { leadingIcon } from "../test-icons";
@@ -263,7 +264,7 @@ describe("Transactions", () => {
     expect(leaveAsks()).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
     await waitFor(() => expect(screen.queryByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).not.toBeInTheDocument());
-    expect(leaveAsks()).toBe(false);
+    await waitFor(() => expect(leaveAsks()).toBe(false));
   });
 
   it("still asks before leaving when Less or Close hides a typed form, since the page keeps what was typed", async () => {
@@ -449,7 +450,7 @@ describe("Transactions", () => {
     await waitFor(() => expect(screen.queryByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     expect(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).toHaveValue("");
-    expect(leaveAsks()).toBe(false);
+    await waitFor(() => expect(leaveAsks()).toBe(false));
   });
 
   it("opens on the row's category, and picking it again saves nothing", async () => {
@@ -1056,6 +1057,8 @@ describe("Transactions filters in the address", () => {
     render(<Transactions />);
     await screen.findByText("Shop 1");
     fireEvent.change(screen.getByRole("searchbox", { name: "Search transactions" }), { target: { value: "kopi" } });
+    // the search reaches the address once typing pauses
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get("q")).toBe("kopi"));
     // the category is a combobox: pick from its list
     const box = screen.getByRole("combobox", { name: "Category" });
     expect(box).toHaveValue("All categories");
@@ -1075,6 +1078,63 @@ describe("Transactions filters in the address", () => {
     fireEvent.click(screen.getByRole("button", { name: "Month" }));
     fireEvent.mouseDown(within(screen.getByRole("listbox", { name: "Month" })).getByRole("option", { name: "All months" }));
     expect(new URLSearchParams(window.location.search).has("month")).toBe(false);
+  });
+
+  it("asks for a search once typing pauses, not once a key, and at once on Enter", async () => {
+    const calls = stubTxns({ rows: [money(1)], total: 1, ...months });
+    render(<Transactions />);
+    await screen.findByText("Shop 1");
+    const box = screen.getByRole("searchbox", { name: "Search transactions" });
+    const asked = () => calls.filter((u) => u.includes("q="));
+    for (const text of ["s", "st", "sta", "star", "starb"]) fireEvent.change(box, { target: { value: text } });
+    // the box shows every key at once; the address and the server wait for the pause
+    expect(box).toHaveValue("starb");
+    expect(new URLSearchParams(window.location.search).has("q")).toBe(false);
+    await waitFor(() => expect(new URLSearchParams(window.location.search).get("q")).toBe("starb"));
+    await waitFor(() => expect(asked()).toHaveLength(1));
+    expect(asked()[0]).toContain("q=starb");
+    // Enter does not wait
+    fireEvent.change(box, { target: { value: "starbucks" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(new URLSearchParams(window.location.search).get("q")).toBe("starbucks");
+    await waitFor(() => expect(asked()).toHaveLength(2));
+  });
+
+  it("drops a search still waiting for the pause when Clear filters is pressed", async () => {
+    window.history.replaceState(null, "", "/transactions?category=Donations");
+    const calls = stubTxns({ rows: [money(1)], total: 1, ...months });
+    render(<Transactions />);
+    await screen.findByText("Shop 1");
+    const box = screen.getByRole("searchbox", { name: "Search transactions" });
+    fireEvent.change(box, { target: { value: "kop" } });
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(box).toHaveValue("");
+    // well past the pause, the search never comes back
+    await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+    expect(box).toHaveValue("");
+    expect(window.location.search).toBe("");
+    expect(calls.filter((u) => u.includes("q="))).toEqual([]);
+  });
+
+  it("drops a search still waiting for the pause when a link moves the page, and keeps it when a filter changes here", async () => {
+    window.history.replaceState(null, "", "/transactions?category=Donations");
+    const calls = stubTxns({ rows: [money(1)], total: 1, ...months });
+    render(<Transactions />);
+    await screen.findByText("Shop 1");
+    const box = screen.getByRole("searchbox", { name: "Search transactions" });
+    // a filter picked here while the search waits takes the search along
+    fireEvent.change(box, { target: { value: "kop" } });
+    fireEvent.click(screen.getByRole("button", { name: "Month" }));
+    fireEvent.mouseDown(within(screen.getByRole("listbox", { name: "Month" })).getByRole("option", { name: "Aug 2026" }));
+    expect(new URLSearchParams(window.location.search).get("q")).toBe("kop");
+    expect(box).toHaveValue("kop");
+    // the sidebar's link to the bare page, before the pause ends, takes the waiting search away with the filters
+    fireEvent.change(box, { target: { value: "kopi" } });
+    act(() => navigate("/transactions"));
+    expect(box).toHaveValue("");
+    await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+    expect(window.location.search).toBe("");
+    expect(calls.filter((u) => u.includes("q=kopi"))).toEqual([]);
   });
 
   it("opens on the filters in the address, as Back or a shared link does", async () => {

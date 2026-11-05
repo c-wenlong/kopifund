@@ -645,10 +645,19 @@ describe("Rules", () => {
   it("does not let a save from a cancelled editor reach the next one opened", async () => {
     let refuse: () => void = () => {};
     const slow = new Promise<void>((r) => { refuse = r; });
+    // settles once the page has read the refusal's body, the last step that waits on anything but the page itself
+    let read: () => void = () => {};
+    const answered = new Promise<void>((r) => { read = r; });
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       if (url === "/api/rules") return new Response(JSON.stringify(STATE), { status: 200 });
       if (url.startsWith("/api/rules/preview")) return new Response(JSON.stringify(PREVIEW), { status: 200 });
-      if (url === "/api/rules/save") { await slow; return new Response(JSON.stringify({ error: "Another tab changed that line." }), { status: 409 }); }
+      if (url === "/api/rules/save") {
+        await slow;
+        const refusal = new Response(JSON.stringify({ error: "Another tab changed that line." }), { status: 409 });
+        const json = refusal.json.bind(refusal);
+        refusal.json = () => json().finally(read);
+        return refusal;
+      }
       return new Response("{}", { status: 200 });
     }));
     render(<Rules />);
@@ -661,8 +670,12 @@ describe("Rules", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit merchant GRAB*" }));
     expect(screen.getByRole("button", { name: "Save as my rule" })).toBeEnabled();
     refuse();
-    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledWith("/api/rules/save", expect.anything()));
-    await new Promise((r) => setTimeout(r, 20));
+    // the refusal is read; what the page does with it is promises alone, all run before the next task: one
+    // task later the late answer has landed wherever it was going to, on any machine, however slow
+    await act(async () => {
+      await answered;
+      await new Promise((r) => setTimeout(r, 0));
+    });
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save as my rule" })).toBeEnabled();
   });

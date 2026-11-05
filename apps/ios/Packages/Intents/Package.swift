@@ -7,6 +7,7 @@ let package = Package(
     products: [.library(name: "Intents", targets: ["Intents"])],
     dependencies: [
         .package(path: "../Matching"),
+        // Sync (the YNAB run) posts through it
         .package(path: "../YNABClient"),
         .package(path: "../Storage"),
     ],

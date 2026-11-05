@@ -207,9 +207,15 @@ public enum Sync {
             try? context.save()
             return nil
         }
+        guard let milli = Milliunits.from(cents: row.amountCents,
+                                          outflow: row.direction == "outflow") else {
+            // no request can carry it, so no backoff: it waits for an edit
+            markFailed(row, "amount too large to post", retryAt: .distantFuture)
+            try? context.save()
+            outcome.failed += 1
+            return nil
+        }
         let prior = row.state
-        let milli = Milliunits.from(Decimal(row.amountCents) / 100,
-                                    outflow: row.direction == "outflow")
         // the calendar day the row printed, read now, so a date corrected
         // on the detail screen is the one sent; no zone is applied
         let day = row.day

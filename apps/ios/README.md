@@ -13,7 +13,7 @@ or a paste box inside the app.
 | Folder | What it is |
 | --- | --- |
 | `Packages/Matching` | Pure Swift, no UI, no dependencies: tokenizer, alert-reading helpers (boilerplate, field candidates, shape signatures), tap-to-pattern builder, regex matcher, unit tests |
-| `Packages/YNABClient` | `api.ynab.com` over `URLSession` + `Codable`: plans, accounts, categories, payees, transaction creation, milliunits, `import_id` |
+| `Packages/YNABClient` | `api.ynab.com` over `URLSession` + `Codable`: plans, the plan's currency, accounts, categories, transaction creation, milliunits, `import_id`; a 429 waits as long as `Retry-After` asks, up to 30 s |
 | `Packages/KopifundClient` | The phone link (G25): pairs with the Mac's Kopifund server over Tailscale with a device token, reads its profile, transactions, categories and overview, and posts approved alert rows to it |
 | `Packages/Storage` | SwiftData models, the shared App Group store, and the suppressed alert-shape set |
 | `Packages/Intents` | `Ingest Alert` and `Ingest Wallet Transaction` App Intents |
