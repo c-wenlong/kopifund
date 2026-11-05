@@ -14,9 +14,10 @@ function valuesOf(s: WidgetSeries | undefined): (number | null)[] {
   return s?.values_minor ?? s?.values ?? [];
 }
 
-function lastValue(s: WidgetSeries | undefined): number | null {
+/** The last non-null figure and its own index, so a label names the same entry. */
+function lastValue(s: WidgetSeries | undefined): { v: number; i: number } | null {
   const vs = valuesOf(s);
-  for (let i = vs.length - 1; i >= 0; i--) if (vs[i] != null) return vs[i];
+  for (let i = vs.length - 1; i >= 0; i--) if (vs[i] != null) return { v: vs[i]!, i };
   return null;
 }
 
@@ -49,11 +50,11 @@ export function KpiWidget({ widget }: WidgetProps) {
   if (res.error) return <Problem message={res.error} />;
   if (!res.data) return <Loading what="Loading the figure" />;
   const s = res.data.series[0];
-  const v = lastValue(s);
-  const note = [s?.name, res.data.labels.at(-1)].filter(Boolean).join(" · ");
+  const last = lastValue(s);
+  const note = [s?.name, last ? res.data.labels.at(last.i) : undefined].filter(Boolean).join(" · ");
   return (
     <div className="flex h-full flex-col">
-      <div className="num text-[24px] font-semibold tracking-tight">{v == null ? "No data" : figure(res.data.unit, v)}</div>
+      <div className="num text-[24px] font-semibold tracking-tight">{last == null ? "No data" : figure(res.data.unit, last.v)}</div>
       {note && <div className="num mt-0.5 text-[12px] text-ink-2">{note}</div>}
       <SourceNote a={res.data} />
     </div>
@@ -67,11 +68,12 @@ export function SeriesWidget({ widget }: WidgetProps) {
   if (res.error) return <Problem message={res.error} />;
   if (!res.data) return <Loading what="Loading the series" />;
   const vs = valuesOf(res.data.series[0]).map((v) => v ?? 0);
+  const last = lastValue(res.data.series[0]);
   const span = [res.data.labels.at(0), res.data.labels.at(-1)].filter(Boolean).join(" to ");
   return (
     <div className="flex h-full flex-col">
       <div className="num text-[18px] font-semibold tracking-tight">
-        {lastValue(res.data.series[0]) == null ? "No data" : figure(res.data.unit, lastValue(res.data.series[0])!)}
+        {last == null ? "No data" : figure(res.data.unit, last.v)}
       </div>
       <div className="mt-1"><Sparkline values={vs} label={`${widget.title ?? "Widget"} over ${span || "time"}`} /></div>
       <div className="mt-1 text-[12px] text-ink-2">{span}</div>
@@ -88,9 +90,11 @@ export function PieWidget({ widget }: WidgetProps) {
   if (!res.data) return <Loading what="Loading the split" />;
   const a = res.data;
   const vs = valuesOf(a.series[0]);
-  const rows = a.labels.map((label, i) => ({ label, v: Math.abs(vs[i] ?? 0) }))
-    .sort((x, y) => y.v - x.v).slice(0, 6);
-  const top = rows[0]?.v || 1;
+  // the figure keeps its sign: a row whose refunds pass its spending is a
+  // negative number, and only the bar sizes by magnitude
+  const rows = a.labels.map((label, i) => ({ label, v: vs[i] ?? 0 }))
+    .sort((x, y) => Math.abs(y.v) - Math.abs(x.v)).slice(0, 6);
+  const top = Math.abs(rows[0]?.v ?? 0) || 1;
   return (
     <div className="flex h-full min-h-0 flex-col">
       <ul className="m-0 min-h-0 flex-1 list-none space-y-1.5 overflow-hidden p-0">
@@ -101,7 +105,7 @@ export function PieWidget({ widget }: WidgetProps) {
               <span className="num shrink-0 text-ink-2">{figure(a.unit, r.v)}</span>
             </div>
             <div className="mt-0.5 h-1 rounded-full bg-hover">
-              <div className="h-full rounded-full bg-bar" style={{ width: `${(r.v / top) * 100}%` }} />
+              <div className="h-full rounded-full bg-bar" style={{ width: `${(Math.abs(r.v) / top) * 100}%` }} />
             </div>
           </li>
         ))}

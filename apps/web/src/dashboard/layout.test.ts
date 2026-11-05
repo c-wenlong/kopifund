@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { DashboardLayout, DashboardWidget } from "../api";
-import { cellOf, clampCell, COLS, collides, firstFit, newWidgetId, pack, readLayout, writeLayout } from "./layout";
+import { cellOf, clampCell, COLS, collides, firstFit, MAX_H, newWidgetId, pack, readLayout, writeLayout } from "./layout";
 
 // an invented layout fixture: the document GET /api/dashboard/layouts answers
 // and POST writes back, with one widget of each field kind
@@ -86,6 +86,21 @@ describe("readLayout / writeLayout", () => {
     expect(cellOf(board.widgets[0]).y).toBe(0);
     expect(cellOf(board.widgets[1]).y).toBe(2);
   });
+
+  it("bounds a saved height, so an absurd one cannot stall the page", () => {
+    const board = readLayout({
+      ...DOC,
+      widgets: [
+        widget("w-big", { x: 0, y: 0, w: 12, h: 1_000_000_000 }),
+        widget("w-next", { x: 0, y: 0, w: 4, h: 2 }),
+      ],
+    });
+    const big = cellOf(board.widgets.find((w) => w.id === "w-big")!);
+    expect(big.h).toBe(MAX_H);
+    // and the next widget settles just under the bounded one, a scan away not a billion
+    const next = cellOf(board.widgets.find((w) => w.id === "w-next")!);
+    expect(next.y).toBe(MAX_H);
+  });
 });
 
 describe("pack", () => {
@@ -134,6 +149,11 @@ describe("firstFit / clampCell / newWidgetId", () => {
   it("clamps a cell into the grid: size at least the minimums, x within the columns", () => {
     expect(clampCell({ x: -3, y: -1, w: 99, h: 0 })).toEqual({ x: 0, y: 0, w: COLS, h: 1 });
     expect(clampCell({ x: 10, y: 4, w: 6, h: 2 })).toEqual({ x: COLS - 6, y: 4, w: 6, h: 2 });
+  });
+
+  it("clamps a cell's height to the bound", () => {
+    expect(clampCell({ x: 0, y: 0, w: 4, h: 1_000_000_000 }).h).toBe(MAX_H);
+    expect(clampCell({ x: 0, y: 0, w: 4, h: MAX_H }).h).toBe(MAX_H);
   });
 
   it("makes ids the server takes: lowercase, digits, '-' and '_'", () => {

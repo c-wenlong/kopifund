@@ -14,6 +14,14 @@ export const COLS = 12;
 export const MIN_W = 2;
 export const MIN_H = 1;
 
+/**
+ * ...and never taller than this, whatever a saved layout says. The server
+ * takes any whole number, so a read clamps too: an absurd height would draw
+ * a page that tall and send `pack`'s and `firstFit`'s scans down that many
+ * empty rows.
+ */
+export const MAX_H = 24;
+
 /** The cell a widget takes when its saved layout says nothing. */
 export const DEFAULT_CELL: Cell = { x: 0, y: 0, w: 4, h: 2 };
 
@@ -25,7 +33,7 @@ const int = (v: unknown, fallback: number) =>
 /** A cell held inside the board: whole numbers, x within the columns, y at or under the top. */
 export function clampCell(c: Cell): Cell {
   const w = Math.min(Math.max(Math.round(c.w), MIN_W), COLS);
-  const h = Math.max(Math.round(c.h), MIN_H);
+  const h = Math.min(Math.max(Math.round(c.h), MIN_H), MAX_H);
   return {
     x: Math.min(Math.max(Math.round(c.x), 0), COLS - w),
     y: Math.max(Math.round(c.y), 0),
@@ -65,7 +73,16 @@ export function pack(widgets: DashboardWidget[], pinned?: { id: string; cell: Ce
     if (w.id === pinned?.id) continue;
     const want = cellOf(w);
     let c = { ...want, y: 0 };
-    while (taken.some((t) => collides(c, t))) c = { ...c, y: c.y + 1 };
+    // jump straight past the shallowest blocker: every row before its bottom
+    // is blocked by it, so scanning them one at a time finds nothing
+    for (;;) {
+      let next = -1;
+      for (const t of taken) {
+        if (collides(c, t)) next = next < 0 ? t.y + t.h : Math.min(next, t.y + t.h);
+      }
+      if (next < 0) break;
+      c = { ...c, y: next };
+    }
     cells.set(w.id, c);
     taken.push(c);
   }

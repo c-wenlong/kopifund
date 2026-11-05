@@ -1,5 +1,5 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { DashboardLayout, DashboardLayouts } from "../api";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { revalidate, type DashboardLayout, type DashboardLayouts } from "../api";
 import { Toaster } from "../components/Toast";
 import { Dashboard } from "./Dashboard";
 
@@ -129,5 +129,104 @@ describe("Dashboard", () => {
     fireEvent.click(screen.getByRole("button", { name: /Reset/ }));
     await waitFor(() => expect(saved.layouts[0].widgets.length).toBeGreaterThan(1), { timeout: 3000 });
     expect(await screen.findByRole("heading", { name: "Net worth" })).toBeInTheDocument();
+  });
+
+  it("keeps an edit made while its save was still on the wire and failed", async () => {
+    const saved = {
+      layouts: [doc("default", "Default", [
+        { id: "w-note", type: "note", title: "A note", options: { text: "kept" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+      ])],
+      active: "default",
+    };
+    const posts: { url: string; body: unknown }[] = [];
+    let gate: ((e: unknown) => void) | null = null;
+    let held = true;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const url = String(input);
+      if (url === "/api/dashboard/layouts") {
+        if (init?.method === "POST") {
+          const body = JSON.parse(String(init.body));
+          posts.push({ url, body });
+          saved.layouts = body.layouts.map((d: DashboardLayout) => doc(d.id, d.name, d.widgets));
+          saved.active = body.active ?? saved.active;
+          return ok({ layouts: saved.layouts, active: saved.active });
+        }
+        return ok({ layouts: saved.layouts, active: saved.active });
+      }
+      const one = url.match(/^\/api\/dashboard\/layouts\/([a-z0-9_-]+)$/);
+      if (one && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        posts.push({ url, body });
+        // the first save is held on the wire until the test lets it fail
+        if (held) {
+          held = false;
+          await new Promise<never>((_, reject) => { gate = reject; });
+        }
+        const d = doc(one[1], body.name, body.widgets ?? []);
+        saved.layouts = [...saved.layouts.filter((x) => x.id !== d.id), d];
+        if (body.active) saved.active = d.id;
+        return ok(d);
+      }
+      if (url.startsWith("/api/dashboard/query")) return ok(ANSWER);
+      return new Response(JSON.stringify({ error: "not here" }), { status: 404 });
+    });
+    render(<><Dashboard /><Toaster /></>);
+    await screen.findByText("kept");
+    fireEvent.click(screen.getByRole("button", { name: "Remove A note" }));
+    await waitFor(() => expect(posts).toHaveLength(1), { timeout: 3000 });
+    // the widget comes back while the remove's save is still waiting
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    gate!(new Error("the wire dropped"));
+    // the failed snapshot must not replace the undo: the board saves it next
+    await waitFor(() => expect(saved.layouts[0].widgets.map((w) => w.id)).toEqual(["w-note"]), { timeout: 3000 });
+  });
+
+  it("restores the board a widget was removed from, not the one on screen", async () => {
+    const saved = {
+      layouts: [
+        doc("default", "Default", [
+          { id: "w-a", type: "note", title: "Note A", options: { text: "first board" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+        ]),
+        doc("board-b", "Second", [
+          { id: "w-b", type: "note", title: "Note B", options: { text: "second board" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+        ]),
+      ],
+      active: "default",
+    };
+    stubServer(saved);
+    render(<><Dashboard /><Toaster /></>);
+    await screen.findByText("first board");
+    fireEvent.click(screen.getByRole("button", { name: "Remove Note A" }));
+    fireEvent.click(screen.getByRole("button", { name: "Layout" }));
+    fireEvent.mouseDown(await screen.findByRole("option", { name: "Second" }));
+    await screen.findByText("second board");
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    await waitFor(() => {
+      const a = saved.layouts.find((d) => d.id === "default")!;
+      const b = saved.layouts.find((d) => d.id === "board-b")!;
+      expect(a.widgets.map((w) => w.id)).toEqual(["w-a"]);
+      expect(b.widgets.map((w) => w.id)).toEqual(["w-b"]);
+    }, { timeout: 3000 });
+  });
+
+  it("adopts another tab's write that shares our save's whole-second stamp", async () => {
+    const saved = {
+      layouts: [doc("default", "Default", [
+        { id: "w-note", type: "note", title: "A note", options: { text: "kept" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+      ])],
+      active: "default",
+    };
+    stubServer(saved);
+    render(<Dashboard />);
+    await screen.findByText("kept");
+    fireEvent.click(screen.getByRole("button", { name: "Remove A note" }));
+    await waitFor(() => expect(saved.layouts[0].widgets).toHaveLength(0), { timeout: 3000 });
+    // a write from elsewhere lands under the same updated_at second ours got
+    saved.layouts = [{
+      ...saved.layouts[0],
+      widgets: [{ id: "w-other", type: "note", title: "Other tab", options: { text: "from another tab" }, layout: { x: 0, y: 0, w: 4, h: 2 } }],
+    }];
+    act(() => revalidate());
+    expect(await screen.findByText("from another tab")).toBeInTheDocument();
   });
 });

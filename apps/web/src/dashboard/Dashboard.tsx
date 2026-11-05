@@ -44,12 +44,26 @@ export function Dashboard() {
   boardsRef.current = boards;
   const activeRef = useRef(activeId);
   activeRef.current = activeId;
-  const pending = useRef<Board | null>(null);
+  // the boards a save still has to write, keyed by id: a newer edit replaces
+  // the board waiting, and a write's reply is applied only while nothing newer
+  // waits for the same layout
+  const pending = useRef(new Map<string, Board>());
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // the updated_at of every layout a save of ours wrote: a reload that lands
-  // before the write's echo reaches the cache answers the older document, and
-  // adopting it would walk the board back
-  const writtenAt = useRef(new Map<string, string>());
+  // the write on the wire; saves go one at a time, so a slow reply can never
+  // land after a newer edit and overwrite it
+  const saving = useRef<Promise<void> | null>(null);
+  // every document a write of ours put on the server, and the newest
+  // updated_at one carried. A reload's answer is a stale echo only when it is
+  // one of those documents; another tab writing in the same whole second (the
+  // server's stamp has no smaller unit) is newer, echoed or not
+  const written = useRef(new Map<string, { at: string; docs: Set<string> }>());
+
+  const remember = (d: DashboardLayout) => {
+    const rec = written.current.get(d.id) ?? { at: "", docs: new Set<string>() };
+    if (d.updated_at > rec.at) rec.at = d.updated_at;
+    rec.docs.add(JSON.stringify(d));
+    written.current.set(d.id, rec);
+  };
 
   // adopt the server's document while nothing is held unsaved; an edit of our
   // own would otherwise be clobbered by the reload our own save caused
@@ -57,36 +71,54 @@ export function Dashboard() {
     if (!res.data || dirty) return;
     setBoards(res.data.layouts.map((d) => {
       const kept = boardsRef.current?.find((x) => x.id === d.id);
-      const wrote = writtenAt.current.get(d.id);
-      return kept && wrote && d.updated_at <= wrote ? kept : readLayout(d);
+      const rec = written.current.get(d.id);
+      const stale = rec && (d.updated_at < rec.at ||
+        (d.updated_at === rec.at && rec.docs.has(JSON.stringify(d))));
+      return kept && stale ? kept : readLayout(d);
     }));
     setActiveId((id) => res.data!.layouts.some((d) => d.id === id) ? id : res.data!.active ?? res.data!.layouts[0]?.id ?? null);
   }, [res.data, dirty]);
 
-  const flush = useCallback(async () => {
+  const flush = useCallback((): Promise<void> => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
-    const b = pending.current;
-    if (!b) return;
-    pending.current = null;
-    try {
-      const written = await postJSON<DashboardLayout>(`/api/dashboard/layouts/${b.id}`,
-        JSON.stringify({ ...writeLayout(b), active: true }));
-      writtenAt.current.set(b.id, written.updated_at);
-      // the write's own echo is the board's truth now, ahead of any read still on its way
-      setBoards((bs) => (bs ?? []).map((x) => (x.id === b.id ? readLayout(written) : x)));
-      setDirty(pending.current != null);
-    } catch (e) {
-      pending.current = b;
-      showToast({
-        message: e instanceof Error ? e.message : "The layout was not saved.", tone: "error",
-        action: { label: "Try again", onClick: () => void flush() },
-      });
-    }
+    if (saving.current) return saving.current;
+    const run = (async () => {
+      try {
+        for (;;) {
+          const b = pending.current.values().next().value as Board | undefined;
+          if (!b) break;
+          pending.current.delete(b.id);
+          try {
+            const written = await postJSON<DashboardLayout>(`/api/dashboard/layouts/${b.id}`,
+              JSON.stringify({ ...writeLayout(b), active: true }));
+            remember(written);
+            // the write's own echo is the board's truth now, ahead of any read
+            // still on its way -- unless a newer edit is already waiting
+            if (!pending.current.has(b.id)) {
+              setBoards((bs) => (bs ?? []).map((x) => (x.id === b.id ? readLayout(written) : x)));
+            }
+          } catch (e) {
+            // retry the failed board only when nothing newer replaced it
+            if (!pending.current.has(b.id)) pending.current.set(b.id, b);
+            showToast({
+              message: e instanceof Error ? e.message : "The layout was not saved.", tone: "error",
+              action: { label: "Try again", onClick: () => void flush() },
+            });
+            break;
+          }
+        }
+        setDirty(pending.current.size > 0);
+      } finally {
+        saving.current = null;
+      }
+    })();
+    saving.current = run;
+    return run;
   }, []);
 
   const saveBoard = useCallback((b: Board) => {
-    pending.current = b;
+    pending.current.set(b.id, b);
     setDirty(true);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => void flush(), SAVE_AFTER);
@@ -95,8 +127,7 @@ export function Dashboard() {
   // a pending save still lands if the page is left before the guard asks
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
-    if (pending.current) {
-      const b = pending.current;
+    for (const b of pending.current.values()) {
       void postJSON(`/api/dashboard/layouts/${b.id}`, JSON.stringify({ ...writeLayout(b), active: true })).catch(() => {});
     }
   }, []);
@@ -105,14 +136,20 @@ export function Dashboard() {
 
   const board = boards?.find((b) => b.id === activeId) ?? boards?.[0] ?? null;
 
-  /** Change the active board and save it. */
-  const mutate = useCallback((fn: (b: Board) => Board) => {
-    const b = boardsRef.current?.find((x) => x.id === activeRef.current) ?? boardsRef.current?.[0];
+  /** Change one board, the one `id` names, and save it. */
+  const mutateBoard = useCallback((id: string, fn: (b: Board) => Board) => {
+    const b = boardsRef.current?.find((x) => x.id === id);
     if (!b) return;
     const next = fn(b);
     setBoards((bs) => (bs ?? []).map((x) => (x.id === next.id ? next : x)));
     saveBoard(next);
   }, [saveBoard]);
+
+  /** Change the active board and save it. */
+  const mutate = useCallback((fn: (b: Board) => Board) => {
+    const b = boardsRef.current?.find((x) => x.id === activeRef.current) ?? boardsRef.current?.[0];
+    if (b) mutateBoard(b.id, fn);
+  }, [mutateBoard]);
 
   /** Add a layout from a preset or empty, switch to it and save it. */
   const createBoard = useCallback((name: string, widgets: DashboardWidget[]) => {
@@ -138,25 +175,29 @@ export function Dashboard() {
   const removeWidget = useCallback((id: string) => {
     const b = boardsRef.current?.find((x) => x.id === activeRef.current);
     const w = b?.widgets.find((x) => x.id === id);
-    if (!w) return;
-    mutate((x) => ({ ...x, widgets: x.widgets.filter((v) => v.id !== id) }));
+    if (!b || !w) return;
+    // the undo names the board it came from: a layout switch while the toast
+    // waits must not put the widget back on whichever board is then active
+    const boardId = b.id;
+    mutateBoard(boardId, (x) => ({ ...x, widgets: x.widgets.filter((v) => v.id !== id) }));
     const name = w.title ?? widgetDef(w.type)?.title ?? "The widget";
     showToast({
       message: `${name} removed.`,
-      action: { label: "Undo", onClick: () => mutate((x) => ({ ...x, widgets: pack([...x.widgets, w]) })) },
+      action: { label: "Undo", onClick: () => mutateBoard(boardId, (x) => ({ ...x, widgets: pack([...x.widgets, w]) })) },
     });
-  }, [mutate]);
+  }, [mutateBoard]);
 
   const reset = useCallback(() => {
     const b = boardsRef.current?.find((x) => x.id === activeRef.current);
     if (!b) return;
+    const boardId = b.id;
     const before = b.widgets;
-    mutate((x) => ({ ...x, widgets: DEFAULT_PRESET.widgets() }));
+    mutateBoard(boardId, (x) => ({ ...x, widgets: DEFAULT_PRESET.widgets() }));
     showToast({
       message: `${b.name} reset to ${DEFAULT_PRESET.name}.`,
-      action: { label: "Undo", onClick: () => mutate((x) => ({ ...x, widgets: before })) },
+      action: { label: "Undo", onClick: () => mutateBoard(boardId, (x) => ({ ...x, widgets: before })) },
     });
-  }, [mutate]);
+  }, [mutateBoard]);
 
   const chooseLayout = useCallback((id: string) => {
     if (id === activeRef.current) return;
@@ -169,7 +210,7 @@ export function Dashboard() {
           layouts: (boardsRef.current ?? []).map((x) => ({ id: x.id, ...writeLayout(x) })),
           active: id,
         }));
-        out.layouts.forEach((d) => writtenAt.current.set(d.id, d.updated_at));
+        out.layouts.forEach(remember);
       } catch (e) {
         showToast({ message: e instanceof Error ? e.message : "The layout was not saved.", tone: "error" });
       }

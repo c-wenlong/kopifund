@@ -1400,10 +1400,13 @@ the endpoints and the record-held state came first; the Dashboard page
 
 **The page** (`apps/web/src/dashboard/`) draws a layout on a twelve-column
 grid of fixed rows. A widget is dragged by the grip in its header and resized
-from its corner; every move is repacked by `layout.ts`'s `pack`, which settles
-each widget as high as it fits, so no hole stays. A change writes the layout
-back through `POST /api/dashboard/layouts/<id>` after a short debounce, so
-nothing waits on a Save. Under 768px the same widgets stack in one column in
+from its corner; the same moves work from the keyboard, arrows on the grip
+shifting the widget a cell or past its neighbour and arrows on the corner
+growing or shrinking it. Every move is repacked by `layout.ts`'s `pack`, which
+settles each widget as high as it fits, so no hole stays; a widget's height
+is bounded (`MAX_H`), so a stray saved size cannot stall the page. A change
+writes the layout back through `POST /api/dashboard/layouts/<id>` after a
+short debounce, so nothing waits on a Save. Under 768px the same widgets stack in one column in
 their saved order and do not drag. An empty record (or an empty board) offers
 the starter presets in `presets.ts`; Reset restores the default one, and a
 removal or a reset offers an Undo toast. Named layouts switch in the page's

@@ -10,6 +10,11 @@ import type { DashboardWidget } from "../api";
 import { cellOf, clampCell, COLS, pack, type Cell } from "./layout";
 import { widgetDef } from "./registry";
 
+/** One arrow-key step, as the [x, y] or [w, h] it nudges. */
+const ARROW: Record<string, readonly [number, number]> = {
+  ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
+};
+
 /** A grid row's height and the gap between cells, the px the pointer math shares with the style below. */
 const ROW_PX = 84;
 const GAP_PX = 12;
@@ -71,7 +76,49 @@ export function Grid({ widgets, interactive, onArrange, onRemove }: {
   const end = (e: React.PointerEvent) => {
     if (!drag || e.pointerId !== drag.pointerId) return;
     setDrag(null);
-    onArrange(pack(widgets, { id: drag.id, cell: drag.cell }));
+    onArrange(settle(widgets, drag.id, drag.cell));
+  };
+
+  // the moved or resized widget takes the cell it was given, then settles into
+  // the highest free row like every read of the layout does (pack without a
+  // pin), so the saved echo redraws the same board rather than jumping
+  const settle = (ws: DashboardWidget[], id: string, cell: Cell) =>
+    pack(ws.map((v) => (v.id === id ? { ...v, layout: { ...clampCell(cell) } } : v)));
+
+  // the same moves as a drag, for the keyboard: arrows on the Move grip shift
+  // the widget one cell, on the Resize corner they grow or shrink it. Up and
+  // Down hop past the nearest widget that shares the columns in that
+  // direction, since every widget already rests on the highest free row
+  const nudge = (w: DashboardWidget, kind: Drag["kind"], e: React.KeyboardEvent) => {
+    const d = ARROW[e.key];
+    if (!d) return;
+    e.preventDefault();
+    const c = cellOf(w);
+    if (kind === "resize") {
+      onArrange(settle(widgets, w.id, { ...c, w: c.w + d[0], h: c.h + d[1] }));
+      return;
+    }
+    if (d[0] !== 0) {
+      onArrange(settle(widgets, w.id, { ...c, x: c.x + d[0] }));
+      return;
+    }
+    const beside = widgets.filter((v) => v.id !== w.id)
+      .map((v) => ({ v, t: cellOf(v) }))
+      .filter(({ t }) => t.x < c.x + c.w && c.x < t.x + t.w);
+    if (d[1] > 0) {
+      const below = beside.filter(({ t }) => t.y >= c.y + c.h).sort((a, b) => a.t.y - b.t.y)[0];
+      onArrange(settle(widgets, w.id, { ...c, y: below ? below.t.y + below.t.h : c.y + 1 }));
+      return;
+    }
+    const above = beside.filter(({ t }) => t.y + t.h <= c.y)
+      .sort((a, b) => b.t.y + b.t.h - (a.t.y + a.t.h))[0];
+    // sorting first at a tie needs the widget ahead of the blocker in the list too
+    let list = widgets;
+    if (above) {
+      list = widgets.filter((v) => v.id !== w.id);
+      list.splice(list.findIndex((v) => v.id === above.v.id), 0, w);
+    }
+    onArrange(settle(list, w.id, { ...c, y: above ? above.t.y : 0 }));
   };
 
   if (!interactive) {
@@ -101,18 +148,21 @@ export function Grid({ widgets, interactive, onArrange, onRemove }: {
       {placed.map((w) => (
         <WidgetCard key={w.id} widget={w} cell={cellOf(w)} dragging={drag?.id === w.id}
           onMove={(e) => begin(e, w, "move")} onResize={(e) => begin(e, w, "resize")}
+          onKeyMove={(e) => nudge(w, "move", e)} onKeyResize={(e) => nudge(w, "resize", e)}
           onDragMove={move} onDragEnd={end} onRemove={onRemove} />
       ))}
     </div>
   );
 }
 
-function WidgetCard({ widget, cell, dragging = false, onMove, onResize, onDragMove, onDragEnd, onRemove }: {
+function WidgetCard({ widget, cell, dragging = false, onMove, onResize, onKeyMove, onKeyResize, onDragMove, onDragEnd, onRemove }: {
   widget: DashboardWidget;
   cell?: Cell;                       // given in the grid; a stacked card sizes itself
   dragging?: boolean;
   onMove?: (e: React.PointerEvent) => void;
   onResize?: (e: React.PointerEvent) => void;
+  onKeyMove?: (e: React.KeyboardEvent) => void;
+  onKeyResize?: (e: React.KeyboardEvent) => void;
   onDragMove?: (e: React.PointerEvent) => void;
   onDragEnd?: (e: React.PointerEvent) => void;
   onRemove: (id: string) => void;
@@ -121,6 +171,8 @@ function WidgetCard({ widget, cell, dragging = false, onMove, onResize, onDragMo
   const title = widget.title ?? def?.title ?? widget.type;
   const Body = def?.component;
   const editing = !!onMove;
+  // where the widget sits, said aloud when an arrow moves it and in the grips' names
+  const where = cell ? `column ${cell.x + 1}, row ${cell.y + 1}, ${cell.w} by ${cell.h}` : "";
   return (
     <article
       aria-label={title}
@@ -129,8 +181,9 @@ function WidgetCard({ widget, cell, dragging = false, onMove, onResize, onDragMo
       <section className={`flex h-full min-h-0 flex-col rounded-xl border bg-panel px-4 py-3 ${dragging ? "border-info" : "border-line"}`}>
         <div className="mb-2 flex items-center gap-1.5">
           {editing && (
-            <button type="button" aria-label={`Move ${title}`}
+            <button type="button" aria-label={`Move ${title}: ${where}`}
               onPointerDown={onMove} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
+              onKeyDown={onKeyMove}
               className="-ml-1 grid size-7 shrink-0 cursor-grab touch-none place-items-center rounded-md text-ink-3 hover:bg-hover hover:text-ink active:cursor-grabbing">
               <GripVertical size={15} aria-hidden />
             </button>
@@ -149,10 +202,12 @@ function WidgetCard({ widget, cell, dragging = false, onMove, onResize, onDragMo
           )}
         </div>
         {editing && (
-          <button type="button" aria-label={`Resize ${title}`}
+          <button type="button" aria-label={`Resize ${title}: ${where}`}
             onPointerDown={onResize} onPointerMove={onDragMove} onPointerUp={onDragEnd} onPointerCancel={onDragEnd}
+            onKeyDown={onKeyResize}
             className="absolute right-1.5 bottom-1.5 size-4 cursor-nwse-resize touch-none rounded-br-md border-r-2 border-b-2 border-ink-3 hover:border-ink" />
         )}
+        {editing && cell && <p className="sr-only" role="status">{`${title}: ${where}`}</p>}
       </section>
     </article>
   );
