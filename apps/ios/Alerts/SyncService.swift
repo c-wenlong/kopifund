@@ -217,16 +217,25 @@ final class HubLane {
     }
 
     /// Every row the hub is owed, before the YNAB run starts. The candidates
-    /// are gathered once, and each is fetched again just before its turn:
-    /// the fetch refreshes a row an intent changed on disk while an earlier
-    /// send was out (a Wallet capture parked as a duplicate must not post).
-    /// A row approved after this point reaches `prepare` through the YNAB
-    /// run's `beforeSend`.
+    /// are gathered in rounds: each round takes the ids not seen yet, and
+    /// each row is fetched again just before its turn, which refreshes a row
+    /// an intent changed on disk while an earlier send was out (a Wallet
+    /// capture parked as a duplicate must not post). A row saved during a
+    /// round shows up in the next one, so it reaches the hub in this run
+    /// even when YNAB is not set up or is paused. A run with nothing new
+    /// costs one more wide fetch, not one per row.
     func sendOwed(context: ModelContext) async {
-        for id in Self.owedRows(context).map(\.id) where !done.contains(id) {
-            guard let row = (try? context.fetch(FetchDescriptor<TransactionRecord>(
-                predicate: #Predicate { $0.id == id })))?.first else { continue }
-            await prepare(row, context: context)
+        var seen: Set<UUID> = []
+        while true {
+            let ids = Self.owedRows(context).map(\.id)
+                .filter { !seen.contains($0) && !done.contains($0) }
+            if ids.isEmpty { return }
+            for id in ids {
+                seen.insert(id)
+                guard let row = (try? context.fetch(FetchDescriptor<TransactionRecord>(
+                    predicate: #Predicate { $0.id == id })))?.first else { continue }
+                await prepare(row, context: context)
+            }
         }
     }
 
