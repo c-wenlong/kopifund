@@ -1,6 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { revalidate, type DashboardLayout, type DashboardLayouts } from "../api";
 import { Toaster } from "../components/Toast";
+import { keepEditing, navigate } from "../router";
 import { Dashboard } from "./Dashboard";
 
 // G26: the Dashboard page against a stand-in server that keeps what is posted,
@@ -207,6 +208,69 @@ describe("Dashboard", () => {
       expect(a.widgets.map((w) => w.id)).toEqual(["w-a"]);
       expect(b.widgets.map((w) => w.id)).toEqual(["w-b"]);
     }, { timeout: 3000 });
+    // the undo saved the board left behind without making it the one the next visit opens
+    expect(saved.active).toBe("board-b");
+  });
+
+  it("switches board by writing that board alone, never this tab's copy of the others", async () => {
+    const saved = {
+      layouts: [
+        doc("default", "Default", [
+          { id: "w-a", type: "note", title: "Note A", options: { text: "first board" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+        ]),
+        doc("board-b", "Second", [
+          { id: "w-b", type: "note", title: "Note B", options: { text: "second board" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+        ]),
+      ],
+      active: "default",
+    };
+    const posts = stubServer(saved);
+    render(<Dashboard />);
+    await screen.findByText("first board");
+    // another tab edits the first board after this one read it
+    saved.layouts = saved.layouts.map((d) => d.id === "default"
+      ? { ...d, name: "Edited elsewhere" } : d);
+    fireEvent.click(screen.getByRole("button", { name: "Layout" }));
+    fireEvent.mouseDown(await screen.findByRole("option", { name: "Second" }));
+    await waitFor(() => expect(saved.active).toBe("board-b"));
+    expect(posts.map((p) => p.url)).toEqual(["/api/dashboard/layouts/board-b"]);
+    expect(saved.layouts.find((d) => d.id === "default")!.name).toBe("Edited elsewhere");
+  });
+
+  it("lets the page be left inside the wait before a save, and saves on the way out", async () => {
+    const saved = {
+      layouts: [doc("default", "Default", [
+        { id: "w-note", type: "note", title: "A note", options: { text: "kept" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+      ])],
+      active: "default",
+    };
+    window.history.replaceState(window.history.state, "", "/dashboard");
+    stubServer(saved);
+    const { unmount } = render(<Dashboard />);
+    await screen.findByText("kept");
+    fireEvent.click(screen.getByRole("button", { name: "Remove A note" }));
+    // no "Leave without saving?": the move goes through at once
+    act(() => navigate("/transactions"));
+    expect(window.location.pathname).toBe("/transactions");
+    unmount();
+    await waitFor(() => expect(saved.layouts[0].widgets).toHaveLength(0));
+    keepEditing();
+  });
+
+  it("makes no board when the picker closes with nothing picked, and the Default one with the first widget", async () => {
+    const saved = { layouts: [] as DashboardLayout[], active: null as string | null };
+    const posts = stubServer(saved);
+    render(<Dashboard />);
+    fireEvent.click(await screen.findByRole("button", { name: /^Add a widget/ }));
+    const sheet = await screen.findByRole("dialog", { name: "Add a widget" });
+    fireEvent.keyDown(sheet, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add a widget" })).not.toBeInTheDocument());
+    await new Promise((r) => setTimeout(r, 900));
+    expect(posts).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: /^Add a widget/ }));
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "Add a widget" })).getByRole("button", { name: /^A note/ }));
+    await waitFor(() => expect(saved.layouts.map((d) => [d.name, d.widgets.length])).toEqual([["Default", 1]]), { timeout: 3000 });
+    expect(saved.active).toBe("default");
   });
 
   it("adopts another tab's write that shares our save's whole-second stamp", async () => {
