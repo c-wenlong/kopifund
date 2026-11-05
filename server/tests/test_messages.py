@@ -14,7 +14,9 @@ FIELD_FIRST = {"month", "months", "planned", "kind", "to", "from", "by", "scope"
                "names", "countries", "spend_rate", "cpf_employer_rate", "need",
                # G22: the AI card's fields, and the copilot's tool arguments (server/finance/copilot_tools.py)
                "provider", "send_rows", "limit", "type", "x", "series", "rows", "unit", "questions", "payee_kind",
-               "planned_minor"}
+               "planned_minor",
+               # G26: the dashboard's fields (server/finance/dashboard.py)
+               "target_minor", "delta_minor", "account_ids"}
 
 
 def _opening(node):

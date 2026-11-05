@@ -1295,10 +1295,209 @@ export type ServerInfo = {
   started: number;
 };
 
+/**
+ * The data source a widget query reads: `spending` is the record's own rows;
+ * the others are the cached stat results and net_worth.py's combination of them
+ * (server/finance/dashboard.py, _CATALOGUE).
+ */
+export type WidgetSource = "spending" | "monthly-cashflow" | "needs-wants-savings" | "savings-runway" | "category-breakdown" | "portfolio" | "cpf" | "net-worth" | "forward-view";
+
+/**
+ * What a widget query spreads its metric over. A source keeps its own list
+ * (`month` for a series, `bucket`/`category`/`payee`/`account`/`need` for the
+ * spending splits, `part`/`year`/`period`/`holding` for the stat sources).
+ */
+export type WidgetDimension = "month" | "bucket" | "category" | "payee" | "account" | "need" | "part" | "year" | "period" | "holding";
+
+/**
+ * The unit a resolved series is in. `sgd_minor` is integer cents, `months` a
+ * runway, `fraction` a ratio the app multiplies by 100, `percent` already scaled.
+ */
+export type WidgetUnit = "sgd_minor" | "months" | "fraction" | "percent";
+
+export type WidgetRange = {
+  from?: string;
+  to?: string;
+};
+
+/**
+ * What a widget asks: one source, one metric, the dimension to spread it
+ * over. `split` (a spending query by month) makes one series per name;
+ * `filters` are Transactions' own filter names (server/finance/dashboard.py).
+ */
+export type WidgetQuery = {
+  source: WidgetSource;
+  metric: string;
+  dimension?: WidgetDimension;
+  range?: WidgetRange;
+  split?: string;
+  filters?: Record<string, string>;
+};
+
+/**
+ * One series of an answer: money under `values_minor` (integer cents),
+ * anything else under `values`; `link` is the Transactions filter the
+ * series lists (the G13 chart.links idea).
+ */
+export type WidgetSeries = {
+  name: string;
+  values_minor?: (Cents | null)[];
+  values?: (number | null)[];
+  link?: Record<string, string> | null;
+};
+
+/**
+ * GET or POST /api/dashboard/query: a query resolved to labels and
+ * series. `label_links` (aligned to `labels`) is the Transactions filter a
+ * point lists; `note` marks an estimate (a projection source or a preview).
+ */
+export type WidgetAnswer = {
+  source: WidgetSource;
+  metric: string;
+  dimension: string;
+  range: WidgetRange | null;
+  unit: WidgetUnit;
+  labels: string[];
+  label_links?: (Record<string, string> | null)[];
+  series: WidgetSeries[];
+  note?: string;
+};
+
+/**
+ * POST /api/dashboard/scenario/preview: the query's series drawn ahead on
+ * its trailing monthly average. Nothing is written.
+ */
+export type ScenarioPreview = WidgetAnswer & {
+  /** The index in `labels` where the projection starts. */
+  projected_from: number;
+};
+
+/**
+ * One widget on a layout: an id, its kind (`kpi`, `line`, `pie`, ...), an
+ * optional bound `query` and a `layout` grid cell ({x, y, w, h}).
+ */
+export type DashboardWidget = {
+  id: string;
+  type: string;
+  title?: string;
+  query?: WidgetQuery;
+  layout?: Record<string, number>;
+  options?: Record<string, unknown>;
+};
+
+/** One named layout: its widgets and when it was last written. */
+export type DashboardLayout = {
+  id: string;
+  name: string;
+  widgets: DashboardWidget[];
+  updated_at: string;
+};
+
+/** GET /api/dashboard/layouts: every layout and the active one's id. */
+export type DashboardLayouts = {
+  layouts: DashboardLayout[];
+  active: string | null;
+};
+
+/** A goal's dated checkpoint. */
+export type DashboardMilestone = {
+  month: string;
+  target_minor: Cents;
+};
+
+/**
+ * A goal's progress binding: the widget query (a money metric) whose last
+ * figure is the goal's `current_minor`.
+ */
+export type GoalBinding = {
+  source: WidgetSource;
+  metric: string;
+  dimension: string;
+};
+
+/**
+ * One goal: its target in cents, optional target month, milestones, and
+ * the progress its binding resolves to (`current_minor`, `progress` as a
+ * fraction of target; null when it has none).
+ */
+export type DashboardGoal = {
+  id: string;
+  name: string;
+  target_minor: Cents;
+  month: string | null;
+  note: string;
+  milestones: DashboardMilestone[];
+  binding?: GoalBinding;
+  current_minor: Cents | null;
+  progress: number | null;
+};
+
+/** GET /api/dashboard/goals. */
+export type DashboardGoals = {
+  goals: DashboardGoal[];
+};
+
+/**
+ * A spend bucket in a month: its planned cents from the template (null
+ * while unplanned), the month's actual spend, and `share` of the month's
+ * income (a fraction; null when income is 0).
+ */
+export type AllocationBucket = {
+  bucket: string;
+  planned_minor: Cents | null;
+  actual_minor: Cents;
+  share: number | null;
+};
+
+/** One template row: a spend bucket's planned cents a month. */
+export type AllocationTemplate = {
+  bucket: string;
+  planned_minor: Cents;
+};
+
+/**
+ * GET /api/dashboard/allocation?month=: the template beside a month's
+ * actuals. `unallocated_minor` is income less every planned amount (null
+ * until a template exists and the month has income); `month` is null
+ * before the first load.
+ */
+export type Allocation = {
+  month: string | null;
+  months: string[];
+  income_minor: Cents;
+  template: AllocationTemplate[];
+  buckets: AllocationBucket[];
+  unallocated_minor: Cents | null;
+};
+
+/** An account the game pot may link. */
+export type GamePotAccount = {
+  id: number;
+  name: string;
+};
+
+/**
+ * GET /api/dashboard/game-pot: the pot's settings, `on` once any are
+ * saved, and `accounts` the record holds (each an id it may link).
+ */
+export type GamePot = {
+  name: string;
+  benchmark: string;
+  note: string;
+  account_ids: number[];
+  accounts: GamePotAccount[];
+  on: boolean;
+};
+
 /** serve.py, CACHED: the GETs that answer with an ETag; everything else is asked afresh every time. */
 export const CACHED_PATHS: readonly string[] = [
   "/api/budgets",
   "/api/categories",
+  "/api/dashboard/allocation",
+  "/api/dashboard/game-pot",
+  "/api/dashboard/goals",
+  "/api/dashboard/layouts",
+  "/api/dashboard/query",
   "/api/growth",
   "/api/net-worth",
   "/api/overview",
@@ -1323,6 +1522,8 @@ export const NO_CHANGE_PATHS: readonly string[] = [
   "/api/ai/test",
   "/api/copilot/ask",
   "/api/copilot/threads/remove",
+  "/api/dashboard/query",
+  "/api/dashboard/scenario/preview",
   "/api/growth/preview",
   "/api/link/devices/revoke",
   "/api/link/pair-token",

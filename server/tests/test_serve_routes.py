@@ -128,6 +128,8 @@ class RouteTableTest(unittest.TestCase):
         self.assertEqual(serve.NO_CHANGE, {"/api/run/check", "/api/rules/suggest", "/api/uploads/start",
                                            "/api/growth/preview", "/api/copilot/ask", "/api/copilot/threads/remove",
                                            "/api/ai/test",
+                                           # G26: a query or a preview reads, it does not change the record
+                                           "/api/dashboard/query", "/api/dashboard/scenario/preview",
                                            # G25: the device registry is no page's data
                                            "/api/link/pair-token", "/api/pair/redeem",
                                            "/api/link/devices/revoke",

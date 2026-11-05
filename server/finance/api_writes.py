@@ -400,3 +400,48 @@ def post_pending_restore(req):
     from . import pending
     pending.restore(req.record(create=True), _text(req.data, "import_id"))
     return _pending_list(req)
+
+
+# G26: the dashboard's state and its queries (server/finance/dashboard.py)
+def post_dashboard_layouts(req):
+    from . import dashboard
+    return dashboard.save_layouts(req.record(create=True), req.data)
+
+
+def post_dashboard_layout(req):
+    from . import dashboard
+    return dashboard.save_layout(req.record(create=True), req.args["id"], req.data)
+
+
+def post_dashboard_query(req):
+    """The same answer as the GET, for a caller that posts the query as the
+    body. It writes nothing, so it sits in NO_CHANGE."""
+    from . import dashboard
+    return dashboard.resolve(req.maybe_record(), results_cache.results(req), req.data)
+
+
+def post_dashboard_goal(req):
+    from . import dashboard
+    return dashboard.save_goal(req.record(create=True), results_cache.results(req), req.data)
+
+
+def post_dashboard_goal_remove(req):
+    from . import dashboard
+    return dashboard.remove_goal(req.record(create=True), results_cache.results(req), req.data)
+
+
+def post_dashboard_scenario_preview(req):
+    """The query's series drawn ahead: an estimate, and by design never
+    written to the plan or anywhere else."""
+    from . import dashboard
+    return dashboard.scenario_preview(req.maybe_record(), results_cache.results(req), req.data)
+
+
+def post_dashboard_allocation(req):
+    from . import dashboard
+    return dashboard.save_allocation(req.record(create=True), req.data)
+
+
+def post_dashboard_game_pot(req):
+    from . import dashboard
+    return dashboard.save_game_pot(req.record(create=True), req.data)

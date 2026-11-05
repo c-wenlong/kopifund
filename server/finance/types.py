@@ -23,7 +23,7 @@ Rules for writing one:
 """
 from typing import Any, Literal, NewType, NotRequired, TypedDict
 
-from . import account_names, ai, categories, home, pending, planning, recurring, scam_checks, upload_log
+from . import account_names, ai, categories, dashboard, home, pending, planning, recurring, scam_checks, upload_log
 from .rules_app import categorise
 
 Cents = NewType("Cents", int)
@@ -1241,6 +1241,178 @@ class ServerInfo(TypedDict):
     started: float
 
 
+# ---------------------------------------------------------------- G26: the dashboard
+
+type WidgetSource = Literal[*dashboard.SOURCES]
+"""The data source a widget query reads: `spending` is the record's own rows;
+the others are the cached stat results and net_worth.py's combination of them
+(server/finance/dashboard.py, _CATALOGUE)."""
+
+type WidgetDimension = Literal[*dashboard.DIMENSIONS]
+"""What a widget query spreads its metric over. A source keeps its own list
+(`month` for a series, `bucket`/`category`/`payee`/`account`/`need` for the
+spending splits, `part`/`year`/`period`/`holding` for the stat sources)."""
+
+type WidgetUnit = Literal[*dashboard.UNITS]
+"""The unit a resolved series is in. `sgd_minor` is integer cents, `months` a
+runway, `fraction` a ratio the app multiplies by 100, `percent` already scaled."""
+
+
+WidgetRange = TypedDict("WidgetRange", {
+    "from": NotRequired[str], "to": NotRequired[str]})
+"""A query's range: `from`/`to` months (YYYY-MM) or days (YYYY-MM-DD, which
+resolve to their months). Empty means the source's own span."""
+
+
+class WidgetQuery(TypedDict):
+    """What a widget asks: one source, one metric, the dimension to spread it
+    over. `split` (a spending query by month) makes one series per name;
+    `filters` are Transactions' own filter names (server/finance/dashboard.py)."""
+    source: WidgetSource
+    metric: str
+    dimension: NotRequired[WidgetDimension]
+    range: NotRequired[WidgetRange]
+    split: NotRequired[str]
+    filters: NotRequired[dict[str, str]]
+
+
+class WidgetSeries(TypedDict):
+    """One series of an answer: money under `values_minor` (integer cents),
+    anything else under `values`; `link` is the Transactions filter the
+    series lists (the G13 chart.links idea)."""
+    name: str
+    values_minor: NotRequired[list[Cents | None]]
+    values: NotRequired[list[float | None]]
+    link: NotRequired[dict[str, str] | None]
+
+
+class WidgetAnswer(TypedDict):
+    """GET or POST /api/dashboard/query: a query resolved to labels and
+    series. `label_links` (aligned to `labels`) is the Transactions filter a
+    point lists; `note` marks an estimate (a projection source or a preview)."""
+    source: WidgetSource
+    metric: str
+    dimension: str
+    range: WidgetRange | None
+    unit: WidgetUnit
+    labels: list[str]
+    label_links: NotRequired[list[dict[str, str] | None]]
+    series: list[WidgetSeries]
+    note: NotRequired[str]
+
+
+class ScenarioPreview(WidgetAnswer):
+    """POST /api/dashboard/scenario/preview: the query's series drawn ahead on
+    its trailing monthly average. Nothing is written."""
+    projected_from: int
+    """The index in `labels` where the projection starts."""
+
+
+class DashboardWidget(TypedDict):
+    """One widget on a layout: an id, its kind (`kpi`, `line`, `pie`, ...), an
+    optional bound `query` and a `layout` grid cell ({x, y, w, h})."""
+    id: str
+    type: str
+    title: NotRequired[str]
+    query: NotRequired[WidgetQuery]
+    layout: NotRequired[dict[str, int]]
+    options: NotRequired[dict[str, Any]]
+
+
+class DashboardLayout(TypedDict):
+    """One named layout: its widgets and when it was last written."""
+    id: str
+    name: str
+    widgets: list[DashboardWidget]
+    updated_at: str
+
+
+class DashboardLayouts(TypedDict):
+    """GET /api/dashboard/layouts: every layout and the active one's id."""
+    layouts: list[DashboardLayout]
+    active: str | None
+
+
+class DashboardMilestone(TypedDict):
+    """A goal's dated checkpoint."""
+    month: str
+    target_minor: Cents
+
+
+class GoalBinding(TypedDict):
+    """A goal's progress binding: the widget query (a money metric) whose last
+    figure is the goal's `current_minor`."""
+    source: WidgetSource
+    metric: str
+    dimension: str
+
+
+class DashboardGoal(TypedDict):
+    """One goal: its target in cents, optional target month, milestones, and
+    the progress its binding resolves to (`current_minor`, `progress` as a
+    fraction of target; null when it has none)."""
+    id: str
+    name: str
+    target_minor: Cents
+    month: str | None
+    note: str
+    milestones: list[DashboardMilestone]
+    binding: NotRequired[GoalBinding]
+    current_minor: Cents | None
+    progress: float | None
+
+
+class DashboardGoals(TypedDict):
+    """GET /api/dashboard/goals."""
+    goals: list[DashboardGoal]
+
+
+class AllocationBucket(TypedDict):
+    """A spend bucket in a month: its planned cents from the template (null
+    while unplanned), the month's actual spend, and `share` of the month's
+    income (a fraction; null when income is 0)."""
+    bucket: str
+    planned_minor: Cents | None
+    actual_minor: Cents
+    share: float | None
+
+
+class AllocationTemplate(TypedDict):
+    """One template row: a spend bucket's planned cents a month."""
+    bucket: str
+    planned_minor: Cents
+
+
+class Allocation(TypedDict):
+    """GET /api/dashboard/allocation?month=: the template beside a month's
+    actuals. `unallocated_minor` is income less every planned amount (null
+    until a template exists and the month has income); `month` is null
+    before the first load."""
+    month: str | None
+    months: list[str]
+    income_minor: Cents
+    template: list[AllocationTemplate]
+    buckets: list[AllocationBucket]
+    unallocated_minor: Cents | None
+
+
+class GamePotAccount(TypedDict):
+    """An account the game pot may link."""
+    id: int
+    name: str
+
+
+class GamePot(TypedDict):
+    """GET /api/dashboard/game-pot: the pot's settings, `on` once any are
+    saved, and `accounts` the record holds (each an id it may link)."""
+    name: str
+    benchmark: str
+    note: str
+    account_ids: list[int]
+    accounts: list[GamePotAccount]
+    on: bool
+
+
 ENDPOINTS = {
     "/api/plan": PlanState,
     "/api/transactions": TxnPage,
@@ -1261,4 +1433,10 @@ ENDPOINTS = {
     "/api/link/pending": LinkPending,
     "/api/app-icon": AppIconPage,
     "/api/server": ServerInfo,
+    "/api/dashboard/layouts": DashboardLayouts,
+    "/api/dashboard/layouts/<id>": DashboardLayout,
+    "/api/dashboard/query": WidgetAnswer,
+    "/api/dashboard/goals": DashboardGoals,
+    "/api/dashboard/allocation": Allocation,
+    "/api/dashboard/game-pot": GamePot,
 }

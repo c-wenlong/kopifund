@@ -26,6 +26,10 @@ export type {
   ScamFine, ScamFlag, ScamLine, ScamReason, ScamSettings, SeriesColour, ServerInfo, ServerMode, StaleAccount, StepName, StepStatus,
   StoppedSeries, Suggestion, Tier, Trip, TripCategory, TripList, Txn, TxnAccount, TxnDay, TxnPage, UploadAlert,
   UploadPage, UploadStep, UploadStepOutline,
+  // G26: the dashboard's widget queries and state
+  Allocation, AllocationBucket, AllocationTemplate, DashboardGoal, DashboardGoals, DashboardLayout, DashboardLayouts,
+  DashboardMilestone, DashboardWidget, GamePot, GamePotAccount, GoalBinding, ScenarioPreview, WidgetAnswer,
+  WidgetDimension, WidgetQuery, WidgetRange, WidgetSeries, WidgetSource, WidgetUnit,
 } from "./types.gen";
 
 // G13: Home (GET /api/overview, finance/home.py). A change is against the
