@@ -22,6 +22,7 @@ import { useWide } from "../components/useWide";
 import { useUnsavedGuard } from "../router";
 import { tierLabel } from "../ruleWords";
 import { KindLabel, PAYEE_KIND_ICON, STEP_STATUS_ICON } from "../icons";
+import { useUrlParams } from "../useUrlParams";
 
 type Show = "all" | "pins" | "problems";
 // `n` tells two drafts apart, so choosing another one remounts the form with it; `start` is what it opened on
@@ -45,12 +46,21 @@ const kindsOf = (g: RuleGroup) =>
 export function Rules() {
   const state = useApi<RulesState>("/api/rules");
   const wide = useWide();
-  const address = () => new URLSearchParams(window.location.search);
-  const [view, setView] = useState<"payee" | "order">(() => (address().get("view") === "order" ? "order" : "payee"));
-  // the Recurring page links here with ?q=<payee> to open that payee's rules
-  const [q, setQ] = useState(() => new URLSearchParams(window.location.search).get("q") ?? "");
-  const [show, setShow] = useState<Show>(() => { const v = address().get("show"); return v === "pins" || v === "problems" ? v : "all"; });
-  const [category, setCategory] = useState(() => address().get("category") ?? "");
+  // G13: what defines the list and the page of it live in the address (?q=, ?view=order, ?show=, ?category=,
+  // ?page=), read from it on every render, so a reload, Back, or a link to the bare page while it is open
+  // shows the list the address says, and every reader of the address (the copilot's page filters) hears a change
+  const [params, patch] = useUrlParams();
+  const view = params.get("view") === "order" ? "order" : "payee";
+  const q = params.get("q") ?? "";
+  const showParam = params.get("show");
+  const show: Show = showParam === "pins" || showParam === "problems" ? showParam : "all";
+  const category = params.get("category") ?? "";
+  // a filter changed here starts the list at page 1, and the page leaves the address in the same write;
+  // the option already chosen, clicked again, changes nothing and keeps the page
+  const setView = (v: "payee" | "order") => { if (v !== view) patch({ view: v === "order" ? v : null, page: null }); };
+  const setQ = (text: string) => { if (text !== q) patch({ q: text, page: null }); };
+  const setShow = (v: Show) => { if (v !== show) patch({ show: v === "all" ? null : v, page: null }); };
+  const setCategory = (c: string) => { if (c !== category) patch({ category: c, page: null }); };
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<Editing | null>(null);
   const edits = useRef(0);   // a number for each editor opened, never reused, so a save from a closed one cannot reach a new one
@@ -74,29 +84,30 @@ export function Rules() {
     ruleHits(r) && (show !== "pins" || r.tier === "key") && (show !== "problems" || r.problems.length > 0));
 
   const shown = view === "payee" ? groups.length : flat.length;
-  // G13: pages of groups (by payee) or of rules (in order); a new search, filter or view starts at page 1
-  // What defines the list and the page of it live in the address (?q=, ?view=order, ?show=, ?category=, ?page=), so a
-  // reload or Back lands where you were. The total is unknown until the rules load, so the page read from the
-  // address is not clamped to 1 meanwhile.
-  const [startPage] = useState(() => Number(address().get("page")) || 1);
-  const pager = usePager("rules", s ? shown : undefined, [view, q, show, category].join("\n"), startPage);
+  // G13: pages of groups (by payee) or of rules (in order); a new search, filter or view starts at page 1.
+  // The total is unknown until the rules load, so the page read from the address is not clamped to 1 meanwhile.
+  const urlPage = Math.max(1, Math.floor(Number(params.get("page"))) || 1);
+  const filters = [view, q, show, category].join("\n");
+  const pager = usePager("rules", s ? shown : undefined, filters, urlPage);
+  // the page and the address follow each other: a click on a page number writes it, an address that names
+  // another page or other filters (Back, a link) moves the list to its page. A filter changed here drops the
+  // page from the address as it writes (above), so new filters with the page unchanged come from a link.
+  const seen = useRef({ page: urlPage, filters });
+  useEffect(() => {
+    if (urlPage !== seen.current.page || filters !== seen.current.filters) {
+      seen.current = { page: urlPage, filters };
+      if (urlPage !== pager.page) pager.setPage(urlPage);
+    } else if (s && pager.page !== urlPage) {
+      seen.current = { page: pager.page, filters };
+      patch({ page: pager.page > 1 ? String(pager.page) : null });
+    }
+  }, [urlPage, filters, pager, patch, s]);
   // G18 (U4): the payees awaiting a rule page like every other long list
   const needsPager = usePager("rules-needs", s?.needs.length ?? 0);
   // a link to a category that has since been renamed or deleted would filter out every rule behind a dropdown that says "All"
   useEffect(() => {
-    if (s && category && !s.rules.some((r) => r.category === category)) setCategory("");
-  }, [s, category]);
-  useEffect(() => {
-    if (!s) return;
-    const url = new URL(window.location.href);
-    const put = (key: string, value: string | null) => { if (value) url.searchParams.set(key, value); else url.searchParams.delete(key); };
-    put("q", q.trim() ? q : null);
-    put("view", view === "order" ? "order" : null);
-    put("show", show === "all" ? null : show);
-    put("category", category || null);
-    put("page", pager.page > 1 ? String(pager.page) : null);
-    if (url.href !== window.location.href) window.history.replaceState(window.history.state, "", url);
-  }, [s, q, view, show, category, pager.page]);
+    if (s && category && !s.rules.some((r) => r.category === category)) patch({ category: null });
+  }, [s, category, patch]);
 
   // an edit open on this page keeps the page where it is, so its unsaved changes are not dropped
   const here = view === "payee" ? pager.slice(groups).filter((g) => open.has(g.id)).flatMap((g) => g.rules) : pager.slice(flat).map((r) => r.id);
@@ -255,7 +266,7 @@ export function Rules() {
               {total}{shown !== viewTotal && ` · ${count(shown, view === "payee" ? "payee" : "rule")} shown`}
             </p>
             <div className="mb-2 flex flex-wrap items-center gap-2 text-[13px]">
-              <input type="search" value={q} onChange={(e) => { setQ(e.target.value); }}
+              <input type="search" value={q} onChange={(e) => setQ(e.target.value)}
                 placeholder="Search payee, text, category" aria-label="Search rules"
                 className="h-8 min-w-48 flex-1 rounded-md border border-line bg-panel px-2.5" />
               <Segmented label="Show" value={show} onChange={setShow}
