@@ -38,35 +38,6 @@ public struct LinkCode: Equatable, Sendable {
     }
 }
 
-/// A URLProtocol the tests point URLSession at: `register` a handler per
-/// request and read back the requests the client sent.
-public final class MockProtocol: URLProtocol, @unchecked Sendable {
-    public nonisolated(unsafe) static var handler: (@Sendable (URLRequest) throws -> (HTTPURLResponse, Data))?
-    public nonisolated(unsafe) static var requests: [URLRequest] = []
-
-    public override class func canInit(with request: URLRequest) -> Bool { true }
-    public override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
-    public override func startLoading() {
-        guard let handler = MockProtocol.handler else { return }
-        MockProtocol.requests.append(request)
-        do {
-            let (response, data) = try handler(request)
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: data)
-            client?.urlProtocolDidFinishLoading(self)
-        } catch {
-            client?.urlProtocol(self, didFailWithError: error)
-        }
-    }
-    public override func stopLoading() {}
-
-    public static func session() -> URLSession {
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [MockProtocol.self]
-        return URLSession(configuration: config)
-    }
-}
-
 public actor KopifundClient {
     private let base: URL
     private let bearer: String?
