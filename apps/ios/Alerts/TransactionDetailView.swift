@@ -132,8 +132,21 @@ struct TransactionDetailView: View {
         }
         .onDisappear {
             guard deleteOnExit else { return }
-            context.delete(row)
-            try? context.save()
+            let row = row, context = context
+            Task { @MainActor in
+                // a sync may have picked the row up between the tap and
+                // now: its reply writes to the row, so the delete waits for
+                // the send to settle (two minutes at most, past URLSession's
+                // own timeout)
+                var waited = 0
+                while row.modelContext != nil, row.state == "syncing", waited < 240 {
+                    try? await Task.sleep(for: .milliseconds(500))
+                    waited += 1
+                }
+                guard row.modelContext != nil, !row.isDeleted else { return }
+                context.delete(row)
+                try? context.save()
+            }
         }
     }
 
