@@ -737,15 +737,19 @@ def _counted(method: Callable) -> Callable:
     return counted
 
 
-def _running_work() -> list[str]:
+def _running_work(reads: bool = False) -> list[str]:
     """The work a stop waits for, in the card's words: the writes under way
-    but the stop itself, and the stats rebuild. GETs are waited for too but
-    not named, as they take a moment."""
+    but the stop itself, and the stats rebuild. GETs are waited for too, and
+    named only with `reads` (the warning when the wait runs out), as the
+    card has no use for a read that takes a moment."""
     with _BUSY:
         posts = [path for (method, path) in _INFLIGHT if method == "POST" and path not in _ENDS]
+        gets = sum(n for (method, _path), n in _INFLIGHT.items() if method in ("GET", "HEAD"))
     words = list(dict.fromkeys(_WORK_WORDS.get(p, "a save") for p in sorted(posts)))
     if stats_rebuild.running():
         words.append("the stats rebuild")
+    if reads and gets:
+        words.append("1 read" if gets == 1 else f"{gets} reads")
     return words
 
 
@@ -761,7 +765,7 @@ def _drain(timeout: float | None = None) -> list[str]:
                 break
             # a request's end notifies; the stats rebuild does not, so look again shortly
             _BUSY.wait(min(left, 0.25))
-    return _running_work() if (_INFLIGHT or stats_rebuild.running()) else []
+    return _running_work(reads=True) if (_INFLIGHT or stats_rebuild.running()) else []
 
 
 def _after_response(fn: Callable[[], None]) -> None:

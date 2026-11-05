@@ -477,6 +477,11 @@ class ServerControlTest(Server):
         with mock.patch.object(serve.stats_rebuild, "running", side_effect=lambda: next(answers, False)):
             self.assertEqual(serve._drain(timeout=5), [])
 
+    def test_a_read_still_running_at_the_deadline_is_named(self):
+        with mock.patch.dict(serve._INFLIGHT, {("GET", "/api/exports/x/y.csv"): 1}):
+            self.assertEqual(serve._running_work(), [])      # the card names no reads
+            self.assertEqual(serve._drain(timeout=0.2), ["1 read"])
+
     def test_a_stop_past_the_deadline_says_what_it_cut_off(self):
         class Fake:
             stopped = False

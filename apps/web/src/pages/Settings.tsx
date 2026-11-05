@@ -107,7 +107,8 @@ function andList(words: string[]): string {
 /** Whether the server still answers, asked without flipping the offline banner. */
 async function serverAnswers(): Promise<boolean> {
   try {
-    return (await fetch("/api/server", { cache: "no-store" })).ok;
+    // a stalled connection must not hold the card past its deadline
+    return (await fetch("/api/server", { cache: "no-store", signal: AbortSignal.timeout(2000) })).ok;
   } catch {
     return false;
   }
