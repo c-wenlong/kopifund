@@ -71,6 +71,17 @@ MIN_AMOUNT_MINOR = 1000   # S$10.00: below this a repeat is noise, not a commitm
 RECENT = 6             # the latest charges a series' usual amount is the median of
 PRICE_CHANGE = 2       # G16: a price change at most doubles or halves a bill
 SHORT_RUN = 5          # G16: a run of fewer payments than this must keep every gap
+# Audit: where a payee's other charges near a run number more than CROWD times its own
+# payments, the run must keep to its days (REGULAR_SHARE of its payments within
+# REGULAR_DAYS of their expected day: days counted, months counted) and hold its prices
+# (STEADY_SHARE of its payments within TIGHT_BAND of the one before or after)
+CROWD = 0.5
+REGULAR_SHARE = 0.8
+REGULAR_DAYS = (1, 3)
+STEADY_SHARE = 0.6
+# Audit: an account with no statement for this many days while the record runs on is
+# closed, not late: three monthly statements missed
+CLOSED_AFTER = STOP_FACTOR * 30.44
 
 # The bank labels that mean somebody is pulling money on a schedule rather than
 # the owner pushing it. They are listed whether or not the spacing test passes.
@@ -216,6 +227,11 @@ def _walk(cadence, days):
     # gaps must be one cadence on their own, or a run of purchases a month or two
     # apart would pass
     out_of = max(len(days) - 1, slots)
+    if cadence in DAY_STEP:
+        # Audit: a weekly or fortnightly run is out of every payment it spans, so one with a
+        # week missing in three is not on schedule (a cadence of a month or longer already
+        # counts the cadences a payment back on schedule spans)
+        out_of = max(out_of, round((days[-1] - days[0]).days / nominal))
     return (hits + back if hits / out_of >= 0.5 else hits), out_of
 
 
@@ -570,7 +586,11 @@ def spread_varies(amounts, band):
 def account_ends(snapshot, end):
     """G16: {account number: the last day its statements cover}, the later of its
     last statement's end and its last row, never past `end`; a series is judged
-    paused or stopped on its own account's, so a lagging statement is not silence."""
+    paused or stopped on its own account's, so a lagging statement is not silence.
+
+    Audit: but an account whose statements stop more than CLOSED_AFTER days before
+    `end` is closed (a card cancelled, a bank left), not lagging: its series are
+    judged on `end`, or a bill on a closed card would stay active for good."""
     out = {}
     for r in snapshot["transactions"]:
         if r.get("account_no") and r.get("date"):
@@ -578,7 +598,7 @@ def account_ends(snapshot, end):
     for p in snapshot.get("periods") or ():
         if p.get("account_no") and p.get("period_end"):
             out[p["account_no"]] = max(p["period_end"], out.get(p["account_no"], p["period_end"]))
-    return {k: min(v, end) for k, v in out.items()}
+    return {k: end if v >= end or c.days_between(v, end) > CLOSED_AFTER else v for k, v in out.items()}
 
 
 def _found(rows, flagged, habit=False):
@@ -593,6 +613,76 @@ def _found(rows, flagged, habit=False):
     # Only the rows inside the run that fitted are the series; anything
     # before the hole belonged to the run that ended there.
     return name, nominal, [r for r in rows if run[0] <= r["date"] <= run[-1]], len(run)
+
+
+def _crowded(group, found, taken=frozenset()):
+    """Audit: True when the group's other charges within one cadence either side of a
+    series' run number more than CROWD times its own payments (each counted as days,
+    `_merged`). At a payee that charges often at many amounts, some stretch of
+    purchases at one level always happens to fall a week or a month apart. `taken`
+    are the rows (ids) of the group's other runs that keep to a cadence: a second
+    plan at the same payee is no crowd."""
+    name, nominal, mine, _ = found
+    reach = math.ceil(nominal)
+    first = date.fromordinal(date.fromisoformat(mine[0]["date"]).toordinal() - reach).isoformat()
+    last = date.fromordinal(date.fromisoformat(mine[-1]["date"]).toordinal() + reach).isoformat()
+    own = {id(r) for r in mine}
+    others = _merged(r["date"] for r in group
+                     if first <= r["date"] <= last and id(r) not in own and id(r) not in taken)
+    return len(others) > CROWD * len(_merged(r["date"] for r in mine))
+
+
+def _regular(cadence, days):
+    """Audit: True when at least REGULAR_SHARE of a series' payment days (ISO, merged)
+    each land within REGULAR_DAYS of a different expected day of its schedule (`Grid`):
+    the same weekday for a cadence counted in days, the same day of the month for one
+    counted in months. A bill is charged on its day; purchases that only happen to be
+    about a week or a month apart drift off it."""
+    ds = [date.fromisoformat(d) for d in days]
+    g = Grid(cadence, ds)
+    near = REGULAR_DAYS[0] if cadence in DAY_STEP else REGULAR_DAYS[1]
+    hit = {n for d in ds for n in [g.nearest(d)] if abs((g.day(n) - d).days) <= near}
+    return len(hit) >= REGULAR_SHARE * len(ds)
+
+
+def _steady(amounts):
+    """Audit: True when at least STEADY_SHARE of the payments (cents, in date order)
+    are within TIGHT_BAND of the payment before or after them: a bill holds each
+    price for a while, so a price change or two still passes, but purchases at any
+    amount within a level's quarter rarely sit next to one at their own price."""
+    def near(a, b):
+        return abs(a - b) <= TIGHT_BAND * max(a, b)
+    held = sum(any(near(a, amounts[j]) for j in (i - 1, i + 1) if 0 <= j < len(amounts))
+               for i, a in enumerate(amounts))
+    # as with SHORT_RUN's gaps, a short run has no room for a payment at an odd price
+    return held >= (len(amounts) if len(amounts) < SHORT_RUN else STEADY_SHARE * len(amounts))
+
+
+def _by_chance(group, found, taken=frozenset(), whole=False):
+    """Audit: True when a run that keeps to a cadence is more likely purchases that
+    happen to fall on it than a bill. A bill is charged on its day at its price: in a
+    crowded group (`_crowded`) a run must keep to its schedule's days (`_regular`) and
+    hold its prices (`_steady`); the group taken whole, whose amounts move by
+    definition, must always keep to its days."""
+    name, _, mine, _ = found
+    days = _merged(r["date"] for r in mine)
+    if whole:
+        return not _regular(name, days)
+    return (_crowded(group, found, taken)
+            and not (_regular(name, days) and _steady([-c.sgd_minor(r) for r in mine])))
+
+
+def _standing(rows, runs):
+    """Audit: the runs ((chain, members, recent, found)) that are not purchases by chance
+    (`_by_chance`). A run's crowd leaves out the charges of the group's other runs, but
+    only of runs still standing: one dropped (by chance, or under the floor) is purchases
+    again, so the rest are judged once more until none falls."""
+    while True:
+        keep = [x for x in runs
+                if not _by_chance(rows, x[3], {id(r) for y in runs if y is not x for r in y[3][2]})]
+        if len(keep) == len(runs):
+            return runs
+        runs = keep
 
 
 def state_after(since, nominal):
@@ -655,18 +745,21 @@ def detect_group(kind, group, rows, flagged, tight, ends, end):
         # where one buys in, one level: the amount most charges are at, and the
         # levels it took over from or that took over from it
         chains = [ch for ch in chains if ch["densest"]]
-    out = []
+    runs = []
     for chain in chains:
         members = sorted((i for lv in chain["levels"] for i in lv), key=lambda i: (charges[i][0], i))
         found = _found([rows[i] for i in members], flagged, habit)
-        if not found:
-            continue
+        if found:
+            runs.append((chain, members, found))
+    out = []
+    for chain, members, found in runs:
         # the usual amount: the median of the last few charges at the latest level the run reaches
         run = {id(r) for r in found[2]}
         latest = [rows[i] for i in chain["latest"] if id(rows[i]) in run] or found[2]
         recent = latest[-RECENT:]
         if c.median_cents(-c.sgd_minor(r) for r in recent) >= MIN_AMOUNT_MINOR or flagged:
             out.append((chain, members, recent, found))
+    out = _standing(rows, out)
     # G16: the lone charges after each series' last carry it on, each to one series only;
     # a series that then falls under the floor is dropped and the rest are assigned again,
     # so the page, which assigns among the series the result holds, does the same
@@ -691,13 +784,16 @@ def detect_group(kind, group, rows, flagged, tight, ends, end):
                                       flagged, band, ends, end))
         if len(keep) == len(out):
             break
-        out = [out[k] for k in keep]
+        # a series dropped here is no longer another series: the rest are judged again
+        out = _standing(rows, [out[k] for k in keep])
     if series or habit:
         # A coffee shop or a bus fare is not retried whole: at any amount at
         # all, twice a week is habit, and the retry is exactly how Grab,
         # Bus/MRT and a coffee stall got in.
         return series
     found = _found(rows, flagged)
+    if found and _by_chance(rows, found, whole=True):
+        found = None
     # G16: the floor is held against the run the retry reports, whose usual amount the
     # series carries, not the group's latest charges, which may lie outside it
     if found and (c.median_cents(-c.sgd_minor(r) for r in found[2][-RECENT:]) >= MIN_AMOUNT_MINOR or flagged):

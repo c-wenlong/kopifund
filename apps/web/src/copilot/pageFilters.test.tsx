@@ -67,7 +67,8 @@ describe("the page's selections go with a question", () => {
     fireEvent.click(screen.getByRole("radio", { name: "3M" }));
     fireEvent.click(screen.getByRole("radio", { name: "Include overseas" }));
     fireEvent.click(screen.getByRole("radio", { name: "By payee" }));
-    expect(await ask()).toEqual({ view: "lines", from: "2026-07", to: "2026-09", scope: "all", by: "payee" });
+    // the controls are in the address now too (range among them); the months they cover are published
+    expect(await ask()).toEqual({ view: "lines", range: "3", from: "2026-07", to: "2026-09", scope: "all", by: "payee" });
   });
 
   it("sends the budget month Plan shows", async () => {
