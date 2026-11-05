@@ -605,7 +605,10 @@ model and a load never waits on the network.
   `XAI_API_KEY`, ...) or `<PROVIDER>_API_KEY` in the environment, `.env` in
   the data folder, or a `key_file` such as the one a shell profile sources.
   Test on the card sends one short request and says whether the provider
-  answered. No test ever writes to the Keychain.
+  answered. No test ever writes to the Keychain. The key goes in a header
+  to the provider's own URL and nowhere else: a redirect is refused, not
+  followed with the key, and a provider error that repeats a key is shown
+  with it taken out.
 - **Model fields autocomplete** from the provider's own list of models
   (Anthropic's `GET /v1/models`, or `GET <base_url>/models` for an
   OpenAI-style provider), fetched by the server with the saved key, so the
