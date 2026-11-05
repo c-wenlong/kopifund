@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { REST_COLOUR } from "../../../components/chartKit";
 import type { WidgetAnswer } from "../../../types.gen";
-import { fmtValue, shareText, signedValue, sliceColour, slicesFor, totalOf, txnLink } from "./model";
+import { fmtValue, shareText, signedValue, sliceColour, slicesFor, slicesLeftOut, totalOf, txnLink } from "./model";
 
 // invented figures only
 const BY_BUCKET: WidgetAnswer = {
@@ -37,6 +37,13 @@ describe("slicesFor", () => {
     expect(slices.map((s) => s.name)).toEqual(["Food", "Transport", "Everything else"]);
     expect(slices.map((s) => s.value)).toEqual([175_000, 60_000, 15_000]);
     expect(slices[0].link).toEqual(BY_BUCKET.label_links?.[0]);
+  });
+
+  it("leaves out a slice at or below zero, so the total and the shares are of what is drawn", () => {
+    const refunded: WidgetAnswer = { ...BY_BUCKET, series: [{ name: "spend", values_minor: [175_000, -5_000, 0] }] };
+    expect(slicesFor([refunded]).map((s) => s.name)).toEqual(["Food"]);
+    expect(totalOf(slicesFor([refunded]))).toBe(175_000);
+    expect(slicesLeftOut([refunded]).map((s) => [s.name, s.value])).toEqual([["Transport", -5_000], ["Everything else", 0]]);
   });
 
   it("reads several series as one slice each, at the latest point", () => {

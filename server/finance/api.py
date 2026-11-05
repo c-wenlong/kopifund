@@ -21,7 +21,8 @@ from typing import Iterator, NamedTuple
 from . import account_names, app_icon, db, home, results_cache, row_text, scam_checks, stats_rebuild
 from .errors import NotFound
 from .countries import flag
-from .spending import INCOME_WHERE, PAYEE_OF, SPEND_WHERE, TRANSFER_ROWS_WHERE, per_month
+from .figures import div_cents
+from .spending import INCOME_WHERE, PAYEE_OF, SPEND_WHERE, TRANSFER_ROWS_WHERE
 
 MAX_LIMIT = 500
 
@@ -287,8 +288,8 @@ def trips(conn, long_stay=None):
                     "notes": r["notes"] or "",
                     "extra_keys": pins.get(r["id"], []),
                     "spend_sgd": r["spend"], "rows": r["n"],
-                    # per_month is a whole-cent average in integer arithmetic; here over days
-                    "per_day": per_month(r["spend"], days) if days and days > 0 else None,
+                    # a whole-cent average in integer arithmetic; here over days
+                    "per_day": div_cents(r["spend"], days) if days and days > 0 else None,
                     "long_stay": bool(days and days > long_stay),
                     "top_categories": top.get(r["id"], [])[:2]})
     # the record's last transaction day: a trip that starts after it is planned
@@ -618,8 +619,8 @@ def get_link_devices(req):
 
 def get_link_pending(req):
     """The phone rows the Settings card lists, each named for the paired
-    phone that sent it. Loopback only in practice: the link path refuses
-    every /api/link/ read but /api/link/devices's own."""
+    phone that sent it. Loopback only: the link path answers only the
+    reads in serve.py's LINK_READS."""
     from . import link, pending
     names = {d["id"]: d["name"] for d in link.list_devices()}
     conn = req.maybe_record()
@@ -642,7 +643,7 @@ def get_dashboard_query(req):
     """A WidgetQuery resolved to labels and series: `?q=` holds the query as
     JSON, so the app's useWidgetData hook gets the ETag caching of every GET."""
     from . import dashboard
-    return dashboard.resolve(req.maybe_record(), results_cache.results(req),
+    return dashboard.resolve(req.maybe_record(), results_cache.results_view(req),
                              dashboard.query_from_get(req.query))
 
 

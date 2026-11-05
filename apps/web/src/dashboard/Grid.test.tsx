@@ -102,6 +102,20 @@ describe("Grid", () => {
     expect(arranged(onArrange, "w-a")).toEqual({ x: 0, y: 2, w: 6, h: 2 });
   });
 
+  it("drops a widget dragged up onto a top-row widget above it, as the preview showed", () => {
+    // w-a is first in the list, so a repack of the board from before the drag would keep it on top
+    const onArrange = renderGrid([
+      widget("w-a", { x: 0, y: 0, w: 6, h: 2 }),
+      widget("w-b", { x: 0, y: 2, w: 6, h: 2 }),
+    ]);
+    const grip = screen.getByRole("button", { name: /Move Note w-b/ });
+    fireEvent.pointerDown(grip, { pointerId: 1, clientX: 5, clientY: 5 + 2 * ROW });
+    fireEvent.pointerMove(grip, { pointerId: 1, clientX: 5, clientY: 5 });
+    fireEvent.pointerUp(grip, { pointerId: 1, clientX: 5, clientY: 5 });
+    expect(arranged(onArrange, "w-b")).toEqual({ x: 0, y: 0, w: 6, h: 2 });
+    expect(arranged(onArrange, "w-a")).toEqual({ x: 0, y: 2, w: 6, h: 2 });
+  });
+
   it("keeps the dropped column while settling upwards", () => {
     const onArrange = renderGrid([widget("w-a", { x: 0, y: 0, w: 4, h: 2 })]);
     const grip = screen.getByRole("button", { name: /Move Note w-a/ });

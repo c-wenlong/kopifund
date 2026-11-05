@@ -3,27 +3,40 @@
 A day reads "3 Oct 2026", a month "Oct 2026", a range "3 Oct to 9 Oct 2026"
 (both ends in full when the years differ). Only sentences use these: data
 fields, CSV exports, file names and API values stay ISO.
+
+Text shaped like an ISO day or month that names no real one ("2026-02-31",
+"2026-13") is a ValueError, in the labels and in the month arithmetic: it is a
+misread upstream, never a date to print. Other text comes back as it is.
 """
 
 import re
+from datetime import date
 
 MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec")
-_ISO = re.compile(r"(\d{4})-(\d{2})(?:-(\d{2}))?")
+_ISO = re.compile(r"([0-9]{4})-([0-9]{2})(?:-([0-9]{2}))?")
+_MONTH = re.compile(r"([0-9]{4})-([0-9]{2})")
 
 
 def _parts(value):
-    """(year, month, day or None) of an ISO day or month (a str or a date), or None."""
+    """(year, month, day or None) of an ISO day or month (a str, a date or a
+    datetime), or None for text of another shape. ValueError for one that does
+    not exist."""
+    if isinstance(value, date):
+        return value.year, value.month, value.day
     hit = _ISO.fullmatch(str(value)) if value is not None else None
     if not hit:
         return None
     y, m, d = int(hit[1]), int(hit[2]), int(hit[3]) if hit[3] else None
-    if not 1 <= m <= 12 or (d is not None and not 1 <= d <= 31):
-        return None
+    try:
+        date(y, m, 1 if d is None else d)
+    except ValueError:
+        raise ValueError(f"{value!r} is not a real {'month' if d is None else 'day'}") from None
     return y, m, d
 
 
 def day_label(value):
-    """`2026-10-03` as `3 Oct 2026`. Anything that is not an ISO day comes back as text."""
+    """`2026-10-03` as `3 Oct 2026`. Anything that is not an ISO day comes back as
+    text, except a day that does not exist, a ValueError."""
     p = _parts(value)
     if not p or p[2] is None:
         return "" if value is None else str(value)
@@ -50,7 +63,7 @@ def range_label(start, end):
     a, b = _parts(start), _parts(end)
     if not a or not b or (a[2] is None) != (b[2] is None) or a[0] != b[0]:
         return f"{date_label(start)} to {date_label(end)}"
-    if str(start) == str(end):
+    if a == b:
         return date_label(start)
     head = MONTHS[a[1] - 1] if a[2] is None else f"{a[2]} {MONTHS[a[1] - 1]}"
     return f"{head} to {date_label(end)}"
@@ -61,12 +74,36 @@ def months_label(values):
     return ", ".join(month_label(v) for v in values)
 
 
+def _month(value):
+    """(year, month) of a YYYY-MM month. TypeError for what is not text,
+    ValueError for text that is not a real month."""
+    if not isinstance(value, str):
+        raise TypeError(f"{value!r} is not a month, YYYY-MM")
+    hit = _MONTH.fullmatch(value)
+    if not hit or not 1 <= int(hit[1]) or not 1 <= int(hit[2]) <= 12:
+        raise ValueError(f"{value!r} is not a month, YYYY-MM")
+    return int(hit[1]), int(hit[2])
+
+
 def add_months(month, n):
-    """The month n months after `month` (YYYY-MM); n may be negative."""
-    y, m = int(month[:4]), int(month[5:7]) - 1 + n
-    return f"{y + m // 12:04d}-{m % 12 + 1:02d}"
+    """The month n months after `month` (YYYY-MM); n may be negative. ValueError
+    when `month` is not a real month or the answer falls outside years 1 to 9999."""
+    if isinstance(n, bool) or not isinstance(n, int):
+        raise TypeError(f"{n!r} is not a whole number of months")
+    y, m = _month(month)
+    y, m = divmod(y * 12 + m - 1 + n, 12)
+    if not 1 <= y <= 9999:
+        raise ValueError(f"{n} months after {month} is outside the calendar")
+    return f"{y:04d}-{m + 1:02d}"
 
 
 def months_apart(a, b):
-    """How many months b is after a (both YYYY-MM)."""
-    return (int(b[:4]) - int(a[:4])) * 12 + int(b[5:7]) - int(a[5:7])
+    """How many months b is after a (both YYYY-MM): negative when b is before a."""
+    (ya, ma), (yb, mb) = _month(a), _month(b)
+    return (yb - ya) * 12 + mb - ma
+
+
+def months_between(first, last):
+    """Every month from `first` to `last` (YYYY-MM), both ends included, with no
+    gaps; empty when `last` is before `first`."""
+    return [add_months(first, n) for n in range(months_apart(first, last) + 1)]

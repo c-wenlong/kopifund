@@ -166,7 +166,7 @@ private let day = Calendar.current.date(
 
 /// A batched automation run (the Email trigger can deliver several mails at
 /// once) must write one record per item rather than one stitched blob.
-@Test @MainActor func batchedIngestWritesOneRecordPerItem() throws {
+@Test @MainActor func batchedIngestWritesOneRecordPerItem() async throws {
     let container = try Store.memory()
     let context = ModelContext(container)
     let pattern = AlertPattern(name: "Card spend", direction: .outflow,
@@ -176,7 +176,7 @@ private let day = Calendar.current.date(
                                sampleText: "You charged SGD5.00 at KOPITIAM")
     context.insert(PatternRecord(pattern))
     try context.save()
-    let outcome = try Ingest.alert(
+    let outcome = try await Ingest.alert(
         texts: ["You charged SGD5.00 at KOPITIAM",
                 "a reminder about a mentorship evening, no spend here",
                 "   "],
@@ -185,7 +185,8 @@ private let day = Calendar.current.date(
     #expect(try context.fetchCount(FetchDescriptor<TransactionRecord>()) == 1)
     #expect(try context.fetchCount(FetchDescriptor<UnmatchedRecord>()) == 1)
     // a single item keeps the single-ingest wording
-    #expect(try Ingest.alert(texts: ["You charged SGD9.00 at STARBUCKS"],
-                           source: "email", receivedAt: day,
-                           container: container) == "queued")
+    let single = try await Ingest.alert(texts: ["You charged SGD9.00 at STARBUCKS"],
+                                        source: "email", receivedAt: day,
+                                        container: container)
+    #expect(single == "queued")
 }

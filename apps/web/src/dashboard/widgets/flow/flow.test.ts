@@ -102,11 +102,34 @@ describe("buildFlow", () => {
     // income covers Food (2000) and part of Transport; Beyond income the rest
     const t = d.links.filter((l) => l.target.id === "m1");
     expect(t.map((l) => [l.source.id, l.minor])).toEqual([["income", 50_000], ["beyond", 50_000]]);
+    // each band holds half of Transport, and no filter lists half of its rows: neither band links,
+    // while a band that carries a whole node (Food, all from income) still opens its rows
+    expect(t.map((l) => l.link)).toEqual([null, null]);
+    expect(d.links.find((l) => l.target.id === "m0")?.link).toEqual({ bucket: "Food" });
+    expect(d.nodes.find((n) => n.id === "m1")?.link).toEqual({ bucket: "Transport" });
     for (const n of d.nodes) {
       const inflow = inflowOf(d, n.id);
       if (inflow > 0) expect(inflow).toBe(n.minor);
     }
     expect(sum(d.nodes.filter((n) => n.column === 0))).toBe(sum(d.nodes.filter((n) => n.column === 1)));
+  });
+
+  it("draws one Everything else under a slice whose refunds push its folded row out", () => {
+    // the answer's own folded row (300) fits, a category (200) does not once a refund nets the slice to 1000
+    const slice: FlowSlice = {
+      name: "Food", minor: 100_000, link: { bucket: "Food" },
+      children: [
+        { name: "Eating out", minor: 60_000, kind: "category", link: { category: "Eating out", bucket: "Food" } },
+        { name: OTHER_NAME, minor: 30_000, kind: "rest", link: { not_categories: '["Eating out","Groceries"]', bucket: "Food" } },
+        { name: "Groceries", minor: 20_000, kind: "category", link: { category: "Groceries", bucket: "Food" } },
+        { name: "Refunds", minor: -10_000, kind: "category", link: { category: "Refunds", bucket: "Food" } },
+      ],
+    };
+    const d = buildFlow({ income_minor: 500_000, incomeLink: null, slices: [slice], transfers: [] });
+    const kids = d.nodes.filter((n) => n.column === 2);
+    expect(kids.filter((n) => n.label === OTHER_NAME)).toHaveLength(1);
+    expect(kids.map((n) => [n.label, n.minor])).toEqual([["Eating out", 60_000], ["Groceries", 20_000], [OTHER_NAME, 20_000]]);
+    expect(sum(kids)).toBe(100_000);
   });
 
   it("shows the whole slice as Everything else when its categories never arrived", () => {

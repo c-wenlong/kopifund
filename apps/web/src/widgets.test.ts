@@ -24,6 +24,15 @@ describe("useWidgetData", () => {
     expect(JSON.parse(decodeURIComponent(url.slice(url.indexOf("=") + 1)))).toEqual(SPEND_BY_BUCKET);
   });
 
+  it("writes one address for one question, whatever order its keys were written in", () => {
+    const reordered = {
+      range: { to: "2026-08", from: "2026-08" }, dimension: "bucket", metric: "spend", source: "spending",
+    } as WidgetQuery;
+    expect(widgetQueryUrl(reordered)).toBe(widgetQueryUrl(SPEND_BY_BUCKET));
+    // a key left undefined is no key at all
+    expect(widgetQueryUrl({ ...SPEND_BY_BUCKET, split: undefined })).toBe(widgetQueryUrl(SPEND_BY_BUCKET));
+  });
+
   it("loads the answer through api.ts's cache and revalidation", async () => {
     const asked: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {

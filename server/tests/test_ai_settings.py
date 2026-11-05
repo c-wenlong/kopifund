@@ -346,6 +346,48 @@ class KeyOrderTest(Folder):
         self.assertEqual(calls[0], ("https://api.deepseek.com/v1/chat/completions", {"authorization": f"Bearer {KEY}"}))
 
 
+class AutoLookupTest(Folder):
+    """Audit: provider "auto" asks each place for a key once per settings read:
+    every file once, and the Keychain once per provider it could pick."""
+
+    def test_each_key_file_and_each_saved_key_is_read_once(self):
+        from finance import dotenv
+        files = [self.root / "k1", self.root / "k2"]
+        for f in files:
+            f.write_text("UNRELATED=1\n")
+        asked = []
+
+        class Store:
+            place = "keychain"
+
+            def read(self, provider):
+                asked.append(provider)
+                return None
+        before = keys.use(Store())
+        self.addCleanup(keys.use, before)
+        read = []
+        real = dotenv.read
+        with mock.patch.object(dotenv, "read", side_effect=lambda p: read.append(p) or real(p)):
+            with self.assertRaises(ai.AIError):
+                ai.settings(self.cfg({"provider": "auto", "key_file": [str(f) for f in files]}), self.conn)
+        self.assertEqual(len(read), 1 + len(files), read)
+        self.assertEqual(len(asked), len(set(asked)), asked)
+        self.assertEqual(set(asked), {p for p, v in ai.PROVIDERS.items() if v[3]})
+
+    def test_auto_still_picks_the_first_provider_with_a_key_and_a_default_model(self):
+        keys.save("deepseek", KEY)
+        self.assertEqual(ai.settings(self.cfg({"provider": "auto"}), self.conn)["provider"], "deepseek")
+        os.environ["ANTHROPIC_API_KEY"] = "sk-from-shell-0001"
+        self.addCleanup(os.environ.pop, "ANTHROPIC_API_KEY", None)
+        self.assertEqual(ai.settings(self.cfg({"provider": "auto"}), self.conn)["provider"], "anthropic")
+        del os.environ["ANTHROPIC_API_KEY"]
+        os.environ["OPENAI_API_KEY"] = "sk-openai-0001"
+        self.addCleanup(os.environ.pop, "OPENAI_API_KEY", None)
+        keys.remove("deepseek")
+        with self.assertRaisesRegex(ai.AIError, "found keys for openai but no default model"):
+            ai.settings(self.cfg({"provider": "auto"}), self.conn)
+
+
 class Pages:
     """A fake GET for the models endpoints: Anthropic's paged list or one OpenAI-style page."""
 
