@@ -281,6 +281,25 @@ private func rows(_ container: ModelContainer) throws -> [TransactionRecord] {
     #expect(row.currency == "SGD")
 }
 
+@Test @MainActor func aCurrencyInheritedByAPostedRowOwesTheHubARepost() async throws {
+    // the keeper went to the hub counted in the plan's currency; the tap
+    // that pairs with it states another, so the hub's copy is stale
+    let container = try store(cardPattern(autoApprove: true))
+    let (defaults, name) = scratchDefaults(planCurrency: "SGD")
+    defer { defaults.removePersistentDomain(forName: name) }
+    _ = try await Ingest.alert(text: "You charged 1200.00 at LAWSON", source: "sms",
+                               receivedAt: day, container: container, defaults: defaults)
+    let first = try #require(try rows(container).first)
+    first.kopifundID = "kph_test"
+    first.kopifundSent = "accepted"
+    try first.modelContext?.save()
+    _ = try Ingest.wallet(amount: 1200, merchant: "Lawson", card: nil, date: day,
+                          currency: "JPY", container: container, defaults: defaults)
+    let alert = try #require(try rows(container).first { !$0.alertText.isEmpty })
+    #expect(alert.currency == "JPY")
+    #expect(alert.kopifundSent == nil)
+}
+
 @Test @MainActor func unstatedAlertPairsWithALaterForeignTapAndIsHeld() async throws {
     // Greptile on #319: filling SGD at intake stopped this pair forming, so
     // the auto-approved alert posted JPY 1,200 as S$1,200

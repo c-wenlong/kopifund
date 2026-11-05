@@ -287,6 +287,15 @@ final class HubLane {
         }
     }
 
+    /// What the hub is sent for `row`: its day, signed amount, currency (the
+    /// plan's when it printed none) and payee. `kopifundSent` keeps the last
+    /// one the hub accepted.
+    private func signature(_ row: TransactionRecord) -> String {
+        let signed = row.direction == "outflow" ? -row.amountCents : row.amountCents
+        let currency = row.currency.isEmpty ? planCurrency : row.currency
+        return "\(row.day.iso)|\(signed)|\(currency ?? "")|\(row.payee)"
+    }
+
     /// Post `row` to the hub when it owes a send, then park it as "kopifund"
     /// when the record covers it. Once per row per run.
     func prepare(_ row: TransactionRecord, context: ModelContext) async {
@@ -307,7 +316,7 @@ final class HubLane {
         let day = row.day.iso
         let signed = row.direction == "outflow" ? -row.amountCents : row.amountCents
         let currency = row.currency.isEmpty ? planCurrency : row.currency
-        let sent = "\(day)|\(signed)|\(currency ?? "")|\(row.payee)"
+        let sent = signature(row)
         guard checked[row.id] != sent else { return }
         checked[row.id] = sent
         let inLane = row.state == "approved" || row.state == "failed" || row.state == "syncing"
@@ -325,7 +334,9 @@ final class HubLane {
             do {
                 _ = try await link.postPending(post)
                 if row.isDeleted || row.modelContext == nil { return }
-                row.kopifundSent = sent
+                // an edit made while the post was out was not in it: the row
+                // stays owed (no accepted copy), so the next pass sends it
+                row.kopifundSent = signature(row) == sent ? sent : nil
                 row.kopifundError = nil
             } catch {
                 if row.isDeleted || row.modelContext == nil { return }

@@ -224,6 +224,9 @@ public enum Ingest {
         guard keeper.currency.isEmpty, !parked.currency.isEmpty,
               keeper.state != "syncing", keeper.state != "synced" else { return }
         keeper.currency = parked.currency
+        // the hub was sent the keeper without this currency: clearing its
+        // accepted copy puts it back in the sync's hub pass for a repost
+        if keeper.kopifundID != nil { keeper.kopifundSent = nil }
     }
 
     private static func rank(_ r: TransactionRecord) -> Int { r.alertText.isEmpty ? 0 : 1 }
