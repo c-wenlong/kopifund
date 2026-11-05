@@ -1288,6 +1288,45 @@ describe("Transactions: review fixes", () => {
   });
 });
 
+describe("Transactions: a row save across a change of layout", () => {
+  beforeEach(() => bare());
+  afterEach(() => { vi.unstubAllGlobals(); clearToasts(); });
+
+  it("leaves the question to the form that replaced the one whose save failed", async () => {
+    let wide = false;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      get matches() { return wide; }, media: query,
+      addEventListener: (_: string, f: () => void) => listeners.add(f),
+      removeEventListener: (_: string, f: () => void) => listeners.delete(f),
+    }));
+    let fail: (() => void) | null = null;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/rules/pin" && "kind" in JSON.parse(String(init!.body))) {
+        return new Promise<Response>((done) => { fail = () => done(new Response(JSON.stringify({ error: "disk full" }), { status: 500 })); });
+      }
+      const body = url.startsWith("/api/transactions") ? { ...page, rows: [{ ...page.rows[0], payee: "A shop" }] }
+        : url === "/api/rules/pin" ? { file: "keys.csv", change: "p1", relinked: { changed: 1, written: 1 } }
+        : { ...one(false), rows: [{ ...one(false).rows[0], category: "Shopping", payee: "A shop" }] };
+      return new Response(JSON.stringify(body), { status: 200 });
+    }));
+    render(<Transactions />);
+    fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row A shop/ }));
+    fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Donations" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" });
+    // an unchanged form saved, the layout changes under it, and a note goes into the form that replaced it
+    fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
+    act(() => { wide = true; listeners.forEach((f) => f()); });
+    expect(await screen.findByRole("table")).toBeInTheDocument();
+    fireEvent.change(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
+    await waitFor(() => expect(fail).not.toBeNull());
+    await act(async () => fail!());
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(leaveAsks()).toBe(true);
+  });
+});
+
 describe("Transactions page survives a reload and Back", () => {
   beforeEach(() => { window.localStorage.clear(); bare(); });
   afterEach(() => { vi.unstubAllGlobals(); clearToasts(); });

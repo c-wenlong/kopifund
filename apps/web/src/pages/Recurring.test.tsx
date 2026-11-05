@@ -796,6 +796,20 @@ describe("A series' own view, G16", () => {
     expect(within(region).getByText("Unsaved changes")).toBeInTheDocument();
   });
 
+  it("moves a day and cadence left alone together when another tab saves both", async () => {
+    let now = { ...VIEW, day: 2, edit: { ...VIEW.edit, day: 2 } };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) =>
+      new Response(JSON.stringify(url.startsWith("/api/recurring/series") ? now : PAGE), { status: 200 })));
+    render(<Recurring />);
+    await screen.findByRole("region", { name: "Gym" });
+    // another tab makes the 2nd of the month a weekly Tuesday: the same "2" in the day box
+    now = { ...VIEW, cadence: "weekly", day: 2, edit: { ...VIEW.edit, cadence: "weekly", day: 2 } };
+    await act(async () => notifyChanged());
+    const region = screen.getByRole("region", { name: "Gym" });
+    await waitFor(() => expect(within(region).getByRole("button", { name: "How often" })).toHaveTextContent("Weekly"));
+    expect(within(region).queryByText("Unsaved changes")).not.toBeInTheDocument();
+  });
+
   it("moves an amount typed as the saved one in other words along with another tab's save", async () => {
     let now = VIEW;
     vi.stubGlobal("fetch", vi.fn(async (url: string) =>

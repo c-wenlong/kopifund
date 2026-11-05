@@ -87,6 +87,12 @@ export function PinForm({ row, categories, kinds, onPinned, draft, onDraft, onDi
   const holding = dirty || !!sending;
   useUnsavedGuard(!onDirty && holding);
   useEffect(() => { onDirty?.(holding); }, [holding]);
+  // a form replaced while its save ran (the layout crossing 768px) leaves the row to the form that replaced it
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const what = `the ${formatDay(row.date)} row`;
@@ -103,6 +109,7 @@ export function PinForm({ row, categories, kinds, onPinned, draft, onDraft, onDi
       // against what was saved, and only a form with nothing left unsaved is done
       // said to the page straight away as well: a form hidden meanwhile is unmounted as the save ends, before
       // its effects would say it
+      if (!mounted.current) return;
       if (pinDirty(latest.current, sent)) {
         setBase(sent);
         onDraft?.({ ...latest.current, base: sent });
@@ -111,6 +118,7 @@ export function PinForm({ row, categories, kinds, onPinned, draft, onDraft, onDi
         onPinned?.();
       }
     } catch (e) {
+      if (!mounted.current) return;
       onDirty?.(pinDirty(latest.current, base));
       setError((e as Error).message);
     } finally {

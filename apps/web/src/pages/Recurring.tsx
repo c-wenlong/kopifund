@@ -554,7 +554,7 @@ const sameBox = (k: keyof Draft, a: string, b: string) => {
  */
 const follow = (d: Draft, from: Draft, to: Draft): Draft => {
   const out = Object.fromEntries(DRAFT_KEYS.map((k) => [k, sameBox(k, d[k], from[k]) ? to[k] : d[k]])) as Draft;
-  const dayUnder = out.day === d.day ? d.cadence : to.cadence;
+  const dayUnder = sameBox("day", d.day, from.day) ? to.cadence : d.cadence;
   return sameKind(out.cadence, dayUnder) ? out : { ...out, cadence: d.cadence, day: d.day };
 };
 const sameKind = (a: string, b: string) => BY_WEEKDAY.includes(a) === BY_WEEKDAY.includes(b);
