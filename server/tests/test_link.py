@@ -82,6 +82,47 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(len(winners), 1)
         self.assertEqual(len(errors), 3)
 
+    def test_a_retry_with_the_same_nonce_leaves_no_orphan_device(self):
+        """A lost reply: the phone retries the spent token with its nonce and
+        gets the same bearer for the same device row, so whichever request
+        lands last, the bearer the phone saved keeps working."""
+        token, _ = link.mint_pair_token()
+        n1 = "n1-0123456789abcdef"
+        first, device = link.redeem(token, "Test iPhone", n1)
+        second, again = link.redeem(token, "Test iPhone", n1)
+        self.assertEqual((again["id"], second), (device["id"], first))
+        self.assertEqual(len(link.list_devices()), 1)
+        self.assertEqual(link.device_for(first)["id"], device["id"])
+        # a spent token is no use without the phone's nonce, or with none
+        for nonce in ("n2-0123456789abcdef", ""):
+            with self.assertRaises(Refused):
+                link.redeem(token, "Other", nonce)
+        with self.assertRaises(ValueError):
+            link.redeem(token, "Other", "short")
+        # a new code minted meanwhile does not sweep the spent one away
+        link.mint_pair_token()
+        self.assertEqual(link.redeem(token, "Test iPhone", n1)[0], first)
+        # nor once the device is revoked, nor once the token's life is over
+        link.revoke(device["id"])
+        with self.assertRaises(Refused):
+            link.redeem(token, "Test iPhone", n1)
+        token, _ = link.mint_pair_token()
+        n3 = "n3-0123456789abcdef"
+        link.redeem(token, "x", n3)
+        with mock.patch("time.time", return_value=time.time() + link.PAIR_LIFE + 1):
+            with self.assertRaises(Refused):
+                link.redeem(token, "x", n3)
+        self.assertEqual(len(link.list_devices()), 2)
+
+    def test_the_retry_landing_first_leaves_the_bearer_working(self):
+        """The retry finishes before the delayed original: both answer the
+        same bearer, so the one the phone kept works either way."""
+        token, _ = link.mint_pair_token()
+        nonce = "n-0123456789abcdef"
+        answers = [link.redeem(token, "Test iPhone", nonce)[0] for _ in range(2)]
+        self.assertEqual(answers[0], answers[1])
+        self.assertIsNotNone(link.device_for(answers[0]))
+
     def test_revoking_flags_the_row_and_stops_the_bearer(self):
         token, _ = link.mint_pair_token()
         bearer, device = link.redeem(token)
@@ -273,6 +314,62 @@ class GateTest(unittest.TestCase):
         self.assertEqual(json.loads(raw)["rows"][0]["state"], "dismissed")
         r, raw = self.call("POST", "/api/link/pending/restore", {"import_id": "imp_e2e"}, {"X-Kopifund": "1"})
         self.assertEqual(json.loads(raw)["rows"][0]["state"], "waiting")
+
+    def test_a_code_without_the_macs_address_is_refused(self):
+        with mock.patch("finance.link.tailnet_url", return_value=""):
+            r, raw = self.call("POST", "/api/link/pair-token", {}, {"X-Kopifund": "1"})
+        self.assertEqual(r.status, 422)
+        self.assertIn("Tailscale cannot name this Mac", json.loads(raw)["error"])
+        self.assertEqual(link._read()["pair_tokens"], [])     # nothing minted
+
+    def test_check_answers_only_a_paired_unrevoked_bearer(self):
+        bearer = self.pair()
+        auth = {**self.XFF, "Authorization": f"Bearer {bearer}"}
+        r, raw = self.call("GET", "/api/link/check", headers=auth)
+        self.assertEqual((r.status, json.loads(raw)), (200, {"ok": True}))
+        r, _ = self.call("GET", "/api/link/check", headers=self.XFF)
+        self.assertEqual(r.status, 401)
+        device_id = link.list_devices()[0]["id"]
+        link.revoke(device_id)
+        r, _ = self.call("GET", "/api/link/check", headers=auth)
+        self.assertEqual(r.status, 401)
+        # health, by contrast, answers a revoked phone too
+        r, _ = self.call("GET", "/api/health", headers=auth)
+        self.assertEqual(r.status, 200)
+
+    def test_a_redeem_retried_over_http_keeps_one_device(self):
+        r, raw = self.call("POST", "/api/link/pair-token", {}, {"X-Kopifund": "1"})
+        token = parse_qs(urlsplit(json.loads(raw)["payload"]).query)["token"][0]
+        body = {"token": token, "name": "Test iPhone", "nonce": "n-http-0123456789abcdef"}
+        r1, raw1 = self.call("POST", "/api/pair/redeem", body, self.XFF)
+        r2, raw2 = self.call("POST", "/api/pair/redeem", body, self.XFF)
+        self.assertEqual((r1.status, r2.status), (200, 200))
+        self.assertEqual(json.loads(raw1)["device_id"], json.loads(raw2)["device_id"])
+        self.assertEqual(json.loads(raw1)["token"], json.loads(raw2)["token"])
+        self.assertEqual(len(link.list_devices()), 1)
+        r, _ = self.call("GET", "/api/link/check",
+                         headers={**self.XFF, "Authorization": f"Bearer {json.loads(raw2)['token']}"})
+        self.assertEqual(r.status, 200)
+
+    def test_dismiss_all_clears_every_waiting_row(self):
+        bearer = self.pair()
+        conn = db.connect()
+        self.addCleanup(conn.close)
+        self.addCleanup(conn.commit)
+        self.addCleanup(conn.execute, "DELETE FROM pending_txn")
+        rows = {"rows": [{"import_id": f"imp_{i}", "date": "2026-08-03", "amount_minor": -100 * i,
+                          "currency": "SGD", "payee": f"Invented Shop {i}"} for i in (1, 2)]}
+        r, _ = self.call("POST", "/api/link/transactions", rows, {**self.XFF, "Authorization": f"Bearer {bearer}"})
+        self.assertEqual(r.status, 200)
+        # loopback only, armed like any write
+        r, _ = self.call("POST", "/api/link/pending/dismiss-all", {},
+                         {**self.XFF, "Authorization": f"Bearer {bearer}"})
+        self.assertEqual(r.status, 403)
+        r, raw = self.call("POST", "/api/link/pending/dismiss-all", {}, {"X-Kopifund": "1"})
+        self.assertEqual(r.status, 200)
+        self.assertEqual([x["state"] for x in json.loads(raw)["rows"]], ["dismissed", "dismissed"])
+        r, raw = self.call("POST", "/api/link/pending/restore", {"import_id": "imp_1"}, {"X-Kopifund": "1"})
+        self.assertIn("waiting", [x["state"] for x in json.loads(raw)["rows"]])
 
     def test_a_spent_or_stale_token_is_a_422(self):
         r, raw = self.call("POST", "/api/pair/redeem", {"token": "kfp_wrong"}, self.XFF)

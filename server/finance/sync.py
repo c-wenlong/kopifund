@@ -289,6 +289,12 @@ def write_rules_input(cfg):
     shutil.rmtree(out / "parsed", ignore_errors=True)
     shutil.copytree(parsed.csv_dir, out / "parsed")
     shutil.rmtree(parsed.csv_dir, ignore_errors=True)
+    # a keys.csv rule on a key a row had before matches it in --lint and --why
+    # too: the old keys go in one column, space separated (categorise.tier_values)
+    attach_former_keys(parsed.rows)
+    for r in parsed.rows:
+        if "_former_keys" in r:
+            r["_former_keys"] = " ".join(r["_former_keys"])
     fields = list(dict.fromkeys(k for r in parsed.rows for k in r))
     with (out / "rules-input.csv").open("w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=fields)
@@ -350,9 +356,106 @@ def categorise(parsed, rules_path, categories=None):
         parsed.problems.append(Problem("rules-invalid", rules_module._label(rules_path),
                                        f"the rules did not load: {e}"))
         return []
+    attach_former_keys(parsed.rows)
     rules_module.categorise_rows(parsed.rows, rules)
     parsed.rules = rules
     return rules
+
+
+def attach_former_keys(rows):
+    """Give each row the keys the record loaded it under before
+    (db.former_keys), as `_former_keys`, so a keys.csv rule saved on an old
+    key still matches it, on the load that re-keys it too. Without a record,
+    or with one that does not open, the rows carry none."""
+    try:
+        from . import db
+        if not db.db_path().exists():
+            return
+        conn = db.connect()
+        try:
+            former = db.former_keys(conn, rows)
+        finally:
+            conn.close()
+    except Exception:  # an unreadable record only means no old keys, never a broken run
+        return
+    for r in rows:
+        if r.get("txn_key") in former:
+            r["_former_keys"] = former[r["txn_key"]]
+
+
+def check_pinned_rows(conn, parsed):
+    """Audit: rows the owner saved something on that this load would archive.
+    A trip pin, a "marked fine", a series edit, a matched phone row (G25) or a
+    keys.csv rule names a row by its txn_key; a row the parser re-keys keeps them all (db.rekeys and
+    txn_key_alias), so one that would still go has left the tree or changed
+    in a way that cannot be paired. The Notion path's orphan check (check_orphans)
+    needs a plan; this one reads the record, so a load with Notion off has it
+    too. Also a key another row once had (an alias) that this run gives to a
+    different row while the first stays: the load would hand what was saved on
+    it to the wrong payment. `--archive-orphans` lets the CLI load past both."""
+    from . import db
+    from .parsers import categorise as rules_module
+    keys = {r["txn_key"] for r in parsed.rows}
+    moved = {tid: new for tid, _, new in db.rekeys(conn, parsed.rows)}
+    live = {t["id"]: t["txn_key"] for t in conn.execute("SELECT id, txn_key FROM txn WHERE archived_at IS NULL")}
+    leaving = {tid: k for tid, k in live.items() if k not in keys and tid not in moved}
+    aliases = conn.execute("SELECT old_key, txn_id FROM txn_key_alias").fetchall()
+    by_key = {k: tid for tid, k in leaving.items()}
+    by_key.update({old: tid for old, tid in aliases if tid in leaving})
+    # an alias the run produces for another row, while its own row stays live
+    taken = {old: tid for old, tid in aliases
+             if old in keys and tid in live and tid not in leaving and moved.get(tid, live[tid]) != old}
+    if not by_key and not taken:
+        return []
+    saved = defaultdict(set)
+    for what, sql in (("a trip pin", "SELECT txn_key FROM trip_pin"),
+                      ("marked fine", "SELECT txn_key FROM txn_marked_fine"),
+                      ("a series edit", "SELECT txn_key FROM series_override_txn"),
+                      # G25: a phone row matched to it counts nowhere once the row goes
+                      ("a phone match", "SELECT matched_txn_key FROM pending_txn "
+                                        "WHERE state = 'matched' AND matched_txn_key IS NOT NULL")):
+        for (k,) in conn.execute(sql):
+            if k in by_key or k in taken:
+                saved[k].add(what)
+    key_rules = [r for r in (getattr(parsed, "rules", None) or []) if r["match_on"] == "key"]
+    if key_rules:
+        matcher = rules_module.Matcher(key_rules)
+        for k in {*by_key, *taken}:
+            if matcher.first("key", rules_module.norm(k)):
+                saved[k].add("a key rule")
+    problems = []
+    gone = defaultdict(set)
+    for k, what in saved.items():
+        if k in by_key:
+            gone[by_key[k]] |= what
+    if gone:
+        sample = ", ".join(f"{leaving[tid]} ({', '.join(sorted(gone[tid]))})" for tid in sorted(gone)[:5])
+        problems.append(Problem("pinned-rows-gone", f"{len(gone)} row(s): {sample}",
+                                "this load would archive rows you saved something on: their statement left the "
+                                "tree or the parser now reads them differently. Put the statement back, or take "
+                                "what you saved off the rows, then load again (the command line loads past it "
+                                "with --archive-orphans)"))
+    reused = sorted(k for k in saved if k in taken)
+    if reused:
+        sample = ", ".join(f"{k} ({', '.join(sorted(saved[k]))})" for k in reused[:5])
+        problems.append(Problem("pinned-key-reused", f"{len(reused)} key(s): {sample}",
+                                "the parser now gives a key you saved something on to a different row than the "
+                                "one it was saved for, so this load would move it to the wrong payment. Take what "
+                                "you saved off that key, then load again and save it on the right row (the "
+                                "command line loads past it with --archive-orphans)"))
+    return problems
+
+
+def check_record_pins(parsed):
+    """check_pinned_rows against the data folder's record, when there is one."""
+    from . import db
+    if not db.db_path().exists():
+        return []
+    conn = db.connect()
+    try:
+        return check_pinned_rows(conn, parsed)
+    finally:
+        conn.close()
 
 
 # ---------------------------------------------------------------- Notion state
@@ -875,6 +978,8 @@ def doctor(cfg, parsed, state, plan, force=False, archive_orphans=False):
         problems += check_insert_size(parsed, state, plan, force)
         if not archive_orphans:
             problems += check_orphans(plan)
+    if not archive_orphans:
+        problems += check_record_pins(parsed)
     return one_problem_per_copy(problems)
 
 

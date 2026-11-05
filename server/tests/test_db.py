@@ -81,7 +81,7 @@ class RecordTest(unittest.TestCase):
     def test_a_second_identical_load_changes_nothing(self):
         self.load([row("k1", "-12.50")])
         counts = self.load([row("k1", "-12.50")])
-        self.assertEqual(counts, {"inserted": 0, "updated": 0, "archived": 0})
+        self.assertEqual(counts, {"inserted": 0, "updated": 0, "archived": 0, "rekeyed": 0})
 
     def test_a_changed_row_is_updated_in_place(self):
         self.load([row("k1", "-12.50")])

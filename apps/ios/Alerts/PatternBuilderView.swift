@@ -43,6 +43,8 @@ struct PatternBuilderView: View {
     @State private var buildError = ""
     @State private var accountOptions: [(String, String)] = []
     @State private var categoryOptions: [(String, String)] = []
+    // keeps a store refresh from re-keying the tab under this draft
+    @State private var draftHold = SyncService.DraftHold()
 
     // tokenized once per alert text, not per access: as a computed property
     // every render re-tokenized the alert once per word, so a 4 KB email

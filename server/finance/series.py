@@ -15,7 +15,9 @@ things: the id the series had, its group, and the keys of the series' own
 payments at the time. On every read an edit goes to the series of its group
 with that id; failing one, to the series of its group that holds most of
 those payments (a key the parser has since changed is followed through
-txn_key_alias); failing that, to nothing, and it waits. Ids are matched
+txn_key_alias), and failing that to the series of any group of its kind that
+does (a re-key that changed the row's text moves it to another group);
+failing that, to nothing, and it waits. Ids are matched
 before payments, so two edits never take one series. A price more than double
 the old one is a new series to the detector (the old one stops): the edit
 stays with the series that holds its payments, the old one. Saving again
@@ -97,16 +99,29 @@ def resolve(edits, groups, ident, keys_of):
                 break
     # the latest saved first: of two edits holding one series' payments, the newer is the owner's word
     for e in sorted((e for e in mine if e["row"] not in done and e["keys"]), key=lambda e: -e["row"]):
-        best = None
-        for s in groups.get((e["kind"], e["group"]), ()):
-            if id(s) in out:
-                continue
-            n = len(e["keys"] & keys_of(s))
-            if n and (best is None or n > best[0]):
-                best = (n, s)
-        if best:
-            out[id(best[1])] = e
+        best = _most_keys(e, groups.get((e["kind"], e["group"]), ()), out, keys_of)
+        if best is None:
+            # a re-key that changed the row's text (a town split off the
+            # merchant) moves a text series to another group: its payments,
+            # followed through txn_key_alias, still say which series it is
+            best = _most_keys(e, (s for (kind, _), ss in groups.items() if kind == e["kind"] for s in ss),
+                              out, keys_of)
+        if best is not None:
+            out[id(best)] = e
     return out
+
+
+def _most_keys(e, candidates, taken, keys_of):
+    """The series among `candidates`, not already taken, that holds most of
+    the edit's payments, or None."""
+    best = None
+    for s in candidates:
+        if id(s) in taken:
+            continue
+        n = len(e["keys"] & keys_of(s))
+        if n and (best is None or n > best[0]):
+            best = (n, s)
+    return best and best[1]
 
 
 def _whole_cents(x):

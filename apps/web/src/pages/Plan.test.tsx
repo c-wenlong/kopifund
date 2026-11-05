@@ -395,6 +395,23 @@ function serveBudgets(save: (body: Record<string, unknown>) => Response = (b) =>
   return posts;
 }
 
+describe("the plan card", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("never shows No plan yet, or any alert, on its way to showing the plan", async () => {
+    servePlan(fullPlan);
+    const seen: string[] = [];
+    const watch = new MutationObserver(() => {
+      document.querySelectorAll('[role="alert"]').forEach((el) => seen.push(el.textContent ?? ""));
+    });
+    watch.observe(document.body, { childList: true, subtree: true });
+    render(<Plan asOf="2026-08-28" />);
+    expect(await screen.findByLabelText("Insurance premiums (S$ a month)")).toHaveValue("40");
+    watch.disconnect();
+    expect(seen.filter((t) => t.includes("No plan yet"))).toEqual([]);
+  });
+});
+
 describe("the budgets card", () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -442,6 +459,23 @@ describe("the budgets card", () => {
     const row = screen.getByLabelText("Planned for Groceries").closest("tr")!;
     await waitFor(() => expect(within(row).getByRole("status")).toHaveTextContent("Saved"));
     expect(within(screen.getByLabelText("Planned for Coffee").closest("tr")!).getByRole("status")).toHaveTextContent("");
+  });
+
+  it("asks for the budgets once after a save, at the address it already shows", async () => {
+    const posts = serveBudgets();
+    const gets = () => vi.mocked(globalThis.fetch).mock.calls
+      .filter(([u, init]) => String(u).startsWith("/api/budgets") && (init as RequestInit | undefined)?.method !== "POST").map(([u]) => String(u));
+    render(<Plan asOf="2026-08-28" />);
+    const groceries = await screen.findByLabelText("Planned for Groceries");
+    const before = gets().length;
+    fireEvent.change(groceries, { target: { value: "500" } });
+    fireEvent.blur(groceries);
+    await waitFor(() => expect(posts.filter((p) => p.url === "/api/budgets")).toHaveLength(1));
+    await waitFor(() => expect(gets().length).toBeGreaterThan(before));
+    await act(async () => {});
+    // the write itself has every view on screen ask again; no version in the address asks a second time
+    expect(gets().length).toBe(before + 1);
+    expect(gets().every((u) => !u.includes("v="))).toBe(true);
   });
 
   it("saves on leaving the box too, and not at all when nothing changed", async () => {

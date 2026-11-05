@@ -294,15 +294,25 @@ def categorise_rows(rows, rules):
     for row in rows:
         row["payee"] = row["category"] = row["rule"] = ""
         for tier in MATCH_ON:
-            val = norm(row.get(FIELD[tier]))
-            if not val:
-                continue
-            hit = matcher.first(tier, val)
+            hit = next(filter(None, (matcher.first(tier, val) for val in tier_values(row, tier))), None)
             if hit:
                 row["payee"], row["category"] = hit["payee"], hit["category"]
                 row["rule"] = f"{tier}:{hit['pattern']}"
                 break
     return rows
+
+
+def tier_values(row, tier):
+    """The normalised values a row offers one tier, in the order they are
+    tried. The key tier tries the row's txn_key, then every key the record
+    loaded it under before (`_former_keys`, from db.former_keys), so a
+    keys.csv rule saved before a re-key still finds its row."""
+    vals = [row.get(FIELD[tier])]
+    if tier == "key":
+        former = row.get("_former_keys") or ()
+        # rules-input.csv holds them as one space-separated column
+        vals += former.split() if isinstance(former, str) else former
+    return [v for v in map(norm, vals) if v]
 
 
 # ---------------------------------------------------------------- lint and why
@@ -346,9 +356,16 @@ class Matcher:
         """As matches(row, rules)."""
         out = []
         for tier in MATCH_ON:
-            val = norm(row.get(FIELD[tier]))
-            if val:
-                out.append((tier, val, self.hits(tier, val)))
+            vals = tier_values(row, tier)
+            if vals:
+                # the value a load would match on: the first with a rule; the
+                # rules on the row's other keys follow its own, as losing to it,
+                # so the lint and the Rules page never call them unmatched
+                val = next((v for v in vals if self.hits(tier, v)), vals[0])
+                hits = list(self.hits(tier, val))
+                for v in vals:
+                    hits += [r for r in self.hits(tier, v) if all(r is not h for h in hits)]
+                out.append((tier, val, hits))
         return out
 
 

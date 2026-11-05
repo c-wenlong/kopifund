@@ -44,7 +44,7 @@ public enum Ingest {
         switch outcome {
         case .matched(let t):
             let pattern = patterns.first { $0.id == t.patternID }
-            let row = TransactionRecord(from: t, accountID: pattern?.accountID ?? "",
+            let row = try TransactionRecord(from: t, accountID: pattern?.accountID ?? "",
                                         categoryID: pattern?.defaultCategoryID)
             if pattern?.autoApprove == true { row.state = "approved" }
             context.insert(row)
@@ -303,17 +303,13 @@ public enum WalletInputError: Error, Equatable, LocalizedError,
     case amount(String)
     case currency(String)
 
-    /// Largest figure accepted, in currency units: far above any card
-    /// spend, far below where cents overflow an Int.
-    static let ceiling = 1_000_000_000_000.0
-
     /// Integer cents for a Wallet amount, or a thrown error for NaN, an
-    /// infinity or anything past `ceiling`.
+    /// infinity or anything past `Cents.ceiling`.
     static func cents(_ amount: Double) throws -> Int {
-        guard amount.isFinite, abs(amount) < ceiling else {
+        guard let cents = Cents.from(amount) else {
             throw WalletInputError.amount(String(describing: amount))
         }
-        return Int((amount * 100).rounded())
+        return cents
     }
 
     public var errorDescription: String? {
