@@ -128,17 +128,23 @@ struct InboxView: View {
     }
 
     private func ingestPaste() {
-        do {
-            // the view's own container: a second one on the same file would
-            // not merge its save into this list
-            let outcome = try Ingest.alert(text: pasteText, source: "paste",
-                                           receivedAt: Date(), container: context.container)
-            pasteText = ""
-            // an auto-approving pattern queues the row approved
-            if outcome == "queued" { Task { await SyncService.flush(context: context) } }
-        } catch {
-            // keep the text so a failed ingest does not lose the alert
-            ingestError = error.localizedDescription
+        // the box can be reopened while the match runs: clear only the
+        // draft this ingest took, never a newer one
+        let text = pasteText
+        Task {
+            do {
+                // the view's own container: a second one on the same file
+                // would not merge its save into this list
+                let outcome = try await Ingest.alert(text: text, source: "paste",
+                                                     receivedAt: Date(),
+                                                     container: context.container)
+                if pasteText == text { pasteText = "" }
+                // an auto-approving pattern queues the row approved
+                if outcome == "queued" { await SyncService.flush(context: context) }
+            } catch {
+                // keep the text so a failed ingest does not lose the alert
+                ingestError = error.localizedDescription
+            }
         }
     }
 

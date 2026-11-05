@@ -40,6 +40,7 @@ import shutil
 import subprocess
 import sys
 from collections import Counter, defaultdict
+from datetime import date
 from pathlib import Path
 
 # the data folder's layout (server/finance/paths.py) decides where text dumps go
@@ -98,6 +99,20 @@ ALPHA2 = {"SG": "SGP", "MY": "MYS", "GB": "GBR", "IE": "IRL", "UA": "UKR", "CZ":
 NOT_COUNTRY = {"LTD", "PTE", "INC", "LLC", "CO", "BHD", "SDN", "GMBH", "AB", "AG"}
 US_STATES = set("AL AK AZ AR CA CO CT DE FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO "
                 "MT NE NV NH NJ NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY DC".split())
+
+
+def two_letter_country(cc, place="", whole=False):
+    """ISO alpha-3 for a 2-letter country slot. A US merchant prints its state
+    there, so a state code reads as the USA; but ID, IN and DE are both a state
+    and a country in ALPHA2 (Indonesia, India, Germany). Those read as the
+    country unless `place`, the text printed before the code, ends in a town
+    the city tables (places.py, with the data folder's places.csv, prefix and
+    exact rows alike) put in the USA. `whole`: `place` is the town alone (a
+    wallet row's comma field), not a card line's merchant and town."""
+    if cc in ALPHA2 and cc in US_STATES:
+        from .places import trailing_town_country
+        return "USA" if place and trailing_town_country(place, whole) == "USA" else ALPHA2[cc]
+    return "USA" if cc in US_STATES else ALPHA2.get(cc, cc)
 
 NOISE = re.compile(
     r"Page \d+ of \d+|SG40020000876|DBS Co\. Reg|PDS_|CMTHE_|Message|"
@@ -476,7 +491,9 @@ def enrich_card(r):
     elif cc.isdigit():                             # "SINGAPORE 065"
         cc = "SGP" if "SINGAPORE" in name else None
     elif len(cc) == 2:
-        cc = "USA" if cc in US_STATES else ALPHA2.get(cc, cc)
+        # the town ends the text before the slot; parse_card has already
+        # collapsed the spacing that set it apart, so its last words are tried
+        cc = two_letter_country(cc, name)
     r["merchant"], r["merchant_country"] = name, cc
     r["purchase_date"] = purchase_date(r["date"], tag)
     return r
@@ -523,16 +540,17 @@ def enrich(r):
 def iso_date(raw, statement_date):
     """A dd/mm/yyyy row carries its own year and is taken at face value; the POSB
     "28 Dec" form has none, so a month later than the statement's rolls back a
-    year (a row cannot post after the statement that prints it)."""
+    year (a row cannot post after the statement that prints it). A day that does
+    not exist in that year ("29 Feb" on a 2025 statement) is a misread: ValueError."""
     yr = int(statement_date.split()[-1])
     if "/" in raw:
         d, m, y = raw.split("/")
-        return f"{int(y):04d}-{m}-{d}"
+        return _real_day(int(y), int(m), int(d), raw, statement_date)
     dd, mon = raw.split()
     mm = MONTHS[mon]
     if mm > MONTHS[statement_date.split()[1]]:   # a row cannot post after its statement
         yr -= 1
-    return f"{yr:04d}-{mm:02d}-{int(dd):02d}"
+    return _real_day(yr, mm, int(dd), raw, statement_date)
 
 
 def purchase_date(txn_date, tag):
@@ -543,7 +561,15 @@ def purchase_date(txn_date, tag):
     yr = int(txn_date[:4])
     if mm == 12 and int(txn_date[5:7]) == 1:
         yr -= 1
-    return f"{yr:04d}-{mm:02d}-{dd:02d}"
+    return _real_day(yr, mm, dd, tag, txn_date)
+
+
+def _real_day(y, m, d, raw, on):
+    """The ISO day, or ValueError naming the printed text when no such day exists."""
+    try:
+        return date(y, m, d).isoformat()
+    except ValueError:
+        raise ValueError(f"{raw!r} (on {on}) is not a real day: {y:04d}-{m:02d}-{d:02d}") from None
 
 
 def direction(amount):

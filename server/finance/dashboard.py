@@ -20,11 +20,13 @@ the app icon and the AI settings do (server/finance/app_icon.py). A preview
 (scenario_preview) writes nothing: no apply endpoint exists yet, on purpose.
 """
 import json
+import re
 from datetime import datetime, timezone
 
 from . import db, net_worth, spending
 from .dates import add_months
 from .errors import NotFound
+from .figures import div_cents
 from .money import stat_cents
 
 
@@ -41,8 +43,9 @@ def _minor(name):
 # What a source can be asked: per dimension, the result's list of rows and the
 # field its label comes from, and per metric the field read and its unit.
 # `sgd_minor` fields are integer cents under `<name>_minor` (money.stat_cents);
-# every other unit reads the field it is named. `link` maps a metric to the
-# Transactions flags that list the rows a month of it counted (api.transactions).
+# every other unit reads the field it is named. A stat source's points link to
+# the rows they count through the stat's own `chart.links` (_stat_link), so
+# the stat stays the one place that says which rows a figure adds up.
 _CATALOGUE = {
     "spending": {
         "dims": {
@@ -59,8 +62,6 @@ _CATALOGUE = {
     "monthly-cashflow": {
         "dims": {"month": {"rows": "months", "x": "month", "grain": "month",
                            "metrics": {m: _minor(m) for m in ("income", "spend", "net", "investing")}}},
-        "link": {"income": {"income": "1"}, "spend": {"spend": "1"}, "investing": {"transfer": "1"},
-                 "net": {"income": "1", "spend": "1", "transfer": "1"}},
     },
     "needs-wants-savings": {
         "dims": {"month": {"rows": "months", "x": "month", "grain": "month",
@@ -69,15 +70,12 @@ _CATALOGUE = {
                                        "need_share": ("need_share", "fraction"),
                                        "want_share": ("want_share", "fraction"),
                                        "savings_share": ("savings_share", "fraction")}}},
-        "link": {"income": {"income": "1"}, "need": {"spend": "1", "need": "Need"},
-                 "want": {"spend": "1", "need": "Want"}, "savings": {"transfer": "1"}},
     },
     "savings-runway": {
         "dims": {"month": {"rows": "months", "x": "month", "grain": "month",
                            "metrics": {"cash": _minor("cash"), "spend": _minor("spend"),
                                        "carried": _minor("carried_amount"),
                                        "runway_months": ("runway_months", "months")}}},
-        "link": {"spend": {"spend": "1"}},
     },
     "category-breakdown": {
         "dims": {"category": {"rows": "categories", "x": "category", "grain": "none",
@@ -86,7 +84,6 @@ _CATALOGUE = {
                                           "prior6_avg": _minor("prior6_avg"),
                                           "share": ("share_pct", "percent"),
                                           "trend": ("trend_pct", "percent")}}},
-        "link": {},
     },
     "portfolio": {
         "dims": {
@@ -97,19 +94,16 @@ _CATALOGUE = {
                                    "contributed_sgd": _minor("contributed_sgd"),
                                    "deposits_sgd": _minor("deposits_sgd")}},
         },
-        "link": {},
     },
     "cpf": {
         "dims": {"year": {"rows": "years", "x": "year", "grain": "year",
                           "metrics": {"oa": _minor("oa"), "sa": _minor("sa"),
                                       "ma": _minor("ma"), "total": _minor("total")}}},
-        "link": {},
     },
     "net-worth": {
         # net_worth.py's rows name their cents plain (cash, total), no _minor
         "dims": {"month": {"metrics": {m: (m, "sgd_minor") for m in ("total", "cash", "investments", "cpf")}},
                  "part": {"metrics": {"value": ("value", "sgd_minor")}}},
-        "link": {},
     },
     "forward-view": {
         "dims": {"month": {"rows": "months", "x": "month", "grain": "month",
@@ -117,7 +111,6 @@ _CATALOGUE = {
                                        ("cash", "net", "spend", "take_home", "gross", "investing",
                                         "insurance", "other_income", "repayments", "trips",
                                         "one_offs", "cpf_total", "cpf_accrued")}}},
-        "link": {},
         "projection": True,
     },
 }
@@ -229,8 +222,12 @@ _METRIC_WHERE = {
 }
 _METRIC_VALUE = {"spend": "-amount_sgd_minor", "income": "amount_sgd_minor",
                  "transfers": "-amount_sgd_minor", "net": "amount_sgd_minor"}
-_METRIC_FLAG = {"spend": {"spend": "1"}, "income": {"income": "1"}, "transfers": {"transfer": "1"},
-                "net": {"income": "1", "spend": "1", "transfer": "1"}}
+# The Transactions flags that list a metric's rows. Transactions hides the
+# Transfer bucket unless told not to, so a metric that counts transfers says so.
+_METRIC_FLAG = {"spend": {"spend": "1"}, "income": {"income": "1"},
+                "transfers": {"transfer": "1", "hide_transfers": "0"},
+                "net": {"income": "1", "spend": "1", "transfer": "1", "hide_transfers": "0"}}
+
 # a dimension's value in v_txn, named the way the explorer names it. An
 # account groups by its id, as Transactions' `account` filter names it, and
 # its name is only the label
@@ -252,6 +249,23 @@ _DIM_LINK = {
     "account": lambda name, shown: {"account": str(name)},
     "need": lambda name, shown: (None if name == "(none)" else {"need": name}),
 }
+
+
+def _slice_link(base, dimension, key, shown):
+    """One slice's Transactions link: the query's own link plus the slice's
+    filter, or None where no filter names the slice. The folded slice's
+    exclusions join any the query's filters already made, so it lists only
+    rows the query counted."""
+    if key is None:
+        return None
+    extra = _DIM_LINK[dimension](key, shown)
+    if extra is None:
+        return None
+    out = {**base, **extra}
+    for name in ("not_categories", "not_payees"):
+        if base.get(name) and name in extra:     # an empty filter is no filter
+            out[name] = _names(dict.fromkeys(json.loads(base[name]) + json.loads(extra[name])))
+    return out
 
 
 def _names(values):
@@ -361,10 +375,8 @@ def _spend_series(conn, q):
         keys.append(spending.OTHER)
         values.append(sum(v for _, v in rest))
     label_of = _dim_label(conn, q["dimension"])
-    link = _DIM_LINK[q["dimension"]]
     labels = [label_of(k) for k in keys]
-    label_links = [{**base_link, **link(k, shown_keys)} if k is not None and link(k, shown_keys) is not None
-                   else None for k in keys]
+    label_links = [_slice_link(base_link, q["dimension"], k, shown_keys) for k in keys]
     return {"source": "spending", "metric": q["metric"], "dimension": q["dimension"],
             "unit": "sgd_minor", "labels": labels, "label_links": label_links,
             "series": [{"name": q["metric"], "values_minor": values}],
@@ -406,17 +418,15 @@ def _spend_by_month(conn, q, where, fwhere, args, months):
     cut = spending.TOP if fold else len(ranked)
     shown, rest = ranked[:cut], ranked[cut:]
     label_of = _dim_label(conn, q["split"])
-    link = _DIM_LINK[q["split"]]
     filters = _filters_link(q.get("filters") or {})
     flags = {**_METRIC_FLAG[q["metric"]], **filters}
     series = [{"name": label_of(k), "values_minor": [per.get(k, {}).get(m, 0) for m in months],
-               "link": ({**flags, **link(k, shown)} if k is not None and link(k, shown) is not None
-                        else None)}
+               "link": _slice_link(flags, q["split"], k, shown)}
               for k in shown]
     if rest:
         folded = [sum(per.get(k, {}).get(m, 0) for k in rest) for m in months]
         series.append({"name": spending.OTHER, "values_minor": folded,
-                       "link": {**flags, **link(spending.OTHER, shown)}})
+                       "link": _slice_link(flags, q["split"], spending.OTHER, shown)})
     return {"source": "spending", "metric": q["metric"], "dimension": "month",
             "unit": "sgd_minor", "labels": months, "label_links": label_links,
             "series": series, "range": {"from": months[0], "to": months[-1]}}
@@ -456,14 +466,26 @@ def _stat_series(results, q):
         series = {"name": q["metric"], "values_minor": [stat_cents(by_x[y], field[:-6]) for y in labels]}
     else:
         series = {"name": q["metric"], "values": values}
-    flags = _CATALOGUE[q["source"]].get("link", {}).get(q["metric"])
     out = {"source": q["source"], "metric": q["metric"], "dimension": q["dimension"],
            "unit": unit, "labels": labels, "series": [series], "range": q.get("range") or None}
-    if spec["x"] == "month" and flags:
-        out["label_links"] = [{"from": m, "to": m, **flags} for m in labels]
+    link = ((result.get("chart") or {}).get("links") or {}).get(field)
+    if spec["x"] == "month" and link:
+        out["label_links"] = [_stat_link(link, by_x[m], spec["x"]) for m in labels]
     if _CATALOGUE[q["source"]].get("projection"):
         out["note"] = "a projection: what the forward view expects, not a promise"
     return out
+
+
+def _stat_link(spec, row, x):
+    """A stat's own link for one row (its `chart.links` entry, G13): `{x}` is
+    the row's `x` field and `{name}` another field of it, as the stat pages
+    fill them (hint.ts, barLink). A month is written as its range, from and
+    to, the way every other widget link names its month."""
+    def fill(value):
+        return re.sub(r"\{(\w+)\}", lambda m: str(row.get(x if m[1] == "x" else m[1], m[0])), value)
+    link = {k: fill(v) for k, v in spec.items()}
+    month = link.pop("month", None)
+    return {"from": month, "to": month, **link} if month else link
 
 
 def _net_worth_series(results, q):
@@ -522,7 +544,7 @@ def scenario_preview(conn, results, data):
     for s in base["series"]:
         seen = [v for v in s["values_minor"] if v is not None]
         tail = seen[-3:] or [0]
-        step = spending.per_month(sum(tail), len(tail)) + delta
+        step = div_cents(sum(tail), len(tail)) + delta
         series.append({"name": s["name"], "values_minor": list(s["values_minor"]) + [step] * months})
     return {**base, "labels": labels, "series": series,
             "projected_from": len(base["labels"]), "range": None,
@@ -629,8 +651,9 @@ def _check_layout(d, layout_id=None):
         if w["id"] in seen:
             raise DashboardRefused(f"Two widgets named {w['id']!r} in one layout")
         seen.add(w["id"])
-    return {"id": lid, "name": name.strip(), "widgets": widgets,
-            "updated_at": d.get("updated_at") or _now()}
+    # the server stamps the save: an echoed updated_at is the time of the save
+    # it came from, and would freeze the stamp at the layout's first one
+    return {"id": lid, "name": name.strip(), "widgets": widgets, "updated_at": _now()}
 
 
 def _layouts_doc(conn):
@@ -660,8 +683,17 @@ def save_layouts(conn, data):
     active = data.get("active")
     if active is not None and active not in ids:
         raise DashboardRefused("Active names one of the layouts")
-    _put(conn, LAYOUTS_KEY, docs)
-    _put(conn, ACTIVE_KEY, active)
+    # one transaction: the list and the active id land together, and a save
+    # from another tab waits rather than interleaving
+    with db.transaction(conn):
+        # a layout the list sends back as it was keeps the stamp of its last change
+        before = {d["id"]: d for d in _layouts_doc(conn)}
+        for d in docs:
+            was = before.get(d["id"])
+            if was and (was.get("name"), was.get("widgets")) == (d["name"], d["widgets"]):
+                d["updated_at"] = was.get("updated_at") or d["updated_at"]
+        _put(conn, LAYOUTS_KEY, docs)
+        _put(conn, ACTIVE_KEY, active)
     return {"layouts": docs, "active": active}
 
 
@@ -670,11 +702,14 @@ def save_layout(conn, layout_id, data):
     if not isinstance(data, dict):
         raise DashboardRefused("A layout is an object")
     doc = _check_layout({k: v for k, v in data.items() if k != "active"}, layout_id)
-    docs = [d for d in _layouts_doc(conn) if d["id"] != layout_id]
-    docs.append(doc)
-    _put(conn, LAYOUTS_KEY, docs)
-    if data.get("active"):
-        _put(conn, ACTIVE_KEY, layout_id)
+    # read and write in one transaction, so a save of another layout from
+    # another tab cannot land between them and be lost
+    with db.transaction(conn):
+        docs = [d for d in _layouts_doc(conn) if d["id"] != layout_id]
+        docs.append(doc)
+        _put(conn, LAYOUTS_KEY, docs)
+        if data.get("active"):
+            _put(conn, ACTIVE_KEY, layout_id)
     return doc
 
 
@@ -688,6 +723,19 @@ def _check_milestones(raw):
             raise DashboardRefused("A milestone is {month: YYYY-MM, target_minor: cents}")
         out.append({"month": m["month"], "target_minor": m["target_minor"]})
     return sorted(out, key=lambda m: m["month"])
+
+
+# What a goal's binding may name: a balance the record measures over time, so
+# its last figure is how far the goal has got. A flow (a month's spending, its
+# income) has no such figure: its last month is usually still running, and a
+# slice (a bucket, a payee) is no amount the goal reaches. A projection's last
+# figure is the future, not the present.
+GOAL_LEVELS = {
+    "net-worth": {"month": ("total", "cash", "investments", "cpf")},
+    "savings-runway": {"month": ("cash",)},
+    "cpf": {"year": ("total", "oa", "sa", "ma")},
+    "portfolio": {"period": ("value_sgd", "value_base")},
+}
 
 
 def _check_goal(g, goal_id=None):
@@ -719,6 +767,11 @@ def _check_goal(g, goal_id=None):
         q = parse_query({"source": source, "metric": metric, "dimension": dimension})
         if _CATALOGUE[q["source"]]["dims"][q["dimension"]]["metrics"][q["metric"]][1] != "sgd_minor":
             raise DashboardRefused("A goal's binding is a money metric")
+        if q["metric"] not in GOAL_LEVELS.get(q["source"], {}).get(q["dimension"], ()):
+            raise DashboardRefused("A goal's binding is a balance over time: "
+                                   + "; ".join(f"{s} {', '.join(m)} by {d}"
+                                               for s, dims in GOAL_LEVELS.items()
+                                               for d, m in dims.items()))
         dimension = q["dimension"]
     out = {"id": goal_id or _check_id(g.get("id"), "goal"), "name": name.strip(),
            "target_minor": target, "month": month, "note": str(g.get("note") or ""),
@@ -728,10 +781,25 @@ def _check_goal(g, goal_id=None):
     return out
 
 
+def _is_level(binding):
+    """True for a binding GOAL_LEVELS names (a goal saved before them may hold another)."""
+    b = binding or {}
+    return b.get("metric") in GOAL_LEVELS.get(b.get("source"), {}).get(b.get("dimension") or "month", ())
+
+
+def _without_old_binding(g):
+    """A saved goal with a binding GOAL_LEVELS does not name (saved before
+    them) read as unbound, so it shows no figure that is not its progress and
+    can still be edited; a patch that names a new binding sets one."""
+    if not g.get("binding") or _is_level(g["binding"]):
+        return g
+    return {k: v for k, v in g.items() if k != "binding"}
+
+
 def _goal_current(conn, results, g):
     """A goal's progress: the last figure its binding resolves to, as cents."""
     b = g.get("binding")
-    if not b:
+    if not _is_level(b):
         return None
     try:
         answer = resolve(conn, results, {"source": b["source"], "metric": b["metric"],
@@ -749,7 +817,7 @@ def _goal_current(conn, results, g):
 def goals(conn, results):
     out = []
     for g in _doc(conn, GOALS_KEY, []) if conn else []:
-        g = dict(g)
+        g = dict(_without_old_binding(g))
         current = _goal_current(conn, results, g)
         g["current_minor"] = current
         g["progress"] = (current / g["target_minor"]
@@ -760,11 +828,20 @@ def goals(conn, results):
 
 def save_goal(conn, results, data):
     """Create (no `id`) or patch (the fields sent, beside `id`) one goal."""
+    if not isinstance(data, dict):
+        raise DashboardRefused("A goal is an object")
+    with db.transaction(conn):        # read and write together: no save lands between
+        _save_goal(conn, data)
+    return goals(conn, results)
+
+
+def _save_goal(conn, data):
     docs = list(_doc(conn, GOALS_KEY, []))
     if data.get("id"):
         for i, g in enumerate(docs):
             if g["id"] == data["id"]:
-                docs[i] = _check_goal({**g, **{k: v for k, v in data.items() if k != "id"}}, g["id"])
+                docs[i] = _check_goal({**_without_old_binding(g), **{k: v for k, v in data.items() if k != "id"}},
+                                      g["id"])
                 break
         else:
             raise DashboardRefused(f"No goal {data['id']!r}")
@@ -774,17 +851,17 @@ def save_goal(conn, results, data):
                     default=0)
         docs.append(_check_goal(data, f"g-{n}"))
     _put(conn, GOALS_KEY, docs)
-    return goals(conn, results)
 
 
 def remove_goal(conn, results, data):
     if not isinstance(data, dict):
         raise DashboardRefused("{id} names the goal to drop")
-    docs = _doc(conn, GOALS_KEY, [])
-    keep = [g for g in docs if g["id"] != data.get("id")]
-    if len(keep) == len(docs):
-        raise DashboardRefused(f"No goal {data.get('id')!r}")
-    _put(conn, GOALS_KEY, keep)
+    with db.transaction(conn):
+        docs = _doc(conn, GOALS_KEY, [])
+        keep = [g for g in docs if g["id"] != data.get("id")]
+        if len(keep) == len(docs):
+            raise DashboardRefused(f"No goal {data.get('id')!r}")
+        _put(conn, GOALS_KEY, keep)
     return goals(conn, results)
 
 

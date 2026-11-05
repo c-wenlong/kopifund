@@ -94,10 +94,14 @@ struct PatternBuilderView: View {
         // one confident guess per field becomes a pre-tag, ranked so "to
         // MERCHANT" beats "from BANK"; tokens an earlier candidate already
         // claimed stay with it ("ACME USD" must not eat "USD 4.80")
-        for field in [PatternBuilder.Field.amount, .payee, .date] {
+        for field in [PatternBuilder.Field.amount, .payee, .date, .account] {
             if let c = cands.filter({ $0.field == field && $0.confident })
                 .min(by: { $0.rank < $1.rank }) {
+                let before = tags
                 for i in c.tokenIndexes where tags[i] == nil { tags[i] = c.field }
+                // a card printed right against the payee cannot border it;
+                // that guess stays a dashed suggestion, not a broken pattern
+                if field == .account, cardCannotBorder() { tags = before }
             }
         }
         for c in cands {
@@ -106,6 +110,19 @@ struct PatternBuilderView: View {
             }
         }
         selected = nextMissingField() ?? .amount
+    }
+
+    private func cardCannotBorder() -> Bool {
+        do {
+            // the same build Save runs: only the card-beside-a-wildcard
+            // refusal undoes the pre-tag
+            _ = try builtPattern()
+            return false
+        } catch PatternBuilder.BuildError.wildcardBesideCard {
+            return true
+        } catch {
+            return false
+        }
     }
 
     private func spanText(for indexes: [Int]) -> String {
@@ -160,6 +177,10 @@ struct PatternBuilderView: View {
         }
         .navigationTitle("New pattern")
         .toolbar { progressBadge }
+        // the floating tab bar stacked under the dock and the Save button
+        // and together they hid a quarter of the screen; the builder is a
+        // task with its own way out, so the tabs step aside
+        .toolbar(.hidden, for: .tabBar)
         .safeAreaInset(edge: .bottom) { dock }
         .onChange(of: tags) {
             // a re-tagged payee renames the pattern too, until the name

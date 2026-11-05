@@ -42,7 +42,7 @@ from pathlib import Path
 
 from finance.paths import places_path
 
-from .parse_statements import ALPHA2, US_STATES
+from .parse_statements import ALPHA2, US_STATES, two_letter_country
 
 # the currency a card row was charged in, when the statement prints one
 CCY_COUNTRY = {"AED": "ARE", "AUD": "AUS", "CAD": "CAN", "CHF": "CHE", "CNY": "CHN",
@@ -227,6 +227,32 @@ def city_country(frag):
     return None
 
 
+def trailing_town_country(text, whole=False):
+    """The country of the town a merchant string ends in, or None. The town is
+    its last word, or last two or three: a card row prints the merchant and
+    the town in one run of text, single spaced once parsed, and a wallet row
+    gives the town alone (`whole`). A tail that names a town exactly (an exact
+    entry, or a city table name in full) decides first, the longest such tail
+    winning, so NORTH MANCHESTER is not read as MANCHESTER. Failing that, a
+    wallet's whole town is looked up as before, then the shortest tail that a
+    prefix entry matches decides, so a merchant word earlier in a card line
+    ("AUSTINS BAKERY DENPASAR") never outvotes the town itself."""
+    _ensure_loaded()
+    words = text.split()
+    tails = [" ".join(words[-k:]) for k in range(1, min(3, len(words)) + 1)]
+    for t in reversed(tails):
+        u = t.strip().upper()
+        if u in CITY_COUNTRY:
+            return CITY_COUNTRY[u]
+        n = norm_city(t)
+        if cc := next((cc for city, cc in CITY_TABLE if city == n), None):
+            return cc
+    for t in ([text] if whole else []) + tails:
+        if cc := city_country(t):
+            return cc
+    return None
+
+
 def split_country(name, fx_ccy, wallet):
     """Split the trailing city fragment off a merchant string when it is
     recognisable as a country; otherwise leave the string whole."""
@@ -250,7 +276,7 @@ def split_country(name, fx_ccy, wallet):
     elif tail_u in ALPHA3:
         cc = tail_u
     elif len(tail_u) == 2 and (tail_u in ALPHA2 or tail_u in US_STATES):
-        cc = "USA" if tail_u in US_STATES else ALPHA2[tail_u]
+        cc = two_letter_country(tail_u, head.rpartition(",")[2], whole=True)
     elif (c := city_country(tail_u)):
         cc = c
     if cc is None:
