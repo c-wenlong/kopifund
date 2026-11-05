@@ -80,21 +80,22 @@ public enum Candidates {
                 if t.text.range(of: #"^\d{5,}$"#, options: .regularExpression) != nil { score -= 3 }
             } else if t.kind == .word,
                       t.text.range(of: #"^[A-Z]{2,3}\d+$"#, options: .regularExpression) != nil {
-                // "SGD44": the letters ride on the number, so check for a
-                // trailing ".53" split off as punct + number
-                span = [i]
-                score = 4
-                if let d = nextNonSpace(i, in: tokens), tokens[d].kind == .punct, tokens[d].text == ".",
-                   let n = nextNonSpace(d, in: tokens), tokens[n].kind == .number {
-                    span += [d, n]
-                    score += 2
-                }
+                // "SGD44": the letters ride on the number, split from its
+                // ".53" as punct + number. Without that decimal part it is
+                // as likely a reference ("AB123456") as money, so it is
+                // not proposed at all.
+                guard let d = nextNonSpace(i, in: tokens), tokens[d].kind == .punct, tokens[d].text == ".",
+                      let n = nextNonSpace(d, in: tokens), tokens[n].kind == .number
+                else { continue }
+                span = [i, d, n]
+                score = 6
             } else {
                 continue
             }
 
-            // absorb a currency on the left: "SGD 4.80", "S$ 4.50", "$ 4.50"
-            if let l = prevNonSpace(span.first!, in: tokens) {
+            // absorb a currency on the left: "SGD 4.80", "S$ 4.50", "$ 4.50";
+            // "SGD44.53" already carries its own
+            if t.kind == .number, let l = prevNonSpace(span.first!, in: tokens) {
                 let lt = tokens[l]
                 if lt.kind == .word, lt.text.range(of: #"^[A-Z]{2,3}$"#, options: .regularExpression) != nil {
                     span.insert(l, at: 0); score += 4
@@ -111,6 +112,11 @@ public enum Candidates {
             // purpose: the matcher's amount only reads currency up front, so
             // the code anchors better as literal text than as a capture
 
+            // Audit: only what the matcher can read is proposed, judged by
+            // the same grammar its capture uses (Amounts): "RM 45.20" reads,
+            // a 13-digit reference or a third decimal does not
+            let spanText = text[tokens[span.first!].range.lowerBound..<tokens[span.last!].range.upperBound]
+            guard let read = Amounts.read(String(spanText)), read.decimals <= 2 else { continue }
             if score >= 1 { scored.append((span, score)) }
         }
 

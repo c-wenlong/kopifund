@@ -71,8 +71,15 @@ public final class TransactionRecord {
     @Attribute(.unique) public var id: UUID
     public var payee: String
     public var amountCents: Int         // money is integer cents, never a float
-    public var currency: String         // "SGD"
+    /// The ISO code the source printed ("SGD", "USD"), or the plan's when
+    /// it printed none and the plan's is known; empty when neither is.
+    public var currency: String
+    /// A calendar day, written as `CalendarDate.storedInstant`. Read and
+    /// write it through `day`, never through a time zone.
     public var date: Date
+    /// True when `date` holds a `CalendarDate.storedInstant`; nil on a row
+    /// an earlier build wrote, whose `date` reads in the phone's zone.
+    public var dateIsDay: Bool?
     public var direction: String
     public var accountID: String
     public var categoryID: String?
@@ -108,8 +115,9 @@ public final class TransactionRecord {
         var scaled = t.amount * 100
         NSDecimalRound(&cents, &scaled, 0, .plain)
         amountCents = NSDecimalNumber(decimal: cents).intValue
-        currency = t.currency ?? "SGD"
-        date = t.date
+        currency = t.currency ?? ""
+        date = t.date.storedInstant
+        dateIsDay = true
         direction = t.direction.rawValue
         self.accountID = accountID
         self.categoryID = categoryID
@@ -128,12 +136,17 @@ public final class TransactionRecord {
         kopifundError = nil
     }
 
-    public init(walletAmountCents: Int, merchant: String, card: String?, date: Date, accountID: String) {
+    /// `currency` nil means the Wallet record did not say; the row then
+    /// stores "" rather than guessing one.
+    public init(walletAmountCents: Int, merchant: String, card: String?, date: Date,
+                accountID: String, currency: String? = nil) {
         id = UUID()
         payee = merchant
         amountCents = walletAmountCents
-        currency = "SGD"
-        self.date = date
+        self.currency = currency ?? ""
+        // the tap's day where the phone was when it happened
+        self.date = CalendarDate(date, in: .current).storedInstant
+        dateIsDay = true
         direction = "outflow"
         self.accountID = accountID
         memo = ""
@@ -163,14 +176,28 @@ public final class UnmatchedRecord {
     /// is noise rather than something to teach a pattern for. Optional so
     /// old stores migrate on their own.
     public var inKopifund: Bool?
+    /// The calendar day the alert arrived where the phone was then, as a
+    /// `CalendarDate.storedInstant`: a yearless date it prints reads against
+    /// this day even after the phone has moved zones. Nil on rows an earlier
+    /// build wrote. Read it through `arrivedOn`.
+    public var receivedDay: Date?
 
-    public init(text: String, source: String?, receivedAt: Date, reasons: String) {
+    public init(text: String, source: String?, receivedAt: Date,
+                arrivedOn: CalendarDate? = nil, reasons: String, zone: TimeZone = .current) {
         id = UUID()
         self.text = text
         self.source = source
         self.receivedAt = receivedAt
         self.reasons = reasons
         inKopifund = false
+        receivedDay = (arrivedOn ?? CalendarDate(receivedAt, in: zone)).storedInstant
+    }
+
+    /// The day the alert arrived: the saved one, or for an older row the
+    /// day `receivedAt` falls on in the phone's zone now.
+    public var arrivedOn: CalendarDate {
+        receivedDay.map { CalendarDate(stored: $0, isDay: true) }
+            ?? CalendarDate(receivedAt, in: .current)
     }
 }
 
@@ -222,5 +249,18 @@ public enum Store {
     public static func memory() throws -> ModelContainer {
         try ModelContainer(for: schema,
                            configurations: [ModelConfiguration(isStoredInMemoryOnly: true)])
+    }
+}
+
+extension TransactionRecord {
+    /// The row's calendar day: the one value the inbox shows, dedup
+    /// compares and the sync posts. Setting it marks the row's `date` as a
+    /// zone-free day.
+    public var day: CalendarDate {
+        get { CalendarDate(stored: date, isDay: dateIsDay == true) }
+        set {
+            date = newValue.storedInstant
+            dateIsDay = true
+        }
     }
 }

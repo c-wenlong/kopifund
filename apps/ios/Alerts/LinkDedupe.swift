@@ -12,20 +12,9 @@ import KopifundClient
 /// lacks.
 @MainActor
 enum LinkDedupe {
-    private static let dayFmt: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "yyyy-MM-dd"
-        return f
-    }()
-    private static let monthFmt: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.dateFormat = "yyyy-MM"
-        return f
-    }()
-
-    static func monthKey(_ d: Date) -> String { monthFmt.string(from: d) }
+    /// The record's month (YYYY-MM) a calendar day falls in, read with no
+    /// time zone, so a row near midnight asks for the month it printed.
+    static func monthKey(_ d: CalendarDate) -> String { String(d.iso.prefix(7)) }
 
     /// The record's rows for `months` (YYYY-MM), as the spend tuples Dedup
     /// compares. Pages each month until its total is reached; a hub that
@@ -43,7 +32,7 @@ enum LinkDedupe {
                 } catch { return spends }
                 offset += page.rows.count
                 spends += page.rows.compactMap { r in
-                    guard let d = dayFmt.date(from: r.date) else { return nil }
+                    guard let d = CalendarDate(iso: r.date) else { return nil }
                     return Dedup.RecordSpend(amountCents: r.amount, currency: r.currency,
                                              date: d,
                                              payee: r.payee.isEmpty ? r.description : r.payee,
@@ -67,11 +56,17 @@ enum LinkDedupe {
         let unmatched = ((try? context.fetch(FetchDescriptor<UnmatchedRecord>())) ?? [])
             .filter { $0.inKopifund != true }
         guard !rows.isEmpty || !unmatched.isEmpty else { return 0 }
-        var months = Set(rows.map { monthKey($0.date) })
+        // a row or alert whose source printed no currency counts in the
+        // plan's, as the sync posts it; with no plan read it covers nothing
+        let planCurrency = PlanCurrency.saved(
+            planID: UserDefaults.standard.string(forKey: "planID") ?? "") ?? ""
+        var months = Set(rows.map { monthKey($0.day) })
         var guesses: [(row: UnmatchedRecord, cents: Int, currency: String,
-                       date: Date, payee: String)] = []
+                       date: CalendarDate, payee: String)] = []
         for u in unmatched {
-            if let g = guess(u.text) {
+            // a yearless date reads against the day the alert arrived, where
+            // the phone was then, as the matcher reads one
+            if let g = guess(u.text, receivedOn: u.arrivedOn, planCurrency: planCurrency) {
                 months.insert(monthKey(g.date))
                 guesses.append((u, g.cents, g.currency, g.date, g.payee))
             }
@@ -82,8 +77,10 @@ enum LinkDedupe {
         var taken: Set<Int> = []
         var marked = 0
         for row in rows {
-            if let i = Dedup.coveredBy(amountCents: row.amountCents, currency: row.currency,
-                                       direction: row.direction, date: row.date,
+            let currency = row.currency.isEmpty ? planCurrency : row.currency
+            if let i = Dedup.coveredBy(amountCents: row.amountCents, currency: currency,
+                                       direction: row.direction,
+                                       date: row.day,
                                        payee: row.payee, in: spends, taken: taken) {
                 taken.insert(i)
                 row.state = "kopifund"
@@ -109,8 +106,8 @@ enum LinkDedupe {
     /// An unmatched alert's confident guesses: the amount, the date and the
     /// payee the detector would pre-tag, parsed into values. nil unless the
     /// money and the day both read clean — half a guess never marks a row.
-    private static func guess(_ text: String) -> (cents: Int, currency: String,
-                                                  date: Date, payee: String)? {
+    private static func guess(_ text: String, receivedOn: CalendarDate, planCurrency: String)
+        -> (cents: Int, currency: String, date: CalendarDate, payee: String)? {
         let tokens = Tokenizer.tokenize(text)
         func span(_ c: Candidate) -> String {
             guard let lo = c.tokenIndexes.min(), let hi = c.tokenIndexes.max() else { return "" }
@@ -119,17 +116,17 @@ enum LinkDedupe {
         }
         let cands = Candidates.detect(in: text, tokens: tokens)
         guard let amountC = cands.first(where: { $0.field == .amount && $0.confident }),
-              let split = Amounts.split(span(amountC)),
+              let read = Amounts.read(span(amountC)),
               let dateC = cands.first(where: { $0.field == .date && $0.confident }),
               let format = Dates.detectFormat(span(dateC)),
-              let date = Dates.parse(span(dateC), as: format)
+              let date = Dates.parse(span(dateC), as: format, receivedOn: receivedOn)
         else { return nil }
         var cents = Decimal()
-        var scaled = split.amount * 100
+        var scaled = read.magnitude * 100
         NSDecimalRound(&cents, &scaled, 0, .plain)
         let payee = cands.filter { $0.field == .payee && $0.confident }
             .sorted { $0.rank < $1.rank }.first.map { span($0) } ?? ""
-        return (abs(NSDecimalNumber(decimal: cents).intValue), split.currency ?? "SGD",
+        return (NSDecimalNumber(decimal: cents).intValue, read.currency ?? planCurrency,
                 date, payee)
     }
 }

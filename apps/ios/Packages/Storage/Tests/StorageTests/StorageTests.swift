@@ -9,9 +9,10 @@ import Matching
 // defaults suite is a fresh name, so no test touches the App Group.
 
 private let day = Date(timeIntervalSince1970: 1_793_000_000)
+private let printed = CalendarDate(year: 2026, month: 10, day: 26)!
 
 private func parsed(_ amount: String, currency: String? = "SGD") -> ParsedTransaction {
-    ParsedTransaction(payee: "KOPITIAM", amount: Decimal(string: amount)!, date: day,
+    ParsedTransaction(payee: "KOPITIAM", amount: Decimal(string: amount)!, date: printed,
                       direction: .outflow, accountHint: "1234", currency: currency,
                       patternID: UUID(), patternName: "DBS card", alertText: "alert",
                       source: "sms", receivedAt: day)
@@ -201,6 +202,38 @@ func centsRoundHalfUpFromTheParsedDecimal(amount: String, cents: Int) {
     #expect(row.receivedAt == day)
 }
 
+@Test func rowsStoreACalendarDayWithNoZone() {
+    // a parsed alert keeps the day it printed as UTC midnight, so reading it
+    // back in any zone names the same day
+    let alert = TransactionRecord(from: parsed("4.50"), accountID: "a1", categoryID: nil)
+    #expect(alert.date == printed.storedInstant)
+    #expect(alert.dateIsDay == true)
+    for zone in ["Pacific/Honolulu", "Europe/London", "Asia/Singapore", "Pacific/Kiritimati"] {
+        #expect(CalendarDate(stored: alert.date, isDay: true,
+                             legacyZone: TimeZone(identifier: zone)!) == printed)
+    }
+    // a Wallet tap keeps the day it happened where the phone was
+    let wallet = TransactionRecord(walletAmountCents: 100, merchant: "M", card: nil,
+                                   date: day, accountID: "")
+    #expect(wallet.day == CalendarDate(day, in: .current))
+}
+
+@Test func aLegacyRowOnAUTCMidnightReadsInThePhonesZone() {
+    // review on #50: an earlier build stored a Wallet tap's moment, which
+    // can fall on a UTC midnight; with no mark it still reads where the
+    // phone is, so 00:00Z on 12 Oct is the 11th in Los Angeles
+    let wallet = TransactionRecord(walletAmountCents: 100, merchant: "M", card: nil,
+                                   date: day, accountID: "")
+    wallet.date = Date(timeIntervalSince1970: 1_791_763_200)   // 2026-10-12T00:00Z
+    wallet.dateIsDay = nil
+    let la = TimeZone(identifier: "America/Los_Angeles")!
+    #expect(CalendarDate(stored: wallet.date, isDay: wallet.dateIsDay == true,
+                         legacyZone: la).iso == "2026-10-11")
+    wallet.day = CalendarDate(year: 2026, month: 10, day: 12)!
+    #expect(wallet.dateIsDay == true)
+    #expect(wallet.day.iso == "2026-10-12")
+}
+
 // MARK: - PatternRecord
 
 private func samplePattern() -> AlertPattern {
@@ -282,4 +315,17 @@ func everyDateFormatRoundTrips(format: AlertPattern.DateFormat) {
     Suppression.add("anything", in: nil)
     #expect(!Suppression.contains("anything", in: nil))
     Suppression.clear(in: nil)
+}
+
+@Test func anUnmatchedAlertKeepsTheDayItArrivedOn() {
+    // review on #50: just after midnight on 30 Oct in Kiritimati is still
+    // 28 Oct in Los Angeles; the day saved at arrival does not move with
+    // the phone, so a printed "30 Oct" keeps this year
+    let arrived = Date(timeIntervalSince1970: 1_793_268_000)   // 2026-10-29T10:00Z
+    let kiritimati = TimeZone(identifier: "Pacific/Kiritimati")!
+    let u = UnmatchedRecord(text: "t", source: nil, receivedAt: arrived, reasons: "",
+                            zone: kiritimati)
+    #expect(u.arrivedOn.iso == "2026-10-30")
+    u.receivedDay = nil
+    #expect(u.arrivedOn == CalendarDate(arrived, in: .current))
 }

@@ -46,8 +46,10 @@ class OneChangedAmount(unittest.TestCase):
         self.assertEqual(1310.87, computed)          # 710.87 + the bent 600.00
         self.assertEqual(1210.87, printed)
 
-    def test_the_chain_resyncs_after_a_drift(self):
-        """Every later row still matches, and the block's closing still ties."""
+    def test_the_chain_resyncs_after_a_drift_and_the_block_still_fails(self):
+        """Every later row still matches and the block's closing still ties,
+        but the drift fails the block: its CSV says not reconciled, so a
+        reuse of that CSV (load --csv) stops on it."""
         bent = sup.edit_line("posb-deposit.txt", ["14 Jun", "Funds Transfer"],
                              "500.00", "600.00")
         parsed = sup.run_statements(["posb-deposit.txt"],
@@ -56,7 +58,7 @@ class OneChangedAmount(unittest.TestCase):
         self.assertEqual(1, len(parsed.bad))
         self.assertEqual(1372.84, block["computed_closing"])
         self.assertEqual(block["closing"], block["computed_closing"])
-        self.assertTrue(block["ok"])
+        self.assertFalse(block["ok"])
 
     def test_a_changed_closing_fails_the_block_without_row_drift(self):
         bent = sup.edit_line("posb-deposit.txt", ["Balance Carried Forward"],
@@ -81,6 +83,45 @@ class OneChangedAmount(unittest.TestCase):
         self.assertEqual(["2026-06-17", "2026-06-18"], [x[2] for x in parsed.bad])
         self.assertEqual((2477.87, 2777.87), parsed.bad[0][4:])
         self.assertEqual((2730.17, 2430.17), parsed.bad[1][4:])
+        self.assertFalse(parsed.block()["ok"])
+
+
+class ADriftStopsAReusedCsv(unittest.TestCase):
+    """The parsers write their CSVs before they exit on a drift, and load,
+    sync and doctor --csv (and analyse --from-csv) read them back through
+    sync.check_blocks, which reads only the `reconciled` column. A block
+    whose chain drifted mid-statement must say False there (audit)."""
+
+    def check(self, blocks):
+        from finance import sync
+        p = sync.Parsed()
+        p.blocks = [{**b, "reconciled": str(b["ok"]), "period": f"{b['source']} {b.get('month', '')}"}
+                    for b in blocks]
+        return [x.code for x in sync.check_blocks(p)]
+
+    def test_dbs(self):
+        bent = sup.edit_line("posb-deposit.txt", ["14 Jun", "Funds Transfer"], "500.00", "600.00")
+        parsed = sup.run_statements(["posb-deposit.txt"], lines={"posb-deposit.txt": bent})
+        self.assertIn("block-not-reconciled", self.check(parsed.blocks))
+
+    def test_revolut(self):
+        bent = sup.edit_line("revolut-all.txt", ["14 Jul 2025", "S$3.12"], "S$14.70", "S$15.70")
+        parsed = sup.run_revolut(["revolut-all.txt"], lines={"revolut-all.txt": bent})
+        self.assertEqual(["2025-07-14", "2025-07-14"], [x[2] for x in parsed.bad])
+        [drifted] = [b for b in parsed.blocks if b["currency"] == "SGD" and b["month"] == "2025-07"]
+        self.assertEqual(drifted["closing"], drifted["computed_closing"])
+        self.assertFalse(drifted["ok"])
+        self.assertIn("block-not-reconciled", self.check([drifted]))
+
+    def test_wise(self):
+        bent = sup.edit_line("wise-sgd.txt", ["Converted 140.00 NOK"], "48.67", "49.67")
+        parsed = sup.run_wise(["wise-sgd.txt"], lines={"wise-sgd.txt": bent})
+        self.assertEqual(2, len(parsed.bad))
+        [drifted] = [b for b in parsed.blocks if b["month"] == "2025-07"]
+        self.assertEqual(drifted["closing"], drifted["computed_closing"])
+        self.assertFalse(drifted["ok"])
+        self.assertTrue(all(b["ok"] for b in parsed.blocks if b is not drifted))
+        self.assertIn("block-not-reconciled", self.check([drifted]))
 
 
 class CardGrandTotal(unittest.TestCase):

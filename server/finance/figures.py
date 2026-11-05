@@ -46,7 +46,7 @@ def _cents_list(xs):
 
 def div_cents(total, n):
     """`total` cents over a whole number `n` (a count of months, of rows), to
-    the cent, half up away from zero. 0 when `n` is 0, as `per_month` is."""
+    the cent, half up away from zero. 0 when `n` is 0."""
     (total,) = _cents_list([total])
     if isinstance(n, bool) or not isinstance(n, int) or n < 0:
         raise TypeError(f"{n!r} is not a count")
