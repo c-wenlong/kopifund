@@ -1388,8 +1388,9 @@ whois` on that IP names the tailnet caller when it matters.
   (`/api/profile`, `/api/transactions`, `/api/categories`,
   `/api/overview`): the link path gates, it does not reshape answers.
   `GET /api/link/check` answers `{ok}` only to a paired, unrevoked bearer,
-  so the phone's Test says the link works rather than only that the hub
-  is up (`/api/health` answers a revoked phone too).
+  so the phone's Test (Settings, `LinkState.test`) says the link works
+  rather than only that the hub is up (`/api/health` answers a revoked
+  phone too); a 401 there reads "unpaired: pair again".
   Those reads are an allowlist (serve.py's `LINK_READS`): every other GET
   on the link path is refused 403 even with a bearer, so a lost phone,
   before it is revoked, cannot pull exports, upload steps, AI threads or
