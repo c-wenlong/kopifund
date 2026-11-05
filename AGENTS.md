@@ -126,6 +126,10 @@ Say in the PR body which of these ran and what they printed.
   messages, `// G5: ...` in source where the reason is not obvious.
 - When behaviour changes, update SPEC.md in the same change. When a goal is
   done, mark it in ROADMAP.md.
+- After a PR merges, keep this checkout and the installed app current: bring
+  `main` to the merged code (a cherry-pick of the squash commit while `main`
+  tracks the older history) and run `./build_macos.sh`, which builds
+  `origin/main`.
 - Projections describe and estimate. Never write copy that tells the user where
   to put their money.
 - Run Python as `python3`. Python is stdlib-only; ask before adding a package.
