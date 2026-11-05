@@ -1404,6 +1404,9 @@ def _apply_rekeys(conn, moved):
                         ON CONFLICT(old_key) DO UPDATE SET txn_id = excluded.txn_id""", (old_key, tid))
         # a key that comes back is the row's own again, not an alias of it
         conn.execute("DELETE FROM txn_key_alias WHERE old_key = ?", (new_key,))
+        # G25: a matched phone row names the row by key, and the app links to
+        # Transactions by it, so it takes the key the row has now
+        conn.execute("UPDATE pending_txn SET matched_txn_key = ? WHERE matched_txn_key = ?", (new_key, old_key))
 
 
 def load_parsed(conn, parsed, payees=(), trips_by_key=None, complete=True, kind="load"):

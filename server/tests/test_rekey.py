@@ -361,6 +361,8 @@ class PinnedRowsGuardTest(Record):
         self.load([row("k9", "-12.50", merchant="X")])
         from finance import pending
         self.assertEqual(pending._current_keys(self.conn, "k1"), {"k1", "k9"})
+        # the phone row's link to Transactions names the key the row has now
+        self.assertEqual(self.conn.execute("SELECT matched_txn_key FROM pending_txn").fetchone()[0], "k9")
 
     def test_a_row_with_nothing_saved_on_it_may_leave(self):
         self.load([row("k1", "-12.50"), row("k2", "-5.00")])
