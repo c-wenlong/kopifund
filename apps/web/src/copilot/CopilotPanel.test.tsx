@@ -6,6 +6,7 @@ import type { AiSettings, CopilotCard, CopilotEvent, CopilotThread } from "../ty
 import { ANSWER_FAILED, CopilotSide } from "./CopilotPanel";
 import { GARBLED } from "./stream";
 import { CUT_SHORT, stepsOf, useCopilot } from "./useCopilot";
+import { zoneSwitch } from "../test-zone";
 
 // G22: the Ask Kopifund panel: the answer's steps as they come, the answer and its parts, confirm cards, and its states.
 
@@ -692,5 +693,20 @@ describe("an answer the panel cannot draw", () => {
     expect(await screen.findByText("S$42 on kopi")).toBeInTheDocument();
     expect(screen.getAllByText(ANSWER_FAILED)).toHaveLength(1);
     vi.mocked(console.error).mockRestore();
+  });
+});
+
+describe("a thread's day", () => {
+  const inZone = zoneSwitch();
+
+  // Audit: the server stamps threads in UTC; the day was cut from the stamp, so a Singapore morning showed yesterday
+  it("is the day in this device's time", async () => {
+    inZone("Asia/Singapore");
+    const threads = [{ id: "m", title: "Early question", updated_at: "2026-10-03T22:30:00+00:00", turns: 1 }];
+    stub(aiOn, (url) => (url === "/api/copilot/threads" ? new Response(JSON.stringify({ threads }), { status: 200 }) : undefined));
+    render(<Panel />);
+    fireEvent.click(await screen.findByRole("button", { name: "History" }));
+    const list = await screen.findByRole("list", { name: "Threads" });
+    expect(within(list).getByRole("listitem")).toHaveTextContent("Early question4 Oct 2026");
   });
 });

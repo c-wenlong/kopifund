@@ -4,7 +4,7 @@
 // G20: money is "sgd_minor", integer cents in a field named `<name>_minor`,
 // and nothing else is money: a bare number is written as the plain number it is.
 import { formatDate, isoParts, MONTHS } from "../dates";
-import { MINUS } from "../money";
+import { formatSgd } from "../money";
 import { CENTS_UNIT, MINOR } from "./money";
 
 export type Row = Record<string, unknown>;
@@ -228,8 +228,6 @@ function versusPlan(chart: ChartHint, rows: Row[]): Plan {
   return { kind: "versus", rows: sorted, allRows: rows, xKey, owner, typical, unitField: chart.unit_field ?? "unit", note: "" };
 }
 
-const sgd = new Intl.NumberFormat("en-SG", { maximumFractionDigits: 0 });
-const sgd2 = new Intl.NumberFormat("en-SG", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const plain = new Intl.NumberFormat("en-SG", { maximumFractionDigits: 1 });
 
 /**
@@ -239,11 +237,9 @@ const plain = new Intl.NumberFormat("en-SG", { maximumFractionDigits: 1 });
  */
 export function fmt(v: unknown, unit = "number", full = false): string {
   if (!isNum(v)) return v == null ? "" : String(v);
-  if (unit === CENTS_UNIT) {
-    const dollars = v / 100;
-    const s = (full ? sgd2 : sgd).format(Math.abs(dollars));
-    return `${dollars < 0 ? MINUS : ""}S$${s}`;
-  }
+  // Audit: money goes through formatSgd, so a figure reads the same in a tile, a tooltip and a table.
+  // A worked-out value (an average) can carry a fraction of a cent; that is rounded here, not reported.
+  if (unit === CENTS_UNIT) return formatSgd(v < 0 ? -Math.round(-v) : Math.round(v), { decimals: full });
   const u = normaliseUnit(unit) ?? unit;
   if (u === "percent") return `${plain.format(v)}%`;
   if (u === "fraction") return `${plain.format(v * 100)}%`;
