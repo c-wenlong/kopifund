@@ -43,7 +43,15 @@ export function AiCard() {
   const [problem, setProblem] = useState<string | null>(null);
   // a save on its way: what is typed meanwhile is an edit, even back to the old saved value
   const inFlight = useRef(false);
-  const saved = data ? savedOf(data) : null;
+  const latest = useRef(ai.data);
+  latest.current = ai.data;
+  // what the last save sent, standing for the saved values from when it is sent until the settings are read
+  // again after it lands: an edit is measured against what is being, or has just been, saved
+  // (`landedOn` is the answer on screen when the save landed: any newer one was read after it)
+  const [sending, setSending] = useState<{ sent: Draft; landed: boolean; landedOn?: unknown } | null>(null);
+  const fromServer = data ? savedOf(data) : null;
+  const standing = !!sending && (!sending.landed || sending.landedOn === ai.data);
+  const saved = fromServer && standing ? { ...fromServer, ...sending.sent } : fromServer;
   const d = { ...saved, ...draft } as Draft;
   const dirty = !!saved && KEYS.some((k) => d[k] !== saved[k]);
   useUnsavedGuard(dirty);
@@ -83,6 +91,7 @@ export function AiCard() {
     setSaving(true);
     inFlight.current = true;
     const sent = { ...d };
+    setSending({ sent, landed: false });
     try {
       // Off sends only the provider: the models and consent stay saved for the day AI is turned on again
       const fields = { model: d.model.trim(), copilot_model: d.copilot_model.trim(), send_rows: d.send_rows };
@@ -94,7 +103,9 @@ export function AiCard() {
         const left = Object.fromEntries(Object.entries(now ?? {}).filter(([k, v]) => v !== sent[k as keyof Draft]));
         return Object.keys(left).length ? left : null;
       });
+      setSending((s) => (s?.sent === sent ? { sent, landed: true, landedOn: latest.current } : s));
     } catch (e) {
+      setSending((s) => (s?.sent === sent ? null : s));
       setProblem((e as Error).message);
     } finally {
       inFlight.current = false;

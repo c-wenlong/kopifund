@@ -137,6 +137,43 @@ describe("the AI card's settings", () => {
     expect(within(c).getByText("Unsaved changes")).toBeInTheDocument();
   });
 
+  it("counts a box set back to the old value during a save as unsaved, before and after the save lands", async () => {
+    stub(settings(keychain));
+    let releasePost: () => void = () => {};
+    let releaseRead: (() => void) | null = null;
+    let posted = false;
+    const ask = globalThis.fetch;
+    let now = settings(keychain);
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/ai/settings" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        return new Promise<Response>((done) => {
+          releasePost = () => { now = settings(keychain, body); posted = true; done(new Response(JSON.stringify(now), { status: 200 })); };
+        });
+      }
+      // the settings asked for again after the save wait until let go
+      if (url === "/api/ai" && posted) return new Promise<Response>((done) => { releaseRead = () => done(new Response(JSON.stringify(now), { status: 200 })); });
+      if (url === "/api/ai") return new Response(JSON.stringify(now), { status: 200 });
+      return ask(url, init);
+    }));
+    render(<AiCard />);
+    const c = await card();
+    const model = within(c).getByRole("combobox", { name: "Ask Kopifund model" });
+    fireEvent.change(model, { target: { value: "claude-opus-4-1" } });
+    fireEvent.click(within(c).getByRole("button", { name: "Save" }));
+    // back to none while the save that sets claude-opus-4-1 is on its way: an edit, so leaving asks
+    fireEvent.change(model, { target: { value: "" } });
+    expect(within(c).getByText("Unsaved changes")).toBeInTheDocument();
+    // the save lands; another box changed before the settings are read again keeps the first edit
+    await act(async () => releasePost());
+    fireEvent.click(within(c).getByRole("checkbox", { name: "Send matching rows to Anthropic" }));
+    expect(model).toHaveValue("");
+    await waitFor(() => expect(releaseRead).not.toBeNull());
+    await act(async () => releaseRead!());
+    expect(model).toHaveValue("");
+    expect(within(c).getByText("Unsaved changes")).toBeInTheDocument();
+  });
+
   it("tests the provider and says how it went", async () => {
     stub(settings(keychain), (url) => (url === "/api/ai/test" ? { ok: true, message: "claude-sonnet-4-5 answered", ms: 812 } : settings(keychain)));
     render(<AiCard />);
@@ -203,7 +240,8 @@ describe("turning AI off", () => {
     // the server says AI is off: the card shows Off, with nothing to test and no unsaved change
     await waitFor(() => expect(within(c).getByRole("button", { name: "Provider" })).toHaveTextContent("Off"));
     expect(within(c).queryByText("Unsaved changes")).not.toBeInTheDocument();
-    expect(within(c).queryByRole("button", { name: "Test" })).not.toBeInTheDocument();
+    // Off shows as the save lands; Test goes once the settings are read again
+    await waitFor(() => expect(within(c).queryByRole("button", { name: "Test" })).not.toBeInTheDocument());
   });
 
   it("shows Off when AI is off, though config.toml names a provider, and a provider turns it on", async () => {

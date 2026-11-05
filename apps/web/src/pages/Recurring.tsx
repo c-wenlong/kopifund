@@ -587,15 +587,25 @@ function SeriesEditor({ v }: { v: SeriesAnswer }) {
   // G18: the saved values the boxes started from. When they change (this form's save, or another tab's), a box
   // left alone shows the new value and one typed in, while a save was on its way included, keeps what was typed
   const [base, setBase] = useState<Draft>(saved);
-  if (DRAFT_KEYS.some((k) => base[k] !== saved[k])) {
+  // a save of the boxes on its way (`landed` false: what it sent) or landed and not yet read back (what it
+  // saved): the boxes are measured against it, so one typed back to the old value meanwhile is an edit, and the
+  // series read again after the save moves only the boxes that still show what the save left
+  const [pending, setPending] = useState<{ draft: Draft; landed: boolean } | null>(null);
+  const changed = DRAFT_KEYS.some((k) => base[k] !== saved[k]);
+  if (changed && pending?.landed) {
+    setPending(null);
+    setBase(saved);
+    setDraft((d) => follow(d, pending.draft, saved));
+  } else if (changed && !pending) {
     setBase(saved);
     setDraft((d) => follow(d, base, saved));
   }
   const [saving, setSaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   // an amount is compared as cents, so "98.00" is the saved 98
+  const against = pending?.draft ?? saved;
   const dirty = (Object.keys(saved) as (keyof Draft)[]).some((k) => (k === "amount"
-    ? !Object.is(parseCents(draft.amount), parseCents(saved.amount)) : draft[k] !== saved[k]));
+    ? !Object.is(parseCents(draft.amount), parseCents(against.amount)) : draft[k] !== against[k]));
   useUnsavedGuard(dirty);
   const set = (patch: Partial<Draft>) => { setDraft((d) => ({ ...d, ...patch })); setProblem(null); };
   const cents = parseCents(draft.amount);
@@ -607,12 +617,18 @@ function SeriesEditor({ v }: { v: SeriesAnswer }) {
     setSaving(true);
     setProblem(null);
     const sent = draft;
+    if (form) setPending({ draft: sent, landed: false });
     try {
       const next = await postJSON<SeriesAnswer>("/api/recurring/series", JSON.stringify({ id: v.id, ...body }));
       // a box the save covered shows what was saved (an amount kept as detected reads back as the detected
       // one); one changed while the save was on its way keeps what was typed
-      if (form) setDraft((d) => follow(d, sent, draftOf(next)));
+      if (form) {
+        const after = draftOf(next);
+        setDraft((d) => follow(d, sent, after));
+        setPending({ draft: after, landed: true });
+      }
     } catch (e) {
+      if (form) setPending(null);
       setProblem((e as Error).message);
     } finally {
       setSaving(false);

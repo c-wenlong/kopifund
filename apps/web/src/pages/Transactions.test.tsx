@@ -266,6 +266,34 @@ describe("Transactions", () => {
     expect(leaveAsks()).toBe(false);
   });
 
+  it("still asks before leaving when Less or Close hides a typed form, since the page keeps what was typed", async () => {
+    stubFetch();
+    render(<><Transactions /><Toaster /></>);
+    fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row/ }));
+    fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Donations" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
+    fireEvent.click(screen.getByRole("button", { name: "Less" }));
+    expect(screen.queryByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).not.toBeInTheDocument();
+    expect(leaveAsks()).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(leaveAsks()).toBe(true);
+  });
+
+  it("opens More again clean after a save, with no question about leaving", async () => {
+    stubFetch();
+    render(<><Transactions /><Toaster /></>);
+    fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row/ }));
+    fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Donations" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).toHaveValue("");
+    expect(leaveAsks()).toBe(false);
+  });
+
   it("opens on the row's category, and picking it again saves nothing", async () => {
     const calls = stubFetch([{ ...page.rows[0], category: "Donations", payee: "A friend" }]);
     render(<Transactions />);

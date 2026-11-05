@@ -42,14 +42,17 @@ export async function savePin(body: { key: string; category: string; payee?: str
 }
 
 // `draft` and `onDraft` let a page keep what was typed above the form, so the
-// form can be mounted again (a layout change) without losing it
-export function PinForm({ row, categories, kinds, onPinned, draft, onDraft }: {
+// form can be mounted again (a layout change, Less then More) without losing it.
+// A page that keeps drafts also guards them (`onDirty`): the typed work outlives
+// the form, so the question about leaving must too.
+export function PinForm({ row, categories, kinds, onPinned, draft, onDraft, onDirty }: {
   row: GroupRow;
   categories: string[];
   kinds: string[];
   onPinned?: () => void;
   draft?: PinDraft;
   onDraft?: (d: PinDraft) => void;
+  onDirty?: (dirty: boolean) => void;
 }) {
   // G13: opens on what the row already has: its category, and the kind the
   // rules page would suggest for the text it printed (a person only for a
@@ -63,8 +66,10 @@ export function PinForm({ row, categories, kinds, onPinned, draft, onDraft }: {
   useEffect(() => { onDraft?.({ category, payee, kind, note }); }, [category, payee, kind, note]);
   // G18: something typed and not saved (a draft kept from before a change of layout included) asks before the
   // page is left; a kind counts only with a payee
-  useUnsavedGuard(category !== opened.category || payee.trim() !== opened.payee.trim() || note.trim() !== ""
-    || (!!payee.trim() && kind !== opened.kind));
+  const dirty = category !== opened.category || payee.trim() !== opened.payee.trim() || note.trim() !== ""
+    || (!!payee.trim() && kind !== opened.kind);
+  useUnsavedGuard(!onDirty && dirty);
+  useEffect(() => { onDirty?.(dirty); }, [dirty]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const what = `the ${formatDay(row.date)} row`;

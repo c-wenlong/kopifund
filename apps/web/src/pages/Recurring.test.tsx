@@ -645,6 +645,39 @@ describe("A series' own view, G16", () => {
     expect(within(region).getByText("Unsaved changes")).toBeInTheDocument();
   });
 
+  it("keeps a box typed back to its old value during a save, through the refresh after it", async () => {
+    let release: () => void = () => {};
+    let now = VIEW;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        return new Promise<Response>((done) => {
+          release = () => {
+            now = { ...VIEW, amount: body.amount ?? VIEW.amount, edit: { ...VIEW.edit, amount: body.amount } };
+            done(new Response(JSON.stringify(now), { status: 200 }));
+          };
+        });
+      }
+      return new Response(JSON.stringify(url.startsWith("/api/recurring/series") ? now : PAGE), { status: 200 });
+    }));
+    render(<Recurring />);
+    const head = await screen.findByRole("region", { name: "Gym" });
+    const amount = within(head).getByLabelText("Usual amount");
+    const before = (amount as HTMLInputElement).value;
+    fireEvent.change(amount, { target: { value: "55" } });
+    fireEvent.click(within(head).getByRole("button", { name: "Save" }));
+    // set back to the old amount while the save of 55 is on its way: an edit
+    fireEvent.change(amount, { target: { value: before } });
+    expect(within(head).getByText("Unsaved changes")).toBeInTheDocument();
+    await act(async () => release());
+    await waitFor(() => expect(now.amount).toBe(5500));
+    // the series read again after the save does not put 55 over it
+    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    const region = screen.getByRole("region", { name: "Gym" });
+    expect(within(region).getByLabelText("Usual amount")).toHaveValue(before);
+    expect(within(region).getByText("Unsaved changes")).toBeInTheDocument();
+  });
+
   it("refuses an amount that is not dollars and cents before it sends anything", async () => {
     const posts = stubSeries();
     render(<Recurring />);
