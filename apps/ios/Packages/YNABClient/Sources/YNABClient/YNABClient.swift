@@ -82,6 +82,14 @@ public actor YNABClient {
         try await get("plans/\(planID)/payees", as: PayeesResponse.self).data.payees.filter { !$0.deleted }
     }
 
+    /// The ISO code of the currency the plan keeps ("SGD"), nil when YNAB
+    /// reports no currency format. The sync posts a row only in this
+    /// currency (G24 audit).
+    public func planCurrency(planID: String) async throws -> String? {
+        try await get("plans/\(planID)/settings", as: PlanSettingsResponse.self)
+            .data.settings.currencyFormat?.isoCode
+    }
+
     /// Post the queue's next transaction. `NewTransaction.amount` is already
     /// in milliunits; `importID` is what stops a retried post becoming a
     /// duplicate.

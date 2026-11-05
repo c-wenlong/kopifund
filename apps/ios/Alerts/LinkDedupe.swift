@@ -67,11 +67,15 @@ enum LinkDedupe {
         let unmatched = ((try? context.fetch(FetchDescriptor<UnmatchedRecord>())) ?? [])
             .filter { $0.inKopifund != true }
         guard !rows.isEmpty || !unmatched.isEmpty else { return 0 }
+        // a row or alert whose source printed no currency counts in the
+        // plan's, as the sync posts it; with no plan read it covers nothing
+        let planCurrency = PlanCurrency.saved(
+            planID: UserDefaults.standard.string(forKey: "planID") ?? "") ?? ""
         var months = Set(rows.map { monthKey($0.date) })
         var guesses: [(row: UnmatchedRecord, cents: Int, currency: String,
                        date: Date, payee: String)] = []
         for u in unmatched {
-            if let g = guess(u.text) {
+            if let g = guess(u.text, planCurrency: planCurrency) {
                 months.insert(monthKey(g.date))
                 guesses.append((u, g.cents, g.currency, g.date, g.payee))
             }
@@ -82,7 +86,8 @@ enum LinkDedupe {
         var taken: Set<Int> = []
         var marked = 0
         for row in rows {
-            if let i = Dedup.coveredBy(amountCents: row.amountCents, currency: row.currency,
+            let currency = row.currency.isEmpty ? planCurrency : row.currency
+            if let i = Dedup.coveredBy(amountCents: row.amountCents, currency: currency,
                                        direction: row.direction, date: row.date,
                                        payee: row.payee, in: spends, taken: taken) {
                 taken.insert(i)
@@ -109,7 +114,7 @@ enum LinkDedupe {
     /// An unmatched alert's confident guesses: the amount, the date and the
     /// payee the detector would pre-tag, parsed into values. nil unless the
     /// money and the day both read clean — half a guess never marks a row.
-    private static func guess(_ text: String) -> (cents: Int, currency: String,
+    private static func guess(_ text: String, planCurrency: String) -> (cents: Int, currency: String,
                                                   date: Date, payee: String)? {
         let tokens = Tokenizer.tokenize(text)
         func span(_ c: Candidate) -> String {
@@ -129,7 +134,7 @@ enum LinkDedupe {
         NSDecimalRound(&cents, &scaled, 0, .plain)
         let payee = cands.filter { $0.field == .payee && $0.confident }
             .sorted { $0.rank < $1.rank }.first.map { span($0) } ?? ""
-        return (NSDecimalNumber(decimal: cents).intValue, read.currency ?? "SGD",
+        return (NSDecimalNumber(decimal: cents).intValue, read.currency ?? planCurrency,
                 date, payee)
     }
 }
