@@ -170,7 +170,8 @@ final class SyncService {
     @ObservationIgnored private var rebuildOwed = false
     nonisolated static let drafts = OSAllocatedUnfairLock(initialState: 0)
 
-    /// Held by a pattern draft (the builder's state) for as long as it
+    /// Held by a screen with a draft in its state (the pattern builder, a
+    /// transaction's detail with its typed conversion) for as long as it
     /// lives, through tab switches and trips to the background.
     final class DraftHold: Sendable {
         init() { SyncService.drafts.withLock { $0 += 1 } }
