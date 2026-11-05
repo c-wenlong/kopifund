@@ -464,7 +464,7 @@ default buckets (`category_groups`) and each category's own
   not fit (a phone, or eleven buckets on a laptop): the end that has more tabs
   past it fades out and shows a small arrow that scrolls that way, and an end
   with nothing past it shows neither. The tab is kept in the address (`?bucket=`, so a link
-  opens it, and the address wins) and in this browser; a name no bucket has
+  opens it, even while the page is open, and the address wins) and in this browser; a name no bucket has
   opens the first. Adding a bucket opens its tab, renaming one keeps its tab,
   and deleting one opens the bucket its categories went to. The row is a
   `Tabs` component (tablist, tab and tabpanel roles, arrows, Home and End).
@@ -1430,7 +1430,16 @@ dimension or filter is a 4xx with the names it takes, never a blank chart.
 The answer (`WidgetAnswer`) is `labels`, `series` (one per name when a
 spending query `split`s by bucket, category, payee, account or need class), a
 `unit`, and `label_links`: the Transactions filters each point lists, the
-chart `links` idea carried to widgets. Money comes back under `values_minor`,
+chart `links` idea carried to widgets. A stat source's points take the stat's
+own `chart.links` entry for the metric's field (a month written as `from` and
+`to`), so the stat stays the one place that says which rows a figure adds up,
+and a metric the stat does not link (a balance, a share) links nowhere. A
+`spending` point's link carries the metric's flag (`hide_transfers=0` with
+`transfers` and `net`, whose transfer rows Transactions otherwise hides), the
+query's filters, and its slice's filter; the folded "Everything else" slice
+leaves out the shown names on top of any the query's own filters left out.
+`server/tests/test_stat_links.py` follows every point of every metric,
+dimension and split to the rows its link lists and holds the two to the cent. Money comes back under `values_minor`,
 integer cents with unit `sgd_minor`; anything else under `values` with its own
 unit (`months`, `fraction`, `percent`, the two share scales kept apart as
 they are everywhere).
@@ -2626,7 +2635,8 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   (`Combobox`) takes the highlighted option when you Tab or click away from
   half-typed text, and puts the last choice back only when no option contains
   what was typed. The search text, the view, the filters and the page are kept in the address
-  (`?q=`, `?view=order`, `?show=`, `?category=`, `?page=`), so a reload or Back lands where you were, and an edit in
+  (`?q=`, `?view=order`, `?show=`, `?category=`, `?page=`) and read from it, so a reload or Back lands where you were,
+  a link to the bare `/rules` while the page is open shows every rule, and an edit in
   progress survives the window crossing 768px.
 - **Type.** Sans serif only, never a mono font. Figures use tabular numerals so
   columns of money line up.
