@@ -59,8 +59,7 @@ public struct AlertPattern: Codable, Equatable, Identifiable, Sendable {
     }
 
     /// The date shapes the builder knows how to read. `regex` is the fragment
-    /// a date segment inserts, `format` the DateFormatter shape that parses
-    /// the capture.
+    /// a date segment inserts; `Dates.parse` reads the capture back.
     public enum DateFormat: String, Codable, CaseIterable, Sendable {
         case dmy4Slash       // 12/10/2026 and 9/2/2026
         case dmy2Slash       // 12/10/26
@@ -86,21 +85,6 @@ public struct AlertPattern: Codable, Equatable, Identifiable, Sendable {
             case .dmy2Dash:              return #"\#(d)-\#(d)-\#(y2)"#
             case .ymdDash:               return #"\#(y4)-\#(d)-\#(d)"#
             case .dmSlash:               return #"\#(d)/\#(d)"#
-            }
-        }
-
-        var formatterFormats: [String] {
-            switch self {
-            case .dmy4Slash:             return ["d/M/yyyy", "dd/MM/yyyy"]
-            case .dmy2Slash:             return ["d/M/yy", "dd/MM/yy"]
-            case .ddMmmYyyy:             return ["d MMM yyyy", "d MMMM yyyy", "dd MMM yyyy"]
-            case .ddMmmYy:               return ["d MMM yy", "d MMMM yy"]
-            case .ddMmm:                 return ["d MMM", "d MMMM"]
-            case .mmmDdYyyy:             return ["MMM d, yyyy", "MMMM d, yyyy", "MMM d yyyy"]
-            case .dmy4Dash:              return ["d-M-yyyy", "dd-MM-yyyy"]
-            case .dmy2Dash:              return ["d-M-yy", "dd-MM-yy"]
-            case .ymdDash:               return ["yyyy-MM-dd"]
-            case .dmSlash:               return ["d/M", "dd/MM"]
             }
         }
     }

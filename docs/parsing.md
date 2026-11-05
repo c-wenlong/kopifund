@@ -216,8 +216,12 @@ totals alone would never catch it. Every run therefore replays each
 account-month's chain against the printed opening, every printed intermediate
 balance and the printed closing, and reports every point where the running
 figure drifts. The chain resyncs onto the printed balance after a drift, so one
-wrong number is one report rather than N. The script exits non-zero if any chain
-fails, and `sync` writes nothing when it does.
+wrong number is one report rather than N. A block with a drift fails even when
+the resynced replay still reaches its closing, so the `reconciled` column of the
+CSVs the parser writes before it exits says False, and a reuse of those CSVs
+(`load`, `sync` or `doctor --csv`, `analyse --from-csv`) stops on
+`block-not-reconciled`. The script exits non-zero if any chain fails, and `sync`
+writes nothing when it does.
 
 Card statements print no balances at all, so their only check is the printed
 `GRAND TOTAL`, and a YouTrip month that prints "No transactions" carries no
@@ -745,7 +749,7 @@ which path is missing, and the suite still ends clean. Those modules also skip u
 | Test | Pins down |
 | --- | --- |
 | `test_parse_layouts` | one fixture per DBS, POSB, PayLah, card and YouTrip layout: row count, every field of the first and last row, the block's opening, closing and totals, and which detail text makes a bank row a wallet load rather than spending |
-| `test_parse_balance_chain` | one printed number bent at a time reports exactly one drift, and the chain resyncs so one error does not become N |
+| `test_parse_balance_chain` | one printed number bent at a time reports exactly one drift, and the chain resyncs so one error does not become N; a drifted block fails, in the DBS, Revolut and Wise parsers, so its reused CSV is refused |
 | `test_parse_no_closing` | a card statement and an empty YouTrip month say in their note why they print no closing; any other block that does not is a problem |
 | `test_parse_page_break` | a consolidated card row whose detail lines fall behind a page break keeps its merchant, parses to the same rows and keeps the same keys, and nothing from the footer leaks into a row |
 | `test_parse_revolut` | the Revolut export: pages grouped into wallet sections, every row kind and the type it gets, a fee left inside the column amount, one block per month with the export month closing the section, the borrowed FX rate, the real export's five wallets all reconciled, a section with no balance summary stopping the parser before it writes anything, and that the shared city table is the same table whatever order the parsers are imported in |

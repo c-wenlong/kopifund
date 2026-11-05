@@ -16,6 +16,9 @@ private let signposter = OSSignposter(subsystem: "com.kopifund.alerts", category
 struct PatternBuilderView: View {
     let sampleText: String
     let source: String?
+    /// The day a saved alert arrived, so the preview reads its yearless
+    /// date as intake will on save; nil for a new sample (read as today).
+    var arrivedOn: CalendarDate? = nil
     var onSaved: (() -> Void)? = nil
 
     @Environment(\.modelContext) private var context
@@ -671,7 +674,7 @@ struct PatternBuilderView: View {
             // sample pasted verbatim into Live test must still report there
             for (i, text) in ([sampleText] + (testText.isEmpty ? [] : [testText])).enumerated() {
                 let live = i > 0
-                switch Matcher.test(p, text: text) {
+                switch Matcher.test(p, text: text, arrivedOn: live ? nil : arrivedOn) {
                 case .success(let t):
                     if live {
                         testResult = "test alert reads \(t.payee) · \(t.amount) · \(t.date.formatted(date: .abbreviated, time: .omitted))"

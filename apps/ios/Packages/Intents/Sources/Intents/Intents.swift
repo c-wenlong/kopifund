@@ -18,9 +18,13 @@ public enum Ingest {
     /// long alert, and a phone with many patterns would otherwise hold the
     /// main thread, and a share extension's UI, for all of them. `defaults`
     /// is the App Group's everywhere but in tests: it holds the suppressed
-    /// shapes and the plan's currency.
+    /// shapes and the plan's currency. `arrivedOn` is the day a saved alert
+    /// first arrived (Unmatched's re-read after teaching a pattern), so a
+    /// yearless date reads against where the phone was then, not where it
+    /// is now.
     @MainActor
     public static func alert(text: String, source: String?, receivedAt: Date,
+                             arrivedOn: CalendarDate? = nil,
                              container: ModelContainer,
                              defaults: UserDefaults? = AppGroup.defaults) async throws -> String {
         let context = ModelContext(container)
@@ -32,8 +36,10 @@ public enum Ingest {
         }
         let patterns = try context.fetch(FetchDescriptor<PatternRecord>())
             .compactMap { $0.pattern }
+        let arrived = arrivedOn ?? CalendarDate(receivedAt, in: .current)
         let outcome = await Task.detached(priority: .userInitiated) {
-            Matcher.match(text: text, source: source, receivedAt: receivedAt, patterns: patterns)
+            Matcher.match(text: text, source: source, receivedAt: receivedAt,
+                          arrivedOn: arrived, patterns: patterns)
         }.value
         switch outcome {
         case .matched(let t):
@@ -48,6 +54,7 @@ public enum Ingest {
             return "queued"
         case .unmatched(let rejections):
             context.insert(UnmatchedRecord(text: text, source: source, receivedAt: receivedAt,
+                                           arrivedOn: arrived,
                                            reasons: rejections.map { "\($0.patternName): \($0.reason)" }
                                                .joined(separator: "\n")))
             try context.save()
@@ -179,9 +186,9 @@ public enum Ingest {
             let shared = row.currency.isEmpty ? c.currency : row.currency
             guard Dedup.likelyDuplicate(
                 amountCents: row.amountCents, currency: shared,
-                date: row.date, payee: row.payee,
+                date: row.day, payee: row.payee,
                 otherAmountCents: c.amountCents, otherCurrency: shared,
-                otherDate: c.date, otherPayee: c.payee) else { continue }
+                otherDate: c.day, otherPayee: c.payee) else { continue }
             if c.state == "syncing" || c.state == "synced" || c.state == "failed" || c.kopifundID != nil {
                 sent = sent.map { preferred(c, over: $0) } ?? c
             } else {
