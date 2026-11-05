@@ -264,7 +264,7 @@ describe("Transactions", () => {
     expect(leaveAsks()).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
     await waitFor(() => expect(screen.queryByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).not.toBeInTheDocument());
-    expect(leaveAsks()).toBe(false);
+    await waitFor(() => expect(leaveAsks()).toBe(false));
   });
 
   it("still asks before leaving when Less or Close hides a typed form, since the page keeps what was typed", async () => {
@@ -450,7 +450,7 @@ describe("Transactions", () => {
     await waitFor(() => expect(screen.queryByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     expect(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).toHaveValue("");
-    expect(leaveAsks()).toBe(false);
+    await waitFor(() => expect(leaveAsks()).toBe(false));
   });
 
   it("opens on the row's category, and picking it again saves nothing", async () => {
