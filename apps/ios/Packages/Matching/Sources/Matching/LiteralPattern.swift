@@ -37,11 +37,14 @@ enum LiteralPattern {
         // space between): only then may a digit run here give it characters
         // A literal that ends its block does not count as glued: ending
         // its run early there would let the next block start inside a
-        // reference and read its digits as the amount
-        let glued = trailingSpace && !(literal.last?.isWhitespace ?? true)
+        // reference and read its digits as the amount. Glued to an ignore
+        // instead, its run reads whole but stops at punctuation outside a
+        // reference, so the next block's own text ("8842X:$4.80") is left
+        let touches = !(literal.last?.isWhitespace ?? true)
+        let lastRun = !touches ? nil : trailingSpace ? digitRunGlued : digitRunBlockEnd
         let raw = literal.components(separatedBy: "\n")
         let lines = raw.enumerated().map { i, line in
-            linePattern(for: line, gluedEnd: glued && i == raw.count - 1)
+            linePattern(for: line, lastRun: i == raw.count - 1 ? lastRun : nil)
         }
         var out = ""
         for (i, line) in lines.enumerated() {
@@ -70,7 +73,9 @@ enum LiteralPattern {
         return false
     }
 
-    private static func linePattern(for line: String, gluedEnd: Bool) -> String {
+    /// `lastRun`, when set, replaces the regex of a digit run that ends the
+    /// line (see `pattern(for:trailingSpace:)`).
+    private static func linePattern(for line: String, lastRun: String?) -> String {
         let words = line.split(whereSeparator: { $0.isWhitespace }).map(String.init)
         var out: [Piece] = []
         var i = 0
@@ -98,7 +103,7 @@ enum LiteralPattern {
         return out.enumerated().map { j, piece in
             switch piece {
             case .fixed(let w): return NSRegularExpression.escapedPattern(for: w)
-            case .wild(let r) where r == digitRun && gluedEnd && j == out.count - 1: return digitRunGlued
+            case .wild(let r) where r == digitRun && j == out.count - 1 && lastRun != nil: return lastRun!
             case .wild(let r): return r
             }
         }.joined(separator: #"\s++"#)
@@ -114,6 +119,11 @@ enum LiteralPattern {
     /// reads all it was tagged with. The part up to the first digit stays
     /// possessive, which keeps a failed match linear in the run's length.
     private static let digitRunGlued = #"[^\s\d]*+\d\S*?"#
+    /// A run glued to an ignore span that ends its block: possessive, so
+    /// the next block can never start inside it, over the characters a
+    /// reference is made of (letters, digits, `/`, `.`, `_`, `-`) only, so
+    /// it stops at the punctuation the next block opens on.
+    private static let digitRunBlockEnd = #"[^\s\d]*+\d[0-9A-Za-z/._\-]*+"#
 
     private static let months: Set<String> = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug",

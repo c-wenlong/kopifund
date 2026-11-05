@@ -358,6 +358,47 @@ final class AnchorTests: XCTestCase {
         }
     }
 
+    /// Review on #47: a reference glued to an ignore leaves the next
+    /// block's punctuation, and an amount right after a word still reads.
+    func test_a_glued_ignore_leaves_the_next_blocks_text() throws {
+        let mail = "Ref 8842X:$4.80 at SHOP"
+        let tokens = Tokenizer.tokenize(mail)
+        let p = try pattern(from: mail) { i, t in
+            switch t.text {
+            case "X": return .ignore
+            case "$": return i + 1 < tokens.count && tokens[i + 1].text == "4.80" ? .amount : nil
+            case "4.80": return .amount
+            case "SHOP": return .payee
+            default: return nil
+            }
+        }
+        for (text, amount) in [(mail, "4.80"), ("Ref 9911Q:$12.50 at CAFE", "12.50")] {
+            switch Matcher.match(text: text, source: "mail", receivedAt: Date(), patterns: [p]) {
+            case .matched(let t): XCTAssertEqual(t.amount, Decimal(string: amount), text)
+            case .unmatched(let r): XCTFail("unmatched \(text): \(r)")
+            }
+        }
+    }
+
+    func test_an_amount_glued_to_a_word_reads() throws {
+        let mail = "Paid$4.80 at SHOP"
+        let tokens = Tokenizer.tokenize(mail)
+        let p = try pattern(from: mail) { i, t in
+            switch t.text {
+            case "$": return i + 1 < tokens.count && tokens[i + 1].text == "4.80" ? .amount : nil
+            case "4.80": return .amount
+            case "SHOP": return .payee
+            default: return nil
+            }
+        }
+        switch Matcher.match(text: "Paid$9.10 at CAFE", source: "mail", receivedAt: Date(), patterns: [p]) {
+        case .matched(let t):
+            XCTAssertEqual(t.amount, Decimal(string: "9.10"))
+            XCTAssertEqual(t.currency, "SGD")
+        case .unmatched(let r): XCTFail("unmatched: \(r)")
+        }
+    }
+
     /// Review: a reference glued to the amount ("8842:$4.80") folds to a
     /// wildcard that must leave the amount to its capture.
     func test_a_folded_reference_glued_to_the_amount_leaves_it() throws {
