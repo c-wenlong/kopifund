@@ -117,10 +117,15 @@ def usual(values, size, latest):
 def usual_pair(days_of_month):
     """G16: the two days of the month nearest a twice-monthly series' payments,
     earlier first: each payment counts its distance to the nearer of the two."""
+    # Audit: the days counted once each (a month has 31), with each day's distance to every
+    # candidate read from one table, so a payee of hundreds of charges costs what one of
+    # thirty does; the pairs are tried in the same order, so the answer is the same
+    count = Counter(days_of_month)
+    far = {x: [(_apart(d, x, 31), n) for d, n in count.items()] for x in range(1, 32)}
     best = None
     for x in range(1, 32):
         for y in range(x + 1, 32):
-            cost = sum(min(_apart(d, x, 31), _apart(d, y, 31)) for d in days_of_month)
+            cost = sum(min(a, b) * n for (a, n), (b, _) in zip(far[x], far[y]))
             if best is None or cost < best[0]:
                 best = (cost, (x, y))
     return best[1]
