@@ -152,12 +152,15 @@ class GeneratedTest(unittest.TestCase):
         text = gen_types.OUT.read_text(encoding="utf-8")
         self.assertEqual(text.count("  /** @deprecated the same value as `cost_type`"), 2)
 
-    def test_a_view_asked_again_after_a_no_change_write_is_a_cached_get(self):
+    def test_a_view_asked_again_after_a_write_is_a_cached_get(self):
         # G18: a write that reloads everything needs no entry; a GET asked afresh every time needs none either
         import serve
-        self.assertLessEqual(set(serve.REREAD_AFTER), set(serve.NO_CHANGE))
+        self.assertLessEqual(set(serve.REREAD_AFTER), set(serve.POST_ROUTES))
         self.assertLessEqual({p for paths in serve.REREAD_AFTER.values() for p in paths}, set(serve.CACHED))
         self.assertIn('"/api/run/check": ["/api/overview"]', gen_types.render())
+        # G26: a layout save asks again for the layouts alone, and still moves the server's version
+        self.assertEqual(serve.REREAD_AFTER["/api/dashboard/layouts/<id>"], ("/api/dashboard/layouts",))
+        self.assertNotIn("/api/dashboard/layouts/<id>", serve.NO_CHANGE)
 
     def test_the_scam_settings_are_the_ones_the_checks_keep(self):
         self.assertEqual(list(typing.get_type_hints(wire.ScamSettings)), list(scam_checks.DEFAULTS))
