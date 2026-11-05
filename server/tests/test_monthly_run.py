@@ -27,7 +27,7 @@ The property under test throughout is the one the runbook promises: a run that
 doctor is unhappy about writes nothing at all, and a run with nothing to do
 issues no API calls.
 """
-import isolate  # noqa: F401  first: no test writes the real record or cache
+import isolate  # first: no test writes the real record or cache
 import argparse
 import contextlib
 import importlib.util
@@ -49,16 +49,18 @@ REPO = Path(__file__).resolve().parent.parent
 
 # End to end over the owner's own statement tree, so this module needs both the
 # real config and the data folder's statements, neither of which a clone has. A module-level SkipTest
-# makes unittest skip the module rather than error on import.
+# makes unittest skip the module rather than error on import. Audit: the run sees the real data
+# folder only when it asks (KOPIFUND_TEST_REAL_DATA=1, server/tests/isolate.py), and only here.
 from finance.paths import statements_dir  # noqa: E402
-if not statements_dir().is_dir():
-    raise unittest.SkipTest("no statements in the data folder; the end-to-end run needs them")
-try:
-    REAL = load_config()
-except ConfigMissing as e:
-    raise unittest.SkipTest(str(e))
-DATA = REAL.root
-RULES = sync.default_rules(REAL)
+with isolate.real_data():
+    if not statements_dir().is_dir():
+        raise unittest.SkipTest("no statements in the data folder; the end-to-end run needs them")
+    try:
+        REAL = load_config()
+    except ConfigMissing as e:
+        raise unittest.SkipTest(str(e))
+    DATA = REAL.root
+    RULES = sync.default_rules(REAL)
 
 # the DBS parser's key function is borrowed so the key-scheme scenario changes keys the way a real parser change
 # would rather than by inventing strings.
@@ -193,7 +195,15 @@ def clone(parsed):
                        failed_roots=set(parsed.failed_roots), csv_dir=parsed.csv_dir)
 
 
+_REAL_UP, _REAL_DOWN = isolate.real_data_for_module()
+
+
+def setUpModule():
+    _REAL_UP()
+
+
 def tearDownModule():
+    _REAL_DOWN()
     for path in TEMPS:
         shutil.rmtree(path, ignore_errors=True)
 

@@ -87,7 +87,8 @@ struct AlertView: View {
                 }
 
                 NavigationLink {
-                    PatternBuilderView(sampleText: record.text, source: record.source) {
+                    PatternBuilderView(sampleText: record.text, source: record.source,
+                                       arrivedOn: record.arrivedOn) {
                         didSave = true
                         Task { onFinished(await reIngestAndRemove()) }
                     }
@@ -143,6 +144,7 @@ struct AlertView: View {
         if let container = try? Store.container() {
             outcome = (try? await Ingest.alert(text: record.text, source: record.source,
                                                receivedAt: record.receivedAt,
+                                               arrivedOn: record.arrivedOn,
                                                container: container)) ?? "unmatched"
         }
         context.delete(record)
