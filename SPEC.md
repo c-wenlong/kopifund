@@ -1209,7 +1209,7 @@ this, and a figure kept from before a write is never shown after it.
 | Icons | lucide-react | Outline icons that match the sidebar mockup |
 | Calendar | react-day-picker 9 | The browser's own date picker is not styleable and differs per browser; this one draws the month grid, with the app's tokens, and leaves the box and the popover to `DateField` and `MonthField` |
 | Font | Inter, bundled with the app | One sans face everywhere, cached for offline use |
-| PWA | vite-plugin-pwa | Manifest and service worker; `/api` is never served from the cache |
+| PWA | vite-plugin-pwa | Manifest and service worker; `/api` is never served from the cache, and a page is always asked of the server (this build's precached `index.html` answers any page only when the server does not, so the app still opens offline, and no page an older build saved is ever served), so a new build shows on the first open after it; a page an older worker served reloads once the new worker takes over |
 | Tests | Vitest and Testing Library | Same config as the build |
 | Desktop (G23) | Tauri 2 | A 7 MB shell over the Mac's own WebKit that runs `serve.py` as a sidecar; Electron would add its own Chromium and an unused Node, and a Swift app would mean redrawing every page |
 
@@ -1249,11 +1249,21 @@ terminal and a browser tab. `apps/desktop/` holds a Tauri v2 shell; nothing in
 - **The starting page** ([apps/desktop/ui](apps/desktop/ui)) shows while the server
   starts, in the page colour of `apps/web/src/index.css`. If the server stops
   before or after its ready line, the window goes back to it with the
-  server's last 40 lines and a Retry button.
+  server's last 40 lines and a Retry button. A start has 45 seconds to print
+  its ready line: a profile line that waits for input, or a Python that hangs
+  before it listens, would otherwise leave the page on "Starting" for good, so
+  the shell kills the server and says it did not start. A start that takes
+  over five seconds shows what the server has printed so far. If the checkout
+  the app was built from is gone, the page says so and names it instead of
+  trying. Stopping the old server on Retry runs off the main thread, so the
+  window never freezes.
 - **The window** loads the page from the sidecar's address, so the page and
   `/api` share one origin and `serve.py`'s Origin and Host checks hold as they
   are. The shell adds no API of its own to the page. The service worker is not
-  registered inside the app, since the sidecar is always there.
+  registered inside the app, since the sidecar is always there:
+  `apps/web/src/serviceWorker.ts` registers it only outside the window (Tauri's
+  `__TAURI_INTERNALS__` or the fixed port 8771 marks the window) and removes
+  one an older build registered there.
 - **Drops and links.** Tauri's own drop handler is off (`dragDropEnabled:
   false`), so WebKit hands drops to the page as Safari does: PDFs dropped on
   Upload's drop area queue there, and in-page drags such as the Categories
@@ -1264,10 +1274,11 @@ terminal and a browser tab. `apps/desktop/` holds a Tauri v2 shell; nothing in
   app with the file.
 - **One instance.** A second launch brings the open window forward. Quitting
   the app stops the server. The window keeps its size and place.
-- **Mac behaviour.** The standard menus (Edit for copy and paste, View for
-  reload, back and forward, Window), Cmd+, for Settings, PDFs dropped on the
-  window or the Dock icon queued on Upload, and links to other sites opened in
-  the default browser.
+- **Mac behaviour (planned, ROADMAP G23 line 3, not built yet).** Menus
+  of its own (View for reload, back and forward), Cmd+, for Settings, and
+  PDFs dropped on the Dock icon opening Upload with them queued. Today the
+  window has Tauri's default menu only; drops on the window and links to
+  other sites work as "Drops and links" above says.
 - **Where it runs from.** Until G23's self-contained line, the app runs
   `serve.py` from the checkout it was built from, with Homebrew's `python3`
   and `pdftotext`, against the same data folder as `make serve`.
@@ -1275,8 +1286,11 @@ terminal and a browser tab. `apps/desktop/` holds a Tauri v2 shell; nothing in
   named) under `~/Library/Application Support/Kopifund/builds` instead, so
   the app in `/Applications` keeps serving that version while the checkout
   changes branch; each build replaces the last, older copies are deleted, and
-  one Rust cache (`~/Library/Caches/Kopifund/cargo-target`) keeps rebuilds
-  quick. The later
+  one Rust cache (`~/Library/Caches/Kopifund/cargo-target`, shared with `make
+  desktop` and `make check`) keeps rebuilds quick. `build_macos.sh` and `make
+  desktop` take one build lock, since they share its bundle folder, and both
+  copy the new app beside the old one and swap it in, so a failed copy leaves
+  the old app. The later
   lines bundle Python and `pdftotext`, sign and notarise the app, add updates
   from GitHub Releases, and build for Windows.
 
@@ -1407,7 +1421,11 @@ grid of fixed rows. A widget is dragged by the grip in its header and resized
 from its corner; the same moves work from the keyboard, arrows on the grip
 shifting the widget a cell or past its neighbour and arrows on the corner
 growing or shrinking it. Every move is repacked by `layout.ts`'s `pack`, which
-settles each widget as high as it fits, so no hole stays; a widget's height
+settles each widget as high as it fits, so no hole stays. A drop settles
+the board its drag previewed (`settle`: the moved widget pinned to its cell,
+what it lands on pushed below it, then everything as high as it fits), so a
+widget dropped onto another's cell lands above it, as the preview showed; a
+widget's height
 is bounded (`MAX_H`), so a stray saved size cannot stall the page. A change
 writes the layout back through `POST /api/dashboard/layouts/<id>` after a
 short debounce, so nothing waits on a Save. Under 768px the same widgets stack in one column in

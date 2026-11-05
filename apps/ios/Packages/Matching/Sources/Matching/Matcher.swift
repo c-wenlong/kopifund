@@ -89,43 +89,108 @@ public enum Matcher {
 
     // MARK: - regex
 
-    /// One named group per capture slot, in segment order. The regex allows
-    /// leading and trailing text around the template: bank messages carry a
-    /// changing prefix or footer, and the anchors nearest the captures are
-    /// what identifies the alert.
+    /// One named group per capture slot, in segment order. Text before and
+    /// after the template is allowed: bank messages carry a changing prefix
+    /// or footer, and the anchors nearest the captures are what identifies
+    /// the alert.
+    ///
+    /// Audit: the shape keeps a failed match close to linear in the text's
+    /// length. Whitespace runs are matched possessively (LiteralPattern),
+    /// line captures start and end on a non-space and a lazy one reads at
+    /// most `maxCaptureLength` characters, and the template is cut into
+    /// blocks at its ignore spans, each read as `(?>[\s\S]*?B)` from `\A`:
+    /// the first place block B reads is committed to, so a later failure
+    /// never re-tries every split between two wildcards or every start
+    /// position. The first place B reads also ends earliest, which leaves
+    /// the most room for the blocks after it, so committing finds the same
+    /// leftmost match the old backtracking did whenever there is one.
     private static func expression(for p: AlertPattern) throws -> NSRegularExpression {
+        // ignore spans cut the template into blocks; an ignore at either
+        // edge leaves an empty block, which adds nothing: each block already
+        // skips ahead to where it reads, and nothing after the last is
+        // required
+        let blocks = p.segments.split(separator: .ignore, omittingEmptySubsequences: true)
         var dateGroup = 0
-        var parts: [String] = []
-        for seg in p.segments {
-            switch seg {
-            case .literal(let s):
-                // whitespace runs in the alert may not match the sample's, and
-                // the space at a literal's edge overlaps the next capture
-                parts.append(#"\s*"# + LiteralPattern.pattern(for: s) + #"\s*"#)
-            case .ignore:
-                parts.append(#"[\s\S]*?"#)
-            case .amount:
-                parts.append(#"(?<amount>-?(?:[A-Z]{3}|S\$|US\$|\$)\s*[0-9][0-9,]*(?:\.\d{1,2})?|-?[0-9][0-9,]*(?:\.\d{1,2})?)"#)
-            case .payee:
-                // a payee never spans lines, so the capture stays inside its
-                // own: it can neither swallow the next line's footer nor
-                // collapse when the text beside it is a wildcard. A payee
-                // that ends the template reaches its line's end, not the
-                // text's, so trailing boilerplate stays out of the name.
-                parts.append(atLineEnd(p, seg) ? #"(?<payee>[^\r\n]+)"# : #"(?<payee>[^\r\n]+?)"#)
-            case .date(let f):
-                parts.append("(?<date\(dateGroup)>\(f.regex))")
-                dateGroup += 1
-            case .accountHint:
-                // the account string prints the same way every alert, so the
-                // capture reads the whole tagged text, punctuation and all;
-                // the sample's value is what a later alert must equal
-                parts.append(atLineEnd(p, seg) ? #"(?<accountHint>[^\r\n]+)"#
-                                               : #"(?<accountHint>[^\r\n]+?)"#)
+        var pattern = #"\A"#
+        for (b, block) in blocks.enumerated() {
+            // a block that opens on a literal starts with that literal's
+            // possessive whitespace, so the skip in front only needs to stop
+            // where nothing was skipped or right after a non-space: stopping
+            // at each space of a long run would read the same literal once
+            // per space. A template that opens on the payee or the card
+            // reads them from a line's start: the capture can grow over
+            // anything on its line, so if it closes from any place on a
+            // line it closes from the line's first word, and the leftmost
+            // match always started there. Trying every other place on the
+            // line only repeated the same scan.
+            switch block.first {
+            case .literal:
+                pattern += #"(?>(?:[\s\S]*?\S)??"#
+            case .payee where b == 0, .accountHint where b == 0:
+                pattern += #"(?>[\s\S]*?(?m:^)[^\S\r\n]*+"#
+            default:
+                pattern += #"(?>[\s\S]*?"#
             }
+            for (k, seg) in zip(block.indices, block) {
+                switch seg {
+                case .literal(let s):
+                    pattern += LiteralPattern.pattern(for: s,
+                                                      trailingSpace: k != block.index(before: block.endIndex))
+                case .ignore:
+                    break
+                case .amount:
+                    pattern += #"(?<amount>-?"# + currencyMarker + #"\s*+[0-9][0-9,]*(?:\.\d{1,2})?|"#
+                        + noNumberBefore + #"-?[0-9][0-9,]*(?:\.\d{1,2})?)"#
+                case .payee:
+                    // a payee never spans lines, so the capture stays inside
+                    // its own: it can neither swallow the next line's footer
+                    // nor collapse when the text beside it is a wildcard. A
+                    // payee that ends the template reaches its line's end,
+                    // not the text's, so trailing boilerplate stays out of
+                    // the name.
+                    pattern += lineCapture("payee", atLineEnd: atLineEnd(p, seg))
+                case .date(let f):
+                    pattern += noNumberBefore + "(?<date\(dateGroup)>\(f.regex))"
+                    dateGroup += 1
+                case .accountHint:
+                    // the account string prints the same way every alert, so
+                    // the capture reads the whole tagged text, punctuation
+                    // and all; the sample's value is what a later alert must
+                    // equal
+                    pattern += lineCapture("accountHint", atLineEnd: atLineEnd(p, seg))
+                }
+            }
+            pattern += ")"
         }
-        let pattern = #"\A[\s\S]*?"# + parts.joined() + #"[\s\S]*?\z"#
         return try NSRegularExpression(pattern: pattern, options: [])
+    }
+
+    /// An amount or a date never starts inside a number: a skip or a
+    /// digit run that stops early ("Ref 8|842") must not hand the rest of
+    /// a reference to the capture as the amount.
+    private static let noNumberBefore = #"(?<![0-9])(?<![0-9][.,])"#
+
+    /// The currency markers an amount opens on. A marker may follow a digit
+    /// ("Ref 8842US$4.80") or a word ("Paid$4.80") but never starts inside a
+    /// longer marker: "US$4.80" is never read from its "S$" or "$" as SGD,
+    /// and a code never starts mid-word.
+    private static let currencyMarker =
+        #"(?:(?<![A-Za-z])(?:[A-Z]{3}|US\$)|(?<!U)S\$|(?<![SU])\$)"#
+
+    /// The longest payee or account a lazy capture reads. YNAB caps a payee
+    /// name at 200 characters, so a longer capture could never post; the
+    /// bound keeps a capture that is hunting for its closing anchor from
+    /// scanning a whole multi-KB line at every place it could start.
+    static let maxCaptureLength = 200
+
+    /// A capture on one line that starts and ends on a non-space, so the
+    /// whitespace around it belongs to the literals alone. The lazy form
+    /// tries one character first (`??`), then grows. One that ends the
+    /// template reads greedily to its line's end; nothing follows it, so it
+    /// never backtracks.
+    private static func lineCapture(_ name: String, atLineEnd: Bool) -> String {
+        atLineEnd ? #"(?<\#(name)>\S(?:[^\r\n]*\S)?)"#
+                  : #"(?<\#(name)>\S(?:[^\r\n]{0,\#(maxCaptureLength - 2)}?\S)??)"#
     }
 
     /// A capture ends its line when nothing but whitespace literals follows
@@ -168,8 +233,11 @@ public enum Matcher {
         let re: NSRegularExpression
         do { re = try cachedExpression(for: p) } catch { return .failure(MatchError("pattern builds a bad regex")) }
         let ns = text as NSString
-        guard let m = re.firstMatch(in: text, range: NSRange(location: 0, length: ns.length)) else {
-            return .failure(MatchError("text does not match"))
+        let m: NSTextCheckingResult
+        switch search(re, in: text) {
+        case .found(let hit): m = hit
+        case .none: return .failure(MatchError("text does not match"))
+        case .timedOut: return .failure(MatchError("text too long to read in time"))
         }
         func group(_ name: String) -> String? {
             let r = m.range(withName: name)
@@ -227,13 +295,48 @@ public enum Matcher {
     /// the same regex on it: the value a later alert's hint must equal.
     private static func expectedHint(for p: AlertPattern, re: NSRegularExpression) -> String? {
         let ns = p.sampleText as NSString
-        guard let m = re.firstMatch(in: p.sampleText,
-                                  range: NSRange(location: 0, length: ns.length)) else {
-            return nil
-        }
+        guard case .found(let m) = search(re, in: p.sampleText) else { return nil }
         let r = m.range(withName: "accountHint")
         guard r.location != NSNotFound else { return nil }
         return ns.substring(with: r).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+extension Matcher {
+    /// How long one pattern may spend on one text before it gives up. The
+    /// regex is built to stay near linear, so a real alert reads in a few
+    /// milliseconds; the budget is the backstop that keeps any shape the
+    /// builder did not foresee from freezing the app or getting a share
+    /// extension or intent killed mid-ingest.
+    static let matchBudget: Duration = .milliseconds(250)
+
+    enum Search {
+        case found(NSTextCheckingResult)
+        case none
+        case timedOut
+    }
+
+    /// The first match, or `timedOut` once `budget` has passed. ICU calls
+    /// the progress block periodically while it works, which is the only
+    /// place a running match can be stopped.
+    static func search(_ re: NSRegularExpression, in text: String,
+                       budget: Duration = matchBudget) -> Search {
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: budget)
+        var hit: NSTextCheckingResult?
+        var late = false
+        re.enumerateMatches(in: text, options: [.reportProgress],
+                            range: NSRange(location: 0, length: (text as NSString).length)) { m, _, stop in
+            if let m {
+                hit = m
+                stop.pointee = true
+            } else if clock.now >= deadline {
+                late = true
+                stop.pointee = true
+            }
+        }
+        if let hit { return .found(hit) }
+        return late ? .timedOut : .none
     }
 }
 
