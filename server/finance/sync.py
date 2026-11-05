@@ -1275,7 +1275,8 @@ def budget_actuals(parsed, income_categories):
 
     Actual is the sum of the rows' SGD values (sgd_minor), counted in cents: a
     row at its block's FX rate, an SGD row as it is, and a foreign row whose
-    block prints no rate not at all (unpriced_rows lists those). The sign is
+    block prints no rate not at all (unpriced_rows lists those; a category
+    and month with only those still gets its key, at 0). The sign is
     flipped so that Planned and Actual compare like for like: on a spending
     category Actual is positive when money went out, and on an income category
     (Need class = Income) it is positive when money came in. Returned in
@@ -1287,9 +1288,13 @@ def budget_actuals(parsed, income_categories):
         if r.get("flow_class") != "External" or not r.get("category"):
             continue
         sgd = sgd_minor(r, fx.get(r.get("period")))
+        key = (r["category"], (r["date"] or "")[:7])
         if sgd is None:
+            # the month stays, at zero: an Actual an older run counted one to
+            # one is then corrected rather than left as it was
+            totals[key] += 0
             continue
-        totals[(r["category"], (r["date"] or "")[:7])] += (
+        totals[key] += (
             sgd if r["category"] in income_categories else -sgd)
     return {k: v / 100 for k, v in totals.items()}
 

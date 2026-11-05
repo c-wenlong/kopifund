@@ -501,6 +501,22 @@ class BudgetTest(unittest.TestCase):
         self.assertEqual(counts["no SGD value"], 1)
         self.assertEqual(notion.plain(self.budgets()["Eating out · 2026-01"], "Actual"), 12.3)
 
+    def test_an_actual_counted_one_to_one_before_is_corrected(self):
+        """A month with only unpriced rows keeps its key at zero, so a budget an
+        older run filled with NOK 1,500 as S$1,500 is set right (review)."""
+        blocks = [block(period=f"{POSB} · NOK · 2026-01", currency="NOK", fx_to_sgd="", n_txns="1")]
+        rows = [row(txn_key="eeee5555", date="2026-01-05", amount="-1500.00", currency="NOK",
+                    category="Eating out", period=blocks[0]["period"])]
+        parsed = parsed_of(rows, blocks)
+        self.assertEqual(sync.budget_actuals(parsed, set()), {("Eating out", "2026-01"): 0})
+        state = self.state()
+        self.client.create(CFG.ds("budgets"), notion.to_api(canonicalise(
+            {"Name": "Eating out · 2026-01", "Category": [state.categories["Eating out"]], "Month": "2026-01",
+             "Need class": "Want", "Actual": 1500.0}, BUDGET_TYPES), BUDGET_TYPES))
+        counts = sync.rollup_budgets(CFG, self.client, parsed, self.state(), echo=False)
+        self.assertEqual(counts["updated"], 1)
+        self.assertEqual(notion.plain(self.budgets()["Eating out · 2026-01"], "Actual"), 0)
+
     def test_a_second_run_writes_nothing(self):
         self.run_rollup()
         before = self.client.writes
