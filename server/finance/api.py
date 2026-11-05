@@ -619,8 +619,8 @@ def get_link_devices(req):
 
 def get_link_pending(req):
     """The phone rows the Settings card lists, each named for the paired
-    phone that sent it. Loopback only in practice: the link path refuses
-    every /api/link/ read but /api/link/devices's own."""
+    phone that sent it. Loopback only: the link path answers only the
+    reads in serve.py's LINK_READS."""
     from . import link, pending
     names = {d["id"]: d["name"] for d in link.list_devices()}
     conn = req.maybe_record()

@@ -147,10 +147,14 @@ def run(snapshot, benchmarks=None):
     for m in months:
         for key, value in sorted(closings.get(m, {}).items()):
             held[key] = value
+        # an account that closed holds nothing from its last statement on, even
+        # one whose final zero printed no SGD rate (closing_by_month skips it)
+        for key in [k for k in held if k[0] in closed and m >= closed[k[0]]]:
+            held[key] = 0
         here = printed.get(m, set())
         read_at.update((a, m) for a in here)
         carried = sorted(a for a in {k[0] for k in held}
-                         if a not in here and not (a in closed and m > closed[a]))
+                         if a not in here and not (a in closed and m >= closed[a]))
         by_account = {}
         for (account_no, _currency), value in held.items():
             by_account[account_no] = by_account.get(account_no, 0) + value

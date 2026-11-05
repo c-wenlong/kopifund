@@ -174,6 +174,19 @@ class TheCashHeadline(NoPhases):
         self.assertEqual(c.coverage(s)["2025-06"]["missing"], [])
         self.assertEqual(savings_runway.run(s)["data"]["summary"]["as_of_complete"], "2025-01")
 
+    def test_a_closed_account_whose_last_zero_has_no_rate_holds_nothing(self):
+        """Greptile on #39: B2 holds USD and closes at 0 in March, a statement with no
+        SGD rate. Its February balance is not cash after it closed."""
+        blocks = [bank(m, 50_000, 50_000, currency="USD") for m in ("2025-01", "2025-02")]
+        blocks.append(dict(bank("2025-03", 50_000, 0, currency="USD"), closing_sgd_minor=None))
+        s = with_second_bank(*blocks)
+        self.assertEqual(c.statement_spans(s)[OLD]["to"], "2025-03")
+        summary = savings_runway.run(s)["data"]["summary"]
+        self.assertEqual(summary["as_of_complete"], "2025-12")
+        self.assertEqual(summary["cash_minor"], savings_runway.run(fx.snapshot())["data"]["summary"]["cash_minor"])
+        march = next(x for x in savings_runway.run(s)["data"]["months"] if x["month"] == "2025-03")
+        self.assertTrue(march["complete"])
+
     def test_a_wallet_month_after_every_bank_closed_is_not_complete(self):
         s = fx.snapshot()
         main = next(b for b in s["periods"] if b["name"] == f"{fx.MAIN} · SGD · 2025-12")
