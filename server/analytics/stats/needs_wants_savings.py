@@ -30,8 +30,10 @@ TARGETS = {"need": 0.50, "want": 0.30, "savings": 0.20}
 
 # G13: each bar opens the rows it adds up. Needs and wants are spending rows by
 # their category's need class; savings are the Investment and Savings transfers,
-# which Transactions hides unless told not to.
-LINKS = {"need_minor": {"month": "{x}", "spend": "1", "need": "Need"},
+# which Transactions hides unless told not to. Income is not drawn, but a
+# dashboard widget plots it (G26, server/finance/dashboard.py reads these links).
+LINKS = {"income_minor": {"month": "{x}", "income": "1"},
+         "need_minor": {"month": "{x}", "spend": "1", "need": "Need"},
          "want_minor": {"month": "{x}", "spend": "1", "need": "Want"},
          "savings_minor": {"month": "{x}", "transfer": "1", "need": "Investment,Savings", "hide_transfers": "0"}}
 
