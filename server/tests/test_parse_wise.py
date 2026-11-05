@@ -311,6 +311,42 @@ class RealExport(unittest.TestCase):
         self.assertEqual(ps.WARNINGS, [])
 
 
+class MultiPageExport(unittest.TestCase):
+    """wise-sgd-pages.txt is wise-sgd.txt split over two pages, the oldest row
+    (the July 2024 top-up) on page 2 under its own column header. The licence
+    block closes every page, not just the last, so the rows after it count.
+    Wise prints no opening, so a parser that stopped at page 1 would derive an
+    opening that absorbs the lost rows and still reconcile."""
+
+    def setUp(self):
+        self.parsed = sup.run_wise(["wise-sgd-pages.txt"])
+        self.warnings = list(ps.WARNINGS)       # the next run clears them
+        self.one_page = sup.run_wise(["wise-sgd.txt"])
+
+    def test_every_page_is_parsed(self):
+        self.assertEqual([(r["date"], r["bank_txn_type"]) for r in self.parsed.rows],
+                         [("2024-07-06", "Wise Top-up"), ("2025-07-14", "Wise Conversion In"),
+                          ("2025-07-14", "Wise Transfer")])
+
+    def test_it_reads_as_the_one_page_statement(self):
+        self.assertEqual(self.parsed.keys(), self.one_page.keys())
+        self.assertEqual([(b["month"], b["opening"], b["closing"]) for b in self.parsed.blocks],
+                         [(b["month"], b["opening"], b["closing"]) for b in self.one_page.blocks])
+        self.assertEqual(self.parsed.blocks[0]["month"], "2024-07")
+        self.assertEqual(self.parsed.stmts[0]["opening"], 0.0)
+        self.assertEqual(self.warnings, [])
+
+    def test_a_row_split_over_the_page_break_keeps_its_description(self):
+        text = sup.text("wise-sgd-pages.txt")
+        topup = next(ln for ln in text.splitlines() if ln.startswith("  Topped up account"))
+        moved = text.replace(topup + "\n", "", 1).replace(
+            "\n\n\n\n   Wise Asia-Pacific", "\n" + topup + "\n\n\n\n   Wise Asia-Pacific", 1)
+        self.assertEqual(moved.index(topup) < moved.index("1/2"), True)
+        parsed = sup.run_wise(["wise-sgd-pages.txt"], lines={"wise-sgd-pages.txt": moved})
+        self.assertEqual(ps.WARNINGS, [])
+        self.assertEqual(parsed.keys(), self.one_page.keys())
+
+
 class NoClosingPrinted(unittest.TestCase):
     """Wise prints no opening, so the closing is the one figure the rows are
     checked against. A file without it used to warn, open at zero and then

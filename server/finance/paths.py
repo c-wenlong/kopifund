@@ -116,10 +116,3 @@ def current_statements(pdfs):
     keep = {p for _, p in newest_export.values()} | {p for _, p in longest_range.values()}
     return sorted(p for p in pdfs
                   if p in keep or not (_EXPORT.match(p.name) or _RANGE.match(p.name)))
-
-
-def superseded_statements(pdfs):
-    """The PDFs current_statements leaves out, other than dot-files."""
-    pdfs = [Path(p) for p in pdfs if not Path(p).name.startswith(".")]
-    keep = set(current_statements(pdfs))
-    return sorted(p for p in pdfs if p not in keep)
