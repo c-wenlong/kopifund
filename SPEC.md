@@ -91,7 +91,21 @@ flowchart LR
   binds `127.0.0.1:8770` only, serves the built app from `apps/web/dist`, answers
   `/api/*` with JSON. Every write is a POST that must carry the header
   `X-Kopifund: 1` and, when the browser sends one, an Origin on this machine,
-  so a page on another site cannot write. The phone link ("Phone link (G25)"
+  so a page on another site cannot write. An `/api/` GET whose
+  `Sec-Fetch-Site` header names another site (`cross-site` or `same-site`) is
+  refused with a 403, so another page cannot start one of the GETs that run a
+  command or call a provider, or learn from a 200 or 404 what exists; the app's
+  own page, a typed address and a client that sends no such header are answered.
+  Every response carries `X-Frame-Options: DENY`,
+  `Content-Security-Policy: frame-ancestors 'none'` and
+  `X-Content-Type-Options: nosniff`, so no other site can frame the app. A
+  request that raises what its route did not expect still gets JSON: a 503
+  "the record is busy" when SQLite stayed locked, otherwise a 500 with a
+  sentence and no detail, while the traceback goes to the server's stderr. A
+  Content-Length that is not a whole number is a 400, and one over 25 MB a 413.
+  The link path below gets the same headers, the same JSON on a failure and
+  the same length check; its GETs are held by the device bearer instead of
+  `Sec-Fetch-Site`. The phone link ("Phone link (G25)"
   below) is the only way a request reaches the API off this machine, and it
   arrives on loopback too, through `tailscale serve`. The routes are listed at the top of
   serve.py, and in it `GET_ROUTES` and `POST_ROUTES` are the one table that
@@ -605,7 +619,10 @@ model and a load never waits on the network.
   `XAI_API_KEY`, ...) or `<PROVIDER>_API_KEY` in the environment, `.env` in
   the data folder, or a `key_file` such as the one a shell profile sources.
   Test on the card sends one short request and says whether the provider
-  answered. No test ever writes to the Keychain.
+  answered. No test ever writes to the Keychain. The key goes in a header
+  to the provider's own URL and nowhere else: a redirect is refused, not
+  followed with the key, and a provider error that repeats a key is shown
+  with it taken out.
 - **Model fields autocomplete** from the provider's own list of models
   (Anthropic's `GET /v1/models`, or `GET <base_url>/models` for an
   OpenAI-style provider), fetched by the server with the saved key, so the
@@ -641,7 +658,12 @@ changes the record.
   formats are spoken: Anthropic's `tool_use` blocks and the OpenAI-style
   `tool_calls`. The server answers with one line of JSON per event as it
   happens (the thread, each round's steps, then the answer with its charts,
-  links and cards), so the steps show while the model works.
+  links and cards), so the steps show while the model works. A tool call
+  whose arguments do not fit its schema (a list where a string goes) goes
+  back to the model as a tool error saying so, for it to call again; it never
+  ends the answer. Every stream ends with a `done` line, after an `error`
+  line when anything failed, the record not opening or the turn not saving
+  included.
 - **Steps.** Each answer shows its steps in order above the answer, every
   row collapsed until pressed: "Thought" (a round's summarized thinking,
   quiet, under a rule), "Used 2 tools" (the tools of one round, or of rounds
@@ -736,6 +758,8 @@ changes the record.
 - **Confirm cards** (the last G22 line). The model can suggest a rule, a
   row's category, a budget or a trip. The panel shows it as a card with the
   change and its preview (a rule lists the rows it would change), and the
+  card shows every field Confirm saves (a row's card names the payee it
+  would set, a new trip's card its notes). The
   existing write endpoint saves it only when the owner presses Confirm, with
   an Undo toast. Rules, a row's category and trips already have Undo. A
   budget card carries no undo of its own (`undo` is null), since the amount
@@ -947,9 +971,11 @@ them. Amounts are integer cents.
     (`10y`, `20y`, `30y` or `65`), today's or future dollars, spending a month
     (`spend_minor`) and a milestone (`milestone_minor`). Rates are stored as
     decimal text. Empty spending spends
-    the record's own average over its last 12 months
-    (`server/finance/spending.py`, `monthly_average`, the same spending definition as
-    the Spending explorer), which the box shows as its hint.
+    the record's own average over the full months among its last 12, ending at
+    its last full month (`server/finance/spending.py`, `monthly_average`, the same
+    spending definition as the Spending explorer and the same full months as
+    every stat, so a month that has only just begun, or one loaded since the
+    stats last ran, never counts as a whole one), which the box shows as its hint.
   - Every field is checked on save (`server/finance/planning.py`, `clean_plan`) and a
     refusal names it: "Income row 2 (Acme): the to date is before the from
     date", "Investing step 1: from is a month", "Inflation is between -10 and
@@ -1446,7 +1472,9 @@ its month) and optional `filters`, which are Transactions' own filter names
 `account` by its id, `home`, `trip`, `scope`). `POST /api/dashboard/query`
 takes the query as its body; `GET /api/dashboard/query?q=` takes it as JSON in
 the address, so a widget loads through `useApi`'s cache and ETag like a page
-(`useWidgetData`, `apps/web/src/widgets.ts`). An unknown source, metric,
+(`useWidgetData`, `apps/web/src/widgets.ts`, which writes the query's keys in
+one order so one question is one address). A query copies only the stat
+results it reads (`results_cache.results_view`), not every stat's. An unknown source, metric,
 dimension or filter is a 4xx with the names it takes, never a blank chart.
 
 The answer (`WidgetAnswer`) is `labels`, `series` (one per name when a
@@ -1464,7 +1492,14 @@ leaves out the shown names on top of any the query's own filters left out.
 dimension and split to the rows its link lists and holds the two to the cent. Money comes back under `values_minor`,
 integer cents with unit `sgd_minor`; anything else under `values` with its own
 unit (`months`, `fraction`, `percent`, the two share scales kept apart as
-they are everywhere).
+they are everywhere). A `spending` answer by month lists in `partial` the
+months the monthly-cashflow stat calls partial (a bank has not printed them
+yet): a KPI reading the latest month steps over them as Home's tiles do, so
+half a month is never set against a whole one. A pie or treemap draws a share
+of a whole, so it leaves out a part at or below zero (a bucket whose refunds
+passed its spending) rather than draw it into the total, and the flow widget
+draws one "Everything else" under a bucket, holding the answer's own folded
+row with whatever else its refunds pushed out.
 
 **The sources** (`server/finance/dashboard.py`, `_CATALOGUE`): `spending`
 reads the record's `v_txn` with the Spending explorer's own WHEREs and its
@@ -1515,8 +1550,15 @@ Dashboard open in a second window never edits a board this one changed.
 first components bound to the query layer: a time series of one or more
 series over the answer's labels, a stacked area with the Net worth page's
 Stacked / Lines / Total switch (the choice remembered per widget instance),
-and a waterfall bridging a balance's first figure to its last through one
-step per flow series, inflows first. Each is config-driven: its config names
+and a waterfall bridging a balance through one step per flow series, inflows
+first. A balance figure is a month's close, so the bridge opens on the close
+of the month before the flows' first month (the widget asks for the balance
+from then) and closes on their last month's; each step sums its series over
+the months between, so flows that cover every way the balance moves land
+exactly on the closing figure. With no close before the flows (the record's
+first month) it opens on the first figure and leaves that month's flows out.
+Its default names no month: the flows cover the record's last twelve months.
+Each is config-driven: its config names
 the series' queries and an optional range a query without its own inherits,
 so a dashboard-level filter can move every series at once. A point's dot or
 a step's bar opens the Transactions rows it lists when the answer carried

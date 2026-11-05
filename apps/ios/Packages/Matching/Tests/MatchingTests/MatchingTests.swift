@@ -441,20 +441,51 @@ final class RecordCoverTests: XCTestCase {
 
 final class AmountAndDateTests: XCTestCase {
     func test_amount_shapes() {
-        XCTAssertEqual(Amounts.parse("S$4.50"), Decimal(string: "4.50"))
-        XCTAssertEqual(Amounts.parse("SGD 1,234.50"), Decimal(string: "1234.50"))
-        XCTAssertEqual(Amounts.parse("-$9"), Decimal(string: "-9"))
-        XCTAssertNil(Amounts.parse("free"))
+        XCTAssertEqual(Amounts.read("S$4.50")?.magnitude, Decimal(string: "4.50"))
+        XCTAssertEqual(Amounts.read("SGD 1,234.50")?.magnitude, Decimal(string: "1234.50"))
+        XCTAssertEqual(Amounts.read("1234.50")?.magnitude, Decimal(string: "1234.50"))
+        XCTAssertEqual(Amounts.read("JPY 1,200")?.magnitude, 1200)
+        XCTAssertEqual(Amounts.read("JPY 1,200")?.decimals, 0)
+        XCTAssertNil(Amounts.read("free"))
+        XCTAssertNil(Amounts.read("4.50 SGD"), "a trailing code is anchor text, not part of the capture")
+        XCTAssertNil(Amounts.read("1,2,3"))
     }
 
     func test_amount_currencies() {
-        XCTAssertEqual(Amounts.split("SGD44.53")?.currency, "SGD")
-        XCTAssertEqual(Amounts.split("S$4.50")?.currency, "SGD")
-        XCTAssertEqual(Amounts.split("$4.50")?.currency, "SGD")
-        XCTAssertEqual(Amounts.split("US$9.00")?.currency, "USD")
-        XCTAssertEqual(Amounts.split("4.50")?.currency, nil)
-        XCTAssertEqual(Amounts.split("US$\n9.00")?.currency, "USD")
-        XCTAssertEqual(Amounts.split("-SGD4.50")?.amount, Decimal(string: "-4.50"))
+        XCTAssertEqual(Amounts.read("SGD44.53")?.currency, "SGD")
+        XCTAssertEqual(Amounts.read("S$4.50")?.currency, "SGD")
+        XCTAssertEqual(Amounts.read("$4.50")?.currency, "SGD")
+        XCTAssertEqual(Amounts.read("US$9.00")?.currency, "USD")
+        XCTAssertEqual(Amounts.read("USD 9.00")?.currency, "USD")
+        XCTAssertEqual(Amounts.read("RM 45.20")?.currency, "MYR")
+        XCTAssertEqual(Amounts.read("4.50")?.currency, nil)
+        XCTAssertEqual(Amounts.read("US$\n9.00")?.currency, "USD")
+    }
+
+    /// Audit: a printed minus is notation, never a second sign. The amount is
+    /// the size; the pattern's direction signs it at post time.
+    func test_a_printed_minus_keeps_the_size_and_says_so() {
+        let a = Amounts.read("-SGD4.50")
+        XCTAssertEqual(a?.magnitude, Decimal(string: "4.50"))
+        XCTAssertEqual(a?.printedNegative, true)
+        XCTAssertEqual(Amounts.read("-$9")?.magnitude, 9)
+    }
+
+    /// Audit: twelve digits before the point at most; a longer figure is a
+    /// misread that would overflow cents or milliunits downstream.
+    func test_a_huge_figure_is_not_an_amount() {
+        XCTAssertEqual(Amounts.read("999,999,999,999.99")?.magnitude, Decimal(string: "999999999999.99"))
+        XCTAssertNotNil(Amounts.read("123456789012"))
+        XCTAssertNil(Amounts.read("1234567890123"))
+        XCTAssertNil(Amounts.read("99999999999999999999"))
+        XCTAssertNil(Amounts.read("1,234,567,890,123"))
+    }
+
+    func test_three_decimals_read_exactly() {
+        let a = Amounts.read("KWD 1.255")
+        XCTAssertEqual(a?.magnitude, Decimal(string: "1.255"))
+        XCTAssertEqual(a?.decimals, 3)
+        XCTAssertNil(Amounts.read("KWD 1.2555"))
     }
 
     func test_date_formats() {
