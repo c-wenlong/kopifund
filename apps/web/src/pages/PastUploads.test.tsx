@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { outcome, PastUploads, statusText, stoppedAt } from "./PastUploads";
 import { leadingIcon } from "../test-icons";
 import type { UploadStepOutline } from "../api";
@@ -107,6 +107,42 @@ describe("PastUploads", () => {
     expect(screen.getByText("−S$12.50")).toBeInTheDocument();
     // the check's chip says Passed, not the raw status
     expect(screen.getByText("Passed")).toBeInTheDocument();
+  });
+
+  it("asks for the run status once, however many attempts are opened one after another", async () => {
+    const spy = serve();
+    render(<PastUploads />);
+    const rows = await screen.findAllByRole("button", { expanded: false });
+    const asked = () => spy.mock.calls.filter(([u]) => String(u) === "/api/run/status").length;
+    // nothing open, nothing asked
+    expect(asked()).toBe(0);
+    fireEvent.click(rows[0]);
+    expect(await screen.findByText("Statement doesn't add up")).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole("button", { expanded: false })[0]);
+    fireEvent.click(screen.getAllByRole("button", { expanded: false })[0]);
+    expect(await screen.findByText("Statement doesn't add up")).toBeInTheDocument();
+    expect(asked()).toBe(1);
+  });
+
+  it("asks for the run status again on the next opening when the first ask failed", async () => {
+    let fail = true;
+    const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const u = String(url);
+      if (u === "/api/run/status" && fail) return new Response(JSON.stringify({ error: "Busy" }), { status: 500 });
+      return reply(u.startsWith("/api/uploads?") ? list : u === "/api/run/status" ? status : detail);
+    });
+    const asked = () => spy.mock.calls.filter(([u]) => String(u) === "/api/run/status").length;
+    render(<PastUploads />);
+    fireEvent.click((await screen.findAllByRole("button", { expanded: false }))[0]);
+    expect(await screen.findByText("Statement doesn't add up")).toBeInTheDocument();
+    await waitFor(() => expect(asked()).toBe(1));
+    expect(screen.queryByText(/DBS Multiplier/)).not.toBeInTheDocument();
+    // closed and opened again: the status is asked for once more, and the account is named this time
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { expanded: true }));
+    fireEvent.click(screen.getAllByRole("button", { expanded: false })[0]);
+    expect(await screen.findByText(/DBS Multiplier/)).toBeInTheDocument();
+    expect(asked()).toBe(2);
   });
 
   it("leads each step and status with its icon, and a statement file with its bank's mark (G18)", async () => {

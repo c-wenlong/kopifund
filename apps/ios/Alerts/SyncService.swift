@@ -170,10 +170,13 @@ enum SyncService {
                 try? context.save()
                 continue
             }
+            guard let milli = Milliunits.from(cents: row.amountCents,
+                                              outflow: row.direction == "outflow") else {
+                row.state = "failed"; row.syncError = "amount too large to post"
+                continue
+            }
             row.state = "syncing"
             try? context.save()
-            let outflow = row.direction == "outflow"
-            let milli = Milliunits.from(Decimal(row.amountCents) / 100, outflow: outflow)
             // the first send's import_id is saved before posting, so an edit
             // or a lost reply can never mint a second one for the same row
             // a row an earlier build wrote keeps that build's hash input,

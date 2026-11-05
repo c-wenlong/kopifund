@@ -2117,7 +2117,8 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   shown as cards.
 - **Transactions** (`/transactions`, `GET /api/transactions`) is the ledger,
   newest first, paged (the rows-per-page choice under Long lists), with a search box, month, category and
-  account filters. The four filters are one family of 32px boxes: the search
+  account filters. The search box shows each key at once and asks for the search once typing pauses
+  (250 ms) or on Enter, so a word typed is one request, not one a letter. The four filters are one family of 32px boxes: the search
   box, a combobox for the category and the app's Select for the month (only the
   months the record holds) and the account. Every filter and the page live in
   the address (`q`, `category`, `month`, `account`, `hide_transfers=1` or `0`,
