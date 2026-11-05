@@ -91,7 +91,21 @@ flowchart LR
   binds `127.0.0.1:8770` only, serves the built app from `apps/web/dist`, answers
   `/api/*` with JSON. Every write is a POST that must carry the header
   `X-Kopifund: 1` and, when the browser sends one, an Origin on this machine,
-  so a page on another site cannot write. The phone link ("Phone link (G25)"
+  so a page on another site cannot write. An `/api/` GET whose
+  `Sec-Fetch-Site` header names another site (`cross-site` or `same-site`) is
+  refused with a 403, so another page cannot start one of the GETs that run a
+  command or call a provider, or learn from a 200 or 404 what exists; the app's
+  own page, a typed address and a client that sends no such header are answered.
+  Every response carries `X-Frame-Options: DENY`,
+  `Content-Security-Policy: frame-ancestors 'none'` and
+  `X-Content-Type-Options: nosniff`, so no other site can frame the app. A
+  request that raises what its route did not expect still gets JSON: a 503
+  "the record is busy" when SQLite stayed locked, otherwise a 500 with a
+  sentence and no detail, while the traceback goes to the server's stderr. A
+  Content-Length that is not a whole number is a 400, and one over 25 MB a 413.
+  The link path below gets the same headers, the same JSON on a failure and
+  the same length check; its GETs are held by the device bearer instead of
+  `Sec-Fetch-Site`. The phone link ("Phone link (G25)"
   below) is the only way a request reaches the API off this machine, and it
   arrives on loopback too, through `tailscale serve`. The routes are listed at the top of
   serve.py, and in it `GET_ROUTES` and `POST_ROUTES` are the one table that
@@ -605,7 +619,10 @@ model and a load never waits on the network.
   `XAI_API_KEY`, ...) or `<PROVIDER>_API_KEY` in the environment, `.env` in
   the data folder, or a `key_file` such as the one a shell profile sources.
   Test on the card sends one short request and says whether the provider
-  answered. No test ever writes to the Keychain.
+  answered. No test ever writes to the Keychain. The key goes in a header
+  to the provider's own URL and nowhere else: a redirect is refused, not
+  followed with the key, and a provider error that repeats a key is shown
+  with it taken out.
 - **Model fields autocomplete** from the provider's own list of models
   (Anthropic's `GET /v1/models`, or `GET <base_url>/models` for an
   OpenAI-style provider), fetched by the server with the saved key, so the
@@ -641,7 +658,12 @@ changes the record.
   formats are spoken: Anthropic's `tool_use` blocks and the OpenAI-style
   `tool_calls`. The server answers with one line of JSON per event as it
   happens (the thread, each round's steps, then the answer with its charts,
-  links and cards), so the steps show while the model works.
+  links and cards), so the steps show while the model works. A tool call
+  whose arguments do not fit its schema (a list where a string goes) goes
+  back to the model as a tool error saying so, for it to call again; it never
+  ends the answer. Every stream ends with a `done` line, after an `error`
+  line when anything failed, the record not opening or the turn not saving
+  included.
 - **Steps.** Each answer shows its steps in order above the answer, every
   row collapsed until pressed: "Thought" (a round's summarized thinking,
   quiet, under a rule), "Used 2 tools" (the tools of one round, or of rounds
@@ -736,6 +758,8 @@ changes the record.
 - **Confirm cards** (the last G22 line). The model can suggest a rule, a
   row's category, a budget or a trip. The panel shows it as a card with the
   change and its preview (a rule lists the rows it would change), and the
+  card shows every field Confirm saves (a row's card names the payee it
+  would set, a new trip's card its notes). The
   existing write endpoint saves it only when the owner presses Confirm, with
   an Undo toast. Rules, a row's category and trips already have Undo. A
   budget card carries no undo of its own (`undo` is null), since the amount
@@ -1448,7 +1472,9 @@ its month) and optional `filters`, which are Transactions' own filter names
 `account` by its id, `home`, `trip`, `scope`). `POST /api/dashboard/query`
 takes the query as its body; `GET /api/dashboard/query?q=` takes it as JSON in
 the address, so a widget loads through `useApi`'s cache and ETag like a page
-(`useWidgetData`, `apps/web/src/widgets.ts`). An unknown source, metric,
+(`useWidgetData`, `apps/web/src/widgets.ts`, which writes the query's keys in
+one order so one question is one address). A query copies only the stat
+results it reads (`results_cache.results_view`), not every stat's. An unknown source, metric,
 dimension or filter is a 4xx with the names it takes, never a blank chart.
 
 The answer (`WidgetAnswer`) is `labels`, `series` (one per name when a
