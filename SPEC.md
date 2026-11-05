@@ -1448,6 +1448,18 @@ External spend row as `planning.budgets` does. The game pot (`GET/POST
 /api/dashboard/game-pot`) is metadata only for now: a name, the benchmark it
 plays against, a note, and the account ids it links.
 
+**The change widgets** (`apps/web/src/dashboard/widgets/change/`) are the
+first components bound to the query layer: a time series of one or more
+series over the answer's labels, a stacked area with the Net worth page's
+Stacked / Lines / Total switch (the choice remembered per widget instance),
+and a waterfall bridging a balance's first figure to its last through one
+step per flow series, inflows first. Each is config-driven: its config names
+the series' queries and an optional range a query without its own inherits,
+so a dashboard-level filter can move every series at once. A point's dot or
+a step's bar opens the Transactions rows it lists when the answer carried
+`label_links`. Money stays in integer cents; a down step draws in the danger
+tone and writes its figure with a true minus.
+
 ### Layout
 
 The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png).
