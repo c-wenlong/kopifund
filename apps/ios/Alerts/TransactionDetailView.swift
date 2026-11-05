@@ -119,6 +119,10 @@ struct TransactionDetailView: View {
             } else if let err = row.syncError {
                 Section("Sync error") { Text(err).foregroundStyle(.red) }
             }
+            if let err = row.kopifundError {
+                // a refused or held send to the linked Kopifund record
+                Section("Kopifund") { Text(err).foregroundStyle(.red) }
+            }
         }
         .navigationTitle(row.state == "pending" ? "Review"
                          : row.state == "kopifund" ? "in kopifund" : row.state)

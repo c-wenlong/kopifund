@@ -83,7 +83,8 @@ enum LinkDedupe {
         var marked = 0
         // a row whose source printed no currency counts in the plan's, as
         // the sync posts it; with no plan read it covers nothing
-        let planCurrency = PlanCurrency.saved() ?? ""
+        let planCurrency = PlanCurrency.saved(
+            planID: UserDefaults.standard.string(forKey: "planID") ?? "") ?? ""
         for row in rows {
             let currency = row.currency.isEmpty ? planCurrency : row.currency
             if let i = Dedup.coveredBy(amountCents: row.amountCents, currency: currency,

@@ -51,7 +51,11 @@ enum SyncService {
             $0.state == "approved" || $0.state == "failed" || $0.state == "syncing" }
         if let ynab, posting || planCurrency == nil,
            let code = try? await ynab.planCurrency(planID: planID) {
-            PlanCurrency.remember(code, planID: planID)
+            // a plan picked while the request was out has forgotten this
+            // reading: never write the old plan's currency back
+            if UserDefaults.standard.string(forKey: "planID") == planID {
+                PlanCurrency.remember(code, planID: planID)
+            }
             planCurrency = code
         }
         guard !approved.isEmpty else { return }
@@ -66,15 +70,17 @@ enum SyncService {
         let postApproved = UserDefaults.standard.bool(forKey: "postApproved")
         // a store view on its own context: an App Intent's dedup write lands
         // on the same file but never merges into this context's copies, so a
-        // row parked since the batch was fetched must be re-read before post
-        let storeView = try? ModelContext(Store.container())
+        // row parked since the batch was fetched must be re-read before post.
+        // Each read takes a fresh context, which holds no cached copy of the
+        // row from an earlier read
+        let storeContainer = try? Store.container()
         // what an intake wrote since the batch was fetched: a park or a hold
         // moves the state, and a pairing can hand the kept row the currency
         // only the parked capture stated, with the state unchanged
         func refresh(_ row: TransactionRecord) {
             let rowID = row.id
-            guard let storeView,
-                  let live = (try? storeView.fetch(FetchDescriptor<TransactionRecord>(
+            guard let storeContainer,
+                  let live = (try? ModelContext(storeContainer).fetch(FetchDescriptor<TransactionRecord>(
                       predicate: #Predicate { $0.id == rowID })))?.first else { return }
             var changed = false
             if live.state != row.state {
