@@ -86,12 +86,14 @@ struct UnmatchedView: View {
     private func finished(_ id: UUID, andSay toast: String) {
         pendingRemoval = id
         notice = toast
-        if path.isEmpty {
-            // the user already came back (a re-ingest can finish after the
-            // pop): no detail shows the row, and onAppear will not run again
-            removePending()
-        } else {
+        if path.contains(id) {
+            // its own page is still open: pop, and onAppear deletes it
             path.removeAll()
+        } else {
+            // the user already came back (a re-ingest can finish after the
+            // pop) or opened another alert: no page shows this row, so it
+            // goes now and the page they are reading stays
+            removePending()
         }
     }
 
