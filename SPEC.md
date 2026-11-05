@@ -346,7 +346,22 @@ shipped table, so a shipped city wins a prefix both could match
   one to one.
 - **Keys carry over verbatim.** Existing `txn_key` values are imported as they
   are, and a `txn_key_alias` table records any later re-key so overrides and
-  trips never detach.
+  trips never detach. A load writes it: a live row no parsed key covers is the
+  same row as a parsed key the record has never held when its account,
+  currency, date, amount and running balance match (`db.rekeys`; a row with no
+  account number never pairs; one each pairs only when no reference, card or
+  purchase date both print disagrees, and, with no running balance to vouch
+  for it, the statement file is the same; several alike pair only when their
+  statement, reference, card and purchase date tell them apart or nothing does,
+  so an uneven or ambiguous group is not guessed). The row keeps its id and
+  takes the new key, and the old key goes into `txn_key_alias`, so trip pins,
+  rows marked fine, series edits, matched phone rows (G25) and `keys.csv` rules
+  on the old key follow it. A row that would still be archived while it carries
+  one of those stops
+  doctor, `load` and the app's Load with `pinned-rows-gone`, and an old key
+  the run now gives to a different row while something is saved on it stops
+  them with `pinned-key-reused`; the command line loads past both with
+  `--archive-orphans`.
 - **Stored versus derived.** Tables hold what a statement printed or a person
   typed. What Notion computes today (`amount_sgd`, month, reconciled, budget
   actual and variance, payee counts, trip spend) becomes SQL views.
@@ -1461,7 +1476,15 @@ widget dropped onto another's cell lands above it, as the preview showed; a
 widget's height
 is bounded (`MAX_H`), so a stray saved size cannot stall the page. A change
 writes the layout back through `POST /api/dashboard/layouts/<id>` after a
-short debounce, so nothing waits on a Save. Under 768px the same widgets stack in one column in
+short debounce, so nothing waits on a Save; a move that leaves every widget
+where it was writes nothing, and a drag the pointer cancels or Escape drops
+leaves the board as it was. Only the board on screen is saved as the active
+one (an Undo on a board left behind does not change which board opens next),
+and switching boards writes the chosen board alone, never this tab's copies
+of the others. Leaving the page saves what waits, so only a save that failed
+asks before leaving; a save made on leaving that fails says so in a toast
+that can try again. With no board yet, the first widget picked makes the
+Default board. One status line says where a moved widget landed. Under 768px the same widgets stack in one column in
 their saved order and do not drag. An empty record (or an empty board) offers
 the starter presets in `presets.ts`; Reset restores the default one, and a
 removal or a reset offers an Undo toast. Named layouts switch in the page's
