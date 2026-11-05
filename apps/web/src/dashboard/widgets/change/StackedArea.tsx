@@ -73,8 +73,8 @@ type Row = Record<string, number | string | null>;
 /** Stacked: the series piled up. Lines: each on its own scale. Total: the one line. */
 export function StackedAreaChart({ frame, view }: { frame: Frame; view: ChartView }) {
   const height = useChartHeight();
-  const { hidden, toggle } = useHidden(frame.series.map((s) => s.key));
-  const shown = frame.series.filter((s) => !hidden.has(s.key));
+  const { hidden, toggle } = useHidden(frame.series.map((s) => s.id));
+  const shown = frame.series.filter((s) => !hidden.has(s.id));
   const total = view === "total";
   const rows: Row[] = frame.labels.map((l, i) => {
     const row: Row = { label: l };
@@ -85,7 +85,7 @@ export function StackedAreaChart({ frame, view }: { frame: Frame; view: ChartVie
       row[s.key] = v;
       if (v == null) continue;
       sum = (sum ?? 0) + v;
-      if (!hidden.has(s.key)) shownSum = (shownSum ?? 0) + v;
+      if (!hidden.has(s.id)) shownSum = (shownSum ?? 0) + v;
     }
     row.total = sum;
     row.shown = shownSum;
@@ -100,7 +100,7 @@ export function StackedAreaChart({ frame, view }: { frame: Frame; view: ChartVie
       {total
         ? <SeriesLegend items={[]} hidden={hidden} onToggle={() => {}} extra={<KeyItem><Swatch colour={TOTAL_INK} line />Total</KeyItem>} />
         : <SeriesLegend hidden={hidden} onToggle={toggle}
-          items={frame.series.map((s) => ({ key: s.key, label: s.name, colour: s.colour, line: view === "lines" }))} />}
+          items={frame.series.map((s) => ({ key: s.id, label: s.name, colour: s.colour, line: view === "lines" }))} />}
       <ResponsiveContainer width="100%" height={height}>
         <ComposedChart data={rows} stackOffset="sign" margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
           onClick={clickable ? (st: { activeLabel?: string | number }) => {
@@ -117,13 +117,13 @@ export function StackedAreaChart({ frame, view }: { frame: Frame; view: ChartVie
             return row ? <AreaTip row={row} shown={shown} all={frame.series} view={view} clickable={clickable} /> : null;
           }} />
           {view === "stacked" && shown.map((s) => (
-            <Area key={s.key} dataKey={s.key} name={s.name} stackId="w" type="linear"
+            <Area key={s.id} dataKey={s.key} name={s.name} stackId="w" type="linear"
               stroke={s.colour} strokeWidth={1.5} fill={s.colour} fillOpacity={0.3}
               activeDot={dots.dot(s.key, s.colour, clickable && linked.includes(s))}
               connectNulls isAnimationActive={false} />
           ))}
           {view === "lines" && shown.map((s) => (
-            <Line key={s.key} dataKey={s.key} name={s.name} type="linear" stroke={s.colour} strokeWidth={2}
+            <Line key={s.id} dataKey={s.key} name={s.name} type="linear" stroke={s.colour} strokeWidth={2}
               dot={false} activeDot={dots.dot(s.key, s.colour, clickable && linked.includes(s))}
               connectNulls isAnimationActive={false} />
           ))}
@@ -158,7 +158,7 @@ function AreaTip({ row, shown, all, view, clickable }: {
       total={listed.length === 1 ? undefined : fmtValue(sum, all[0]?.unit ?? "number", true) || undefined}
       hint={clickable ? "Click a dot to see its transactions" : undefined}>
       {listed.map((s) => (
-        <TipRow key={s.key} colour={s.colour} line={view === "lines" || total} name={s.name}
+        <TipRow key={s.id} colour={s.colour} line={view === "lines" || total} name={s.name}
           value={fmtValue(row[s.key] as number | null, s.unit)} keepZero />
       ))}
       {!total && shown.length < all.length && <div className="mt-1 text-[11px] text-ink-3">Parts showing only</div>}

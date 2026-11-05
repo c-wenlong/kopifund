@@ -71,33 +71,33 @@ export type WaterfallStep = {
   href: string | null;
 };
 
-/** A flow step's link: the whole range's rows behind its series, from the first label to the last. */
-function stepHref(series: Frame["series"][number], labels: string[]): string | null {
-  if (!series.rangeLink || labels.length === 0) return null;
-  const params = new URLSearchParams({ from: labels[0], to: labels[labels.length - 1], ...series.rangeLink });
-  return `/transactions?${params}`;
+/** A flow step's link: the whole range's rows behind its series, bounded by the series' own answer. */
+function stepHref(series: Frame["series"][number]): string | null {
+  if (!series.rangeLink) return null;
+  return `/transactions?${new URLSearchParams(series.rangeLink)}`;
 }
 
 /**
  * The bridge: the balance's first figure opens it and its last closes it;
  * every flow series is one step between, the inflows first so the reader
  * climbs before falling. Steps do not have to reconcile to the balance: the
- * widget draws what its queries answered.
+ * widget draws what its queries answered. Null when the balance answered no
+ * figure at all: a chart then would read missing cash data as zero balances.
  */
-export function waterfallSteps(balance: Frame | null, flows: Frame | null): WaterfallStep[] {
+export function waterfallSteps(balance: Frame | null, flows: Frame | null): WaterfallStep[] | null {
   const level = balance?.series[0];
   const vals = level?.values ?? [];
   const first = vals.findIndex((v) => v != null);
+  if (first < 0) return null;
   const last = vals.length - 1 - [...vals].reverse().findIndex((v) => v != null);
-  const opening = vals[first] ?? 0;
-  // `last` sits past the array's end when the balance answered no figure: open then closes on itself
-  const closing = vals[last] ?? opening;
+  const opening = vals[first]!;
+  const closing = vals[last]!;
   const steps: WaterfallStep[] = [{
     name: "Opening", kind: "open", value: opening, before: 0, after: opening,
-    href: first < 0 ? null : level?.href[first] ?? null,
+    href: level?.href[first] ?? null,
   }];
   const deltas = (flows?.series ?? []).map((s) => ({
-    name: s.name, value: s.values.reduce<Cents>((a, v) => a + (v ?? 0), 0), href: stepHref(s, flows?.labels ?? []),
+    name: s.name, value: s.values.reduce<Cents>((a, v) => a + (v ?? 0), 0), href: stepHref(s),
   }));
   let run = opening;
   for (const d of [...deltas.filter((x) => x.value > 0), ...deltas.filter((x) => x.value <= 0)]) {
@@ -106,7 +106,7 @@ export function waterfallSteps(balance: Frame | null, flows: Frame | null): Wate
   }
   steps.push({
     name: "Closing", kind: "close", value: closing, before: run, after: closing,
-    href: last < 0 ? null : level?.href[last] ?? null,
+    href: level?.href[last] ?? null,
   });
   return steps;
 }
@@ -119,14 +119,18 @@ export function WaterfallWidget({ config = DEFAULT_WATERFALL_CONFIG }: { config?
   const error = balance.error ?? flows.error;
   const steps = !loading && !error && balance.frame && flows.frame
     ? waterfallSteps(balance.frame, flows.frame)
-    : null;
+    : undefined;
+  // a projection or preview answer marks its figures as estimates; show every note either frame carries
+  const notes = [...new Set([balance.frame?.note, flows.frame?.note].filter((n): n is string => !!n))];
   return (
     <Card title={title}>
       {loading && <Loading what={`Loading ${title.toLowerCase()}`} />}
       {!loading && error && <Problem message={error} retry />}
-      {steps && (steps.length <= 2
-        ? <EmptyState title="Nothing to show yet">The flows this widget asks about have no figures in the range.</EmptyState>
-        : <WaterfallChart steps={steps} unit={balance.frame!.unit ?? "sgd_minor"} />)}
+      {!loading && !error && balance.frame && flows.frame && (steps === null
+        ? <EmptyState title="Nothing to show yet">The balance this widget asks about has no figures in the range.</EmptyState>
+        : steps && steps.length <= 2
+          ? <EmptyState title="Nothing to show yet">The flows this widget asks about have no figures in the range.</EmptyState>
+          : steps && <WaterfallChart steps={steps} unit={balance.frame.unit ?? "sgd_minor"} notes={notes} />)}
     </Card>
   );
 }
@@ -141,7 +145,9 @@ const span = (s: WaterfallStep): [Cents, Cents] =>
     : s.kind === "out" ? [s.after, s.before]
     : [Math.min(0, s.value), Math.max(0, s.value)];
 
-export function WaterfallChart({ steps, unit = "sgd_minor" }: { steps: WaterfallStep[]; unit?: WidgetUnit }) {
+export function WaterfallChart({ steps, unit = "sgd_minor", notes }: {
+  steps: WaterfallStep[]; unit?: WidgetUnit; notes?: string[];
+}) {
   const height = useChartHeight();
   // a range bar, one rect a step: dataKey answers [low, high], so each bar
   // floats where its step crosses, no invisible baseline needed
@@ -178,6 +184,7 @@ export function WaterfallChart({ steps, unit = "sgd_minor" }: { steps: Waterfall
           </Bar>
         </BarChart>
       </ResponsiveContainer>
+      {notes?.map((n) => <p key={n} className="m-0 mt-2 text-[12px] text-ink-3">{n}</p>)}
     </div>
   );
 }

@@ -29,8 +29,9 @@ export function queryWithRange(query: WidgetQuery, range?: WidgetRange): WidgetQ
   return range && !query.range ? { ...query, range } : query;
 }
 
-/** Where a point's click lists the rows behind it: the label's own link, then the series'. */
+/** Where a point's click lists the rows behind it: the label's own link, then the series'. A series link of explicit null means its rows cannot be filtered, so the point is not clickable. */
 export function pointHref(answer: WidgetAnswer, labelIndex: number, series?: { link?: Record<string, string> | null }): string | null {
+  if (series?.link === null) return null;
   const base = answer.label_links?.[labelIndex] ?? null;
   const extra = series?.link ?? null;
   if (!base && !extra) return null;
@@ -39,7 +40,10 @@ export function pointHref(answer: WidgetAnswer, labelIndex: number, series?: { l
 
 /** One series drawn on a widget, its values and links aligned to the frame's labels. */
 export type Drawn = {
+  /** the series' field name in a chart row, in draw order */
   key: string;
+  /** the series' identity (its spec and name): a resort keeps it, so legend choices stay put */
+  id: string;
   name: string;
   colour: string;
   unit: WidgetUnit;
@@ -47,9 +51,10 @@ export type Drawn = {
   /** per label: the Transactions page its point opens, or null */
   href: (string | null)[];
   /**
-   * the link params that hold over the series' whole range (the labels' own
-   * flags and filters, then the series' link), for a step that lists every
-   * row behind it at once; from/to are the frame's ends
+   * the link params that hold over the series' own answer (the labels' own
+   * flags and filters, then the series' link; from/to the answer's ends), for
+   * a step that lists every row behind it at once. Null where the series'
+   * link is an explicit null: its rows cannot be filtered.
    */
   rangeLink: Record<string, string> | null;
 };
@@ -74,6 +79,7 @@ export function joinFrames(specs: SeriesSpec[], answers: (WidgetAnswer | null)[]
   const labels = [...seen].sort();
   const series: Drawn[] = [];
   const units = new Set<WidgetUnit>();
+  const ids = new Set<string>();
   let note: string | undefined;
   specs.forEach((spec, i) => {
     const a = answers[i];
@@ -81,14 +87,19 @@ export function joinFrames(specs: SeriesSpec[], answers: (WidgetAnswer | null)[]
     units.add(a.unit);
     note ??= a.note;
     const at = new Map(a.labels.map((l, j) => [l, j] as const));
-    a.series.forEach((s) => {
+    const base = a.label_links?.find((l) => l) ?? null;
+    const overRange = base
+      ? Object.fromEntries(Object.entries(base).filter(([k]) => k !== "from" && k !== "to"))
+      : null;
+    const bounds = a.labels.length ? { from: a.labels[0]!, to: a.labels[a.labels.length - 1]! } : null;
+    a.series.forEach((s, j) => {
       const raw = (a.unit === CENTS_UNIT ? s.values_minor : s.values) ?? [];
-      const base = a.label_links?.find((l) => l) ?? null;
-      const overRange = base
-        ? Object.fromEntries(Object.entries(base).filter(([k]) => k !== "from" && k !== "to"))
-        : null;
+      let id = `w${i}:${s.name}`;
+      if (ids.has(id)) id = `${id}#${j}`;
+      ids.add(id);
       series.push({
         key: `s${series.length}`,
+        id,
         name: spec.label ?? s.name,
         colour: seriesColour(series.length),
         unit: a.unit,
@@ -100,7 +111,8 @@ export function joinFrames(specs: SeriesSpec[], answers: (WidgetAnswer | null)[]
           const j = at.get(l);
           return j == null ? null : pointHref(a, j, s);
         }),
-        rangeLink: overRange || s.link ? { ...overRange, ...s.link } : null,
+        rangeLink: s.link === null || !bounds ? null
+          : overRange || s.link ? { ...bounds, ...overRange, ...s.link } : null,
       });
     });
   });

@@ -69,8 +69,8 @@ export function TimeSeriesWidget({ config = DEFAULT_TIME_SERIES_CONFIG }: { conf
 
 export function TimeSeriesChart({ frame }: { frame: Frame }) {
   const height = useChartHeight();
-  const { hidden, toggle } = useHidden(frame.series.map((s) => s.key));
-  const drawn = frame.series.filter((s) => !hidden.has(s.key));
+  const { hidden, toggle } = useHidden(frame.series.map((s) => s.id));
+  const drawn = frame.series.filter((s) => !hidden.has(s.id));
   const rows = frameRows(frame);
   const linked = drawn.filter((s) => s.href.some(Boolean));
   const clickable = linked.length > 0;
@@ -80,7 +80,7 @@ export function TimeSeriesChart({ frame }: { frame: Frame }) {
     <div role="img" aria-label={frameSummary(frame)}>
       {multi && (
         <SeriesLegend hidden={hidden} onToggle={toggle}
-          items={frame.series.map((s) => ({ key: s.key, label: s.name, colour: s.colour, line: true }))} />
+          items={frame.series.map((s) => ({ key: s.id, label: s.name, colour: s.colour, line: true }))} />
       )}
       <ResponsiveContainer width="100%" height={height}>
         <LineChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
@@ -97,7 +97,7 @@ export function TimeSeriesChart({ frame }: { frame: Frame }) {
             return row ? <SeriesTip row={row} drawn={drawn} clickable={clickable} /> : null;
           }} />
           {drawn.map((s) => (
-            <Line key={s.key} dataKey={s.key} name={s.name} type="linear" stroke={s.colour} strokeWidth={2}
+            <Line key={s.id} dataKey={s.key} name={s.name} type="linear" stroke={s.colour} strokeWidth={2}
               dot={rows.length > 30 ? false : { r: 2.5 }}
               activeDot={dots.dot(s.key, s.colour, clickable && linked.includes(s))}
               connectNulls isAnimationActive={false} />
@@ -119,7 +119,7 @@ function SeriesTip({ row, drawn, clickable }: {
       {[...drawn].filter((s) => row[s.key] != null)
         .sort((a, b) => (Number(row[b.key]) || 0) - (Number(row[a.key]) || 0))
         .map((s) => (
-          <TipRow key={s.key} colour={s.colour} line name={s.name}
+          <TipRow key={s.id} colour={s.colour} line name={s.name}
             value={fmtValue(row[s.key] as number | null, s.unit)} keepZero />
         ))}
     </TipBox>

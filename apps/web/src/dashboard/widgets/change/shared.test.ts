@@ -61,6 +61,22 @@ describe("joinFrames", () => {
     );
     expect(frame.note).toContain("a projection");
   });
+
+  it("keys a series by its spec and name, so a resort of the answer keeps the same id", () => {
+    const spec = [{ query: { source: "spending" as const, metric: "spend", dimension: "month" as const, split: "bucket" } }];
+    const reordered = answer({
+      labels: ["2026-08"],
+      series: [{ name: "Transport", values_minor: [5] }, { name: "Food", values_minor: [9] }],
+    });
+    const before = joinFrames(spec, [answer({
+      labels: ["2026-08"],
+      series: [{ name: "Food", values_minor: [9] }, { name: "Transport", values_minor: [5] }],
+    })]);
+    const after = joinFrames(spec, [reordered]);
+    const idOf = (f: typeof before, name: string) => f.series.find((s) => s.name === name)?.id;
+    expect(idOf(before, "Food")).toBe(idOf(after, "Food"));
+    expect(idOf(before, "Transport")).toBe(idOf(after, "Transport"));
+  });
 });
 
 describe("a point's link", () => {
@@ -75,14 +91,39 @@ describe("a point's link", () => {
     expect(pointHref(a, 1)).toBeNull();
   });
 
-  it("gives a drawn series a range link over its whole answer for a waterfall step", () => {
+  it("is not clickable when the series' link is an explicit null, however the label links", () => {
+    const a = answer({
+      labels: ["2026-08"],
+      label_links: [{ from: "2026-08", to: "2026-08", spend: "1", home: "1" }],
+      series: [{ name: "(none)", values_minor: [3], link: null }],
+    });
+    expect(pointHref(a, 0, a.series[0])).toBeNull();
+  });
+
+  it("gives a drawn series a range link over its own answer's bounds for a waterfall step", () => {
     const a = answer({
       labels: ["2026-08", "2026-09"],
       label_links: [{ from: "2026-08", to: "2026-08", spend: "1", home: "1" }, { from: "2026-09", to: "2026-09", spend: "1", home: "1" }],
       series: [{ name: "Food", values_minor: [1, 2], link: { bucket: "Food" } }],
     });
-    const frame = joinFrames([{ query: { source: "spending", metric: "spend", split: "bucket" } }], [a]);
-    expect(frame.series[0].rangeLink).toEqual({ spend: "1", home: "1", bucket: "Food" });
+    const other = answer({ labels: ["2026-07", "2026-10"], series: [{ name: "income", values_minor: [5, 6] }] });
+    const frame = joinFrames(
+      [{ query: { source: "spending", metric: "spend", split: "bucket" } }, { query: { source: "spending", metric: "income" } }],
+      [a, other],
+    );
+    // the combined frame runs 2026-07 to 2026-10; the step's link keeps the answer's own 2026-08 to 2026-09
+    expect(frame.labels).toEqual(["2026-07", "2026-08", "2026-09", "2026-10"]);
+    expect(frame.series[0].rangeLink).toEqual({ from: "2026-08", to: "2026-09", spend: "1", home: "1", bucket: "Food" });
+  });
+
+  it("gives no range link to a series whose link is an explicit null", () => {
+    const a = answer({
+      labels: ["2026-08"],
+      label_links: [{ from: "2026-08", to: "2026-08", spend: "1", home: "1" }],
+      series: [{ name: "(none)", values_minor: [3], link: null }],
+    });
+    const frame = joinFrames([{ query: { source: "spending", metric: "spend", split: "need" } }], [a]);
+    expect(frame.series[0].rangeLink).toBeNull();
   });
 });
 

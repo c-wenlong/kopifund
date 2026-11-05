@@ -47,7 +47,7 @@ describe("waterfallSteps", () => {
   const steps = waterfallSteps(
     joinFrames([{ query: CASH }], [balance]),
     joinFrames([{ query: NET_BY_BUCKET }], [flows]),
-  );
+  )!;
 
   it("opens on the balance's first figure and closes on its last", () => {
     expect(steps[0]).toMatchObject({ name: "Opening", kind: "open", value: 900000, before: 0, after: 900000 });
@@ -67,18 +67,37 @@ describe("waterfallSteps", () => {
     expect(steps[0].href).toBeNull();
   });
 
+  it("bounds a flow step's link by its own answer, not the combined frame's", () => {
+    const aug: WidgetAnswer = { ...flows, labels: ["2026-08"], label_links: [flows.label_links![0]],
+      series: [{ name: "Income", values_minor: [900000], link: { income: "1" } }] };
+    const sep: WidgetAnswer = { ...flows, labels: ["2026-09"], label_links: [flows.label_links![1]],
+      series: [{ name: "Spend", values_minor: [-430000], link: { spend: "1" } }] };
+    const joined = joinFrames(
+      [{ query: { ...NET_BY_BUCKET, range: { from: "2026-08", to: "2026-08" } } },
+       { query: { ...NET_BY_BUCKET, range: { from: "2026-09", to: "2026-09" } } }],
+      [aug, sep]);
+    const s = waterfallSteps(joinFrames([{ query: CASH }], [balance]), joined)!;
+    expect(s.find((x) => x.name === "Income")!.href).toContain("from=2026-08&to=2026-08");
+    expect(s.find((x) => x.name === "Spend")!.href).toContain("from=2026-09&to=2026-09");
+  });
+
+  it("does not link a step whose series cannot be filtered", () => {
+    const f: WidgetAnswer = { ...flows, series: [...flows.series, { name: "(none)", values_minor: [10, 10, 10], link: null }] };
+    const s = waterfallSteps(joinFrames([{ query: CASH }], [balance]), joinFrames([{ query: NET_BY_BUCKET }], [f]))!;
+    expect(s.find((x) => x.name === "(none)")!.href).toBeNull();
+  });
+
   it("reads a balance with missing months off the figures it does have", () => {
     const thin: WidgetAnswer = { ...balance, series: [{ name: "cash", values_minor: [null, 970000, null] }] };
-    const s = waterfallSteps(joinFrames([{ query: CASH }], [thin]), null);
+    const s = waterfallSteps(joinFrames([{ query: CASH }], [thin]), null)!;
     expect(s[0].value).toBe(970000);
     expect(s.at(-1)!.value).toBe(970000);
     expect(s.map((x) => x.name)).toEqual(["Opening", "Closing"]);
   });
 
-  it("opens and closes on nothing when the balance answered no figure", () => {
+  it("is null when the balance answered no figure, rather than reading it as zero", () => {
     const none: WidgetAnswer = { ...balance, series: [{ name: "cash", values_minor: [null, null] }] };
-    const s = waterfallSteps(joinFrames([{ query: CASH }], [none]), null);
-    expect(s.map((x) => x.value)).toEqual([0, 0]);
+    expect(waterfallSteps(joinFrames([{ query: CASH }], [none]), null)).toBeNull();
   });
 });
 
@@ -139,5 +158,22 @@ describe("WaterfallWidget", () => {
     stubQueries([[CASH, balance], [NET_BY_BUCKET, none]]);
     render(<WaterfallWidget config={config} />);
     await waitFor(() => expect(screen.getByText("Nothing to show yet")).toBeInTheDocument());
+  });
+
+  it("says the balance data is missing when its query answered no figure, though flows have some", async () => {
+    const none: WidgetAnswer = { ...balance, series: [{ name: "cash", values_minor: [null, null, null] }] };
+    stubQueries([[CASH, none], [NET_BY_BUCKET, flows]]);
+    const { container } = render(<WaterfallWidget config={config} />);
+    await waitFor(() => expect(screen.getByText(/balance this widget asks about has no figures/i)).toBeInTheDocument());
+    expect(bars(container)).toHaveLength(0);
+  });
+
+  it("shows an answer's note, which for a projection says it is an estimate", async () => {
+    const note = "a projection: what the forward view expects, not a promise";
+    const projected: WidgetAnswer = { ...balance, source: "forward-view", note };
+    stubQueries([[CASH, projected], [NET_BY_BUCKET, flows]]);
+    const { container } = render(<WaterfallWidget config={config} />);
+    await waitFor(() => expect(bars(container)).toHaveLength(5));
+    expect(container).toHaveTextContent(note);
   });
 });
