@@ -81,6 +81,120 @@ final class BuilderTests: XCTestCase {
     }
 }
 
+/// Audit: the builder's edges and its safety.
+final class BuilderEdgeTests: XCTestCase {
+    private func segments(_ text: String,
+                          _ tag: (Token) -> PatternBuilder.Field?) throws -> [AlertPattern.Segment] {
+        let tokens = Tokenizer.tokenize(text)
+        var tags: [Int: PatternBuilder.Field] = [:]
+        for (i, t) in tokens.enumerated() { if let f = tag(t) { tags[i] = f } }
+        return try PatternBuilder.segments(in: text, tokens: tokens,
+                                           spans: PatternBuilder.spans(from: tags, tokens: tokens))
+    }
+
+    /// Cutting the greeting by character count kept "ct" of "Oct" as a fixed
+    /// word: the October alert matched and November's did not.
+    func test_a_shed_edge_never_keeps_part_of_a_word() throws {
+        let sample = "Dear customer, on 27 Oct 2026 we had now seen SGD 4.80 at KOPITIAM"
+        let segs = try segments(sample) { t in
+            switch t.text {
+            case "SGD", "4.80": return .amount
+            case "KOPITIAM": return .payee
+            default: return nil
+            }
+        }
+        XCTAssertEqual(segs.first, .ignore)
+        guard case .literal(let kept) = segs[1] else { return XCTFail("\(segs)") }
+        XCTAssertEqual(kept, "2026 we had now seen ")
+        let p = AlertPattern(name: "p", direction: .outflow, accountID: "a",
+                             segments: segs, sampleText: sample)
+        let november = "Dear customer, on 3 Nov 2026 we had now seen SGD 9.00 at TOAST BOX"
+        guard case .success(let t) = Matcher.test(p, text: november) else {
+            return XCTFail("a November alert of the same template should read")
+        }
+        XCTAssertEqual(t.payee, "TOAST BOX")
+    }
+
+    /// Review on #48: a bank that prints its months in capitals ("27 OCT")
+    /// must not leave "OCT" fixed at the cut either.
+    func test_a_shed_edge_drops_an_uppercase_month() throws {
+        let sample = "Dear customer, on 27 OCT we have just seen SGD 4.80 at KOPITIAM"
+        let segs = try segments(sample) { t in
+            switch t.text {
+            case "SGD", "4.80": return .amount
+            case "KOPITIAM": return .payee
+            default: return nil
+            }
+        }
+        guard case .literal(let kept) = segs[1] else { return XCTFail("\(segs)") }
+        XCTAssertFalse(kept.contains("OCT"), kept)
+        let p = AlertPattern(name: "p", direction: .outflow, accountID: "a",
+                             segments: segs, sampleText: sample)
+        let november = "Dear customer, on 3 NOV we have just seen SGD 9.00 at TOAST BOX"
+        guard case .success(let t) = Matcher.test(p, text: november) else {
+            return XCTFail("a November alert of the same template should read")
+        }
+        XCTAssertEqual(t.payee, "TOAST BOX")
+    }
+
+    func test_kept_edges_are_whole_words_and_drop_a_lone_month() {
+        XCTAssertEqual(PatternBuilder.keptEdge(of: "Dear customer, on 27 Oct 2026 we had now seen ", atEnd: true),
+                       "2026 we had now seen ")
+        XCTAssertEqual(PatternBuilder.keptEdge(of: "This is your alert dated Oct for spend at ", atEnd: true),
+                       "dated Oct for spend at ")
+        XCTAssertEqual(PatternBuilder.keptEdge(of: "Hello this is a long greeting that ran Oct ", atEnd: true),
+                       "greeting that ran Oct ")
+        XCTAssertEqual(PatternBuilder.keptEdge(of: " on 27 Oct 2026. Thank you for banking with us.", atEnd: false),
+                       " on 27 Oct 2026. Thank")
+        XCTAssertEqual(PatternBuilder.keptEdge(of: " was charged in Oct 2026 by the merchant here", atEnd: false),
+                       " was charged in Oct 2026")
+        XCTAssertEqual(PatternBuilder.keptEdge(of: " ok thanks for using our card today in Sept 2026", atEnd: false),
+                       " ok thanks for using our")
+        XCTAssertEqual(PatternBuilder.keptEdge(of: "https://bank.example/alerts/0123456789 ", atEnd: true),
+                       "https://bank.example/alerts/0123456789 ", "a word longer than the edge is kept whole")
+    }
+
+    /// The public builder used to crash the process on a date span it could
+    /// not read; its checks lived only in the app.
+    func test_an_unreadable_date_span_throws() {
+        XCTAssertThrowsError(try segments("Paid SGD 4.80 at KOPITIAM on Tuesday") { t in
+            switch t.text {
+            case "SGD", "4.80": return .amount
+            case "KOPITIAM": return .payee
+            case "Tuesday": return .date
+            default: return nil
+            }
+        }) { XCTAssertEqual($0 as? PatternBuilder.BuildError, .unreadableDate("Tuesday")) }
+    }
+
+    func test_a_field_tagged_twice_throws() {
+        XCTAssertThrowsError(try segments("Paid SGD 4.80 fee SGD 0.50 at KOPITIAM") { t in
+            switch t.text {
+            case "SGD", "4.80", "0.50": return .amount
+            case "KOPITIAM": return .payee
+            default: return nil
+            }
+        }) { XCTAssertEqual($0 as? PatternBuilder.BuildError, .duplicateField("amount")) }
+        XCTAssertThrowsError(try segments("Paid SGD 4.80 card 1234 at KOPITIAM card 5678 ok") { t in
+            switch t.text {
+            case "SGD", "4.80": return .amount
+            case "1234", "5678": return .account
+            case "KOPITIAM": return .payee
+            default: return nil
+            }
+        }) { XCTAssertEqual($0 as? PatternBuilder.BuildError, .duplicateField("card")) }
+        // ignore may repeat
+        XCTAssertNoThrow(try segments("Paid SGD 4.80 ref A1 at KOPITIAM on day B2 ok") { t in
+            switch t.text {
+            case "SGD", "4.80": return .amount
+            case "A1", "B2": return .ignore
+            case "KOPITIAM": return .payee
+            default: return nil
+            }
+        })
+    }
+}
+
 final class MatcherTests: XCTestCase {
     /// An invented alert in the shape bank SMS messages take. Real DBS, OCBC
     /// and UOB samples replace this fixture when the owner pastes them. The
