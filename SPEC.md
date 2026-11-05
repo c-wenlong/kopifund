@@ -1209,7 +1209,7 @@ this, and a figure kept from before a write is never shown after it.
 | Icons | lucide-react | Outline icons that match the sidebar mockup |
 | Calendar | react-day-picker 9 | The browser's own date picker is not styleable and differs per browser; this one draws the month grid, with the app's tokens, and leaves the box and the popover to `DateField` and `MonthField` |
 | Font | Inter, bundled with the app | One sans face everywhere, cached for offline use |
-| PWA | vite-plugin-pwa | Manifest and service worker; `/api` is never served from the cache, and a page is asked of the server first (the precached `index.html` answers any page only when the server does not, so the app still opens offline), so a new build shows on the first open after it; a page an older worker served reloads once the new worker takes over |
+| PWA | vite-plugin-pwa | Manifest and service worker; `/api` is never served from the cache, and a page is always asked of the server (this build's precached `index.html` answers any page only when the server does not, so the app still opens offline, and no page an older build saved is ever served), so a new build shows on the first open after it; a page an older worker served reloads once the new worker takes over |
 | Tests | Vitest and Testing Library | Same config as the build |
 | Desktop (G23) | Tauri 2 | A 7 MB shell over the Mac's own WebKit that runs `serve.py` as a sidecar; Electron would add its own Chromium and an unused Node, and a Swift app would mean redrawing every page |
 

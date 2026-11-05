@@ -37,19 +37,21 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // A page is always asked of the server first, so the first open after a
-        // new build (`make serve`, build_macos.sh) runs that build, and a page asked
-        // of 8770 during `make dev` reaches serve.py's redirect to 5173. index.html
-        // is precached only as the offline fallback: no precache route answers a
-        // page (no navigation fallback, no "/" to index.html mapping), and when the
-        // server does not answer, any page, /settings included, gets that copy.
+        // A page is always asked of the server, so the first open after a new
+        // build (`make serve`, build_macos.sh) runs that build, and a page asked of
+        // 8770 during `make dev` reaches serve.py's redirect to 5173. No page is kept
+        // at runtime: when the server does not answer, any page, /settings included,
+        // gets this build's precached index.html, whose scripts are precached with it
+        // (a page saved by an older build could name scripts the new worker dropped).
+        // No precache route answers a page itself (no navigation fallback, no "/" to
+        // index.html mapping).
         globPatterns: ["**/*.{js,css,html,svg,png,ico,woff2}"],
         navigateFallback: null,
         directoryIndex: null,
         runtimeCaching: [{
           urlPattern: ({ request, url }) => request.mode === "navigate" && !url.pathname.startsWith("/api/"),
-          handler: "NetworkFirst",
-          options: { cacheName: "pages", networkTimeoutSeconds: 5, precacheFallback: { fallbackURL: "index.html" } },
+          handler: "NetworkOnly",
+          options: { networkTimeoutSeconds: 5, precacheFallback: { fallbackURL: "index.html" } },
         }],
         // set by the plugin only when it injects the register script itself:
         // a new worker takes over at once instead of waiting for every tab to close
