@@ -493,6 +493,13 @@ thing about a row that never changes, so the keys stay stable across a
 re-export. The rows are then reversed into oldest first, which leaves a single
 day's rows in the order Wise applied them.
 
+A long statement runs over several pages. Every page ends with the licence block
+and a `ref:... 1/2` page counter, and the next page starts its own column header,
+so the parser skips from each licence block to the next header rather than
+stopping at the first one. The older rows sit on the later pages, and since Wise
+prints no opening, a parser that read only page 1 would derive an opening that
+absorbs the lost rows and still reconcile.
+
 | Row | Bank txn type | Flow class |
 | --- | --- | --- |
 | `Topped up account` | `Wise Top-up` | Internal - Wise |
@@ -740,7 +747,7 @@ which path is missing, and the suite still ends clean.
 | `test_parse_no_closing` | a card statement and an empty YouTrip month say in their note why they print no closing; any other block that does not is a problem |
 | `test_parse_page_break` | a consolidated card row whose detail lines fall behind a page break keeps its merchant, parses to the same rows and keeps the same keys, and nothing from the footer leaks into a row |
 | `test_parse_revolut` | the Revolut export: pages grouped into wallet sections, every row kind and the type it gets, a fee left inside the column amount, one block per month with the export month closing the section, the borrowed FX rate, the real export's five wallets all reconciled, a section with no balance summary stopping the parser before it writes anything, and that the shared city table is the same table whatever order the parsers are imported in |
-| `test_parse_wise` | the Wise export set: the column split at the real column positions, the currency read off the heading, every balance taking the SGD file's account number, every row kind and the type it gets, the transaction id as the reference, rows reversed into oldest first, one block per month plus the export month, the opening derived twice, the SEK rate off the conversion, the real export's three balances all reconciled, and a file with no printed closing stopping the parser before it writes anything |
+| `test_parse_wise` | the Wise export set: the column split at the real column positions, the currency read off the heading, every balance taking the SGD file's account number, every row kind and the type it gets, the transaction id as the reference, rows reversed into oldest first, one block per month plus the export month, the opening derived twice, the SEK rate off the conversion, the real export's three balances all reconciled, a statement over two pages read as one, and a file with no printed closing stopping the parser before it writes anything |
 | `test_parse_tiger` | the Tiger Brokers parser on five invented statements across the two layouts: the bare-symbol layout, the wrapped 2026 layout with every trade printed twice, and a quiet period with no trades, withdrawals or dividends: every field, the duplicated trades and the interrupted tables |
 | `test_parse_cpf` | the CPF parser on five invented yearly statements, one per layout plus a quiet year and a year whose transactions table is torn across a page break: every field, the positional column reading and the page furniture, and a year that does not reconcile left out of `parse_folder` and named |
 | `test_parse_uob` | the UOB One and Stash layouts on invented statements from the public sample: a statement that balances, one that does not and is refused by the run, the table broken across pages with a carried and a brought forward balance, a credit and a debit on one day, a month brought forward from the last one's closing, and the One and savings statements filed apart |
