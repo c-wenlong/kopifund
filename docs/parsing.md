@@ -6,21 +6,25 @@ anything under `server/finance/parsers/`. The one rule the whole pipeline rests 
 misparse is invisible unless a printed balance catches it, so every bank feed
 below is described down to the balance check it ends at.
 
-Four parsers in the `finance.parsers` package turn statement PDFs into two
+Six row parsers in the `finance.parsers` package turn statement PDFs into two
 CSVs with the same columns:
 [../server/finance/parsers/parse_statements.py](../server/finance/parsers/parse_statements.py) for the four
 DBS and POSB layouts,
+[../server/finance/parsers/parse_ocbc.py](../server/finance/parsers/parse_ocbc.py) for the OCBC 360 account,
+[../server/finance/parsers/parse_uob.py](../server/finance/parsers/parse_uob.py) for the UOB accounts,
 [../server/finance/parsers/parse_youtrip.py](../server/finance/parsers/parse_youtrip.py) for the YouTrip
 wallet, [../server/finance/parsers/parse_revolut.py](../server/finance/parsers/parse_revolut.py) for the
 Revolut wallets, and [../server/finance/parsers/parse_wise.py](../server/finance/parsers/parse_wise.py) for
-the Wise balances. `finance.py sync` runs all four over the whole tree on every
-run, and shows everything they print. They also run on their own, from
+the Wise balances. `finance.py sync` and `finance.py load` run all six over the whole tree on every
+run, and show everything they print. They also run on their own, from
 server/:
 
 ```bash
 (cd server && python3 -m finance.parsers.parse_statements)                       # extract and check, no CSVs
 (cd server && python3 -m finance.parsers.parse_statements --out /tmp/sync)       # also write the two CSVs
-(cd server && python3 -m finance.parsers.parse_statements statements/posb-everyday/2026/7.pdf)
+(cd server && python3 -m finance.parsers.parse_statements statements/posb-everyday/2026/2026-07.pdf)
+(cd server && python3 -m finance.parsers.parse_ocbc --out /tmp/sync/ocbc)
+(cd server && python3 -m finance.parsers.parse_uob --out /tmp/sync/uob)
 (cd server && python3 -m finance.parsers.parse_youtrip --out /tmp/sync/youtrip --wallet eur)
 (cd server && python3 -m finance.parsers.parse_revolut --out /tmp/sync/revolut --wallet eur)
 (cd server && python3 -m finance.parsers.parse_wise --out /tmp/sync/wise --wallet eur)
@@ -236,8 +240,27 @@ at all, because the account statement carries every row.
 This is also why the file name matters. Account and wallet statements are named
 for the calendar month they cover; a debit-card statement closes on the 9th and
 is named for the month **before** its printed "As at" date, so the statement "As
-at 09 Jan 2025" is `2024/12.pdf`. A statement spanning several months takes the
-last one, so `posb-everyday/2025/1_2.pdf` runs Dec 2024 to Feb 2025.
+at 09 Jan 2025" is `2024-12.pdf`. A statement spanning several months is named
+for the first and the last, so `posb-everyday/2025/2025-01_2025-02.pdf` runs
+Jan to Feb 2025.
+
+## OCBC: the 360 account
+
+[../server/finance/parsers/parse_ocbc.py](../server/finance/parsers/parse_ocbc.py) reads the OCBC 360
+account and its statement-savings siblings. It was built from a public sample,
+not from a real statement, so the layout is "from a public sample" in the
+registry and on Setup until a real statement has parsed and balanced.
+
+| What | As the sample prints it |
+| --- | --- |
+| The statement | `STATEMENT OF ACCOUNT` and `<d> <MON> <yyyy> TO <d> <MON> <yyyy>` on the first page |
+| The account | `Account No. <digits>` under the product name |
+| Columns | Transaction Date, Value Date, Description, Cheque, Withdrawal, Deposit, Balance; a number's column is its position against the heading, re-read on every page |
+| Dates | `DD MON`, with no year: the year comes from the period |
+| The chain | `BALANCE B/F` opens it and `BALANCE C/F` closes it; a long description wraps onto lines with no date |
+
+The balance check replays every row's running balance in integer cents against
+the printed one and ends at `BALANCE C/F`. A chain that drifts stops the run.
 
 ## UOB: the One Account and the savings accounts
 
@@ -513,8 +536,8 @@ three balances, a handful of rows and one block per balance-month.
 
 ## Tiger Brokers annual exports
 
-The brokerage is not a bank account and is not parsed by any of the four
-parsers above. Tiger Brokers exports one PDF per year, so
+The brokerage is not a bank account and is not parsed by any of the six
+row parsers above. Tiger Brokers exports one PDF per year, so
 [../server/finance/parsers/parse_tiger.py](../server/finance/parsers/parse_tiger.py) reads
 `statements/tiger/<year>/<year>-<first month>_<year>-<last month>.pdf` and hands the whole
 statement to the analytics layer as one dict per year. The filename says which
