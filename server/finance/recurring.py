@@ -36,7 +36,7 @@ from datetime import date, timedelta
 from finance import series
 from finance.figures import median_cents
 from finance.money import stat_cents
-from .cadence import (AMOUNT_BAND, BANDS, DAY_STEP, MERGE_DAYS, MONTH_STEP, NOMINAL,
+from .cadence import (AMOUNT_BAND, BANDS, CLOSED_AFTER, DAY_STEP, MERGE_DAYS, MONTH_STEP, NOMINAL,
                       TIGHT_BAND, TIGHT_CATEGORIES, Grid, _merged, account_ends,
                       assign_loners, detect_group, group_key, monthly_cost_minor, name_series,
                       normalise, on_schedule, partition, state_after, tolerance)
@@ -116,9 +116,13 @@ def judged_for(pays, ends, today, fallback):
     its latest payment in the usual range came from, never past today; the
     record's own day (`fallback`) when the account is unknown. Only the series'
     own payments count: another purchase at the same payee, on a card whose
-    statements run later, says nothing about the account the bill is paid from."""
+    statements run later, says nothing about the account the bill is paid from.
+    Audit: an account whose statements stopped more than CLOSED_AFTER days before
+    `fallback` is closed, and its series are judged on `fallback` (cadence.account_ends)."""
     own = [p for p in pays if p.regular and p.day <= today]
     end = ends.get(own[-1].account) if own else None
+    if end and (fallback - end).days > CLOSED_AFTER:
+        return fallback
     return min(today, end) if end else fallback
 
 
