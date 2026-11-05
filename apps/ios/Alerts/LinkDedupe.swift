@@ -81,8 +81,12 @@ enum LinkDedupe {
         guard !spends.isEmpty else { return 0 }
         var taken: Set<Int> = []
         var marked = 0
+        // a row whose source printed no currency counts in the plan's, as
+        // the sync posts it; with no plan read it covers nothing
+        let planCurrency = PlanCurrency.saved() ?? ""
         for row in rows {
-            if let i = Dedup.coveredBy(amountCents: row.amountCents, currency: row.currency,
+            let currency = row.currency.isEmpty ? planCurrency : row.currency
+            if let i = Dedup.coveredBy(amountCents: row.amountCents, currency: currency,
                                        direction: row.direction, date: row.date,
                                        payee: row.payee, in: spends, taken: taken) {
                 taken.insert(i)

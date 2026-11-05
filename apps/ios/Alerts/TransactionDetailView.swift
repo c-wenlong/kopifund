@@ -88,6 +88,18 @@ struct TransactionDetailView: View {
                     }
                 }
             }
+            if row.state == "kopifund" {
+                // a loaded statement row already covers this spend: the row
+                // is parked out of the YNAB flush unless the owner disagrees
+                Section("Already in kopifund") {
+                    Text("A statement in the record covers this spend")
+                        .font(.caption).foregroundStyle(.secondary)
+                    Button("Not recorded") {
+                        row.state = "pending"
+                        try? context.save()
+                    }
+                }
+            }
             if let plan = heldFor {
                 // G24 audit: a foreign spend never posts as the plan's
                 // currency on its own; the owner types the converted figure
@@ -108,7 +120,8 @@ struct TransactionDetailView: View {
                 Section("Sync error") { Text(err).foregroundStyle(.red) }
             }
         }
-        .navigationTitle(row.state == "pending" ? "Review" : row.state)
+        .navigationTitle(row.state == "pending" ? "Review"
+                         : row.state == "kopifund" ? "in kopifund" : row.state)
         .task {
             loadSibling()
             categoryOptions = YNABCache.categories(in: context, planID: planID)

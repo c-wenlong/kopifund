@@ -32,10 +32,10 @@ public enum Ingest {
             let pattern = patterns.first { $0.id == t.patternID }
             let row = TransactionRecord(from: t, accountID: pattern?.accountID ?? "",
                                         categoryID: pattern?.defaultCategoryID)
-            let held = holdIfForeign(row, defaults: defaults)
-            if pattern?.autoApprove == true && !held { row.state = "approved" }
+            if pattern?.autoApprove == true { row.state = "approved" }
             context.insert(row)
             settleDuplicates(of: row, in: context)
+            holdKeeperIfForeign(of: row, in: context, defaults: defaults)
             try context.save()
             return "queued"
         case .unmatched(let rejections):
@@ -103,22 +103,40 @@ public enum Ingest {
                                     merchant: merchant, card: card,
                                     date: date ?? Date(), accountID: accountID,
                                     currency: code)
-        holdIfForeign(row, defaults: defaults)
         context.insert(row)
         settleDuplicates(of: row, in: context)
+        holdKeeperIfForeign(of: row, in: context, defaults: defaults)
         try context.save()
         return "queued"
     }
 
-    /// Fills an unstated currency with the plan's, when a sync has read it,
-    /// and keeps a foreign spend in review with the reason on the row. The
-    /// sync checks again before posting, so a row ingested before the plan's
-    /// currency was known is still caught. Returns true when the row is held.
+    /// Keeps a foreign spend in review with the reason on the row, once a
+    /// sync has read the plan's currency. Runs after pairing, on the row the
+    /// pair kept: a currency only the parked capture stated has moved onto
+    /// it by then. An unstated currency stays empty here so a later capture
+    /// that states one can still pair with it; the sync counts it in the
+    /// plan's currency when it posts, and checks every row again, so a row
+    /// ingested before the plan's currency was known is still caught.
+    @MainActor
+    static func holdKeeperIfForeign(of row: TransactionRecord, in context: ModelContext,
+                                    defaults: UserDefaults?) {
+        var keeper = row
+        if row.state == "duplicate" {
+            guard let id = row.duplicateOf,
+                  let kept = (try? context.fetch(FetchDescriptor<TransactionRecord>(
+                      predicate: #Predicate { $0.id == id })))?.first else { return }
+            keeper = kept
+        }
+        holdIfForeign(keeper, defaults: defaults)
+    }
+
+    /// Returns true when the row is held. Only a row still waiting to post
+    /// (pending or approved) is moved; one syncing or sent is past holding.
     @MainActor @discardableResult
     static func holdIfForeign(_ row: TransactionRecord, defaults: UserDefaults?) -> Bool {
-        guard let plan = PlanCurrency.saved(in: defaults) else { return false }
-        if row.currency.isEmpty { row.currency = plan }
-        guard let reason = Currency.holdReason(currency: row.currency, planCurrency: plan)
+        guard row.state == "pending" || row.state == "approved",
+              let plan = PlanCurrency.saved(in: defaults),
+              let reason = Currency.holdReason(currency: row.currency, planCurrency: plan)
         else { return false }
         row.state = "pending"
         row.syncError = reason

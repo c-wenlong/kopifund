@@ -263,7 +263,9 @@ private func rows(_ container: ModelContainer) throws -> [TransactionRecord] {
     #expect(row.checkCurrency(against: "SGD") == false)
 }
 
-@Test @MainActor func walletTapWithNoCurrencyTakesThePlans() throws {
+@Test @MainActor func walletTapWithNoCurrencyStaysUnstatedUntilTheSync() throws {
+    // intake leaves it empty so a capture stating one can still pair with
+    // it; the sync's check counts it in the plan's currency
     let container = try Store.memory()
     let (defaults, name) = scratchDefaults(planCurrency: "SGD")
     defer { defaults.removePersistentDomain(forName: name) }
@@ -271,10 +273,34 @@ private func rows(_ container: ModelContainer) throws -> [TransactionRecord] {
     _ = try Ingest.wallet(amount: 4.53, merchant: "Kopitiam", card: "Visa", date: day,
                           currency: nil, container: container, defaults: defaults)
     let row = try #require(try rows(container).first)
-    #expect(row.currency == "SGD")
+    #expect(row.currency == "")
     #expect(row.amountCents == 453)
     #expect(row.accountID == "acct-wallet")
     #expect(row.syncError == nil)
+    #expect(row.checkCurrency(against: "SGD"))
+    #expect(row.currency == "SGD")
+}
+
+@Test @MainActor func unstatedAlertPairsWithALaterForeignTapAndIsHeld() throws {
+    // Greptile on #319: filling SGD at intake stopped this pair forming, so
+    // the auto-approved alert posted JPY 1,200 as S$1,200
+    let container = try store(cardPattern(autoApprove: true))
+    let (defaults, name) = scratchDefaults(planCurrency: "SGD")
+    defer { defaults.removePersistentDomain(forName: name) }
+    _ = try Ingest.alert(text: "You charged 1200.00 at LAWSON", source: "sms",
+                         receivedAt: day, container: container, defaults: defaults)
+    let first = try #require(try rows(container).first)
+    #expect(first.currency == "")
+    #expect(first.state == "approved")
+    _ = try Ingest.wallet(amount: 1200, merchant: "Lawson", card: nil, date: day,
+                          currency: "JPY", container: container, defaults: defaults)
+    let all = try rows(container)
+    let alert = try #require(all.first { !$0.alertText.isEmpty })
+    let tap = try #require(all.first { $0.alertText.isEmpty })
+    #expect(tap.state == "duplicate")
+    #expect(alert.currency == "JPY")
+    #expect(alert.state == "pending")
+    #expect(alert.syncError?.contains("JPY") == true)
 }
 
 @Test @MainActor func walletTapBeforeAnySyncLeavesCurrencyUnstated() throws {
