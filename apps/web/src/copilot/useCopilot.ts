@@ -128,7 +128,11 @@ export function useCopilot() {
       if (!finished) update((t) => (t.status === "running" ? { ...t, status: "error", error: CUT_SHORT } : t));
     } catch (e) {
       if (isAbort(e)) update((t) => ({ ...t, status: "stopped" }));
-      else update((t) => ({ ...t, status: "error", error: (e as Error).message }));
+      else {
+        // Audit: whatever went wrong, the request ends here, so the model is not left answering no one
+        mine.abort();
+        update((t) => ({ ...t, status: "error", error: (e as Error).message }));
+      }
     } finally {
       // Stop clears the controller at once; a question sent after it keeps its own running state
       if (control.current === mine) control.current = null;

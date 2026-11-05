@@ -1,4 +1,6 @@
 import { useEffect, useState, useSyncExternalStore } from "react";
+import { createPortal } from "react-dom";
+import { KEEP_LIVE } from "./focusTrap";
 import { CircleAlert, X } from "lucide-react";
 
 // G13: a short message at the bottom of the screen, where the person who just
@@ -72,12 +74,19 @@ function useToasts(): Item[] {
 /** How long a toast stays up in ms; null means until the person acts. */
 export const lifetime = (t: ToastInput): number | null => t.ms ?? (t.action ? null : t.tone === "error" ? 8000 : 5000);
 
+/**
+ * Audit: the toasts sit straight under <body>, outside #root, above any Sheet
+ * (z-60 over its z-50) and marked to stay live while one is open: a Sheet
+ * makes everything else inert, which hid the copilot's Undo under its scrim
+ * on a phone, out of reach and unannounced.
+ */
 export function Toaster() {
   const list = useToasts();
-  return (
-    <div aria-live="polite" className="pointer-events-none fixed inset-x-0 bottom-0 z-50 flex flex-col items-center gap-2 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
+  return createPortal(
+    <div aria-live="polite" {...{ [KEEP_LIVE]: "" }} className="pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex flex-col items-center gap-2 px-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
       {[...list].reverse().map((t) => <ToastCard key={t.id} toast={t} />)}
-    </div>
+    </div>,
+    document.body,
   );
 }
 
