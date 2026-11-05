@@ -21,6 +21,13 @@ public enum Suppression {
         defaults?.set(all, forKey: key)
     }
 
+    /// Undo for one "always ignore": the Patterns tab lists every shape
+    /// with a way to stop ignoring it.
+    public static func remove(_ signature: String, in defaults: UserDefaults? = AppGroup.defaults) {
+        let kept = (defaults?.stringArray(forKey: key) ?? []).filter { $0 != signature }
+        defaults?.set(kept, forKey: key)
+    }
+
     public static func contains(_ signature: String,
                                 in defaults: UserDefaults? = AppGroup.defaults) -> Bool {
         signatures(in: defaults).contains(signature)

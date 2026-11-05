@@ -8,6 +8,9 @@ struct PatternListView: View {
     @Environment(\.modelContext) private var context
     @State private var pasteText = ""
     @State private var showBuilder = false
+    // "always ignore" shapes, listed here so one can be undone without
+    // wiping every pattern and transaction
+    @State private var ignored: [String] = []
 
     var body: some View {
         NavigationStack {
@@ -25,8 +28,29 @@ struct PatternListView: View {
                         systemImage: "slider.horizontal.3",
                         description: Text("Paste a real alert and tap its amount, payee and date."))
                 }
+                if !ignored.isEmpty {
+                    Section {
+                        ForEach(ignored, id: \.self) { shape in
+                            Text(shape)
+                                .font(.caption).foregroundStyle(.secondary)
+                                .lineLimit(3)
+                                .swipeActions {
+                                    Button("Stop ignoring") {
+                                        Suppression.remove(shape)
+                                        loadIgnored()
+                                    }
+                                    .tint(.blue)
+                                }
+                        }
+                    } header: {
+                        Text("Ignored alert shapes")
+                    } footer: {
+                        Text("Alerts starting like these are dropped. Swipe one to let it queue again.")
+                    }
+                }
             }
             .navigationTitle("Patterns")
+            .onAppear(perform: loadIgnored)
             .toolbar { Button { showBuilder = true } label: { Image(systemName: "plus") } }
             .sheet(isPresented: $showBuilder) {
                 NavigationStack {
@@ -34,6 +58,10 @@ struct PatternListView: View {
                 }
             }
         }
+    }
+
+    private func loadIgnored() {
+        ignored = Suppression.signatures().sorted()
     }
 
     struct PasteToBuild: View {
