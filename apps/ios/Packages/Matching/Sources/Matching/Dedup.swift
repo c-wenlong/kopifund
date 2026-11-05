@@ -44,11 +44,12 @@ public enum Dedup {
     public struct RecordSpend: Equatable, Sendable {
         public var amountCents: Int
         public var currency: String
-        public var date: Date
+        /// The day the statement printed, read from the record's ISO date.
+        public var date: CalendarDate
         public var payee: String
         public var raw: String
 
-        public init(amountCents: Int, currency: String, date: Date,
+        public init(amountCents: Int, currency: String, date: CalendarDate,
                     payee: String, raw: String) {
             self.amountCents = amountCents
             self.currency = currency
@@ -66,14 +67,14 @@ public enum Dedup {
     /// agree. `taken` keeps the match one-to-one: a record spend already
     /// claimed by another alert row does not count again.
     public static func coveredBy(amountCents: Int, currency: String, direction: String,
-                                 date: Date, payee: String,
+                                 date: CalendarDate, payee: String,
                                  in record: [RecordSpend], taken: Set<Int>) -> Int? {
         record.indices.first { i in
             guard !taken.contains(i) else { return false }
             let r = record[i]
             let signMatches = direction == "outflow" ? r.amountCents < 0 : r.amountCents > 0
             guard signMatches, abs(r.amountCents) == amountCents, r.currency == currency,
-                  Calendar.current.isDate(r.date, inSameDayAs: date) else { return false }
+                  r.date == date else { return false }
             return similarPayee(payee, r.payee) || similarPayee(payee, r.raw)
         }
     }

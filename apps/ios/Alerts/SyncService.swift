@@ -2,7 +2,6 @@ import Foundation
 import SwiftData
 import Matching
 import Storage
-import Matching
 import KopifundClient
 import YNABClient
 
@@ -42,7 +41,8 @@ enum SyncService {
         var taken: Set<Int> = []
         if let link {
             record = await LinkDedupe.recordSpends(
-                client: link, months: Set(approved.map { LinkDedupe.monthKey($0.date) }))
+                client: link,
+                months: Set(approved.map { LinkDedupe.monthKey(CalendarDate(stored: $0.date)) }))
         }
         let postApproved = UserDefaults.standard.bool(forKey: "postApproved")
         // a store view on its own context: an App Intent's dedup write lands
@@ -68,7 +68,10 @@ enum SyncService {
             // reply never came, or an edit since. The import_id is the row's
             // own, so every repost upserts the one pending row, and a row can
             // owe a retry in any state, so this runs before the YNAB gate.
-            let sent = "\(dateFmt.string(from: row.date))|" +
+            // the row's calendar day goes to the hub and YNAB as printed,
+            // with no zone applied, wherever the phone is when it syncs
+            let day = CalendarDate(stored: row.date)
+            let sent = "\(day.iso)|" +
                 "\(row.direction == "outflow" ? -row.amountCents : row.amountCents)|" +
                 "\(row.currency)|\(row.payee)"
             let inLane = row.state == "approved" || row.state == "failed" || row.state == "syncing"
@@ -78,7 +81,7 @@ enum SyncService {
                 let pendingID = row.kopifundID ?? "kph_\(row.id.uuidString.lowercased())"
                 if row.kopifundID == nil { row.kopifundID = pendingID }
                 let post = PendingPost(
-                    importID: pendingID, date: dateFmt.string(from: row.date),
+                    importID: pendingID, date: day.iso,
                     amountMinor: row.direction == "outflow" ? -row.amountCents : row.amountCents,
                     currency: row.currency, payee: row.payee)
                 do {
@@ -94,7 +97,7 @@ enum SyncService {
             else { continue }
             if row.state == "approved",
                let i = Dedup.coveredBy(amountCents: row.amountCents, currency: row.currency,
-                                       direction: row.direction, date: row.date,
+                                       direction: row.direction, date: day,
                                        payee: row.payee, in: record, taken: taken) {
                 taken.insert(i)
                 row.state = "kopifund"
@@ -115,9 +118,6 @@ enum SyncService {
             try? context.save()
             let outflow = row.direction == "outflow"
             let milli = Milliunits.from(Decimal(row.amountCents) / 100, outflow: outflow)
-            // the row's calendar day goes to YNAB as printed, with no zone
-            // applied, wherever the phone is when it syncs
-            let day = CalendarDate(stored: row.date)
             // the first send's import_id is saved before posting, so an edit
             // or a lost reply can never mint a second one for the same row
             let importID = row.importID ?? ImportID.make(date: day.storedInstant, milliunits: milli,

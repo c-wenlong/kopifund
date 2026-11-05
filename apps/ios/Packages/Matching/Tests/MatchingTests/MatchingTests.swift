@@ -268,7 +268,7 @@ final class DedupTests: XCTestCase {
 /// G25: an alert is covered when a loaded statement row agrees on amount,
 /// currency, day and payee — and a record row covers at most one alert.
 final class RecordCoverTests: XCTestCase {
-    private let day = Date(timeIntervalSince1970: 1_777_000_000)
+    private let day = CalendarDate(year: 2026, month: 4, day: 24)!
 
     private func spend(_ amount: Int = -4453, _ currency: String = "SGD",
                        payee: String = "", raw: String = "") -> Dedup.RecordSpend {
@@ -299,7 +299,7 @@ final class RecordCoverTests: XCTestCase {
         XCTAssertNil(Dedup.coveredBy(amountCents: 4454, currency: "SGD", direction: "outflow",
                                      date: day, payee: "SGH", in: record, taken: []))
         XCTAssertNil(Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
-                                     date: day.addingTimeInterval(86_400), payee: "SGH",
+                                     date: day.adding(days: 1), payee: "SGH",
                                      in: record, taken: []))
         // two real purchases at one amount on one day: the payee still has to agree
         XCTAssertNil(Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",

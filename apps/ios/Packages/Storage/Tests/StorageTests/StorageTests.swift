@@ -9,9 +9,10 @@ import Matching
 // defaults suite is a fresh name, so no test touches the App Group.
 
 private let day = Date(timeIntervalSince1970: 1_793_000_000)
+private let printed = CalendarDate(year: 2026, month: 10, day: 26)!
 
 private func parsed(_ amount: String, currency: String? = "SGD") -> ParsedTransaction {
-    ParsedTransaction(payee: "KOPITIAM", amount: Decimal(string: amount)!, date: day,
+    ParsedTransaction(payee: "KOPITIAM", amount: Decimal(string: amount)!, date: printed,
                       direction: .outflow, accountHint: "1234", currency: currency,
                       patternID: UUID(), patternName: "DBS card", alertText: "alert",
                       source: "sms", receivedAt: day)
@@ -199,6 +200,20 @@ func centsRoundHalfUpFromTheParsedDecimal(amount: String, cents: Int) {
     #expect(row.direction == "outflow")
     #expect(row.state == "pending")
     #expect(row.receivedAt == day)
+}
+
+@Test func rowsStoreACalendarDayWithNoZone() {
+    // a parsed alert keeps the day it printed as UTC midnight, so reading it
+    // back in any zone names the same day
+    let alert = TransactionRecord(from: parsed("4.50"), accountID: "a1", categoryID: nil)
+    #expect(alert.date == printed.storedInstant)
+    for zone in ["Pacific/Honolulu", "Europe/London", "Asia/Singapore", "Pacific/Kiritimati"] {
+        #expect(CalendarDate(stored: alert.date, legacyZone: TimeZone(identifier: zone)!) == printed)
+    }
+    // a Wallet tap keeps the day it happened where the phone was
+    let wallet = TransactionRecord(walletAmountCents: 100, merchant: "M", card: nil,
+                                   date: day, accountID: "")
+    #expect(CalendarDate(stored: wallet.date) == CalendarDate(day, in: .current))
 }
 
 // MARK: - PatternRecord
