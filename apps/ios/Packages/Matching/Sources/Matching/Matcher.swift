@@ -3,9 +3,14 @@ import Foundation
 /// G24: what a matched alert becomes before it queues for review.
 public struct ParsedTransaction: Equatable, Sendable {
     public var payee: String
-    /// Absolute amount as printed. `direction` gives it a sign at post time.
+    /// The amount's size, never negative: a minus the alert printed is the
+    /// bank's notation, and the pattern's `direction` alone gives the sign at
+    /// post time. (A kept minus used to be negated again for an outflow, so
+    /// "-S$4.50" posted as money in.)
     public var amount: Decimal
-    public var date: Date
+    /// The calendar date the alert printed, or the day it arrived (in the
+    /// phone's zone then) when it printed none. Never an instant.
+    public var date: CalendarDate
     public var direction: AlertPattern.Direction
     public var accountHint: String?
     /// The currency the amount printed, nil when the alert printed none.
@@ -18,7 +23,7 @@ public struct ParsedTransaction: Equatable, Sendable {
     public var source: String?
     public var receivedAt: Date
 
-    public init(payee: String, amount: Decimal, date: Date, direction: AlertPattern.Direction,
+    public init(payee: String, amount: Decimal, date: CalendarDate, direction: AlertPattern.Direction,
                 accountHint: String?, currency: String? = nil, patternID: UUID, patternName: String,
                 alertText: String, source: String?, receivedAt: Date) {
         self.payee = payee
@@ -51,8 +56,12 @@ public enum MatchOutcome: Equatable, Sendable {
 public enum Matcher {
 
     /// Highest priority pattern wins. Rejections are listed in priority order
-    /// too, so the most likely pattern's reason reads first.
+    /// too, so the most likely pattern's reason reads first. `zone` is where
+    /// the phone was when the alert arrived: it decides which day `receivedAt`
+    /// falls on, for an alert that prints no date or no year. `arrivedOn`,
+    /// when known (a re-read of a saved alert), is that day already and wins.
     public static func match(text: String, source: String?, receivedAt: Date,
+                             zone: TimeZone = .current, arrivedOn: CalendarDate? = nil,
                              patterns: [AlertPattern]) -> MatchOutcome {
         var rejections: [Rejection] = []
         for p in patterns.sorted(by: { $0.priority > $1.priority }) {
@@ -62,7 +71,7 @@ public enum Matcher {
                                             reason: #"source "\#(source ?? "")" lacks "\#(s)""#))
                 continue
             }
-            switch apply(p, to: text, receivedAt: receivedAt) {
+            switch apply(p, to: text, receivedAt: receivedAt, zone: zone, arrivedOn: arrivedOn) {
             case .success(let parsed):
                 var txn = parsed
                 txn.source = source
@@ -77,8 +86,10 @@ public enum Matcher {
     /// One pattern against one text. `test` is the same path the matcher
     /// takes, so the builder's live test never says yes where a run says no.
     public static func test(_ pattern: AlertPattern, text: String,
-                            receivedAt: Date = Date()) -> Result<ParsedTransaction, MatchError> {
-        apply(pattern, to: text, receivedAt: receivedAt)
+                            receivedAt: Date = Date(),
+                            zone: TimeZone = .current,
+                            arrivedOn: CalendarDate? = nil) -> Result<ParsedTransaction, MatchError> {
+        apply(pattern, to: text, receivedAt: receivedAt, zone: zone, arrivedOn: arrivedOn)
     }
 
     // MARK: - regex
@@ -133,8 +144,7 @@ public enum Matcher {
                 case .ignore:
                     break
                 case .amount:
-                    pattern += #"(?<amount>-?"# + currencyMarker + #"\s*+[0-9][0-9,]*(?:\.\d{1,2})?|"#
-                        + noNumberBefore + #"-?[0-9][0-9,]*(?:\.\d{1,2})?)"#
+                    pattern += "(?<amount>" + Amounts.pattern + ")"
                 case .payee:
                     // a payee never spans lines, so the capture stays inside
                     // its own: it can neither swallow the next line's footer
@@ -144,7 +154,7 @@ public enum Matcher {
                     // the name.
                     pattern += lineCapture("payee", atLineEnd: atLineEnd(p, seg))
                 case .date(let f):
-                    pattern += noNumberBefore + "(?<date\(dateGroup)>\(f.regex))"
+                    pattern += Amounts.noNumberBefore + "(?<date\(dateGroup)>\(f.regex))"
                     dateGroup += 1
                 case .accountHint:
                     // the account string prints the same way every alert, so
@@ -159,17 +169,7 @@ public enum Matcher {
         return try NSRegularExpression(pattern: pattern, options: [])
     }
 
-    /// An amount or a date never starts inside a number: a skip or a
-    /// digit run that stops early ("Ref 8|842") must not hand the rest of
-    /// a reference to the capture as the amount.
-    private static let noNumberBefore = #"(?<![0-9])(?<![0-9][.,])"#
 
-    /// The currency markers an amount opens on. A marker may follow a digit
-    /// ("Ref 8842US$4.80") or a word ("Paid$4.80") but never starts inside a
-    /// longer marker: "US$4.80" is never read from its "S$" or "$" as SGD,
-    /// and a code never starts mid-word.
-    private static let currencyMarker =
-        #"(?:(?<![A-Za-z])(?:[A-Z]{3}|US\$)|(?<!U)S\$|(?<![SU])\$)"#
 
     /// The longest payee or account a lazy capture reads. YNAB caps a payee
     /// name at 200 characters, so a longer capture could never post; the
@@ -222,8 +222,9 @@ public enum Matcher {
         return try expressions.value(for: key) { try expression(for: p) }
     }
 
-    private static func apply(_ p: AlertPattern, to text: String,
-                              receivedAt: Date) -> Result<ParsedTransaction, MatchError> {
+    private static func apply(_ p: AlertPattern, to text: String, receivedAt: Date,
+                              zone: TimeZone, arrivedOn known: CalendarDate?)
+        -> Result<ParsedTransaction, MatchError> {
         let re: NSRegularExpression
         do { re = try cachedExpression(for: p) } catch { return .failure(MatchError("pattern builds a bad regex")) }
         let ns = text as NSString
@@ -250,22 +251,28 @@ public enum Matcher {
                 dateGroup += 1
             }
         }
-        guard let a = amountRaw, let parsed = Amounts.split(a) else {
+        guard let a = amountRaw, let parsed = Amounts.read(a) else {
             return .failure(MatchError("amount not readable"))
+        }
+        // the row keeps cents, so a third decimal (KWD, BHD, OMR fils)
+        // would be cut on the way in: refuse it out loud instead
+        guard parsed.decimals <= 2 else {
+            return .failure(MatchError("amount \(a) has \(parsed.decimals) decimals; the app keeps cents"))
         }
         guard let py = payee?.trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:-")), !py.isEmpty else {
             return .failure(MatchError("payee not readable"))
         }
-        let date: Date
+        let arrivedOn = known ?? CalendarDate(receivedAt, in: zone)
+        let date: CalendarDate
         if let raw = dateRaw, let f = dateFmt {
             guard let d = Dates.parse(raw.trimmingCharacters(in: .whitespaces), as: f,
-                                      fallback: receivedAt) else {
+                                      receivedOn: arrivedOn) else {
                 return .failure(MatchError("date not readable"))
             }
             date = d
         } else {
-            date = receivedAt
+            date = arrivedOn
         }
         // the hint's character class allows spaces, so a greedy capture can
         // keep padding around the digits
@@ -277,7 +284,7 @@ public enum Matcher {
            let expected = expectedHint(for: p, re: re), trimmedHint != expected {
             return .failure(MatchError("different card or account"))
         }
-        return .success(ParsedTransaction(payee: py, amount: parsed.amount, date: date,
+        return .success(ParsedTransaction(payee: py, amount: parsed.magnitude, date: date,
                                           direction: p.direction, accountHint: trimmedHint,
                                           currency: parsed.currency,
                                           patternID: p.id, patternName: p.name,
@@ -351,40 +358,6 @@ private final class ExpressionCache: @unchecked Sendable {
         if cache.count >= limit { cache.removeAll() }
         cache[key] = re
         return re
-    }
-}
-
-/// Amounts the alerts print: `SGD 4.50`, `S$4.50`, `$4.50`, `4.50`, with
-/// thousands separators and an optional leading minus.
-public enum Amounts {
-    /// The number and the currency symbol it printed, kept apart so the record
-    /// holds the code the bank meant rather than assuming one. `S$` and a bare
-    /// `$` read as SGD (an SG bank alert's dollar is local), `US$` as USD, a
-    /// three-letter code as itself; a bare number reports no currency.
-    public static func split(_ raw: String) -> (amount: Decimal, currency: String?)? {
-        var s = raw.replacingOccurrences(of: ",", with: "")
-            .trimmingCharacters(in: .whitespaces)
-        var sign = ""
-        if s.hasPrefix("-") { sign = "-"; s.removeFirst() }
-        var currency: String? = nil
-        // longest alternatives first so `US$` is not eaten as the letters US
-        if let r = s.range(of: #"^(?:US\$|S\$|[A-Z]{1,3}|\$)\s*"#,
-                           options: .regularExpression) {
-            let sym = s[r].trimmingCharacters(in: .whitespacesAndNewlines)
-            s.removeSubrange(r)
-            currency = switch sym {
-            case "US$": "USD"
-            case "S$", "$": "SGD"
-            default: sym
-            }
-        }
-        guard let d = Decimal(string: sign + s, locale: Locale(identifier: "en_US_POSIX"))
-        else { return nil }
-        return (d, currency)
-    }
-
-    public static func parse(_ raw: String) -> Decimal? {
-        split(raw)?.amount
     }
 }
 

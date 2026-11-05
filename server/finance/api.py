@@ -617,6 +617,13 @@ def get_link_devices(req):
     return {"devices": link.list_devices(), "url": link.tailnet_url()}
 
 
+def get_link_check(req):
+    """The phone's Test. The link gate answers it only to a paired,
+    unrevoked bearer, so a 200 says the link itself works: health alone
+    answers a revoked phone too."""
+    return {"ok": True}
+
+
 def get_link_pending(req):
     """The phone rows the Settings card lists, each named for the paired
     phone that sent it. Loopback only: the link path answers only the
@@ -643,7 +650,7 @@ def get_dashboard_query(req):
     """A WidgetQuery resolved to labels and series: `?q=` holds the query as
     JSON, so the app's useWidgetData hook gets the ETag caching of every GET."""
     from . import dashboard
-    return dashboard.resolve(req.maybe_record(), results_cache.results(req),
+    return dashboard.resolve(req.maybe_record(), results_cache.results_view(req),
                              dashboard.query_from_get(req.query))
 
 

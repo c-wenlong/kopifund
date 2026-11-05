@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import Matching
 import Storage
 
 struct TransactionDetailView: View {
@@ -8,6 +9,11 @@ struct TransactionDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("planID") private var planID = ""
     @State private var categoryOptions: [(id: String, label: String)] = []
+    /// The plan-currency figure the owner types for a held foreign spend.
+    @State private var converted: Double?
+    // a typed conversion is a draft: a store refresh waits to re-key the
+    // Inbox (and drop this screen) until the screen is gone
+    @State private var draftHold = SyncService.DraftHold()
     // set by Delete: the row goes once this view is off screen, so no
     // render ever reads a deleted model
     @State private var deleteOnExit = false
@@ -26,7 +32,12 @@ struct TransactionDetailView: View {
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
                 }
-                DatePicker("Date", selection: $row.date, displayedComponents: .date)
+                // the picker edits the calendar day in the phone's own
+                // calendar; the row keeps it as a zone-free day
+                DatePicker("Date", selection: Binding(
+                    get: { row.day.date(in: .current) },
+                    set: { row.day = CalendarDate($0, in: .current) }),
+                           displayedComponents: .date)
                 Picker("Direction", selection: $row.direction) {
                     Text("Outflow").tag("outflow")
                     Text("Inflow").tag("inflow")
@@ -64,7 +75,8 @@ struct TransactionDetailView: View {
                 LabeledContent("Source", value: row.source ?? "unknown")
                 LabeledContent("Received",
                                value: row.receivedAt.formatted(date: .abbreviated, time: .shortened))
-                LabeledContent("Currency", value: row.currency)
+                LabeledContent("Currency",
+                               value: row.currency.isEmpty ? "Not stated" : row.currency)
                 if let hint = row.accountHint, !hint.isEmpty {
                     LabeledContent("Card", value: hint)
                 }
@@ -102,8 +114,37 @@ struct TransactionDetailView: View {
                     }
                 }
             }
-            if let err = row.syncError {
+            if let plan = heldFor {
+                // G24 audit: a foreign spend never posts as the plan's
+                // currency on its own; the owner types the converted figure
+                Section {
+                    HStack {
+                        Text("Amount in \(plan)")
+                        Spacer()
+                        TextField("Required", value: $converted, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    Button("Post in \(plan)") {
+                        guard let cents = convertedCents else { return }
+                        row.postInPlanCurrency(plan, amountCents: cents)
+                        try? context.save()
+                        Task { await SyncService.flush(context: context) }
+                        dismiss()
+                    }
+                    .disabled(convertedCents == nil)
+                } header: {
+                    Text("Different currency")
+                } footer: {
+                    Text("This spend is in \(row.currency) and the YNAB plan keeps \(plan). "
+                       + "Type what it cost in \(plan), then post it.")
+                }
+            } else if let err = row.syncError {
                 Section("Sync error") { Text(err).foregroundStyle(.red) }
+            }
+            if let err = row.kopifundError {
+                // a refused or held send to the linked Kopifund record
+                Section("Kopifund") { Text(err).foregroundStyle(.red) }
             }
         }
         .navigationTitle(row.state == "pending" ? "Review"
@@ -114,7 +155,7 @@ struct TransactionDetailView: View {
                 .map { ($0.id, "\($0.group) · \($0.name)") }
         }
         .toolbar {
-            if row.state == "pending" {
+            if row.state == "pending" && heldFor == nil {
                 Button("Approve") {
                     row.state = "approved"
                     try? context.save()
@@ -132,25 +173,25 @@ struct TransactionDetailView: View {
         }
         .onDisappear {
             guard deleteOnExit else { return }
-            let row = row, context = context
-            Task { @MainActor in
-                // a sync may have picked the row up between the tap and
-                // now: its reply writes to the row, so the delete waits for
-                // the send to settle (two minutes at most, past URLSession's
-                // own timeout)
-                var waited = 0
-                while row.modelContext != nil, row.state == "syncing", waited < 240 {
-                    try? await Task.sleep(for: .milliseconds(500))
-                    waited += 1
-                }
-                guard row.modelContext != nil, !row.isDeleted else { return }
-                context.delete(row)
-                try? context.save()
-            }
+            // a sync that picked the row up meanwhile re-reads it before each
+            // write and leaves a deleted row alone (Sync.run, HubLane), so
+            // the delete need not wait, and the row never lingers in the
+            // list to be reopened
+            context.delete(row)
+            try? context.save()
         }
     }
 
     @State private var sibling: TransactionRecord?
+
+    /// The plan's currency when this pending row is in another one, so it
+    /// waits for the owner instead of offering a plain Approve.
+    private var heldFor: String? {
+        guard row.state == "pending", let plan = PlanCurrency.saved(planID: planID),
+              Currency.holdReason(currency: row.currency, planCurrency: plan) != nil
+        else { return nil }
+        return plan
+    }
 
     private func loadSibling() {
         guard let id = row.duplicateOf else { return }
@@ -163,8 +204,16 @@ struct TransactionDetailView: View {
         return "\(sign)\(r.currency) \(String(format: "%.2f", Double(r.amountCents) / 100))"
     }
 
+    /// The typed plan-currency figure as cents, nil until a positive one
+    /// is entered; the post button stays off until then.
+    private var convertedCents: Int? {
+        guard let c = converted, c > 0, let cents = Cents.from(c), cents > 0 else { return nil }
+        return cents
+    }
+
     private var centsBinding: Binding<Double> {
         Binding(get: { Double(row.amountCents) / 100 },
-                set: { row.amountCents = Int(($0 * 100).rounded()) })
+                // the same rounding as intake; a figure past counting is ignored
+                set: { if let cents = Cents.from($0) { row.amountCents = cents } })
     }
 }

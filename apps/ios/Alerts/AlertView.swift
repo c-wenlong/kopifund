@@ -87,7 +87,8 @@ struct AlertView: View {
                 }
 
                 NavigationLink {
-                    PatternBuilderView(sampleText: record.text, source: record.source) {
+                    PatternBuilderView(sampleText: record.text, source: record.source,
+                                       arrivedOn: record.arrivedOn) {
                         // the list drops the row only after the re-ingest
                         // has read it
                         Task { onFinished(await reIngest()) }
@@ -137,8 +138,12 @@ struct AlertView: View {
         if let container = try? Store.container() {
             outcome = (try? await Ingest.alert(text: record.text, source: record.source,
                                                receivedAt: record.receivedAt,
+                                               arrivedOn: record.arrivedOn,
                                                container: container)) ?? "unmatched"
         }
+        // a pattern that auto-approves queues the row approved: send it now,
+        // not at the next return to the front
+        if outcome == "queued" { Task { await SyncService.flush(context: context) } }
         switch outcome {
         case "queued": return "Pattern saved. The alert is in your Inbox"
         case "ignored": return "Pattern saved, but this shape is ignored"

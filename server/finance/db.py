@@ -1292,17 +1292,139 @@ def link_values(conn, r, category_of, trip_name):
                 trip_id=_id(conn, "trip", "name", trip_name))
 
 
+def _identity(account_no, currency, txn_date, amount_minor, balance_after_minor):
+    return (account_no or "", currency, txn_date, amount_minor, balance_after_minor)
+
+
+def _detail(source, reference, card_last4, purchase_date):
+    return (source or "", reference or "", card_last4 or "", purchase_date or "")
+
+
+def _agree(a, b, balanced):
+    """Two rows' details (_detail) name the same payment: the reference, card
+    and purchase date agree wherever both print one, and without a running
+    balance to vouch for the row, the statement file is the same too."""
+    fields = range(1, 4) if balanced else range(4)
+    return all(not a[i] or not b[i] or a[i] == b[i] for i in fields)
+
+
+def _pairs(old, new, balanced=True):
+    """[(txn id, old key, new key)] for one group of rows alike on the five
+    identity fields, or [] when it cannot be paired safely. `old` holds
+    (id, key, detail, text) in id order, `new` (key, detail, text) in parse
+    order. A group of one each pairs unless their details disagree (_agree).
+    A larger group is split on the details
+    a re-key rarely touches (statement, reference, card, purchase date), and
+    a split part pairs only when it is one each, or when every row on each
+    side prints the same text: rows nothing tells apart (two identical
+    coffees) are interchangeable, but two different payments that share a
+    date and an amount on a card statement (no running balance) are not, and
+    pairing those by id would move a pin to the wrong one."""
+    if len(old) != len(new):
+        return []
+    if len(old) == 1:
+        # one each is the same row only when nothing that names a payment
+        # disagrees: a replaced card statement (no running balance) can drop
+        # one payment and bring another on the same day at the same amount
+        return [(old[0][0], old[0][1], new[0][0])] if _agree(old[0][2], new[0][1], balanced) else []
+    out = []
+    for d in {x[2] for x in old} | {x[1] for x in new}:
+        o = [x for x in old if x[2] == d]
+        n = [x for x in new if x[1] == d]
+        if len(o) != len(n):
+            continue
+        if len(o) == 1 or (len({x[3] for x in o}) == 1 and len({x[2] for x in n}) == 1):
+            out += [(tid, ok, nk) for (tid, ok, _, _), (nk, _, _) in zip(o, n)]
+    return out
+
+
+def rekeys(conn, rows):
+    """[(txn id, old key, new key)]: the record's live rows this parser run
+    gives a new key. `txn_key` hashes parsed text (merchant, reference, type),
+    so a parser change, or a town added to places.csv that moves the city out
+    of a merchant, renames a row the statement prints just as before. A row is
+    the same row when its account, currency, date, amount and running balance
+    are: a record row no parsed key covers is paired with a parsed key the
+    record has never held on those five (_pairs says when a group of several
+    alike can be), and only on a known account number. A row left unpaired is archived and its new key inserted,
+    and sync.check_pinned_rows says if that drops anything the owner saved
+    on one."""
+    known = {k for (k,) in conn.execute("SELECT txn_key FROM txn")}
+    fresh = {}
+    for r in rows:
+        # a row with no account number could be any account's: never paired
+        if r["txn_key"] not in known and r.get("account_no"):
+            ident = _identity(r.get("account_no"), r["currency"], r["date"], to_minor(r["amount"]),
+                              to_minor(r.get("balance_after")))
+            detail = _detail(r.get("source"), r.get("reference"), r.get("card_last4"), r.get("purchase_date"))
+            text = (r.get("merchant") or "", r.get("counterparty") or "", r.get("memo") or "")
+            fresh.setdefault(ident, []).append((r["txn_key"], detail, text))
+    if not fresh:
+        return []
+    keys = {r["txn_key"] for r in rows}
+    gone = {}
+    for t in conn.execute("""SELECT id, txn_key, account_no, currency, txn_date, amount_minor,
+                                    balance_after_minor, source, reference, card_last4, purchase_date,
+                                    merchant_raw, counterparty, memo
+                             FROM txn WHERE archived_at IS NULL ORDER BY id"""):
+        if t["txn_key"] not in keys and t["account_no"]:
+            ident = _identity(t["account_no"], t["currency"], t["txn_date"], t["amount_minor"],
+                              t["balance_after_minor"])
+            detail = _detail(t["source"], t["reference"], t["card_last4"], t["purchase_date"])
+            gone.setdefault(ident, []).append((t["id"], t["txn_key"], detail,
+                                               (t["merchant_raw"], t["counterparty"], t["memo"])))
+    out = []
+    for ident, new in fresh.items():
+        out += _pairs(gone.get(ident, []), new, balanced=ident[4] is not None)
+    return out
+
+
+def former_keys(conn, rows=()):
+    """{txn_key: [every key that row was loaded under before]}: the record's
+    aliases, and for `rows` (a parser run not loaded yet) the keys rekeys
+    would move. A keys.csv rule saved on an old key reads the row by any of
+    them (categorise.tier_values), so it follows the row."""
+    out = {}
+    for old, new in conn.execute("""SELECT a.old_key, t.txn_key FROM txn_key_alias a
+                                    JOIN txn t ON t.id = a.txn_id ORDER BY a.old_key"""):
+        out.setdefault(new, []).append(old)
+    for _, old, new in rekeys(conn, rows):
+        out.setdefault(new, []).extend([old, *out.get(old, ())])
+    # one order before and after the aliases are saved, so the same rule wins
+    return {k: sorted(set(v)) for k, v in out.items()}
+
+
+def _apply_rekeys(conn, moved):
+    """Give each re-keyed row its new key in place, so its id (and its
+    first_seen) stays, and record the old key in txn_key_alias: every trip
+    pin, mark and series edit saved on the old key follows it there."""
+    for tid, old_key, new_key in moved:
+        conn.execute("UPDATE txn SET txn_key = ? WHERE id = ?", (new_key, tid))
+        conn.execute("""INSERT INTO txn_key_alias(old_key, txn_id) VALUES (?, ?)
+                        ON CONFLICT(old_key) DO UPDATE SET txn_id = excluded.txn_id""", (old_key, tid))
+        # a key that comes back is the row's own again, not an alias of it
+        conn.execute("DELETE FROM txn_key_alias WHERE old_key = ?", (new_key,))
+        # G25: a matched phone row names the row by key, and the app links to
+        # Transactions by it, so it takes the key the row has now
+        conn.execute("UPDATE pending_txn SET matched_txn_key = ? WHERE matched_txn_key = ?", (new_key, old_key))
+
+
 def load_parsed(conn, parsed, payees=(), trips_by_key=None, complete=True, kind="load"):
     """Write one parser run (finance.sync.parse plus categorise) into the
     loader-owned tables, in one transaction.
 
     New keys are inserted, changed rows updated in place, and when `complete`
     (every folder parsed, no parser failed) rows and periods the run no longer
-    produced are archived rather than deleted. Returns the sync_run counts."""
+    produced are archived rather than deleted. A row the run gives a new key
+    (rekeys) keeps its id and gets the new key, the old one going into
+    txn_key_alias. Returns the sync_run counts, plus how many rows were
+    re-keyed."""
     started = now_fine()
     ins = upd = arch = 0
     trips_by_key = trips_by_key or {}
     with transaction(conn):
+        moved = rekeys(conn, parsed.rows)
+        _apply_rekeys(conn, moved)
         upsert_payees(conn, payees)
         seen_periods = set()
         for b in parsed.blocks:
@@ -1358,6 +1480,9 @@ def load_parsed(conn, parsed, payees=(), trips_by_key=None, complete=True, kind=
                              (*vals.values(), stamp, r["txn_key"]))
                 upd += int(changed)
             seen_keys.add(r["txn_key"])
+        # a key the run produces is that row's own: an alias left from an
+        # earlier re-key under the same key would send pins to another row
+        conn.executemany("DELETE FROM txn_key_alias WHERE old_key = ?", [(k,) for k in seen_keys])
         if complete:
             gone = [row["txn_key"] for row in conn.execute(
                 "SELECT txn_key FROM txn WHERE archived_at IS NULL")
@@ -1371,7 +1496,7 @@ def load_parsed(conn, parsed, payees=(), trips_by_key=None, complete=True, kind=
         conn.execute("""INSERT INTO sync_run(kind, started_at, finished_at, status, inserted,
                           updated, archived) VALUES (?,?,?,?,?,?,?)""",
                      (kind, started, now_fine(), "ok", ins, upd, arch))
-    return {"inserted": ins, "updated": upd, "archived": arch}
+    return {"inserted": ins, "updated": upd, "archived": arch, "rekeyed": len(moved)}
 
 
 def _bool_or_none(x):

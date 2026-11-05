@@ -234,6 +234,16 @@ catch, and why `--force` and `--archive-orphans` are not part of a normal month.
 What does not change a key: adding a rule, renaming a payee or category, editing
 anything in Notion.
 
+The record follows a re-key. A load pairs each live row no parsed key covers
+with a new key on the same account, currency, date, amount and running balance,
+gives the row the new key in place and writes the old one to `txn_key_alias`
+(`db.rekeys`). Trip pins, rows marked fine, series edits, matched phone rows
+(G25) and `keys.csv` rules saved on the old key then still find the row. A row that would be archived while
+it carries one of those is the `pinned-rows-gone` problem, and an old key the
+run gives to a different row while one of those is saved on it is
+`pinned-key-reused`. A key the run produces is that row's own, so any alias
+under it is dropped.
+
 ### Synthetic YouTrip rows
 
 The YouTrip export omits rows, so the parser turns every unexplained balance

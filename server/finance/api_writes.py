@@ -9,6 +9,7 @@ analytics.growth.
 """
 
 from . import app_icon, results_cache, stats_rebuild, upload_steps
+from .errors import Refused
 # the stats rerun after these writes (stats_rebuild.refresh_stats, which a test can stub)
 from .stats_rebuild import followed as _followed, rebuilding as _rebuilding
 
@@ -351,8 +352,12 @@ def post_pair_token(req):
     """Mint a single-use pair token and answer the QR payload. Loopback
     only in practice: the link path refuses this write."""
     from . import link
-    token, _expires = link.mint_pair_token()
     url = link.tailnet_url()
+    if not url:
+        # a code without the Mac's address pairs nothing: the phone refuses it
+        raise Refused("Tailscale cannot name this Mac, so a pairing code would carry no address. "
+                      "Run make link, fix what it lists, then try again")
+    token, _expires = link.mint_pair_token()
     return {"payload": link.pair_payload(url, token), "url": url, "expires_in": link.PAIR_LIFE}
 
 
@@ -361,7 +366,7 @@ def post_pair_redeem(req):
     bearer, since the token is the credential."""
     from . import link
     d = req.data
-    bearer, device = link.redeem(_text(d, "token"), _text(d, "name"))
+    bearer, device = link.redeem(_text(d, "token"), _text(d, "name"), _text(d, "nonce"))
     return {"device_id": device["id"], "name": device["name"], "token": bearer}
 
 
@@ -394,6 +399,14 @@ def post_pending_dismiss(req):
     return _pending_list(req)
 
 
+def post_pending_dismiss_all(req):
+    """Every waiting row dismissed at once: the owner's way to clear rows no
+    statement will ever confirm. Each can still be put back."""
+    from . import pending
+    pending.dismiss_all(req.record(create=True))
+    return _pending_list(req)
+
+
 def post_pending_restore(req):
     """Put a matched or dismissed row back to waiting; a match it was in is
     recorded on its rejected list, so the same pair is never offered again."""
@@ -417,7 +430,7 @@ def post_dashboard_query(req):
     """The same answer as the GET, for a caller that posts the query as the
     body. It writes nothing, so it sits in NO_CHANGE."""
     from . import dashboard
-    return dashboard.resolve(req.maybe_record(), results_cache.results(req), req.data)
+    return dashboard.resolve(req.maybe_record(), results_cache.results_view(req), req.data)
 
 
 def post_dashboard_goal(req):
@@ -434,7 +447,7 @@ def post_dashboard_scenario_preview(req):
     """The query's series drawn ahead: an estimate, and by design never
     written to the plan or anywhere else."""
     from . import dashboard
-    return dashboard.scenario_preview(req.maybe_record(), results_cache.results(req), req.data)
+    return dashboard.scenario_preview(req.maybe_record(), results_cache.results_view(req), req.data)
 
 
 def post_dashboard_allocation(req):

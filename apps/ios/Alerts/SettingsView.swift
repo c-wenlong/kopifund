@@ -92,6 +92,7 @@ struct SettingsView: View {
                         }
                         .onChange(of: planID) {
                             planName = plans.first { $0.id == planID }?.name ?? ""
+                            PlanCurrency.forget()   // G24 audit: read anew for this plan
                             Task { await fetchAccounts() }
                         }
                     }
@@ -169,7 +170,8 @@ struct SettingsView: View {
                 }
                 AppIconSection()
                 Section("Data") {
-                    Button("Sync now") { Task { await SyncService.flush(context: context) } }
+                    // the user asked: retry failed rows now, past their backoff
+                    Button("Sync now") { Task { await SyncService.flush(context: context, force: true) } }
                     Button("Delete all data", role: .destructive) { deleteAll() }
                     Button("Revoke token", role: .destructive) {
                         token = ""

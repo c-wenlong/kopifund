@@ -1299,6 +1299,10 @@ class WidgetAnswer(TypedDict):
     label_links: NotRequired[list[dict[str, str] | None]]
     series: list[WidgetSeries]
     note: NotRequired[str]
+    partial: NotRequired[list[str]]
+    """A `spending` answer by month: the labels the monthly-cashflow stat
+    calls partial (a bank account has not printed that month yet), so a
+    widget reading "the latest month" can step back to a whole one."""
 
 
 class ScenarioPreview(WidgetAnswer):

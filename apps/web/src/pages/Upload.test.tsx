@@ -83,6 +83,7 @@ function serve(routes: Routes = {}) {
   });
 }
 
+const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 const pdf = (name: string) => new File(["%PDF"], name, { type: "application/pdf" });
 const stepper = () => within(screen.getByRole("list", { name: "Steps" }));
 const stateOf = (key: string) => stepper().getAllByRole("listitem").find((li) => li.getAttribute("data-step") === key)?.getAttribute("data-state");
@@ -259,6 +260,22 @@ describe("Upload page", () => {
       expect(await screen.findByRole("button", { name: "Load 2 new rows" })).toBeEnabled();
     });
 
+    it("asks before leaving while a file waits for its account, and not once it is placed", async () => {
+      serve({ check: () => report({ to_add_count: 2 }) });
+      render(<UploadPage />);
+      expect(await screen.findByLabelText("Choose PDFs", { selector: "input" })).toBeEnabled();
+      expect(leaveAsks()).toBe(false);
+      await add("two.pdf");
+      const waiting = within(await screen.findByRole("list", { name: "Files that need an account" }));
+      // the PDF is held in this page only: leaving would drop it with nothing saved
+      expect(leaveAsks()).toBe(true);
+      fireEvent.click(waiting.getByRole("button", { name: "Account" }));
+      fireEvent.mouseDown(screen.getByRole("option", { name: /YouTrip/ }));
+      fireEvent.click(waiting.getByRole("button", { name: "Save here" }));
+      await screen.findByText(/Saved as statements\/youtrip-sek/);
+      await waitFor(() => expect(leaveAsks()).toBe(false));
+    });
+
     it("stays waiting with the reason in the danger colour when the account chosen refuses it", async () => {
       serve();
       render(<UploadPage />);
@@ -387,6 +404,15 @@ describe("Upload page", () => {
       // Load stays on: it also records a statement with no transactions
       expect(screen.getByRole("button", { name: "Load" })).toBeEnabled();
       expect(stateOf("load")).toBe("done");
+    });
+
+    it("counts rows the load will re-key as work still to load", async () => {
+      serve({ check: () => report({ rekeyed_count: 2 }) });
+      render(<UploadPage />);
+      fireEvent.click(await screen.findByRole("button", { name: "Check statements" }));
+      expect(await screen.findByRole("button", { name: "Load" })).toBeEnabled();
+      expect(screen.queryByText(/^Nothing new to load\./)).not.toBeInTheDocument();
+      expect(stateOf("load")).not.toBe("done");
     });
   });
 
