@@ -15,7 +15,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
-from finance import db, local, monthly, relink, rules_app, scam_checks as sc, snapshot as snap, sync
+from finance import db, local, monthly, relink, rules_app, scam_checks as sc, series, snapshot as snap, sync
 from finance.parsers import categorise, places, parse_youtrip as yt
 from finance.parsers.parse_statements import add_keys
 from test_db import SNAP, block, parsed, row
@@ -235,6 +235,72 @@ class KeyRulesFollowTest(Record):
         r = row("new", "-12.50", _former_keys=["old"])
         found = categorise.lint([r], self.RULES)
         self.assertFalse([line for lines in found.values() for line in lines if "matches no row" in line], found)
+
+
+class ReviewFollowUpsTest(Record):
+    """What else names a row by its key follows a re-key (review)."""
+
+    def test_a_rule_on_a_former_key_is_listed_as_losing_not_unmatched(self):
+        rules = [dict(KeyRulesFollowTest.RULES[0], pattern="new", glob="NEW", category="Shopping", line=2),
+                 dict(KeyRulesFollowTest.RULES[0], line=3)]
+        r = row("new", "-12.50", _former_keys=["old"])
+        [(val, hits)] = [(v, h) for t, v, h in categorise.Matcher(rules).matches(r) if t == "key"]
+        self.assertEqual((val, [h["line"] for h in hits]), ("NEW", [2, 3]))
+        found = categorise.lint([r], rules)
+        lines = [line for ls in found.values() for line in ls if "line 3" in line]
+        self.assertTrue(lines and "matches no row" not in lines[0], found)
+
+    def test_an_undo_puts_back_a_row_a_load_has_re_keyed_since(self):
+        self.load([row("old", "-12.50")])
+        tid, before = self.conn.execute("SELECT id, category_id FROM txn").fetchone()
+        after = self.conn.execute("SELECT id FROM category WHERE id IS NOT ? LIMIT 1", (before,)).fetchone()[0]
+        self.conn.execute("UPDATE txn SET category_id = ? WHERE id = ?", (after, tid))
+        self.load([row("new", "-12.50", merchant="X")])
+        self.conn.execute("UPDATE txn SET category_id = ? WHERE id = ?", (after, tid))   # the load kept the pin's pick
+        out = relink.revert(self.conn, {"cols": ["category_id"], "rows": [["old", [before], [after]]]})
+        self.assertEqual(out["written"], 1)
+        self.assertEqual(self.conn.execute("SELECT category_id FROM txn WHERE id = ?", (tid,)).fetchone()[0], before)
+
+    def test_a_series_edit_follows_its_payments_into_another_text_group(self):
+        # the town split off the merchant moved the series from one text group to another
+        edit = {"row": 1, "series_id": "NARVESEN BODO:1500", "kind": "text", "group": "NARVESEN BODO",
+                "keys": {"n1", "n2"}}
+        moved, other = object(), object()
+        groups = {("text", "NARVESEN"): [moved], ("text", "KIWI"): [other], ("payee", "Grab"): []}
+        keys = {id(moved): {"n1", "n2", "n3"}, id(other): {"x"}}
+        found = series.resolve([edit], groups, lambda s: "NARVESEN:1500", lambda s: keys[id(s)])
+        self.assertEqual(found, {id(moved): edit})
+
+
+class PinAfterReKeyTest(Record):
+    """A pin the app saves on a re-keyed row replaces the pin on its old key,
+    so a later re-key cannot bring the old category back (review)."""
+
+    def setUp(self):
+        super().setUp()
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        p = mock.patch.dict(os.environ, {"KOPIFUND_DATA": self.tmp.name,
+                                         "KOPIFUND_DB": str(Path(self.tmp.name) / "kopifund.db")})
+        p.start()
+        self.addCleanup(p.stop)
+
+    def keys_csv(self):
+        import csv
+        with (Path(self.tmp.name) / "rules" / "keys.csv").open(newline="") as f:
+            return [(r["pattern"], r["category"]) for r in csv.DictReader(f)]
+
+    def test_the_row_keeps_one_pin_and_the_latest_pick(self):
+        self.load([row("a1", "-12.50")])
+        rules_app.pin(self.conn, {"key": "a1", "category": "Transport"})
+        self.load([row("b1", "-12.50", merchant="X")])
+        rules_app.pin(self.conn, {"key": "b1", "category": "Shopping"})
+        self.assertEqual(self.keys_csv(), [("b1", "Shopping")])
+        self.load([row("c1", "-12.50", merchant="Y")])
+        [r] = rules_app.db_rows(self.conn)
+        self.assertEqual(r["_former_keys"], ["a1", "b1"])
+        categorise.categorise_rows([r], rules_app._load_all(self.conn))
+        self.assertEqual(r["category"], "Shopping")
 
 
 class PinnedRowsGuardTest(Record):

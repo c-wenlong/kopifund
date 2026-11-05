@@ -358,9 +358,14 @@ class Matcher:
         for tier in MATCH_ON:
             vals = tier_values(row, tier)
             if vals:
-                # the value a load would match on: the first with a rule
+                # the value a load would match on: the first with a rule; the
+                # rules on the row's other keys follow its own, as losing to it,
+                # so the lint and the Rules page never call them unmatched
                 val = next((v for v in vals if self.hits(tier, v)), vals[0])
-                out.append((tier, val, self.hits(tier, val)))
+                hits = list(self.hits(tier, val))
+                for v in vals:
+                    hits += [r for r in self.hits(tier, v) if all(r is not h for h in hits)]
+                out.append((tier, val, hits))
         return out
 
 

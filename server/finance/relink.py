@@ -211,8 +211,11 @@ def revert(conn, data):
             key, before, after = item
             if not all(present(c, v) for c, v in zip(cols, before)):
                 continue
-            done = conn.execute(f"UPDATE txn SET {sets} WHERE txn_key = ? AND {held}",
-                                (*before, key, *after)).rowcount
+            # the row the relink wrote, under its key then or the key a load
+            # has given it since (txn_key_alias)
+            done = conn.execute(f"""UPDATE txn SET {sets} WHERE (txn_key = ? OR id IN
+                                        (SELECT txn_id FROM txn_key_alias WHERE old_key = ?)) AND {held}""",
+                                (*before, key, key, *after)).rowcount
             written += done
             if done and any(before[i] != after[i] for i in shown):
                 n += 1
