@@ -212,6 +212,23 @@ struct SyncTests {
         #expect(gate.allows(token: "t", now: day.addingTimeInterval(SyncGate.ratePause), force: false))
     }
 
+    /// A Retry-After longer than the default pause sets the deadline, so
+    /// the banner's resume time is the one YNAB will accept.
+    @Test func aLongRetryAfterSetsThePause() async throws {
+        let context = ModelContext(try Store.memory())
+        _ = approved(context)
+        MockProtocol.handler = { req in
+            (HTTPURLResponse(url: req.url!, statusCode: 429, httpVersion: nil,
+                             headerFields: ["Retry-After": "3600"])!, Data("{}".utf8))
+        }
+        let out = await Sync.run(context: context, client: client(), settings: settings)
+        #expect(out.stop == .rateLimited)
+        #expect(out.retryAfter == 3600)
+        var gate = SyncGate()
+        gate.record(out, token: "t", now: day)
+        #expect(gate.pausedUntil == day.addingTimeInterval(3600))
+    }
+
     @Test func aRejectedTokenIsNotRetriedUntilItChanges() {
         var gate = SyncGate()
         var stopped = SyncOutcome()

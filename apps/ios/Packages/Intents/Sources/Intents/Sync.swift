@@ -43,6 +43,8 @@ public struct SyncOutcome: Equatable, Sendable {
     public var posted = 0
     public var failed = 0
     public var stop: SyncStop?
+    /// How long YNAB asked to wait (Retry-After) when it rate-limited the run.
+    public var retryAfter: TimeInterval?
     public init() {}
 }
 
@@ -83,7 +85,10 @@ public struct SyncGate: Equatable, Sendable {
         case .unauthorized:
             rejectedToken = token
         case .rateLimited:
-            pausedUntil = now.addingTimeInterval(Self.ratePause)
+            // never shorter than YNAB asked: the client's own rate gate
+            // refuses every request until then, so an earlier deadline would
+            // only show a resume time that fails
+            pausedUntil = now.addingTimeInterval(max(Self.ratePause, outcome.retryAfter ?? 0))
         case .cancelled:
             break
         case nil:
@@ -284,6 +289,7 @@ public enum Sync {
                 row.state = prior
                 row.syncAttempts -= 1
                 try? context.save()
+                if kind == .rateLimited { outcome.retryAfter = (error as? YNABError)?.retryAfter }
                 return kind == .unauthorized ? .unauthorized : .rateLimited
             case .notFound, .http(400..<500):
                 // the request itself is wrong (an unknown account or

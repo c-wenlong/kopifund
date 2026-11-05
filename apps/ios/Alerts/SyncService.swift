@@ -90,6 +90,7 @@ final class SyncService {
         // send: it stops this run's YNAB half and reaches the gate and the
         // banner; any other failure leaves the last reading standing
         var stop: SyncStop?
+        var retryAfter: TimeInterval?
         if let ynab, posting || settings.planCurrency == nil {
             do {
                 if let code = try await ynab.planCurrency(planID: planID) {
@@ -102,6 +103,7 @@ final class SyncService {
                 }
             } catch let e as YNABError where e.kind == .unauthorized || e.kind == .rateLimited {
                 stop = e.kind == .unauthorized ? .unauthorized : .rateLimited
+                retryAfter = e.retryAfter
             } catch {}
         }
 
@@ -116,6 +118,7 @@ final class SyncService {
         var outcome = SyncOutcome()
         if let stop {
             outcome.stop = stop
+            outcome.retryAfter = retryAfter
         } else {
             outcome = await Sync.run(
                 context: context, client: ynab, settings: settings, force: force,
