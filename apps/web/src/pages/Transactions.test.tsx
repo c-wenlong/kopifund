@@ -72,6 +72,7 @@ function stubFetch(rows = page.rows, pinnedPayee = "A friend", applied = true) {
 }
 
 // the address is shared by every test in this file: each starts on a bare /transactions
+const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 const bare = () => window.history.replaceState(null, "", "/transactions");
 
 describe("Transactions", () => {
@@ -248,6 +249,207 @@ describe("Transactions", () => {
     await waitFor(() => expect(calls.filter((c) => c.url === "/api/rules/pin")).toHaveLength(2));
     expect(JSON.parse(calls.filter((c) => c.url === "/api/rules/pin")[1].body!))
       .toEqual({ key: "f1", category: "Donations", payee: "A friend", kind: "Person", note: "a gift" });
+  });
+
+  it("asks before leaving a row's More form with something typed, and not once it is saved", async () => {
+    stubFetch();
+    render(<><Transactions /><Toaster /></>);
+    fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row/ }));
+    fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Donations" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    await screen.findByRole("textbox", { name: "Payee for the 12 Sep 2026 row" });
+    expect(leaveAsks()).toBe(false);
+    fireEvent.change(screen.getByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
+    expect(leaveAsks()).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).not.toBeInTheDocument());
+    expect(leaveAsks()).toBe(false);
+  });
+
+  it("still asks before leaving when Less or Close hides a typed form, since the page keeps what was typed", async () => {
+    stubFetch();
+    render(<><Transactions /><Toaster /></>);
+    fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row/ }));
+    fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Donations" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
+    fireEvent.click(screen.getByRole("button", { name: "Less" }));
+    expect(screen.queryByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).not.toBeInTheDocument();
+    expect(leaveAsks()).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(leaveAsks()).toBe(true);
+  });
+
+  it("keeps a row's form open on what was typed while its save was on its way", async () => {
+    stubFetch();
+    const answer = globalThis.fetch;
+    let release: (() => void) | null = null;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      // the More form's save (the one with a note) waits until let go
+      if (url === "/api/rules/pin" && JSON.parse(String(init!.body)).note) {
+        const r = await answer(url, init);
+        return new Promise<Response>((done) => { release = () => done(r); });
+      }
+      return answer(url, init);
+    }));
+    render(<><Transactions /><Toaster /></>);
+    fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row/ }));
+    fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Donations" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    const note = await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" });
+    fireEvent.change(note, { target: { value: "a gift" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
+    fireEvent.change(note, { target: { value: "a wedding gift" } });
+    await waitFor(() => expect(release).not.toBeNull());
+    await act(async () => release!());
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    // "a gift" is saved; the rest was never sent, so the form stays open on it and leaving asks
+    expect(screen.getByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).toHaveValue("a wedding gift");
+    expect(leaveAsks()).toBe(true);
+    // typed back to what was saved: nothing is left unsaved
+    fireEvent.change(screen.getByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
+    expect(leaveAsks()).toBe(false);
+  });
+
+  it("asks before leaving when a row's form is cleared while its save is on its way", async () => {
+    stubFetch();
+    const answer = globalThis.fetch;
+    let release: (() => void) | null = null;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/rules/pin" && JSON.parse(String(init!.body)).note) {
+        const r = await answer(url, init);
+        return new Promise<Response>((done) => { release = () => done(r); });
+      }
+      return answer(url, init);
+    }));
+    render(<><Transactions /><Toaster /></>);
+    fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row/ }));
+    fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Donations" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    const note = await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" });
+    fireEvent.change(note, { target: { value: "a gift" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
+    // a save on its way may still fail: leaving asks until it lands
+    expect(leaveAsks()).toBe(true);
+    // cleared while "a gift" is being saved: the clear was never sent
+    fireEvent.change(note, { target: { value: "" } });
+    expect(leaveAsks()).toBe(true);
+    await waitFor(() => expect(release).not.toBeNull());
+    await act(async () => release!());
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(screen.getByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).toHaveValue("");
+    expect(leaveAsks()).toBe(true);
+  });
+
+  it("stops asking when a form hidden during its save has nothing typed and the save fails", async () => {
+    stubFetch();
+    const answer = globalThis.fetch;
+    let fail: (() => void) | null = null;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      // the More form's save (the chip's sends no kind) waits, then is refused
+      if (url === "/api/rules/pin" && "kind" in JSON.parse(String(init!.body))) {
+        return new Promise<Response>((done) => { fail = () => done(new Response(JSON.stringify({ error: "disk full" }), { status: 500 })); });
+      }
+      return answer(url, init);
+    }));
+    render(<><Transactions /><Toaster /></>);
+    fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row/ }));
+    fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Donations" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" });
+    fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
+    expect(leaveAsks()).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Less" }));
+    await waitFor(() => expect(fail).not.toBeNull());
+    await act(async () => fail!());
+    await waitFor(() => expect(leaveAsks()).toBe(false));
+  });
+
+  it("keeps asking about a form reopened and typed into while its earlier save fails", async () => {
+    stubFetch();
+    const answer = globalThis.fetch;
+    let fail: (() => void) | null = null;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/rules/pin" && "kind" in JSON.parse(String(init!.body))) {
+        return new Promise<Response>((done) => { fail = () => done(new Response(JSON.stringify({ error: "disk full" }), { status: 500 })); });
+      }
+      return answer(url, init);
+    }));
+    render(<><Transactions /><Toaster /></>);
+    fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row/ }));
+    fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Donations" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" });
+    fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
+    // hidden and opened again while the save runs, and a note typed into the new form
+    fireEvent.click(screen.getByRole("button", { name: "Less" }));
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
+    await waitFor(() => expect(fail).not.toBeNull());
+    await act(async () => fail!());
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(leaveAsks()).toBe(true);
+  });
+
+  it("keeps the question for a box cleared during a save, through Less and More before it lands", async () => {
+    stubFetch();
+    const answer = globalThis.fetch;
+    let release: (() => void) | null = null;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/rules/pin" && JSON.parse(String(init!.body)).note) {
+        const r = await answer(url, init);
+        return new Promise<Response>((done) => { release = () => done(r); });
+      }
+      return answer(url, init);
+    }));
+    render(<><Transactions /><Toaster /></>);
+    fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row/ }));
+    fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Donations" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Less" }));
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    // the same form, still measuring the clear against the note on its way
+    expect(screen.getByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).toHaveValue("");
+    expect(leaveAsks()).toBe(true);
+    await waitFor(() => expect(release).not.toBeNull());
+    await act(async () => release!());
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(leaveAsks()).toBe(true);
+  });
+
+  it("stops asking when the category chip saves the only thing a hidden form held", async () => {
+    stubFetch();
+    render(<><Transactions /><Toaster /></>);
+    fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row/ }));
+    fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Donations" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    const box = await screen.findByRole("combobox", { name: "Category for the 12 Sep 2026 row" });
+    fireEvent.change(box, { target: { value: "Shop" } });
+    fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Shopping" }));
+    await waitFor(() => expect(leaveAsks()).toBe(true));
+    fireEvent.click(screen.getByRole("button", { name: "Less" }));
+    expect(leaveAsks()).toBe(true);
+    // the chip saves Shopping, all the hidden form held
+    fireEvent.click(screen.getByRole("button", { name: /Set the category of the 12 Sep 2026 row/ }));
+    fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Shopping" }));
+    await waitFor(() => expect(leaveAsks()).toBe(false));
+  });
+
+  it("opens More again clean after a save, with no question about leaving", async () => {
+    stubFetch();
+    render(<><Transactions /><Toaster /></>);
+    fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row/ }));
+    fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Donations" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    fireEvent.change(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
+    await waitFor(() => expect(screen.queryByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "More" }));
+    expect(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).toHaveValue("");
+    expect(leaveAsks()).toBe(false);
   });
 
   it("opens on the row's category, and picking it again saves nothing", async () => {
@@ -1083,6 +1285,45 @@ describe("Transactions: review fixes", () => {
     act(() => { wide = true; listeners.forEach((f) => f()); });
     expect(await screen.findByRole("table")).toBeInTheDocument();
     expect(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).toHaveValue("a gift");
+  });
+});
+
+describe("Transactions: a row save across a change of layout", () => {
+  beforeEach(() => bare());
+  afterEach(() => { vi.unstubAllGlobals(); clearToasts(); });
+
+  it("leaves the question to the form that replaced the one whose save failed", async () => {
+    let wide = false;
+    const listeners = new Set<() => void>();
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      get matches() { return wide; }, media: query,
+      addEventListener: (_: string, f: () => void) => listeners.add(f),
+      removeEventListener: (_: string, f: () => void) => listeners.delete(f),
+    }));
+    let fail: (() => void) | null = null;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/rules/pin" && "kind" in JSON.parse(String(init!.body))) {
+        return new Promise<Response>((done) => { fail = () => done(new Response(JSON.stringify({ error: "disk full" }), { status: 500 })); });
+      }
+      const body = url.startsWith("/api/transactions") ? { ...page, rows: [{ ...page.rows[0], payee: "A shop" }] }
+        : url === "/api/rules/pin" ? { file: "keys.csv", change: "p1", relinked: { changed: 1, written: 1 } }
+        : { ...one(false), rows: [{ ...one(false).rows[0], category: "Shopping", payee: "A shop" }] };
+      return new Response(JSON.stringify(body), { status: 200 });
+    }));
+    render(<Transactions />);
+    fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row A shop/ }));
+    fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Donations" }));
+    fireEvent.click(await screen.findByRole("button", { name: "More" }));
+    await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" });
+    // an unchanged form saved, the layout changes under it, and a note goes into the form that replaced it
+    fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
+    act(() => { wide = true; listeners.forEach((f) => f()); });
+    expect(await screen.findByRole("table")).toBeInTheDocument();
+    fireEvent.change(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
+    await waitFor(() => expect(fail).not.toBeNull());
+    await act(async () => fail!());
+    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    expect(leaveAsks()).toBe(true);
   });
 });
 
