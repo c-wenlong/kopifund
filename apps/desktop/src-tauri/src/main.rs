@@ -265,7 +265,14 @@ fn on_download(downloads: &Downloads, event: DownloadEvent<'_>) -> bool {
             if !may_download(&url) {
                 return false;
             }
-            downloads.lock().unwrap().push((url, destination.clone()));
+            let mut list = downloads.lock().unwrap();
+            // a second click while the same file still downloads is refused: the
+            // finish event names only the URL, so two at once could not be told
+            // apart and Finder could show the other one's file
+            if list.iter().any(|(u, _)| *u == url) {
+                return false;
+            }
+            list.push((url, destination.clone()));
             true
         }
         DownloadEvent::Finished { url, path, success } => {
@@ -402,6 +409,19 @@ mod download_tests {
         let mut elsewhere = PathBuf::from("/Users/me/Downloads/file.pdf");
         assert!(!on_download(&downloads, DownloadEvent::Requested { url: theirs, destination: &mut elsewhere }));
         assert_eq!(downloads.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_second_click_while_the_same_file_downloads_is_refused() {
+        let downloads = Downloads::default();
+        let url: Url = "http://127.0.0.1:8771/api/exports/x/a.csv".parse().unwrap();
+        let mut to = PathBuf::from("/nonexistent/a.csv");
+        assert!(on_download(&downloads, DownloadEvent::Requested { url: url.clone(), destination: &mut to }));
+        let mut again = PathBuf::from("/nonexistent/a-2.csv");
+        assert!(!on_download(&downloads, DownloadEvent::Requested { url: url.clone(), destination: &mut again }));
+        on_download(&downloads, DownloadEvent::Finished { url: url.clone(), path: None, success: false });
+        // once the first has finished, the file can be downloaded again
+        assert!(on_download(&downloads, DownloadEvent::Requested { url, destination: &mut again }));
     }
 
     #[test]
