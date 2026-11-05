@@ -131,7 +131,8 @@ def covered_months(snap):
     statement covers its month and back to its earliest row (a row in the
     last three days of the month just before is posting lag); an empty one
     that opens where the last closed covers the whole gap, and after it the
-    next k - 1 months of its k-month cadence (at most 5). An account closes at
+    next k - 1 months of its k-month cadence (at most 5), short of any later
+    statement. An account closes at
     a last statement that leaves 0 in every currency. The months before the
     first phase are partial: they hold card rows only."""
     import calendar
@@ -160,6 +161,10 @@ def covered_months(snap):
         cover, held, idle = set(), {}, 0
         for before, m in zip([None] + months, months):
             blocks = by_month[m]
+            if idle > 1:
+                # an idle statement covers the months before its next was due, up to this one
+                ahead = months_between(before, f"{int(before[:4]) + 1}-{before[5:]}")
+                cover |= {x for x in ahead[1:min(idle, 6)] if x < m}
             start, idle = min(reach.get(b["name"], m) for b in blocks), 0
             if before:
                 gap = months_between(before, m)[1:]
