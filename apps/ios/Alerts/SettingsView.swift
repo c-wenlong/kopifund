@@ -52,9 +52,7 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var context
     @AppStorage("planID") private var planID = ""
     @AppStorage("planName") private var planName = ""
-    @AppStorage("defaultAccountID") private var defaultAccountID = "" {
-        didSet { UserDefaults(suiteName: AppGroup.id)?.set(defaultAccountID, forKey: "defaultAccountID") }
-    }
+    @AppStorage("defaultAccountID") private var defaultAccountID = ""
     @AppStorage("postApproved") private var postApproved = false
 
     @State private var token = KeychainToken.value ?? ""
@@ -69,6 +67,9 @@ struct SettingsView: View {
     /// G24: the bundled shortcut chosen for export, presented as a share sheet.
     @State private var exporting: ShortcutFile?
     @State private var shortcutError = ""
+    /// "Delete all data" asks first; the summary names what would go.
+    @State private var confirmingDelete = false
+    @State private var deleteSummary = ""
     struct ShortcutFile: Identifiable {
         let url: URL
         var id: String { url.lastPathComponent }
@@ -170,7 +171,10 @@ struct SettingsView: View {
                 AppIconSection()
                 Section("Data") {
                     Button("Sync now") { Task { await SyncService.flush(context: context) } }
-                    Button("Delete all data", role: .destructive) { deleteAll() }
+                    Button("Delete all data", role: .destructive) {
+                        deleteSummary = summarizeData()
+                        confirmingDelete = true
+                    }
                     Button("Revoke token", role: .destructive) {
                         token = ""
                         KeychainToken.set(nil)
@@ -178,6 +182,19 @@ struct SettingsView: View {
                 }
             }
             .navigationTitle("Settings")
+            // the Picker writes through the @AppStorage binding, which never
+            // runs a didSet, so the Wallet intent's copy is written here,
+            // whatever changed the value (AlertsApp copies it at launch too)
+            .onChange(of: defaultAccountID) {
+                Self.shareDefaultAccount(defaultAccountID)
+            }
+            .confirmationDialog("Delete all data?", isPresented: $confirmingDelete,
+                                titleVisibility: .visible) {
+                Button("Delete all data", role: .destructive) { deleteAll() }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(deleteSummary)
+            }
             // sharing a temp copy, not the bundle resource, so UIActivityVC
             // can hand the file to Shortcuts without bundle-path quirks
             .sheet(item: $exporting) { item in
@@ -262,6 +279,30 @@ struct SettingsView: View {
             }
             try? context.save()
         } catch { status = "failed: \(error.localizedDescription)" }
+    }
+
+    /// The Wallet intent runs outside the app and reads its default account
+    /// from the App Group's defaults, not the app's own.
+    static func shareDefaultAccount(_ id: String) {
+        UserDefaults(suiteName: AppGroup.id)?.set(id, forKey: "defaultAccountID")
+    }
+
+    private func summarizeData() -> String {
+        let all = (try? context.fetchCount(FetchDescriptor<TransactionRecord>())) ?? 0
+        // rows still on their way to YNAB; a duplicate or a row the record
+        // already covers ("kopifund") never goes there
+        let unsynced = (try? context.fetchCount(FetchDescriptor<TransactionRecord>(
+            predicate: #Predicate { $0.state == "pending" || $0.state == "approved"
+                || $0.state == "syncing" || $0.state == "failed" }))) ?? 0
+        let patterns = (try? context.fetchCount(FetchDescriptor<PatternRecord>())) ?? 0
+        let unmatched = (try? context.fetchCount(FetchDescriptor<UnmatchedRecord>())) ?? 0
+        return "This deletes \(count(all, "transaction")) (\(unsynced) not in YNAB yet), "
+            + "\(count(patterns, "pattern")), \(count(unmatched, "unmatched alert")) "
+            + "and every ignored alert shape. The YNAB token stays. This cannot be undone."
+    }
+
+    private func count(_ n: Int, _ noun: String) -> String {
+        "\(n) \(noun)\(n == 1 ? "" : "s")"
     }
 
     private func deleteAll() {

@@ -10,6 +10,9 @@ struct AlertsApp: App {
     @State private var pendingPair: String?
 
     init() {
+        // a default account chosen before the Settings fix never reached the
+        // Wallet intent's copy; mirror it at launch, not only when Settings opens
+        SettingsView.shareDefaultAccount(UserDefaults.standard.string(forKey: "defaultAccountID") ?? "")
         do {
             // a local: self is not fully initialized inside init yet
             let c = try Store.container()
