@@ -18,6 +18,7 @@ import { buttonClass } from "./components/Button";
 import type { SetupState } from "./api";
 import { useCopilot } from "./copilot/useCopilot";
 import { AskButton, CopilotSheet, CopilotSide, readPanelOpen, savePanelOpen } from "./copilot/CopilotPanel";
+import { PageBoundary } from "./components/ErrorBoundary";
 
 function HeaderLink({ to, icon: Icon, label }: { to: string; icon: LucideIcon; label: string }) {
   return (
@@ -126,7 +127,8 @@ function Shell() {
               {wide && ask}
             </div>
           )}
-          {route ? <route.component overview={overview} /> : <NotFound />}
+          {/* Audit: a page that throws as it draws shows a problem in its place; the shell stays, and another page starts clean */}
+          <PageBoundary path={path}>{route ? <route.component overview={overview} /> : <NotFound />}</PageBoundary>
         </div>
       </main>
       {wide && panelOpen && <CopilotSide copilot={copilot} path={path} title={title} onClose={closePanel} focus={panelPressed} />}

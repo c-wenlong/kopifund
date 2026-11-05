@@ -70,6 +70,15 @@ public actor KopifundClient {
         return try await get("/api/health", as: Health.self).ok == true
     }
 
+    /// The phone's Test: GET /api/link/check with the bearer. On the link
+    /// path only a paired, unrevoked device gets an answer (a revoked one
+    /// gets 401, thrown as `.unpaired`), so true means the link itself works;
+    /// `health` answers any caller and says only that the hub is up.
+    public func check() async throws -> Bool {
+        struct Check: Decodable { let ok: Bool? }
+        return try await get("/api/link/check", as: Check.self).ok == true
+    }
+
     public func pair(token: String, name: String) async throws -> PairedDevice {
         // one nonce per pairing, in the body every retry resends: a retry after a
         // lost reply gets the same device row back, not an orphan second one
