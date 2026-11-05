@@ -119,17 +119,17 @@ enum LinkDedupe {
         }
         let cands = Candidates.detect(in: text, tokens: tokens)
         guard let amountC = cands.first(where: { $0.field == .amount && $0.confident }),
-              let split = Amounts.split(span(amountC)),
+              let read = Amounts.read(span(amountC)),
               let dateC = cands.first(where: { $0.field == .date && $0.confident }),
               let format = Dates.detectFormat(span(dateC)),
               let date = Dates.parse(span(dateC), as: format)
         else { return nil }
         var cents = Decimal()
-        var scaled = split.amount * 100
+        var scaled = read.magnitude * 100
         NSDecimalRound(&cents, &scaled, 0, .plain)
         let payee = cands.filter { $0.field == .payee && $0.confident }
             .sorted { $0.rank < $1.rank }.first.map { span($0) } ?? ""
-        return (abs(NSDecimalNumber(decimal: cents).intValue), split.currency ?? "SGD",
+        return (NSDecimalNumber(decimal: cents).intValue, read.currency ?? "SGD",
                 date, payee)
     }
 }
