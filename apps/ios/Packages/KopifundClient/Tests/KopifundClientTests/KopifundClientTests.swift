@@ -101,6 +101,28 @@ final class KopifundClientTests: XCTestCase {
         XCTAssertNil(MockProtocol.requests.first?.value(forHTTPHeaderField: "Authorization"))
     }
 
+    func testCheckSendsTheBearerToTheLinkCheck() async throws {
+        MockProtocol.handler = { [respond] _ in respond(200, #"{"ok":true}"#) }
+        let ok = try await client().check()
+        XCTAssertTrue(ok)
+        let req = MockProtocol.requests.first
+        XCTAssertEqual(req?.url?.path, "/api/link/check")
+        XCTAssertEqual(req?.httpMethod, "GET")
+        XCTAssertNotNil(req?.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    /// A revoked phone: the hub is up (health would say ok) but the link
+    /// check refuses the bearer, so Test must not read as reachable.
+    func testCheckOnARevokedDeviceIsUnpaired() async {
+        MockProtocol.handler = { [respond] _ in respond(401, #"{"error":"unpaired"}"#) }
+        do {
+            _ = try await client().check()
+            XCTFail("a revoked bearer must throw")
+        } catch let e as KopifundError {
+            XCTAssertEqual(e.kind, .unpaired)
+        } catch { XCTFail("wrong error: \(error)") }
+    }
+
     func testProfileDecodesAccountsAndSendsTheBearer() async throws {
         MockProtocol.handler = { [respond] _ in
             respond(200, #"{"accounts":[{"name":"OCBC 360","bank":"OCBC","number":"•• 4821","statements":12,"transactions":640,"first":"2025-11","last":"2026-10","folder":null,"pdfs":null}],"transactions":640}"#)
