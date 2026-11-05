@@ -63,7 +63,7 @@ def range_label(start, end):
     a, b = _parts(start), _parts(end)
     if not a or not b or (a[2] is None) != (b[2] is None) or a[0] != b[0]:
         return f"{date_label(start)} to {date_label(end)}"
-    if str(start) == str(end):
+    if a == b:
         return date_label(start)
     head = MONTHS[a[1] - 1] if a[2] is None else f"{a[2]} {MONTHS[a[1] - 1]}"
     return f"{head} to {date_label(end)}"

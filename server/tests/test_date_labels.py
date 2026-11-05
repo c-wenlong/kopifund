@@ -37,6 +37,9 @@ class DateLabels(unittest.TestCase):
     def test_a_datetime_is_its_day(self):
         self.assertEqual(dates.day_label(datetime(2026, 10, 3, 12, 30)), "3 Oct 2026")
         self.assertEqual(dates.month_label(datetime(2026, 10, 3, 12, 30)), "Oct 2026")
+        # two times on one day are that day, as two ISO days are
+        self.assertEqual(dates.range_label(datetime(2026, 10, 3, 9), datetime(2026, 10, 3, 18)), "3 Oct 2026")
+        self.assertEqual(dates.range_label(date(2026, 10, 3), "2026-10-03"), "3 Oct 2026")
 
 
 class ImpossibleDates(unittest.TestCase):
