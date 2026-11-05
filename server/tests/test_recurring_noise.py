@@ -105,6 +105,19 @@ class RandomPurchases(unittest.TestCase):
         self.assertEqual(found, [])
 
 
+class DroppedRuns(unittest.TestCase):
+
+    def test_a_run_under_the_floor_does_not_hide_the_purchases_beside_it(self):
+        """Greptile on #54: S$100 purchases a month or so apart drift off any day of the
+        month; S$1 charges between them make the payee crowded. The S$1 run is under the
+        floor, so it is not another series, and the S$100 run is purchases."""
+        days = [date(2025, 1, 1), date(2025, 2, 5), date(2025, 3, 10)]
+        small = [date(2025, 1, 15), date(2025, 2, 19), date(2025, 3, 24)]
+        rows = [row(d, 10000, f"a{i}") for i, d in enumerate(days)] + [row(d, 100, f"s{i}") for i, d in enumerate(small)]
+        out = cadence.detect_group("payee", PAYEE, rows, False, set(cadence.TIGHT_CATEGORIES), {}, "2025-03-31")
+        self.assertEqual([(s["cadence"], s["median_amount_minor"]) for s in out], [])
+
+
 class RealBills(unittest.TestCase):
     """A real bill is found, alone or among a busy payee's purchases."""
 
@@ -122,9 +135,15 @@ class RealBills(unittest.TestCase):
             rows += [r for r in purchases(rnd, noise, rnd.choice(["uniform", "log", "prices"]))
                      if all(not 1 / cadence.PRICE_CHANGE <= -r["amount_sgd_minor"] / p <= cadence.PRICE_CHANGE
                             for p in prices)]
-        mine = [s for s in detect(rows) if s["cadence"] == cad and s["status"] == "active"]
-        self.assertEqual(len(mine), 1, (shape, seed, noise, [(s["cadence"], s["status"], s["median_amount_minor"])
-                                                            for s in detect(rows)]))
+        # one series, the bill's, and nothing beside it that counts: a bill alone is the
+        # only series, and among purchases nothing else is live. Three purchases at one
+        # shelf price on one day of three months in a row read exactly as a bill that
+        # ended, so a stopped series there (no cost, in no total) is allowed
+        found = detect(rows)
+        mine = [s for s in found if s["cadence"] == cad and s["status"] == "active"]
+        others = [s for s in found if s not in mine and (not noise or s["status"] != "stopped")]
+        self.assertEqual((len(mine), len(others)), (1, 0),
+                         (shape, seed, noise, [(s["cadence"], s["status"], s["median_amount_minor"]) for s in found]))
         low, high = (0.85 * cents, 1.15 * cents) if shape == "drift" else (0.99 * cents, 1.01 * cents)
         self.assertTrue(low <= mine[0]["median_amount_minor"] <= high, (shape, seed, mine[0]["median_amount_minor"], cents))
 

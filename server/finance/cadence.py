@@ -672,6 +672,19 @@ def _by_chance(group, found, taken=frozenset(), whole=False):
             and not (_regular(name, days) and _steady([-c.sgd_minor(r) for r in mine])))
 
 
+def _standing(rows, runs):
+    """Audit: the runs ((chain, members, recent, found)) that are not purchases by chance
+    (`_by_chance`). A run's crowd leaves out the charges of the group's other runs, but
+    only of runs still standing: one dropped (by chance, or under the floor) is purchases
+    again, so the rest are judged once more until none falls."""
+    while True:
+        keep = [x for x in runs
+                if not _by_chance(rows, x[3], {id(r) for y in runs if y is not x for r in y[3][2]})]
+        if len(keep) == len(runs):
+            return runs
+        runs = keep
+
+
 def state_after(since, nominal):
     """G16: active, paused or stopped after `since` days of silence on a cadence of
     `nominal` days: paused past one and a half cadences and at least a month,
@@ -740,16 +753,13 @@ def detect_group(kind, group, rows, flagged, tight, ends, end):
             runs.append((chain, members, found))
     out = []
     for chain, members, found in runs:
-        # Audit: a run at a busy payee that keeps neither its days nor its prices is purchases
-        taken = {id(r) for _, _, other in runs if other is not found for r in other[2]}
-        if _by_chance(rows, found, taken):
-            continue
         # the usual amount: the median of the last few charges at the latest level the run reaches
         run = {id(r) for r in found[2]}
         latest = [rows[i] for i in chain["latest"] if id(rows[i]) in run] or found[2]
         recent = latest[-RECENT:]
         if c.median_cents(-c.sgd_minor(r) for r in recent) >= MIN_AMOUNT_MINOR or flagged:
             out.append((chain, members, recent, found))
+    out = _standing(rows, out)
     # G16: the lone charges after each series' last carry it on, each to one series only;
     # a series that then falls under the floor is dropped and the rest are assigned again,
     # so the page, which assigns among the series the result holds, does the same
@@ -774,7 +784,8 @@ def detect_group(kind, group, rows, flagged, tight, ends, end):
                                       flagged, band, ends, end))
         if len(keep) == len(out):
             break
-        out = [out[k] for k in keep]
+        # a series dropped here is no longer another series: the rest are judged again
+        out = _standing(rows, [out[k] for k in keep])
     if series or habit:
         # A coffee shop or a bus fare is not retried whole: at any amount at
         # all, twice a week is habit, and the retry is exactly how Grab,
