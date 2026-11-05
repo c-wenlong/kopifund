@@ -314,6 +314,40 @@ describe("Dashboard", () => {
     expect(saved.layouts[0].widgets.map((w) => w.id)).toEqual(["w-a"]);
   });
 
+  it("hands a waiting save off once on leaving, and a slow save in flight sends nothing after", async () => {
+    const saved = {
+      layouts: [doc("default", "Default", [
+        { id: "w-a", type: "note", title: "Note A", options: { text: "kept" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+        { id: "w-b", type: "note", title: "Note B", options: { text: "b" }, layout: { x: 4, y: 0, w: 4, h: 2 } },
+      ])],
+      active: "default",
+    };
+    const posts = stubServer(saved);
+    const real = globalThis.fetch;
+    let release: () => void = () => {};
+    let held = true;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (held && init?.method === "POST") {
+        held = false;
+        await new Promise<void>((r) => { release = r; });
+      }
+      return real(input, init);
+    });
+    const { unmount } = render(<Dashboard />);
+    await screen.findByText("kept");
+    fireEvent.click(screen.getByRole("button", { name: "Remove Note A" }));
+    await waitFor(() => expect(held).toBe(false), { timeout: 3000 });     // the first save is on the wire, held
+    fireEvent.click(screen.getByRole("button", { name: "Remove Note B" }));   // a second waits behind it
+    unmount();                                                                 // left: the waiting one goes now
+    await waitFor(() => expect(posts.length).toBe(1));
+    release();
+    await new Promise((r) => setTimeout(r, 900));
+    // the held save landed, and the page's loop sent nothing after the page was gone:
+    // no third post re-sending the board that went out on leaving
+    expect(posts.length).toBe(2);
+    expect((posts[0].body as DashboardLayout).widgets).toHaveLength(0);
+  });
+
   it("makes no board when the picker closes with nothing picked, and the Default one with the first widget", async () => {
     const saved = { layouts: [] as DashboardLayout[], active: null as string | null };
     const posts = stubServer(saved);

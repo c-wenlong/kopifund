@@ -83,6 +83,8 @@ export function Dashboard() {
   // the write on the wire; saves go one at a time, so a slow reply can never
   // land after a newer edit and overwrite it
   const saving = useRef<Promise<void> | null>(null);
+  // the page has been left: its save loop sends nothing more
+  const gone = useRef(false);
   // every document a write of ours put on the server, and the newest
   // updated_at one carried. A reload's answer is a stale echo only when it is
   // one of those documents; another tab writing in the same whole second (the
@@ -113,6 +115,8 @@ export function Dashboard() {
   const flush = useCallback((): Promise<void> => {
     if (timer.current) clearTimeout(timer.current);
     timer.current = null;
+    // the page is gone: what waited went out on leaving, and a later save would be older than it
+    if (gone.current) return Promise.resolve();
     if (saving.current) return saving.current;
     const run = (async () => {
       try {
@@ -134,6 +138,7 @@ export function Dashboard() {
             }
           } catch (e) {
             // retry the failed board only when nothing newer replaced it
+            if (gone.current) break;
             if (!pending.current.has(b.id)) pending.current.set(b.id, b);
             setFailed(true);
             showToast({
@@ -165,7 +170,12 @@ export function Dashboard() {
   // try again, the edit kept in its body
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
-    for (const b of pending.current.values()) {
+    // handed off once: the page's own save loop, if a slow reply still holds
+    // it, finds nothing left to send after the page is gone
+    gone.current = true;
+    const left = [...pending.current.values()];
+    pending.current.clear();
+    for (const b of left) {
       saveOnLeaving(b.id, JSON.stringify({ ...writeLayout(b), active: b.id === activeRef.current }));
     }
   }, []);
