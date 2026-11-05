@@ -1,16 +1,16 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { act } from "react";
 import { App } from "./App";
 import { navigate } from "./router";
 import { APP_FAILED, AppBoundary, PAGE_FAILED } from "./components/ErrorBoundary";
 import type { Route } from "./routes";
-import { useApi } from "./api";
+import { useApi, type Loaded } from "./api";
 
 // Audit: a page that throws as it draws used to unmount the whole app. Here the
 // "/settings" page throws while `boom` is set; every other page draws as usual.
 let boom = true;
-let reads = false;
+let reads: false | "plan" | "overview" = false;
 function Exploding(): never {
   throw new Error("a figure in a shape this build does not know");
 }
@@ -20,6 +20,12 @@ function Reads() {
   return <p>{plan.data ? `Figure ${plan.data.n.toFixed(0)}` : "Loading"}</p>;
 }
 
+/** A page like Home: it reads the overview the shell holds and hands it, and throws on one without its figure. */
+function ReadsOverview({ overview }: { overview: Loaded<unknown> }) {
+  const data = overview.data as { n: number } | null;
+  return <p>{data ? `Overview ${data.n.toFixed(0)}` : "Loading"}</p>;
+}
+
 vi.mock("./routes", async (original) => {
   const real = await original<typeof import("./routes")>();
   return {
@@ -27,7 +33,11 @@ vi.mock("./routes", async (original) => {
     routeFor: (path: string): Route | undefined => {
       const route = real.routeFor(path);
       if (path !== "/settings" || !route) return route;
-      return { ...route, component: (props) => (reads ? <Reads /> : boom ? <Exploding /> : <route.component {...props} />) };
+      return {
+        ...route,
+        component: (props) => (reads === "plan" ? <Reads /> : reads === "overview" ? <ReadsOverview {...props} />
+          : boom ? <Exploding /> : <route.component {...props} />),
+      };
     },
   };
 });
@@ -67,10 +77,12 @@ describe("a page that fails to draw", () => {
   });
 
   it("draws the page anew on Try again", async () => {
+    // no server: the asks Try again starts fail at once, and the page draws anew
+    vi.mocked(globalThis.fetch).mockRejectedValue(new TypeError("Failed to fetch"));
     render(<App />);
     boom = false;
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(screen.queryByText(PAGE_FAILED)).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByText(PAGE_FAILED)).not.toBeInTheDocument());
   });
 
   it("starts clean on another page", () => {
@@ -84,7 +96,7 @@ describe("a page that fails to draw", () => {
 describe("Try again after a bad answer", () => {
   // Greptile on #305: the answer the page threw on stayed in the cache, so Try again threw on it again
   it("draws the page from the server's new answer, not the kept bad one", async () => {
-    reads = true;
+    reads = "plan";
     let answer: unknown = {};
     vi.mocked(globalThis.fetch).mockImplementation(async (url) =>
       String(url).startsWith("/api/plan") ? new Response(JSON.stringify(answer), { status: 200 }) : new Promise<Response>(() => {}));
@@ -92,8 +104,24 @@ describe("Try again after a bad answer", () => {
     expect(await within(screen.getByRole("main")).findByText(PAGE_FAILED)).toBeInTheDocument();
     answer = { n: 5 };
     await userEvent.click(screen.getByRole("button", { name: "Try again" }));
-    expect(await screen.findByText("Figure 5")).toBeInTheDocument();
-  });
+    // the shell's other asks never answer here, so Try again waits out its cap first
+    expect(await screen.findByText("Figure 5", {}, { timeout: 6_000 })).toBeInTheDocument();
+  }, 10_000);
+});
+
+describe("Try again after a bad answer the shell holds", () => {
+  // Greptile on #43: Home is handed the shell's overview, which a reset alone left in place
+  it("draws the page once the shell has the server's new overview", async () => {
+    reads = "overview";
+    let answer: unknown = {};
+    vi.mocked(globalThis.fetch).mockImplementation(async (url) =>
+      String(url).startsWith("/api/overview") ? new Response(JSON.stringify(answer), { status: 200 }) : new Promise<Response>(() => {}));
+    render(<App />);
+    expect(await within(screen.getByRole("main")).findByText(PAGE_FAILED)).toBeInTheDocument();
+    answer = { n: 7 };
+    await userEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Overview 7", {}, { timeout: 6_000 })).toBeInTheDocument();
+  }, 10_000);
 });
 
 describe("the app's last resort", () => {

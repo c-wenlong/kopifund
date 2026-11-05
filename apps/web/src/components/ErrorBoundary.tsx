@@ -40,16 +40,16 @@ export const PAGE_FAILED = "Something on this page failed to draw.";
 
 /**
  * A page that threw: the shell stays, and Try again draws it anew from the server's answers. The kept
- * answers are forgotten first, since the one the page threw on would otherwise be read again (the page
- * is not mounted, so nothing asks for it afresh) and throw again however the server answers now.
+ * answers are forgotten and asked for again first, and the page is drawn only once they are back: the
+ * one it threw on would otherwise be read again (the page is not mounted, so nothing asks for it
+ * afresh, and the shell still holds its overview) and throw again however the server answers now.
  */
 export function PageBoundary({ path, children }: { path: string; children: ReactNode }) {
   return (
     <ErrorBoundary resetKey={path} fallback={(reset) => (
       <Problem message={PAGE_FAILED} hint="Try again, or open another page."
         onRetry={() => {
-          reloadViews();
-          reset();
+          void reloadViews().then(reset);
         }} />
     )}>
       {children}

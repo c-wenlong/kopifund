@@ -6,14 +6,27 @@
 // dashed outline and a ring: no motion, so reduced-motion changes nothing.
 import { useRef, useState } from "react";
 import { GripVertical, X } from "lucide-react";
-import type { DashboardWidget } from "../api";
 import { cellOf, clampCell, COLS, pack, type Cell } from "./layout";
 import { widgetDef } from "./registry";
 import { ErrorBoundary } from "../components/ErrorBoundary";
-import { Problem } from "../components/States";
+import { reloadViews, type DashboardWidget } from "../api";
 
 /** Audit: what a widget that throws as it draws shows in its card; the rest of the board keeps working. */
 export const WIDGET_FAILED = "This widget failed to draw.";
+
+/**
+ * The failed widget's card body: one line that fits the smallest card (one row), scrolling if it must.
+ * Try again forgets the kept answers and asks again before drawing it, since the answer it failed on
+ * would otherwise be read straight back from the cache.
+ */
+function WidgetFailed({ retry }: { retry: () => void }) {
+  return (
+    <div role="alert" className="flex h-full min-h-0 flex-wrap items-start gap-x-2 overflow-auto text-[13px] text-warn">
+      <span>{WIDGET_FAILED}</span>
+      <button type="button" onClick={retry} className="underline underline-offset-2 hover:text-ink">Try again</button>
+    </div>
+  );
+}
 
 /** One arrow-key step, as the [x, y] or [w, h] it nudges. */
 const ARROW: Record<string, readonly [number, number]> = {
@@ -203,7 +216,7 @@ function WidgetCard({ widget, cell, dragging = false, onMove, onResize, onKeyMov
           {Body ? (
             // Audit: one widget that cannot draw its answer stays in its card; a changed query or option starts it clean
             <ErrorBoundary resetKey={JSON.stringify([widget.type, widget.query, widget.options])}
-              fallback={(reset) => <Problem message={WIDGET_FAILED} onRetry={reset} />}>
+              fallback={(reset) => <WidgetFailed retry={() => void reloadViews().then(reset)} />}>
               <Body widget={widget} />
             </ErrorBoundary>
           ) : (

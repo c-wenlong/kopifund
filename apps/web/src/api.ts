@@ -400,10 +400,31 @@ export function prefetch(urls: readonly string[]) {
 // without a browser reload. A reload keeps the old data on screen meanwhile.
 const CHANGED = "kopifund:changed";
 
-/** Audit: forget every kept answer, in memory and on disk, and ask every mounted view again. */
-export function reloadViews() {
+const tick = () => new Promise<void>((done) => setTimeout(done, 0));
+/** The longest reloadViews waits on the asks it starts, in ms. */
+const RELOAD_WAIT = 3_000;
+
+/**
+ * Audit: forget every kept answer, in memory and on disk, and ask every mounted
+ * view again. Resolves once those asks have settled and the views have drawn
+ * what came back, so a part drawn after it (an error boundary's Try again)
+ * reads the server's answers, not the ones it failed on: the shell's overview,
+ * which Home is handed, included.
+ */
+export async function reloadViews(): Promise<void> {
   forget();
   window.dispatchEvent(new Event(CHANGED));
+  // the views ask as they redraw, a tick after the event; a few rounds catch an ask that starts
+  // another, and an ask that hangs (a server gone quiet) holds Try again up RELOAD_WAIT at most in all
+  const until = Date.now() + RELOAD_WAIT;
+  for (let round = 0; round < 3; round += 1) {
+    await tick();
+    const running = [...inflight.values()].map((r) => r.promise.catch(() => undefined));
+    const left = until - Date.now();
+    if (!running.length || left <= 0) break;
+    await Promise.race([Promise.all(running), new Promise<void>((done) => setTimeout(done, left))]);
+  }
+  await tick();
 }
 
 /** Ask every mounted view again, keeping the cache: the ETags make it cheap. */
