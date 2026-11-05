@@ -130,6 +130,12 @@ struct PatternBuilderView: View {
         suggestions = [:]
         applyCandidates()
         dimmed = AlertText.boilerplateTokenIndexes(in: sampleText, tokens: tokens)
+        // nothing tappable lays out no atom, so no frame would end the
+        // interval: a blank paste ends it here
+        if !tokens.contains(where: \.isTappable), let open = openInterval {
+            signposter.endInterval("Open builder", open, "0 atoms")
+            openInterval = nil
+        }
     }
 
     private func spanText(for indexes: [Int]) -> String {
