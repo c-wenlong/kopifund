@@ -12,7 +12,7 @@ import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Problem } from "../components/States";
 import { Sheet } from "../components/Sheet";
 import { showToast } from "../components/Toast";
-import { formatDay } from "../dates";
+import { formatStampDay } from "../dates";
 import { onLinkClick } from "../router";
 import type { AiSettings, CopilotPage, CopilotThreads } from "../types.gen";
 import { AnswerChart, AnswerLink, AnswerSteps, AnswerText, ConfirmCard, contextLine, pageContext } from "./parts";
@@ -332,7 +332,7 @@ function Threads({ copilot, extra }: { copilot: Copilot; extra?: ReactNode }) {
               <button type="button" onClick={() => void copilot.open(t.id)}
                 className="flex min-w-0 flex-1 flex-col items-start rounded py-0.5 text-left hover:underline">
                 <span className={`w-full truncate ${t.id === copilot.thread ? "font-medium" : ""}`}>{t.title}</span>
-                <span className="num text-[11px] text-ink-3">{formatDay(t.updated_at.slice(0, 10))}</span>
+                <span className="num text-[11px] text-ink-3">{formatStampDay(t.updated_at)}</span>
               </button>
               <Button size="icon" variant="ghost" aria-label={`Remove ${t.title}`} disabled={busy === t.id}
                 onClick={() => void remove(t.id)}>

@@ -2976,6 +2976,14 @@ then the Upload page names its statement as not supported and keeps nothing.
   - Totals and other aggregates (tiles, chart ticks and hovers, bucket and
     category sums) drop the cents: "S$49,299". A row of the ledger, or a figure
     the user types or compares to the cent, keeps them: "S$1,234.05".
+  - Dropping the cents rounds half up on the size, away from zero, as
+    `money.py` does (`whole`, `to_cents`): S$1.50 is "S$2" and −S$1.50 is
+    "−S$2", and what rounds to nothing has no sign ("S$0", never "−S$0").
+    Every figure goes through `formatSgd` (`wholeDollars` for the plain
+    number a box takes), the stat cards' `fmt` included, so a figure reads
+    the same in a tile, a hover and a table. A money box's text has one
+    grammar (`isMoneyShape`, `unformatMoney`), which the box checks as it is
+    typed and `parseCents` reads.
   - A negative amount starts with a true minus sign (U+2212), never a hyphen,
     and the sign sits against the amount with no space or break between them:
     "−S$12.00", "−S$2k" on a chart axis. A "+" in a change line is written
@@ -2994,7 +3002,12 @@ then the Upload page names its statement as not supported and keeps nothing.
   2025 statement, "31/04/2026") stops the parse rather than load as a date
   every reader after it would break on, and `server/finance/dates.py` refuses
   one too (a ValueError, in its labels and its month arithmetic) rather than
-  print it.
+  print it. The app does date arithmetic on such a day
+  (`addDays`, reading a typed day) in UTC, so a day a device's zone skipped
+  (Kiritimati's 31 Dec 1994) is still a day. A server stamp
+  ("2026-10-03T22:30:00+00:00") is an instant, so it is shown in the device's
+  time: a copilot thread updated at 06:30 in Singapore on 4 Oct reads "4 Oct
+  2026" (`formatStampDay`).
 - Every row has a stable key built from what the statement prints, so loading
   the same statement twice adds nothing, and a re-exported Revolut or Wise file
   replaces rather than duplicates.
