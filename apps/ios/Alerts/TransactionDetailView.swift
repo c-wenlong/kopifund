@@ -2,6 +2,7 @@ import SwiftUI
 import SwiftData
 import Matching
 import Storage
+import Intents
 
 struct TransactionDetailView: View {
     @Bindable var row: TransactionRecord
@@ -20,6 +21,10 @@ struct TransactionDetailView: View {
     /// The Amount field's text, "5.80" for 580 cents; cents stay the truth.
     @State private var amountDraft = ""
     @FocusState private var amountFocused: Bool
+    /// Audit: the row waited under "Needs details" when this screen opened,
+    /// so the duplicate check it skipped on arrival runs once it is complete
+    /// (`Ingest.settleTypedDetails`), on Approve or on the way out.
+    @State private var openedMissingDetails = false
 
     var body: some View {
         Form {
@@ -159,6 +164,9 @@ struct TransactionDetailView: View {
                     }
                     Button("Post in \(plan)") {
                         guard let cents = convertedCents else { return }
+                        // the check runs on the spend as captured, before the
+                        // conversion changes its amount, currency and state
+                        if checkTypedDetails() { return }
                         row.postInPlanCurrency(plan, amountCents: cents)
                         try? context.save()
                         Task { await SyncService.flush(context: context) }
@@ -194,6 +202,7 @@ struct TransactionDetailView: View {
                          : row.state == "kopifund" ? "in kopifund" : row.state)
         .task {
             amountDraft = Cents.text(row.amountCents)
+            if row.missingDetails != nil { openedMissingDetails = true }
             loadSibling()
             categoryOptions = YNABCache.categories(in: context, planID: planID)
                 .map { ($0.id, "\($0.group) · \($0.name)") }
@@ -201,6 +210,9 @@ struct TransactionDetailView: View {
         .toolbar {
             if row.state == "pending" && heldFor == nil && row.missingDetails == nil {
                 Button("Approve") {
+                    // a row completed here gets the duplicate check first; a
+                    // parked one stays parked rather than posting the spend twice
+                    if checkTypedDetails() { return }
                     row.state = "approved"
                     try? context.save()
                     Task { await SyncService.flush(context: context) }
@@ -216,6 +228,7 @@ struct TransactionDetailView: View {
             .disabled(row.state == "syncing")
         }
         .onDisappear {
+            if !deleteOnExit { checkTypedDetails() }
             guard deleteOnExit else { return }
             // a sync that picked the row up meanwhile re-reads it before each
             // write and leaves a deleted row alone (Sync.run, HubLane), so
@@ -235,6 +248,21 @@ struct TransactionDetailView: View {
               Currency.holdReason(currency: row.currency, planCurrency: plan) != nil
         else { return nil }
         return plan
+    }
+
+    /// The duplicate check a row that opened missing details skipped on
+    /// arrival, run once it is complete. It runs once per opening: the flag
+    /// clears as soon as it has run, so a later "Not a duplicate" stands.
+    /// True when the row was parked; the page then shows what it matches.
+    @discardableResult
+    private func checkTypedDetails() -> Bool {
+        guard openedMissingDetails, row.state == "pending", row.missingDetails == nil else { return false }
+        openedMissingDetails = false
+        // saved either way: the check may park the sibling instead
+        let parked = Ingest.settleTypedDetails(of: row, in: context)
+        try? context.save()
+        if parked { loadSibling() }
+        return parked
     }
 
     private func loadSibling() {
