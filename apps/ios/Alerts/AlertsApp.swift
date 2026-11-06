@@ -23,6 +23,10 @@ struct AlertsApp: App {
             // them once. Only rows never sent anywhere go, and the count is
             // logged (EmptyWalletCleanup)
             _ = try? EmptyWalletCleanup.runOnce(in: ModelContext(c), defaults: .standard)
+            #if DEBUG
+            // Audit: every launch-argument hook below is a UI test's seed and
+            // lives in Debug builds only (the test scheme builds Debug), so a
+            // release build never reads an argument that writes or wipes rows
             // G25: a UI test seeds one pending row with `-seedSpend
             // cents|currency|payee|YYYY-MM-DD` so an approve can reach the
             // hub's pending post without a saved pattern or YNAB setup
@@ -51,7 +55,6 @@ struct AlertsApp: App {
                 where m.key.hasPrefix("categories|") { ctx.delete(m) }
                 try? ctx.save()
             }
-            #if DEBUG
             // G24: a UI test parks alerts in Unmatched with one
             // `-seedUnmatched <text>` per alert, as if each arrived before
             // any pattern could read it
