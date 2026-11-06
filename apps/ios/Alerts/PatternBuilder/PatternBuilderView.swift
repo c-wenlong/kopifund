@@ -231,14 +231,14 @@ struct PatternBuilderView: View {
         return ""
     }
 
-    /// The fields' before and after texts: the edited pattern's, or the
-    /// tags' own while an edit leaves the pattern unbuildable, so the row
-    /// being typed in stays on screen.
+    /// The fields' before and after texts with every edit shown, a refused
+    /// one too: the row keeps what the owner typed while the card above
+    /// says why it cannot save, so the value to fix stays in view.
     private var anchorList: [PatternAnchors.Anchor] {
-        if let b = built { return PatternAnchors.anchors(in: b.segments) }
-        guard let segs = try? PatternBuilder.segments(in: sampleText, tokens: tokens, spans: spans)
+        guard let segs = try? PatternBuilder.segments(in: sampleText, tokens: tokens, spans: spans),
+              let shown = try? PatternAnchors.applying(anchorEdits, to: segs, check: false)
         else { return [] }
-        return PatternAnchors.anchors(in: segs)
+        return PatternAnchors.anchors(in: shown)
     }
 
     private func editAnchor(_ e: PatternAnchors.Edit) {

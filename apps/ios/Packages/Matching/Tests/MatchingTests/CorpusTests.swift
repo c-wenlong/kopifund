@@ -392,4 +392,44 @@ final class CorpusTests: XCTestCase {
             return XCTFail("another account's SMS read")
         }
     }
+
+    /// Review on #112: a merchant holding the template's opening word
+    /// ("PREPAID" in a "Paid ..." template) still reads; only the opening
+    /// with its amount counts as the template starting again.
+    func test_a_name_holding_the_opening_word_still_reads() throws {
+        let t = Template(name: "paid SMS", sample: "Paid SGD 4.80 to KOPI CORNER on 27 Oct 2026",
+                         tags: [(.amount, "SGD 4.80", ""), (.payee, "KOPI CORNER", ""),
+                                (.date, "27 Oct 2026", "")], variants: [])
+        let p = try Self.teach(t)
+        for name in ["PREPAID MOBILE TOPUP", "PAID PARKING LOT 3"] {
+            guard case .success(let r) = Self.read(p, "Paid SGD 9.00 to \(name) on 3 Nov 2026") else {
+                return XCTFail("\(name) should read")
+            }
+            XCTAssertEqual(r.payee, name)
+        }
+    }
+
+    /// Review on #112: a cut-off alert ahead of a whole one never lends the
+    /// whole one its date and amount; the whole one reads on its own.
+    func test_a_cut_off_alert_never_lends_its_fields() throws {
+        let p = try Self.teach(Self.walletTemplate)
+        let text = "Date & Time:\n12 Oct 14:05 (SGT)\nAmount:\nSGD4.50\n"
+            + Self.wallet(dated: "3 Nov", when: "3 Nov 09:41", amount: "SGD9.00", merchant: "TOAST CORNER")
+        guard case .success(let r) = Self.read(p, text) else { return XCTFail("the whole alert should read") }
+        XCTAssertEqual(r.payee, "TOAST CORNER")
+        XCTAssertEqual(r.amount, Decimal(string: "9.00"))
+        XCTAssertEqual(r.date, Self.day(11, 3))
+    }
+
+    /// Review on #112: a full stop right after the payee may be part of the
+    /// next name, so the words after it anchor too.
+    func test_a_full_stop_after_the_payee_keeps_the_words_after_it() throws {
+        let t = Template(name: "thanks", sample: "Paid SGD 4.80 to SHOP. Thank you.",
+                         tags: [(.amount, "SGD 4.80", ""), (.payee, "SHOP", "")], variants: [])
+        let p = try Self.teach(t)
+        guard case .success(let r) = Self.read(p, "Paid SGD 9.00 to ST. CLEMENT BAKERY. Thank you.") else {
+            return XCTFail("should read")
+        }
+        XCTAssertEqual(r.payee, "ST. CLEMENT BAKERY")
+    }
 }

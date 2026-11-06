@@ -73,4 +73,27 @@ final class PatternAnchorsTests: XCTestCase {
         XCTAssertEqual(PatternAnchors.parse("⏎ ⏎"), "\n\n")
         XCTAssertEqual(PatternAnchors.parse("(Mobile ending 4417) ⏎ To: ⏎"), "(Mobile ending 4417)\nTo:\n")
     }
+
+    /// Review on #112: an edit that keeps the blank line after the payee
+    /// keeps a wrapped name whole.
+    func test_an_edited_blank_line_keeps_a_wrapped_payee() throws {
+        let p = try CorpusTests.teach(CorpusTests.walletTemplate)
+        let edited = try PatternAnchors.applying(
+            [.init(field: .payee, side: .after, text: PatternAnchors.parse("⏎ ⏎"))], to: p.segments)
+        XCTAssertEqual(PatternAnchors.anchors(in: edited).last?.after, "\n\n")
+        guard case .success(let t) = CorpusTests.read(walletPattern(edited),
+                                                      CorpusTests.wallet(merchant: "HAPPY GARDEN SEAFOOD\nRESTAURANT"))
+        else { return XCTFail("should read") }
+        XCTAssertEqual(t.payee, "HAPPY GARDEN SEAFOOD RESTAURANT")
+    }
+
+    /// Review on #112: a refused edit still shows, so the owner sees what
+    /// to fix.
+    func test_a_refused_edit_still_shows() throws {
+        let p = try CorpusTests.teach(CorpusTests.chargeTemplate)
+        let e = PatternAnchors.Edit(field: .payee, side: .after, text: "")
+        XCTAssertThrowsError(try PatternAnchors.applying([e], to: p.segments))
+        let shown = try PatternAnchors.applying([e], to: p.segments, check: false)
+        XCTAssertNil(PatternAnchors.anchors(in: shown).first { $0.field == .payee }?.after)
+    }
 }

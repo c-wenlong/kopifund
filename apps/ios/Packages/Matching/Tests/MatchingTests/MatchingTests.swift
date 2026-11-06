@@ -163,7 +163,9 @@ final class BuilderEdgeTests: XCTestCase {
         XCTAssertEqual(PatternBuilder.anchorAfter(" was charged in Oct 2026 by the merchant here"),
                        " was charged")
         XCTAssertEqual(PatternBuilder.anchorAfter(" ref TXN-77"), " ref TXN-77")
-        XCTAssertEqual(PatternBuilder.anchorAfter(". Thank you"), ".")
+        XCTAssertEqual(PatternBuilder.anchorAfter(". Thank you"), ". Thank you",
+                       "a mark alone may sit inside a name, so the words after it stay")
+        XCTAssertEqual(PatternBuilder.anchorAfter(" ok. Thank you"), " ok.")
         XCTAssertEqual(PatternBuilder.anchorAfter("\nThank you for using us."), "\n",
                        "a field that ends its line keeps only the break")
         XCTAssertEqual(PatternBuilder.anchorAfter("\n\nThank you."), "\n\n")
