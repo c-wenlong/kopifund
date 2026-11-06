@@ -20,6 +20,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
+from .atomic import write_private
 from .paths import data_root
 
 # old YouTrip wallet folder -> currency
@@ -377,8 +378,7 @@ def run(p, dry_run=False):
                            if c.dst.parts[:1] == ("statements",) and c.dst.parts[1].startswith("wise-")})
             body = (rewrite_config(text, wise) if s.dst.name == "config.toml"
                     else rewrite_sources(text, p.new))
-            target.write_text(body, encoding="utf-8")
-            os.chmod(target, 0o600)
+            write_private(target, body)
     return copied, verified, there
 
 

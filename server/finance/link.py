@@ -23,6 +23,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from . import paths
+from .atomic import write_private
 from .errors import NotFound, Refused
 
 PAIR_LIFE = 600          # a pair token lives ten minutes
@@ -80,24 +81,13 @@ def _read():
 def _update(fn):
     """Read-modify-write the registry under an exclusive flock: `fn` gets
     the parsed dict, mutates it, and its return is this call's. The write
-    lands through a temp file and os.replace, so a crash mid-write cannot
+    lands through write_private, so a crash mid-write cannot
     leave a truncated registry for _parse to treat as a new one."""
     path = devices_path()
     with _locked(exclusive=True):
         data = _parse(path.read_text(encoding="utf-8")) if path.is_file() else _parse("")
         out = fn(data)
-        tmp = path.with_name(path.name + ".tmp")
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(json.dumps(data, indent=2) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, path)
-        dirfd = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(dirfd)
-        finally:
-            os.close(dirfd)
+        write_private(path, json.dumps(data, indent=2) + "\n")
         return out
 
 

@@ -6,10 +6,9 @@ and 65. It lives in `profile.json` beside the config, never in the repo and
 never in the record, so the record's schema does not change for it.
 """
 import json
-import os
-import tempfile
 from datetime import date
 
+from .atomic import write_private
 from .paths import data_root
 
 FIELDS = ("birth_date",)
@@ -82,25 +81,12 @@ def save(updates, today=None):
     current, problem = _read()
     if problem and path().exists():
         # an explicit save replaces a damaged file; the old bytes stay beside it
-        copy = path().with_suffix(".json.damaged")
-        fd = os.open(copy, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "wb") as f:
-            f.write(path().read_bytes())
-        os.chmod(copy, 0o600)              # O_CREAT's mode does not apply to a file already there
+        write_private(path().with_suffix(".json.damaged"), path().read_bytes())
     if "birth_date" in updates:
         current["birth_date"] = _birth_date(updates["birth_date"], today)
     target = path()
     target.parent.mkdir(parents=True, exist_ok=True)
-    fd, tmp = tempfile.mkstemp(dir=target.parent, prefix=".profile-", suffix=".json")
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(current, f, indent=2)
-        os.chmod(tmp, 0o600)
-        os.replace(tmp, target)
-    except BaseException:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
-        raise
+    write_private(target, json.dumps(current, indent=2))
     return {**current, "problem": None}
 
 
