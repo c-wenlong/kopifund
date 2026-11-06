@@ -3,7 +3,7 @@ import { revalidate } from "../api";
 import { describe, expect, it, vi } from "vitest";
 import { Plan, fractionToPercent, percentToFraction } from "./Plan";
 import { Toaster } from "../components/Toast";
-import { json } from "../test-helpers";
+import { expectAsks, expectFree, json } from "../test-helpers";
 
 // A plan with every list filled, its money in cents as GET /api/plan sends it
 // (G17). Every figure and name here is invented.
@@ -541,7 +541,6 @@ describe("the budgets card", () => {
 });
 
 // G18: true when the page would hold a reload or a closed tab behind the browser's question
-const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 
 describe("the plan card's save", () => {
   it("starts saved, says Unsaved changes after an edit, and Discard puts the saved plan back", async () => {
@@ -554,12 +553,12 @@ describe("the plan card's save", () => {
     expect(screen.getByText("Saved").className).not.toContain("hidden");
     fireEvent.change(insurance, { target: { value: "55" } });
     expect(screen.getByRole("status", { name: "" })).toHaveTextContent("Unsaved changes");
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
     expect(screen.getByRole("button", { name: "Save plan" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Discard" }));
     expect(screen.getByLabelText("Insurance premiums (S$ a month)")).toHaveValue("40");
     expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
     expect(screen.getByRole("button", { name: "Save plan" })).toBeDisabled();
     expect(posted).toHaveLength(0);
   });
@@ -780,7 +779,7 @@ describe("the plan when another tab saves it", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Save plan" })).toBeEnabled());
     expect(screen.getByLabelText("Insurance premiums (S$ a month)")).toHaveValue("40");
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
   });
 
   it("follows the new plan while untouched, and keeps typing that is there", async () => {
@@ -793,11 +792,11 @@ describe("the plan when another tab saves it", () => {
     act(() => revalidate());
     await waitFor(() => expect(screen.getByLabelText("Insurance premiums (S$ a month)")).toHaveValue("65"));
     expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
     fireEvent.change(screen.getByLabelText("Insurance premiums (S$ a month)"), { target: { value: "70" } });
     plan.insurance_minor = 8_000;
     act(() => revalidate());
-    await waitFor(() => expect(leaveAsks()).toBe(true));
+    await expectAsks();
     expect(screen.getByLabelText("Insurance premiums (S$ a month)")).toHaveValue("70");
   });
 });

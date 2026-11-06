@@ -4,7 +4,7 @@ import { revalidate, type DashboardLayout, type DashboardLayouts } from "../api"
 import { Toaster } from "../components/Toast";
 import { keepEditing, navigate } from "../router";
 import { Dashboard } from "./Dashboard";
-import { json } from "../test-helpers";
+import { fakeClock, json } from "../test-helpers";
 
 // G26: the Dashboard page against a stand-in server that keeps what is posted,
 // so a second render sees what the first saved, as a reload would. All figures
@@ -322,6 +322,7 @@ describe("Dashboard", () => {
       ])],
       active: "default",
     };
+    const clock = fakeClock();
     const posts = stubServer(saved);
     const real = globalThis.fetch;
     let release: () => void = () => {};
@@ -341,7 +342,7 @@ describe("Dashboard", () => {
     unmount();                                                                 // left: the waiting one goes now
     await waitFor(() => expect(posts.length).toBe(1));
     release();
-    await new Promise((r) => setTimeout(r, 900));
+    await clock.pass(900);
     // the held save landed, and the page's loop sent nothing after the page was gone:
     // no third post re-sending the board that went out on leaving
     expect(posts.length).toBe(2);
@@ -395,13 +396,14 @@ describe("Dashboard", () => {
 
   it("makes no board when the picker closes with nothing picked, and the Default one with the first widget", async () => {
     const saved = { layouts: [] as DashboardLayout[], active: null as string | null };
+    const clock = fakeClock();
     const posts = stubServer(saved);
     render(<Dashboard />);
     fireEvent.click(await screen.findByRole("button", { name: /^Add a widget/ }));
     const sheet = await screen.findByRole("dialog", { name: "Add a widget" });
     fireEvent.keyDown(sheet, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add a widget" })).not.toBeInTheDocument());
-    await new Promise((r) => setTimeout(r, 900));
+    await clock.pass(900);
     expect(posts).toEqual([]);
     fireEvent.click(screen.getByRole("button", { name: /^Add a widget/ }));
     fireEvent.click(within(await screen.findByRole("dialog", { name: "Add a widget" })).getByRole("button", { name: /^A note/ }));

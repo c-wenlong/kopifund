@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppIconCard } from "./AppIconCard";
 import { syncAppIcon, useAppIconLogo } from "../components/appIcon";
-import { json } from "../test-helpers";
+import { json, settle } from "../test-helpers";
 
 const SETS = [
   { name: "sticker", label: "Sticker", about: "Kopi in a tied bag with a coin, on yellow" },
@@ -46,13 +46,15 @@ describe("App icon card", () => {
     expect(screen.getByText("A cup on a stack of coins, on green")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "logo" })).toHaveAttribute("src", "/logo.svg");
     fireEvent.click(screen.getByRole("radio", { name: /Iso/ }));
-    await waitFor(() => expect(screen.getByRole("radio", { name: /Iso/ })).toBeChecked());
+    // the radio is ticked at once, before the server has answered: the pick is kept only when it has
+    await waitFor(() => expect(window.localStorage.getItem("kopifund.appIcon")).toBe("iso"));
+    await settle();
+    expect(screen.getByRole("radio", { name: /Iso/ })).toBeChecked();
     expect(posts).toEqual([JSON.stringify({ name: "iso" })]);
     expect(href('link[rel="icon"][type="image/svg+xml"]')).toBe("/app-icons/iso/favicon.svg");
     expect(href('link[rel="icon"]:not([type])')).toBe("/app-icons/iso/favicon.ico");
     expect(href('link[rel="apple-touch-icon"]')).toBe("/app-icons/iso/apple-touch-icon.png");
     expect(screen.getByRole("img", { name: "logo" })).toHaveAttribute("src", "/app-icons/iso/logo.svg");
-    expect(window.localStorage.getItem("kopifund.appIcon")).toBe("iso");
   });
 
   it("puts the pick back and says why when the server refuses it", async () => {

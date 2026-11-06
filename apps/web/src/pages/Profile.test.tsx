@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { revalidate } from "../api";
 import { Profile, ageOn, freshness } from "./Profile";
-import { json } from "../test-helpers";
+import { expectAsks, expectFree, json } from "../test-helpers";
 
 const profile = {
   data_folder: "/Users/x/.kopifund", notion_enabled: false, about: { birth_date: null },
@@ -9,7 +9,6 @@ const profile = {
 };
 
 // G18: true when the page would hold a reload or a closed tab behind the browser's question
-const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 
 describe("Profile", () => {
   it("shows five accounts and a row that opens the rest", async () => {
@@ -34,12 +33,12 @@ describe("Profile", () => {
       init?.method === "POST" ? json({ about: { birth_date: "2000-08-03" } }) : json(profile));
     render(<Profile />);
     const input = await screen.findByLabelText("Date of birth");
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
     fireEvent.change(input, { target: { value: "2000-08-03" } });
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await screen.findByText("Saved");
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
     const post = fetchSpy.mock.calls.find(([, init]) => init?.method === "POST")!;
     expect(post[0]).toBe("/api/profile");
     expect((post[1] as RequestInit).headers).toMatchObject({ "X-Kopifund": "1" });
@@ -254,7 +253,7 @@ describe("a date of birth saved from another tab", () => {
     act(() => revalidate());
     await waitFor(() => expect(screen.getByLabelText("Date of birth")).toHaveValue("4 May 1990"));
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
   });
 });
 

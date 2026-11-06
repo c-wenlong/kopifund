@@ -1,11 +1,11 @@
 import { act, renderHook } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { useDraft } from "./useDraft";
+import { leaveAsks } from "../test-helpers";
 
 // Audit: the saved-versus-typed rules every SaveBar card shares (AI, Scam checks)
 
 type V = { a: string; b: string };
-const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 
 function setup(first: V = { a: "1", b: "2" }) {
   // `answer` is the object the server sent: a new one is a new read

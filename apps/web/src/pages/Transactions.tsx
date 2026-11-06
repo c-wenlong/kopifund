@@ -25,6 +25,7 @@ import { useUnsavedGuard } from "../router";
 import { pageParam, useUrlPage, useUrlParams } from "../useUrlParams";
 import type { GroupKind, NeedClass } from "../types.gen";
 import { KIND_ICON, KindIcon, NEED_ICON, EYE_ICON, SCAM_FLAG_ICON, SCAM_ICON, TRIP_ICON } from "../icons";
+import { plural, sentence } from "../words";
 
 // G13: transfers (wallet top-ups, moves between your own accounts) are hidden
 // unless the browser has saved the opposite. The saved choice is per browser;
@@ -89,7 +90,7 @@ export function scopeParts(s: Scope): { text: string; icons: LucideIcon[] }[] {
     : kinds.map((k) => KIND_ICON[k]);
   const parts: [string | false | null | undefined, LucideIcon[]][] = [
     [s.trip && `Trip: ${s.trip}`, [TRIP_ICON]],
-    [counted && `${counted.charAt(0).toUpperCase()}${counted.slice(1)}${kinds.length || need.length ? " only" : ""}`, countedIcons],
+    [counted && `${sentence(counted)}${kinds.length || need.length ? " only" : ""}`, countedIcons],
     [s.bucket && `Bucket: ${s.bucket}`, []],
     [s.categories && `Categories: ${names(s.categories)}`, []],
     [s.notCategories && `Not categories: ${names(s.notCategories)}`, []],
@@ -344,7 +345,7 @@ export function Transactions() {
               <Tile label="Money in" value={formatSgd(data.in_sgd ?? 0, { decimals: true })} />
               <Tile label="Money out" value={formatSgd(Math.abs(data.out_sgd ?? 0), { decimals: true })} />
               <Tile label="Net" value={formatSgd(data.sum_sgd, { decimals: true })}
-                note={`${data.total.toLocaleString("en-SG")} transaction${data.total === 1 ? "" : "s"}${hideTransfers ? ", transfers hidden" : ""}`} />
+                note={`${plural(data.total, "transaction")}${hideTransfers ? ", transfers hidden" : ""}`} />
             </div>
           </div>
           {wide ? (
@@ -660,7 +661,7 @@ function RowPanel({ txnKey, drafts, shownForms, onUnsaved, onSaving, pin, onClos
           <button type="button" disabled={busy} onClick={() => void applySimilar()}
             className="num inline-flex items-center gap-1.5 rounded-full border border-line bg-panel px-3 py-1 hover:bg-hover disabled:opacity-40">
             <Plus size={13} aria-hidden />
-            Apply to {similar.toLocaleString("en-SG")} similar {similar === 1 ? "row" : "rows"}
+            Apply to {plural(similar, "similar row")}
           </button>
         )}
         <button type="button" aria-expanded={more} onClick={() => setMore(!more)}

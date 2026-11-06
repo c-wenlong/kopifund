@@ -1,5 +1,6 @@
 import XCTest
 @testable import KopifundClient
+import TestSupport
 
 /// G25: pairing spends a kfp_ token once; after it, every read carries the
 /// kfd_ bearer the hub now expects.

@@ -5,8 +5,9 @@ let package = Package(
     name: "YNABClient",
     platforms: [.iOS(.v17), .macOS(.v14)],
     products: [.library(name: "YNABClient", targets: ["YNABClient"])],
+    dependencies: [.package(path: "../TestSupport")],
     targets: [
         .target(name: "YNABClient"),
-        .testTarget(name: "YNABClientTests", dependencies: ["YNABClient"]),
+        .testTarget(name: "YNABClientTests", dependencies: ["YNABClient", "TestSupport"]),
     ]
 )

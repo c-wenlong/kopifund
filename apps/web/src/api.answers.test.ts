@@ -135,6 +135,7 @@ describe("the copy kept in localStorage", () => {
 // Audit: a test that ends mid-rebuild used to leave the watch on, so the next test's watch never started
 describe("test isolation", () => {
   it("lets a new stats watch start after a reset", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
     let asked = 0;
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       if (url === "/api/stats/rebuild") asked += 1;
@@ -144,9 +145,8 @@ describe("test isolation", () => {
     clearApiCache();
     asked = 0;
     watchStatsRebuild(10, 1);
-    await waitFor(() => expect(asked).toBeGreaterThan(0));
-    // the first watch stopped at the reset: only the second one asked, once
-    await new Promise((r) => setTimeout(r, 60));
+    // the first watch stopped at the reset: only the second one asked, once, however long it runs on
+    await vi.advanceTimersByTimeAsync(70);
     expect(asked).toBe(1);
   });
 });

@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import { postJSON, rowsChanged, useApi, type Country, type Relinked, type Trip, type TripList } from "../api";
 import { axisSgd, formatSgd, type Cents } from "../money";
-import { formatRange, isoDay } from "../dates";
+import { formatRange, isoDay, MONTHS } from "../dates";
 import { navigate, onLinkClick } from "../router";
 import { Button } from "../components/Button";
 import { TextInput } from "../components/TextInput";
@@ -23,6 +23,7 @@ import { showToast } from "../components/Toast";
 import { useWide } from "../components/useWide";
 import { TRIP_TAG_ICON } from "../icons";
 import { useChartView, ViewSwitch, type ViewOption } from "../components/ViewSwitch";
+import { plural } from "../words";
 
 const LONG_STAY_DAYS = 60;   // the travel stat's default, until the server says otherwise
 
@@ -94,7 +95,6 @@ export function Flags({ trip }: { trip: Pick<Trip, "countries" | "flags"> }) {
 }
 
 const flagText = (t: Trip) => (t.flags ?? []).filter(Boolean).join("");
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 // A recorded trip groups past spending: every row dated inside it (on a
 // wallet, or abroad) is counted on it. G13: saving it moves those rows at
@@ -454,7 +454,6 @@ function TripTip({ t, avg }: { t: Trip; avg: Cents | null }) {
 // pixels, and its domain starts at nothing, so area stays in proportion to spend.
 // Long stays are a chart of their own under the trips, with a scale of their own.
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 // the day of a common year each month starts on; a leap year is a day out after February, which no eye can see
 const MONTH_DAYS = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335];
 /** The radius of the dearest trip's circle; every other circle's area is in proportion to it. */
