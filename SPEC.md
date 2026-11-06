@@ -2669,8 +2669,8 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   nowhere, not even in the upload history, and the card lists it as "Not
   supported" with no account to pick, the banks under the list once (a bank
   from a public sample saying so), and one line asking for a scrubbed text
-  copy of one of its statements (made by `finance.py sample`, which the
-  runbook describes; the card names no command).
+  copy of one of its statements and naming `docs/runbook.md`, which says how
+  `finance.py sample` makes one (the card names no command).
   A PDF that matches more than one layout (each DBS layout is tested on
   its own, page by page, so a file holding a PayLah! and a card statement
   reads as both), or more than one folder it cannot tell apart is answered

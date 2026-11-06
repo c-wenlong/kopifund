@@ -485,7 +485,7 @@ function SupportedBanks({ banks }: { banks: Banks }) {
           </ul>
         </div>
       )}
-      <p className="m-0">To help add a bank, share a scrubbed text copy of one of its statements; the runbook says how to make one.</p>
+      <p className="m-0">To help add a bank, share a scrubbed text copy of one of its statements: <span className="font-medium text-ink">docs/runbook.md</span> in Kopifund's repository says how to make one.</p>
     </div>
   );
 }

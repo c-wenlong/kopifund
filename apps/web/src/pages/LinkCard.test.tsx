@@ -118,12 +118,17 @@ describe("the Link a phone card", () => {
     await waitFor(() => expect(posts).toEqual([{ url: "/api/link/devices/revoke", body: { id: "dev_1" } }]));
   });
 
-  it("says the day a phone was paired in this device's time, not the UTC day", async () => {
+  it("says the day a phone was paired in this device's time", async () => {
+    // the server writes the Mac's local time with no offset (link.py), read as local
+    stub(devices([phone({ paired_at: "2026-10-03T23:30:00" })]));
+    const { unmount } = render(<LinkCard />);
+    expect(await within(await card()).findByText("paired 3 Oct 2026")).toBeInTheDocument();
+    unmount();
+    // a stamp with an offset is moved into this device's time, as every other stamp in the app
     setZone("Asia/Singapore");
     stub(devices([phone({ paired_at: "2026-10-03T22:30:00+00:00" })]));
     render(<LinkCard />);
-    const c = await card();
-    expect(await within(c).findByText("paired 4 Oct 2026")).toBeInTheDocument();
+    expect(await within(await card()).findByText("paired 4 Oct 2026")).toBeInTheDocument();
   });
 
   it("polls the device list while a code is on screen", async () => {
