@@ -278,7 +278,7 @@ export function UploadPage() {
         { key: "load", step: "load", label: "Load", state: steps.load, note: loadedOk ? `${num(loaded?.counts?.inserted ?? 0)} added` : nothingNew && !blocking.length ? "Nothing new" : undefined },
         ...(s.notion_enabled ? [{ key: "mirror", step: "mirror" as const, label: "Mirror", state: steps.mirror, note: mirror ? (mirror.code === 0 ? "Mirrored" : "Failed") : undefined }] : []),
       ]} />
-      {!s.pdftotext && <Problem message="pdftotext is not installed." hint="brew install poppler, then reload this page." />}
+      {!s.pdftotext && <Problem message="pdftotext is not installed." hint="Kopifund reads PDFs with it. Install Poppler, which brings it, then reload this page." />}
 
       <Card title="1. Add this month's statements" actions={
         busy === "upload" ? <StatusChip tone="info" icon={RUNNING_ICON} spin>Saving</StatusChip>
@@ -485,7 +485,7 @@ function SupportedBanks({ banks }: { banks: Banks }) {
           </ul>
         </div>
       )}
-      <p className="m-0">To help add a bank, run <span className="font-medium text-ink">python3 finance.py sample</span> on its PDF.</p>
+      <p className="m-0">To help add a bank, share a scrubbed text copy of one of its statements; the runbook says how to make one.</p>
     </div>
   );
 }

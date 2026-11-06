@@ -209,7 +209,7 @@ describe("Upload page", () => {
       expect(items[2]).toHaveTextContent(/YouTrip$/);
       expect(within(screen.getByRole("list", { name: "Banks coming soon" })).getByText(/Trust Bank/)).toBeInTheDocument();
       expect(screen.getAllByRole("list", { name: "Banks Kopifund reads" })).toHaveLength(1);
-      expect(screen.getByText("python3 finance.py sample")).toBeInTheDocument();
+      expect(screen.getByText(/To help add a bank, share a scrubbed text copy/)).toBeInTheDocument();
       // the card and the stepper agree: nothing was kept
       expect(screen.getAllByText("Not supported").length).toBeGreaterThan(2);
       expect(stateOf("add")).toBe("blocked");
@@ -221,7 +221,7 @@ describe("Upload page", () => {
       await add("new.pdf", "odd.pdf");
       await screen.findByText(/Saved as/);
       expect(screen.queryByRole("list", { name: "Banks Kopifund reads" })).not.toBeInTheDocument();
-      expect(screen.queryByText("python3 finance.py sample")).not.toBeInTheDocument();
+      expect(screen.queryByText(/To help add a bank/)).not.toBeInTheDocument();
     });
   });
 

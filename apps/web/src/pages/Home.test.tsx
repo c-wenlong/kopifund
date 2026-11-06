@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { Home, axisSgd, comingUpRows, lastBar } from "./Home";
+import { Home, comingUpRows, lastBar } from "./Home";
+import { axisSgd } from "../money";
 import { colourFor, stackRows } from "./SpendingExplorer";
 import { Sidebar } from "../components/Sidebar";
 import type { ComingUpRow, EyeLine, NeedsYourEye, Overview } from "../api";

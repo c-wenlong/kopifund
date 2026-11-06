@@ -4,6 +4,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { LinkDevice, LinkDevices, PendingRow } from "../types.gen";
 import { LinkCard } from "./LinkCard";
 import { json } from "../test-helpers";
+import { zoneSwitch } from "../test-zone";
+
+const setZone = zoneSwitch();
 
 // G25: the Link a phone card: mint the pair QR, list the phones, revoke one,
 // and run the phone rows' waiting -> matched or dismissed states.
@@ -113,6 +116,14 @@ describe("the Link a phone card", () => {
     expect(posts).toHaveLength(0);
     await userEvent.click(within(c).getByRole("button", { name: "Press again to revoke Test iPhone" }));
     await waitFor(() => expect(posts).toEqual([{ url: "/api/link/devices/revoke", body: { id: "dev_1" } }]));
+  });
+
+  it("says the day a phone was paired in this device's time, not the UTC day", async () => {
+    setZone("Asia/Singapore");
+    stub(devices([phone({ paired_at: "2026-10-03T22:30:00+00:00" })]));
+    render(<LinkCard />);
+    const c = await card();
+    expect(await within(c).findByText("paired 4 Oct 2026")).toBeInTheDocument();
   });
 
   it("polls the device list while a code is on screen", async () => {
