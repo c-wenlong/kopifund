@@ -61,6 +61,18 @@ extension Cents {
         return (amount.currency.map { "\($0) " } ?? "") + digits(UInt(cents.magnitude))
     }
 
+    /// The cents a typed figure means ("5.8" is 580, "12" is 1200), nil for
+    /// text that is not a plain non-negative decimal or is past `ceiling`.
+    /// The edit field reads through this so a typed figure never touches a float.
+    public static func parse(_ typed: String) -> Int? {
+        let t = typed.trimmingCharacters(in: .whitespaces)
+        guard !t.isEmpty, t.allSatisfy({ $0.isASCII && ($0.isNumber || $0 == ".") }),
+              t.filter({ $0 == "." }).count <= 1,
+              let d = Decimal(string: t, locale: Locale(identifier: "en_US_POSIX"))
+        else { return nil }
+        return from(d)
+    }
+
     private static func digits(_ cents: UInt) -> String {
         let fraction = cents % 100
         return "\(cents / 100).\(fraction < 10 ? "0" : "")\(fraction)"

@@ -122,3 +122,16 @@ func nonCodesAreRefused(raw: String) {
     r.direction = "inflow"
     #expect(r.amountText == "+SGD 12.00")
 }
+
+
+@Test func typedAmountsReadAsCentsAndPrintWithTwoDecimals() {
+    #expect(Cents.parse("5.8") == 580)
+    #expect(Cents.parse("5.80") == 580)
+    #expect(Cents.parse("12") == 1200)
+    #expect(Cents.parse(".5") == 50)
+    #expect(Cents.parse("") == nil)
+    #expect(Cents.parse("1.2.3") == nil)
+    #expect(Cents.parse("-3") == nil)
+    #expect(Cents.parse("abc") == nil)
+    #expect(Cents.text(Cents.parse("5.8")!) == "5.80")
+}
