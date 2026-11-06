@@ -669,7 +669,7 @@ PRAGMA user_version = 5;
             before = {t: c.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0]
                       for (t,) in c.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         with closing(db.connect()) as conn:
-            self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 7)
+            self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], db.SCHEMA_VERSION)
             self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
             for t, n in before.items():
                 if n:          # (the upgrade seeds the shipped buckets, which this made-up record lacks)
@@ -678,7 +678,7 @@ PRAGMA user_version = 5;
             series.set_payee(conn, "Gym", False)
             self.assertEqual(series.payees_off_in(conn), {"Gym"})
         [copy] = sorted((Path(self.tmp.name) / "backups").glob("kopifund-*.db"))
-        self.assertIn("v5-before-v7", copy.name)
+        self.assertIn(f"v5-before-v{db.SCHEMA_VERSION}", copy.name)
         # opened again at the version: nothing more to do, the edit kept
         with closing(db.connect()) as conn:
             self.assertEqual(series.payees_off_in(conn), {"Gym"})

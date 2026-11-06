@@ -1423,16 +1423,34 @@ whois` on that IP names the tailnet caller when it matters.
   punctuation dropped). Two real purchases can share an amount, a
   currency and a day, so the payee has to agree and a statement row
   takes at most one pending row. A pair the owner refuses is kept on the
-  pending row's rejected list and never offered again. Home's Needs your
-  eye lists what is still waiting; Settings' "Link a phone" card lists
-  the rows themselves (`GET /api/link/pending`, loopback) with the two
-  calls beside them: a waiting row dismissed (`POST
-  /api/link/pending/dismiss`; `POST /api/link/pending/dismiss-all`, behind a
-  second press, dismisses every waiting row at once. A row never expires on
-  its own, since a spend can wait weeks for its statement, so the owner
-  clears the ones no statement will confirm) or a wrong match put back to waiting
-  (`POST /api/link/pending/restore`, which rejects the pair it was
-  matched to).
+  pending row's rejected list and never offered again.
+- **Expiry.** A row left waiting 60 days becomes `expired`: 60 days after
+  its date, or after it last became waiting when that is later (a late post,
+  a Put back), so a row put back gets a full wait of its own. The 60 is the
+  record's `link.expire_days` setting (a whole number of days, 1 to 3650;
+  60 when unset or out of range, `pending.EXPIRE_DAYS`), kept as the scam
+  checks' thresholds are, with no field on the page yet. It happens at each
+  load (after the load's matching, so a statement that lands that load
+  still matches) and each time `GET /api/link/pending` or a pending write
+  reads the rows, never on a timer; a read with nothing due writes nothing.
+  An expired row still matches a statement that lands later; a dismissed
+  one never does. Every change of state stamps `state_changed_at`.
+- **Where the rows show.** Home's Needs your eye counts only the rows still
+  waiting (a row past its 60 days counts no more, even before a read has
+  written it expired, since Home is also read on the copilot's read-only
+  connection), and its line opens the history on Waiting. Settings' "Link a
+  phone" card lists the waiting rows (`GET /api/link/pending`, loopback),
+  each with the day it expires and Dismiss (`POST /api/link/pending/dismiss`;
+  `POST /api/link/pending/dismiss-all`, behind a second press, dismisses
+  every waiting row at once), then "Phone row history". That opens a Sheet
+  of every row the phone ever posted, newest first, filtered by All,
+  Waiting, Matched, To review or Expired (the address's `phone_rows`, so a
+  link opens it on one state and Back returns to it). Each row says its
+  date, payee, amount, state and when that state began: Waiting (with the
+  day it expires), Matched (with See the row, which opens exactly the
+  record row it matched, `key` with `hide_transfers=0`, and Not it), "Dismissed,
+  to review" and Expired, both with Put back (`POST /api/link/pending/restore`,
+  which also rejects the pair a matched row was in).
 
 ### App icon
 

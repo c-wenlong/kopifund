@@ -50,7 +50,9 @@ from .paths import data_root
 # 6: series_override and series_override_txn, the owner's edits to a
 #    recurring series (G16)
 # 7: pending_txn, the phone's rows waiting for a statement to cover them (G25)
-SCHEMA_VERSION = 7
+# 8: pending_txn.state gains 'expired' and its list comes from pending.STATES;
+#    pending_txn.state_changed_at, when a row last changed state (G25)
+SCHEMA_VERSION = 8
 SYNTHETIC_TYPE = "YouTrip Unprinted"
 
 # The schema, with each enum's list of values ({need_class}, ...) filled in by
@@ -213,6 +215,8 @@ CREATE TABLE IF NOT EXISTS series_override_txn (
 -- counting once it lands. `device_id` is the paired phone's id in the
 -- registry (devices.json, a file, so no link here); `currency` is plain text
 -- for the same reason a code no statement has used yet must still load.
+-- A row left waiting too long is expired; `state_changed_at` is when the
+-- row last changed state (an upgrade fills it from `created_at`).
 CREATE TABLE IF NOT EXISTS pending_txn (
   id INTEGER PRIMARY KEY,
   import_id TEXT NOT NULL UNIQUE,
@@ -221,10 +225,11 @@ CREATE TABLE IF NOT EXISTS pending_txn (
   amount_minor INTEGER NOT NULL,             -- signed the ledger's way (spending negative)
   currency TEXT NOT NULL CHECK (currency GLOB '[A-Z][A-Z][A-Z]'),
   payee TEXT NOT NULL DEFAULT '',
-  state TEXT NOT NULL DEFAULT 'waiting' CHECK (state IN ('waiting', 'matched', 'dismissed')),
+  state TEXT NOT NULL DEFAULT 'waiting' CHECK (state IN ({pending_state})),
   matched_txn_key TEXT,
   rejected TEXT NOT NULL DEFAULT '[]',       -- txn_keys, as JSON
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  state_changed_at TEXT NOT NULL DEFAULT ''
 ) STRICT;
 CREATE INDEX IF NOT EXISTS pending_txn_state_idx ON pending_txn(state);
 
@@ -467,13 +472,13 @@ def enums():
     before it: that change needs a SCHEMA_VERSION of its own, whose upgrade
     rebuilds the table (server/tests/test_schema_v5.py holds the lists that
     version 5 was built with)."""
-    from . import categories, planning, recurring, series, upload_log
+    from . import categories, pending, planning, recurring, series, upload_log
     from .rules_app import categorise
     return {"group_kind": categories.KINDS, "bucket": tuple(BUCKET_OF_KIND.values()),
             "cost_type": categories.COST_TYPES, "need_class": planning.NEED_CLASSES,
             "payee_kind": categorise.KINDS, "origin": upload_log.ORIGINS, "step": upload_log.STEPS,
             "step_status": upload_log.STATUSES, "series_group": series.GROUP_KINDS,
-            "cadence": recurring.CADENCES}
+            "cadence": recurring.CADENCES, "pending_state": pending.STATES}
 
 
 def _sql_list(values):
@@ -636,7 +641,8 @@ CHECKED = (("category_group", "kind", "group_kind"), ("category", "bucket", "buc
            ("category", "grp", "cost_type"), ("category", "need_class", "need_class"),
            ("payee", "kind", "payee_kind"), ("upload_attempt", "origin", "origin"),
            ("upload_step", "step", "step"), ("upload_step", "status", "step_status"),
-           ("series_override", "group_kind", "series_group"), ("series_override", "cadence", "cadence"))
+           ("series_override", "group_kind", "series_group"), ("series_override", "cadence", "cadence"),
+           ("pending_txn", "state", "pending_state"))
 
 
 def _migrate(conn):
@@ -680,6 +686,9 @@ def _migrate(conn):
                                                    WHERE g.id = category.group_id)
                      WHERE group_id IS NOT NULL""")
     _shipped_styles(conn)
+    # G25 (version 8): a phone row from before the stamp last changed state when it was posted, as far
+    # as the record can tell
+    conn.execute("UPDATE pending_txn SET state_changed_at = created_at WHERE state_changed_at = ''")
     broken = conn.execute("PRAGMA foreign_key_check").fetchall()
     if broken:
         where = sorted({f"{r[0]} -> {r[2]}" for r in broken})

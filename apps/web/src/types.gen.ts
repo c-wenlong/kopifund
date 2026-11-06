@@ -1223,9 +1223,10 @@ export type PairedDevice = {
 
 /**
  * G25: where a phone row stands: waiting for its statement row, matched to
- * it, or dismissed as no spend.
+ * it, dismissed by the owner (the history shows it as "Dismissed, to review"),
+ * or expired after waiting `expire_days` with no statement row.
  */
-export type PendingState = "waiting" | "matched" | "dismissed";
+export type PendingState = "waiting" | "matched" | "dismissed" | "expired";
 
 /**
  * G25: one spend the phone told the record about (server/finance/pending.py).
@@ -1242,11 +1243,21 @@ export type PendingRow = {
   payee: string;
   state: PendingState;
   matched_txn_key: string | null;
+  /** When the row last changed state (posted, matched, dismissed, expired or put back), a UTC stamp. */
+  state_changed_at: string;
+  /** When the phone first sent it, a UTC stamp. */
+  posted_at: string;
+  /** The day a waiting row expires, YYYY-MM-DD; null for the other states. */
+  expires_on: string | null;
 };
 
-/** GET /api/link/pending: every pending row, waiting first. */
+/**
+ * GET /api/link/pending (and each pending write): every phone row ever
+ * posted, newest first, and how many days a row waits before it expires.
+ */
 export type LinkPending = {
   rows: PendingRow[];
+  expire_days: number;
 };
 
 /**

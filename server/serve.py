@@ -52,8 +52,9 @@ server/finance/upload_steps.py, and --reload in dev_reload.py.
     GET /api/link/devices           G25: the paired phones, and the tailnet URL the pair QR carries
     GET /api/link/check             G25: {ok}: the phone's Test: on the link path only a paired, unrevoked
                                     bearer reaches it (401 otherwise), so it says the link works, not just the hub
-    GET /api/link/pending           G25: the phone rows waiting for a statement, matched or dismissed
-                                    (server/finance/pending.py); loopback only, like every read
+    GET /api/link/pending           G25: every phone row, waiting, matched, dismissed or expired (one whose
+                                    wait is over expires as it is read) (server/finance/pending.py);
+                                    loopback only, like every read
                                     not in LINK_READS
     GET /api/dashboard/layouts      G26: the saved dashboard layouts, and the active one's id
     GET /api/dashboard/layouts/<id> G26: one layout, 404 when the id is not one
@@ -154,7 +155,7 @@ privilege, never gain it.
                                     never doubles; link path, bearer required (server/finance/pending.py)
     POST /api/link/pending/dismiss  G25: {import_id}: a waiting row is no spend, never matched (loopback)
     POST /api/link/pending/dismiss-all  G25: every waiting row dismissed at once, each can be put back (loopback)
-    POST /api/link/pending/restore  G25: {import_id}: a matched or dismissed row back to waiting; a match
+    POST /api/link/pending/restore  G25: {import_id}: a matched, dismissed or expired row back to waiting; a match
                                     it was in joins its rejected list and is never offered again (loopback)
     POST /api/server/stop           G23: answer with the work it waits for, refuse new writes, wait for
                                     every request and the stats rebuild to end (DRAIN_TIMEOUT at most),
