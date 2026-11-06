@@ -39,7 +39,10 @@ struct PasteAlertSheet: View {
                 } label: {
                     Label("Paste from clipboard", systemImage: "doc.on.clipboard")
                 }
-                .disabled(!UIPasteboard.general.hasStrings)
+                // always enabled: a clipboard filled in another app while
+                // the sheet stays open redraws nothing here, so a check
+                // read at render could stay stale; an empty one changes
+                // nothing
                 Spacer()
             }
             .padding()
