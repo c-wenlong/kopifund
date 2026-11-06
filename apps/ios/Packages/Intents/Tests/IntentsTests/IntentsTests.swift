@@ -477,3 +477,21 @@ private func rows(_ container: ModelContainer) throws -> [TransactionRecord] {
     #expect(all.count == 4)
     #expect(all.allSatisfy { $0.state == "pending" && $0.duplicateOf == nil })
 }
+
+@Test @MainActor func walletFallsBackToThePatternThatHasAnAccount() throws {
+    // G24: a pattern's YNAB account is optional, so a higher-priority one
+    // saved without any must not leave Wallet taps with no account
+    var noAccount = cardPattern(autoApprove: false)
+    noAccount.id = UUID()
+    noAccount.accountID = ""
+    noAccount.priority = 10
+    let container = try store(cardPattern(autoApprove: false))
+    let context = ModelContext(container)
+    context.insert(PatternRecord(noAccount))
+    try context.save()
+    let (defaults, name) = scratchDefaults(planCurrency: "SGD")
+    defer { defaults.removePersistentDomain(forName: name) }
+    _ = try Ingest.wallet(amount: 4.53, merchant: "Kopitiam", card: nil, date: day,
+                          currency: nil, container: container, defaults: defaults)
+    #expect(try rows(container).first?.accountID == "a1")
+}

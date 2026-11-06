@@ -3,8 +3,9 @@ import SwiftData
 import Storage
 import YNABClient
 
-/// Settings: the YNAB token, plan and default account; the phone link
-/// (LinkSection); the bundled shortcuts (ShortcutsSection); the app icon;
+/// Settings: the phone link to Kopifund (LinkSection), the app's own
+/// destination, first; then YNAB's token, plan and default account, an
+/// optional extra; the bundled shortcuts (ShortcutsSection); the app icon;
 /// and the data actions.
 struct SettingsView: View {
     @Environment(\.modelContext) private var context
@@ -29,12 +30,16 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("YNAB") {
+                LinkSection(scanning: $scanning, scanProblem: $scanProblem)
+                Section {
                     SecureField("Personal access token", text: $token)
                         .textContentType(.password)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
-                        .onChange(of: token) { KeychainToken.set(token) }
+                        .onChange(of: token) {
+                            KeychainToken.set(token)
+                            DestinationState.shared.reload()
+                        }
                     Button("Fetch plans & accounts") { Task { await fetch() } }
                         .disabled(token.isEmpty)
                     if !plans.isEmpty {
@@ -44,6 +49,7 @@ struct SettingsView: View {
                         }
                         .onChange(of: planID) {
                             planName = plans.first { $0.id == planID }?.name ?? ""
+                            DestinationState.shared.reload()
                             PlanCurrency.forget()   // G24 audit: read anew for this plan
                             Task { await fetchAccounts() }
                         }
@@ -56,8 +62,11 @@ struct SettingsView: View {
                     }
                     Toggle("Post transactions as approved", isOn: $postApproved)
                     if !status.isEmpty { Text(status).font(.caption).foregroundStyle(.secondary) }
+                } header: {
+                    Text("YNAB")
+                } footer: {
+                    Text("Optional. With a token and a plan, approved rows go to YNAB too.")
                 }
-                LinkSection(scanning: $scanning, scanProblem: $scanProblem)
                 ShortcutsSection(exporting: $exporting)
                 AppIconSection()
                 Section("Data") {
@@ -70,6 +79,7 @@ struct SettingsView: View {
                     Button("Revoke token", role: .destructive) {
                         token = ""
                         KeychainToken.set(nil)
+                        DestinationState.shared.reload()
                     }
                 }
             }

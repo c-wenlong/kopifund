@@ -1,7 +1,8 @@
-# Alerts: bank alerts into YNAB (G24)
+# Alerts: bank alerts into Kopifund (G24)
 
 A personal iOS app (SwiftUI, iOS 17+) that turns bank transaction alerts into
-YNAB transactions. It exists for unlinked Singapore bank accounts (DBS, OCBC,
+transactions for the Kopifund record on your Mac, and into YNAB too when a
+token is set. It exists for unlinked Singapore bank accounts (DBS, OCBC,
 UOB), which YNAB cannot import directly.
 
 iOS does not let apps read notifications or the SMS inbox, so the app only
@@ -56,17 +57,23 @@ keep or change the ids, whichever your account allows.
 
 ## Setup
 
-1. Open the app once. In **Settings**, paste your YNAB personal access token
-   (YNAB > Account Settings > Developer Settings). It goes to the Keychain,
-   never into a file.
-2. Tap **Fetch plans & accounts**, pick your plan, then pick the default
-   account Wallet transactions post to.
+1. Open the app once. In **Settings > Kopifund**, link the phone to your
+   Mac's Kopifund (the web app's Settings > Link a phone shows the code).
+   Kopifund is where approved rows go; with no link they wait on the phone,
+   saying "Waiting for Kopifund: link this phone in Settings".
+2. Optional, YNAB too: in **Settings > YNAB**, paste your personal access
+   token (YNAB > Account Settings > Developer Settings; it goes to the
+   Keychain, never into a file), tap **Fetch plans & accounts**, pick your
+   plan, then the default account Wallet transactions post to. With a token
+   and a plan, approved rows go to YNAB as well as to Kopifund.
 3. Build a pattern: **Patterns > +**, paste a real bank alert. The detector
    pre-tags its best guesses for the amount, the payee, the date and the card
    (the digits after "ending", as in "Card ending 1234"); dashed
    words are weaker guesses that accept with one tap. Pick a field chip and
    tap or drag across words to fix anything, watch "This pattern reads",
-   then save with the account it maps to.
+   then save. No YNAB plan or account is needed; with a YNAB token the
+   builder also offers the YNAB account its rows post to (Settings' default
+   when none is picked). Save and Approve say where approved rows go.
 4. Everything else is intake: matches land in the Inbox for review, misses
    land in Unmatched where a row opens the alert itself before teaching
    anything.
@@ -212,7 +219,12 @@ Wallet captures older builds queued: rows from the Wallet intent with amount
 logs how many went.
 
 Matches wait in the Inbox. Edit payee, amount, date, category or memo, then
-approve (or approve all). Approved rows sync to YNAB as uncleared and
+approve (or approve all). A linked phone sends approved rows to the Kopifund
+hub; with no YNAB set up such a row reads "in Kopifund" once the hub has it,
+and with no link either it reads "Waiting for Kopifund: link this phone in
+Settings" until one is made. A row that printed no currency counts in the
+YNAB plan's currency, or in SGD, the record's own, when no plan is set.
+With YNAB set up, approved rows also sync to YNAB as uncleared and
 unapproved so YNAB still shows them for review; a setting flips that. Rows
 carry their sync state (pending, approved, syncing, synced, failed,
 duplicate) and an `import_id` minted on the row's first send and kept, so a

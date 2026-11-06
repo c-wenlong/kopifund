@@ -108,6 +108,7 @@ struct RootView: View {
                     return
                 }
                 SyncService.refresh(context)
+                DestinationState.shared.reload()
                 Task { await SyncService.flush(context: context) }
             }
     }

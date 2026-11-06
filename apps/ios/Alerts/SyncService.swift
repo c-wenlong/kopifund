@@ -107,7 +107,12 @@ final class SyncService {
             } catch {}
         }
 
-        let hub = HubLane.start(planCurrency: settings.planCurrency)
+        // G24: with no YNAB plan, a row that printed no currency counts in
+        // the record's own, SGD (SPEC.md: every row carries its amount in
+        // SGD), so a Kopifund-only phone is never stuck on YNAB's reading
+        let fallback = settings.planCurrency == nil && planID.isEmpty
+        let hub = HubLane.start(planCurrency: fallback ? HubLane.recordCurrency : settings.planCurrency,
+                                pinsCurrency: fallback)
         // the hub owes no YNAB setup: rows a linked phone still owes the
         // record go first, whatever their YNAB state
         if let hub { await hub.sendOwed(context: context) }
@@ -225,15 +230,24 @@ final class HubLane {
     /// again, so the hub never keeps an older copy than YNAB gets.
     private var checked: [UUID: String] = [:]
 
-    private init(link: KopifundClient, planCurrency: String?) {
+    /// G24: the currency stands in for a missing YNAB plan, so a row sent
+    /// in it keeps it: a plan added later must not relabel an accepted spend.
+    private let pinsCurrency: Bool
+
+    private init(link: KopifundClient, planCurrency: String?, pinsCurrency: Bool) {
+        self.pinsCurrency = pinsCurrency
         self.link = link
         self.planCurrency = planCurrency
     }
 
+    /// The record's own currency, for a row that printed none when no YNAB
+    /// plan is configured to count it in.
+    static let recordCurrency = "SGD"
+
     /// nil when the phone is not linked.
-    static func start(planCurrency: String?) -> HubLane? {
+    static func start(planCurrency: String?, pinsCurrency: Bool = false) -> HubLane? {
         guard let link = LinkStore.live.client() else { return nil }
-        return HubLane(link: link, planCurrency: planCurrency)
+        return HubLane(link: link, planCurrency: planCurrency, pinsCurrency: pinsCurrency)
     }
 
     /// Load the record's month for `date` once per run. A month is fetched
@@ -330,6 +344,10 @@ final class HubLane {
                 + "currency has been read to count it in. It is sent once one is."
             try? context.save()
         } else if owesHub, let currency {
+            // the record's currency stood in for a missing plan: the row
+            // keeps it from this send on, so the hub, a later repost and a
+            // YNAB plan set up later all see the spend as sent
+            if pinsCurrency, row.currency.isEmpty { row.currency = currency }
             let pendingID = row.kopifundID ?? "kph_\(row.id.uuidString.lowercased())"
             if row.kopifundID == nil { row.kopifundID = pendingID }
             let post = PendingPost(importID: pendingID, date: day, amountMinor: signed,

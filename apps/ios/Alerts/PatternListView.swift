@@ -17,7 +17,9 @@ struct PatternListView: View {
                 ForEach(patterns) { p in
                     VStack(alignment: .leading) {
                         Text(p.name)
-                        Text("\(p.direction) -> \(p.accountID) · priority \(p.priority)")
+                        // G24: a pattern needs no YNAB account; one shows only when set
+                        Text("\(p.direction)" + (p.accountID.isEmpty ? "" : " -> \(p.accountID)")
+                             + " · priority \(p.priority)")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                 }

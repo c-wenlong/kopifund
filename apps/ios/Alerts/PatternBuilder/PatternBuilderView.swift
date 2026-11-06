@@ -107,6 +107,7 @@ struct PatternBuilderView: View {
                                 defaultCategoryID: $defaultCategoryID, sourceMatch: $sourceMatch,
                                 priority: $priority, autoApprove: $autoApprove,
                                 accountOptions: accountOptions, categoryOptions: categoryOptions,
+                                showAccount: DestinationState.shared.hasToken,
                                 anchors: anchorList, onEditAnchor: editAnchor) {
                     if name != autoName { nameTouched = true }
                 }
@@ -122,7 +123,7 @@ struct PatternBuilderView: View {
         .toolbar(.hidden, for: .tabBar)
         .safeAreaInset(edge: .bottom) {
             BuilderDock(spans: spans, armed: $selected, blocking: canSave ? nil : blockingText,
-                        onSave: save)
+                        destination: DestinationState.shared.summary, onSave: save)
         }
         .onChange(of: draft.tags) {
             anchorEdits = []
@@ -195,12 +196,9 @@ struct PatternBuilderView: View {
         parts.append((m.currency.map { "\($0) " } ?? "") + figure)
         parts.append(m.date.formatted(date: .abbreviated, time: .omitted))
         if let h = m.accountHint { parts.append("card \(h)") }
-        parts.append("→ \(accountName)")
+        // G24: the YNAB account only says something when YNAB is in play
+        if let name = accountOptions.first(where: { $0.0 == accountID })?.1 { parts.append("→ \(name)") }
         return parts.joined(separator: " · ")
-    }
-
-    private var accountName: String {
-        accountOptions.first { $0.0 == accountID }?.1 ?? "pick an account"
     }
 
     private var testSection: some View {
@@ -218,16 +216,16 @@ struct PatternBuilderView: View {
 
     // MARK: - mechanics
 
-    private var canSave: Bool { built != nil && !name.isEmpty && !accountID.isEmpty }
+    /// G24: a pattern saves with no YNAB plan or account. Its rows land in
+    /// the Inbox either way and go where `Destination` says on approval; a
+    /// YNAB send with no account on the pattern takes Settings' default.
+    private var canSave: Bool { built != nil && !name.isEmpty }
 
     private var blockingText: String {
         if built == nil {
             return buildError.isEmpty ? "tag an amount and a payee to save" : buildError
         }
         if name.isEmpty { return "name it to save" }
-        if accountID.isEmpty {
-            return accountOptions.isEmpty ? "fetch accounts in Settings to save" : "pick an account to save"
-        }
         return ""
     }
 

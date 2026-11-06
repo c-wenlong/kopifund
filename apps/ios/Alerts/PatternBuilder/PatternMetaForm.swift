@@ -14,6 +14,8 @@ struct PatternMetaForm: View {
     @Binding var autoApprove: Bool
     let accountOptions: [(String, String)]
     let categoryOptions: [(String, String)]
+    /// G24: the YNAB account is an optional extra, shown only with a token.
+    var showAccount = true
     /// G24: each field's before and after text, as the pattern holds it.
     var anchors: [PatternAnchors.Anchor] = []
     var onEditAnchor: (PatternAnchors.Edit) -> Void = { _ in }
@@ -35,14 +37,16 @@ struct PatternMetaForm: View {
                         Text("Inflow").tag(AlertPattern.Direction.inflow)
                     }.pickerStyle(.segmented)
                 }
-                divider
-                fieldRow("Account") {
-                    Picker("Account", selection: $accountID) {
-                        if accountOptions.isEmpty {
-                            Text("Fetch accounts in Settings first").tag("")
-                        }
-                        ForEach(accountOptions, id: \.0) { Text($0.1).tag($0.0) }
-                    }.labelsHidden()
+                if showAccount {
+                    divider
+                    fieldRow("YNAB account") {
+                        Picker("YNAB account", selection: $accountID) {
+                            // optional: a YNAB send with none takes Settings' default
+                            Text(accountOptions.isEmpty ? "Fetch accounts in Settings" : "Default account")
+                                .tag("")
+                            ForEach(accountOptions, id: \.0) { Text($0.1).tag($0.0) }
+                        }.labelsHidden()
+                    }
                 }
             }
             .background(Color(.secondarySystemGroupedBackground))
