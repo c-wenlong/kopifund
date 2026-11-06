@@ -105,7 +105,7 @@ final class BuilderEdgeTests: XCTestCase {
         }
         XCTAssertEqual(segs.first, .ignore)
         guard case .literal(let kept) = segs[1] else { return XCTFail("\(segs)") }
-        XCTAssertEqual(kept, "2026 we had now seen ")
+        XCTAssertEqual(kept, "now seen ")
         let p = AlertPattern(name: "p", direction: .outflow, accountID: "a",
                              segments: segs, sampleText: sample)
         let november = "Dear customer, on 3 Nov 2026 we had now seen SGD 9.00 at TOAST BOX"
@@ -137,21 +137,36 @@ final class BuilderEdgeTests: XCTestCase {
         XCTAssertEqual(t.payee, "TOAST BOX")
     }
 
-    func test_kept_edges_are_whole_words_and_drop_a_lone_month() {
-        XCTAssertEqual(PatternBuilder.keptEdge(of: "Dear customer, on 27 Oct 2026 we had now seen ", atEnd: true),
-                       "2026 we had now seen ")
-        XCTAssertEqual(PatternBuilder.keptEdge(of: "This is your alert dated Oct for spend at ", atEnd: true),
-                       "dated Oct for spend at ")
-        XCTAssertEqual(PatternBuilder.keptEdge(of: "Hello this is a long greeting that ran Oct ", atEnd: true),
-                       "greeting that ran Oct ")
-        XCTAssertEqual(PatternBuilder.keptEdge(of: " on 27 Oct 2026. Thank you for banking with us.", atEnd: false),
-                       " on 27 Oct 2026. Thank")
-        XCTAssertEqual(PatternBuilder.keptEdge(of: " was charged in Oct 2026 by the merchant here", atEnd: false),
-                       " was charged in Oct 2026")
-        XCTAssertEqual(PatternBuilder.keptEdge(of: " ok thanks for using our card today in Sept 2026", atEnd: false),
-                       " ok thanks for using our")
-        XCTAssertEqual(PatternBuilder.keptEdge(of: "https://bank.example/alerts/0123456789 ", atEnd: true),
+    /// G24: an anchor is the stable words right beside a field: whole
+    /// words, two that do not change at most, never past the end of an
+    /// earlier clause or the field's own line, and never a lone month.
+    func test_anchors_are_the_nearest_stable_words() {
+        XCTAssertEqual(PatternBuilder.anchorBefore("Dear customer, on 27 Oct 2026 we had now seen "),
+                       "now seen ")
+        XCTAssertEqual(PatternBuilder.anchorBefore("This is your alert dated Oct for spend at "),
+                       "spend at ")
+        XCTAssertEqual(PatternBuilder.anchorBefore("Dear Customer, you charged "), "you charged ")
+        XCTAssertEqual(PatternBuilder.anchorBefore(" from MERLION/HBR card ending "), "card ending ")
+        XCTAssertEqual(PatternBuilder.anchorBefore(" card ending 6529 to "), "ending 6529 to ",
+                       "digits fold, so they do not count")
+        XCTAssertEqual(PatternBuilder.anchorBefore("Your Scan & Pay Transfer dated "), "Transfer dated ")
+        XCTAssertEqual(PatternBuilder.anchorBefore("completed.\nDate & Time:\n"), "Date & Time:\n",
+                       "a field that starts its line anchors on the label above")
+        XCTAssertEqual(PatternBuilder.anchorBefore("Transfer ran Oct for 4 days at "), "days at ")
+        XCTAssertEqual(PatternBuilder.anchorBefore("ran on 27 Oct "), "ran on 27 Oct ",
+                       "folded words ride along until two stable ones or the edge")
+        XCTAssertEqual(PatternBuilder.anchorBefore("https://bank.example/alerts/0123456789 "),
                        "https://bank.example/alerts/0123456789 ", "a word longer than the edge is kept whole")
+
+        XCTAssertEqual(PatternBuilder.anchorAfter(" on 27 Oct 2026. Thank you for banking with us."),
+                       " on 27 Oct 2026.")
+        XCTAssertEqual(PatternBuilder.anchorAfter(" was charged in Oct 2026 by the merchant here"),
+                       " was charged")
+        XCTAssertEqual(PatternBuilder.anchorAfter(" ref TXN-77"), " ref TXN-77")
+        XCTAssertEqual(PatternBuilder.anchorAfter(". Thank you"), ".")
+        XCTAssertEqual(PatternBuilder.anchorAfter("\nThank you for using us."), "\n",
+                       "a field that ends its line keeps only the break")
+        XCTAssertEqual(PatternBuilder.anchorAfter("\n\nThank you."), "\n\n")
     }
 
     /// The public builder used to crash the process on a date span it could

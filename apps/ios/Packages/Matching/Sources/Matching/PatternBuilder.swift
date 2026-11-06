@@ -37,12 +37,16 @@ public struct PatternBuilder {
         return spans
     }
 
-    /// How many characters at each free end of the text stay an anchor before
-    /// the rest is shed as a wildcard: alerts often carry a changing prefix
-    /// ("You have") or a changing suffix (reference numbers), but the words
-    /// hugging the captures ("charged", "at") are what makes the alert this
-    /// alert.
+    /// The most characters an anchor keeps beside a capture. A single word
+    /// longer than this is still kept whole.
     private static let edgeAnchor = 24
+
+    /// The most words that do not change between alerts an anchor keeps
+    /// beside a capture: "Date & Time:", "card ending 6529 to", "You
+    /// charged". Two pin the field down; a third word away from it is
+    /// usually the part of the sentence that changes ("Scan & Pay Transfer
+    /// dated" vs "Transfer dated").
+    private static let anchorWords = 2
 
     /// Build the segment list from tagged spans. Throws when a required
     /// capture is missing, a field other than ignore is tagged twice (two
@@ -74,8 +78,17 @@ public struct PatternBuilder {
         }
         flush(&literalBuffer, into: &segments)
 
-        segments = shedLooseEdges(segments)
+        segments = keepAnchors(segments)
+        try checkBorders(segments)
 
+        guard segments.contains(where: { $0 == .amount }) else { throw BuildError.missingField("amount") }
+        guard segments.contains(where: { $0 == .payee }) else { throw BuildError.missingField("payee") }
+        return segments
+    }
+
+    /// The payee and the card need a fixed word right beside them; see
+    /// `segments`. Also run on segments whose anchors the user edited.
+    static func checkBorders(_ segments: [AlertPattern.Segment]) throws {
         // A wildcard beside a line capture cannot draw the border the tags
         // meant: a lazy capture shrinks to one letter while the wildcard
         // absorbs its words, and this blurs the payee and the card alike.
@@ -115,10 +128,12 @@ public struct PatternBuilder {
                 }
             }
         }
+    }
 
-        guard segments.contains(where: { $0 == .amount }) else { throw BuildError.missingField("amount") }
-        guard segments.contains(where: { $0 == .payee }) else { throw BuildError.missingField("payee") }
-        return segments
+    /// Whitespace runs as a literal keeps them: one space, or a line break.
+    static func collapsed(_ s: String) -> String {
+        s.replacingOccurrences(of: #"\s*[\r\n]+\s*"#, with: "\n", options: .regularExpression)
+            .replacingOccurrences(of: #"[^\S\n]+"#, with: " ", options: .regularExpression)
     }
 
     private static func flush(_ buffer: inout String, into segments: inout [AlertPattern.Segment]) {
@@ -126,8 +141,14 @@ public struct PatternBuilder {
         // a newline the sample printed is part of the template: keep it so
         // the regex can require the same break, while ordinary space runs
         // stay a single anchor space
-        let lined = buffer.replacingOccurrences(of: #"\s*[\r\n]+\s*"#, with: "\n",
+        //
+        // A blank line straight after a capture is kept as "\n\n" for now:
+        // after the payee it says the name is a paragraph of its own and may
+        // wrap (`keepAnchors` drops it everywhere else).
+        let blank = buffer.range(of: #"\A[^\S\n]*\r?\n[^\S\n]*\r?\n"#, options: .regularExpression) != nil
+        var lined = buffer.replacingOccurrences(of: #"\s*[\r\n]+\s*"#, with: "\n",
                                                 options: .regularExpression)
+        if blank { lined = "\n" + lined }
         let collapsed = lined.replacingOccurrences(of: #"[^\S\n]+"#, with: " ",
                                                    options: .regularExpression)
         segments.append(.literal(collapsed))
@@ -147,60 +168,164 @@ public struct PatternBuilder {
         }
     }
 
-    /// Long literals on the free edges shed most of themselves: the whole
-    /// words within ~24 chars of a capture keep their anchor job, the rest
-    /// becomes `ignore`, so a changed footer or greeting does not break the
-    /// pattern.
-    private static func shedLooseEdges(_ segments: [AlertPattern.Segment]) -> [AlertPattern.Segment] {
-        var out = segments
-        if case .literal(let s) = out.first, s.count > edgeAnchor {
-            out[0] = .literal(keptEdge(of: s, atEnd: true))
-            out.insert(.ignore, at: 0)
+    /// G24: a field is found by the stable words right around it, not by
+    /// every word of the alert. The literal before a capture keeps only its
+    /// nearest words (`anchorBefore`) and the literal after it only what
+    /// bounds it (`anchorAfter`); the rest becomes `ignore`, so a changed
+    /// greeting, a reworded sentence, a new footer or an extra line between
+    /// the fields no longer breaks the pattern. A literal short enough that
+    /// both anchors cover it stays whole. A literal beside an ignore span the
+    /// user tagged stays as it is: the user drew that border.
+    ///
+    /// After the last capture only its own line counts: a payee or card
+    /// keeps the words that end it, an amount or a date (which read their
+    /// own end) one word, and a capture that ends its line just the line
+    /// break. The rest of the alert, its footer, is let go.
+    static func keepAnchors(_ segments: [AlertPattern.Segment]) -> [AlertPattern.Segment] {
+        func isCapture(_ s: AlertPattern.Segment?) -> Bool {
+            guard let s else { return false }
+            switch s {
+            case .literal, .ignore: return false
+            default: return true
+            }
         }
-        if case .literal(let s) = out.last, s.count > edgeAnchor {
-            out[out.count - 1] = .literal(keptEdge(of: s, atEnd: false))
-            out.append(.ignore)
+        var out: [AlertPattern.Segment] = []
+        for (i, seg) in segments.enumerated() {
+            guard case .literal(let s) = seg else { out.append(seg); continue }
+            let prev = i > 0 ? segments[i - 1] : nil
+            let next = i + 1 < segments.count ? segments[i + 1] : nil
+            // a blank line counts only right after the payee
+            let text = prev == .payee ? s : collapseBlank(s)
+            switch (prev, next) {
+            case (nil, let n) where isCapture(n):
+                let tail = anchorBefore(text)
+                if tail.count < text.count { out.append(.ignore) }
+                out.append(.literal(tail))
+            case (let p?, nil) where isCapture(p):
+                // an amount or a date reads its own end, so one word after
+                // it is enough to tell this alert from a look-alike
+                let head = anchorAfter(text, stableWords: p == .amount || isDate(p) ? 1 : anchorWords)
+                if !head.isEmpty { out.append(.literal(head)) }
+                if head.count < text.count { out.append(.ignore) }
+            case (let p, let n) where isCapture(p) && isCapture(n):
+                let head = anchorAfter(text)
+                let tail = anchorBefore(text)
+                if head.count + tail.count >= text.count {
+                    out.append(.literal(text))
+                } else {
+                    out.append(.literal(head))
+                    out.append(.ignore)
+                    out.append(.literal(tail))
+                }
+            default:
+                out.append(.literal(text))
+            }
         }
         return out
     }
 
-    /// Audit: the part of an edge literal that stays an anchor, cut at a word
-    /// boundary. Cutting by character count kept "ct" of "Oct" as a fixed
-    /// word, so the pattern died the next month. Whole words are kept from
-    /// the capture's side (`atEnd`: the literal's tail, before the first
-    /// capture; otherwise its head, after the last) while they fit in
-    /// `edgeAnchor` characters; a word longer than that is kept whole. A
-    /// month name left at the cut lost the number beside it that made it a
-    /// date, so it would anchor the sample's month: it goes too.
-    static func keptEdge(of s: String, atEnd: Bool) -> String {
-        // the start index of every word, in order
-        var starts: [String.Index] = []
+    private static func isDate(_ s: AlertPattern.Segment) -> Bool {
+        if case .date = s { return true }
+        return false
+    }
+
+    private static func collapseBlank(_ s: String) -> String {
+        s.hasPrefix("\n\n") ? String(s.dropFirst()) : s
+    }
+
+    /// One whitespace-free word of a literal, by index range.
+    private struct Word {
+        var range: Range<String.Index>
+        var text: Substring
+    }
+
+    private static func words(in s: Substring) -> [Word] {
+        var out: [Word] = []
         var i = s.startIndex
         while i < s.endIndex {
-            if !s[i].isWhitespace, i == s.startIndex || s[s.index(before: i)].isWhitespace {
-                starts.append(i)
+            if s[i].isWhitespace { i = s.index(after: i); continue }
+            let j = s[i...].firstIndex(where: \.isWhitespace) ?? s.endIndex
+            out.append(Word(range: i..<j, text: s[i..<j]))
+            i = j
+        }
+        return out
+    }
+
+    /// A word that reads the same in the next alert: letters, no digit, not
+    /// a month name. Digits and dates fold to wildcards in the regex, and a
+    /// mark on its own ("&", "-", "/") says little, so neither counts
+    /// toward `anchorWords`.
+    private static func isStable(_ w: Substring) -> Bool {
+        !w.contains(where: \.isNumber) && w.contains(where: \.isLetter)
+            && !LiteralPattern.isMonthName(String(w))
+    }
+
+    private static func endsClause(_ w: Substring) -> Bool {
+        guard let c = w.last else { return false }
+        return ".,;:!?".contains(c)
+    }
+
+    /// The end of a literal that stays in front of the next capture: the
+    /// words on the capture's own line nearest it, at most `anchorWords`
+    /// stable ones, at most `edgeAnchor` characters, never reaching back
+    /// past the end of an earlier clause ("Dear Customer, you charged"
+    /// keeps "you charged"). A capture that starts its line keeps the
+    /// line before it instead, which is usually its label ("Amount:").
+    /// A month name left at the cut lost the number that made it a date,
+    /// so it goes too.
+    static func anchorBefore(_ s: String) -> String {
+        var lineEnd = s.endIndex
+        var lineStart = s[..<lineEnd].lastIndex(of: "\n").map { s.index(after: $0) } ?? s.startIndex
+        var ws = words(in: s[lineStart..<lineEnd])
+        if ws.isEmpty {
+            // the capture starts its line: anchor on the label line above
+            guard let nl = s[..<lineEnd].lastIndex(of: "\n") else { return s }
+            lineEnd = nl
+            lineStart = s[..<lineEnd].lastIndex(of: "\n").map { s.index(after: $0) } ?? s.startIndex
+            ws = words(in: s[lineStart..<lineEnd])
+            if ws.isEmpty { return String(s[nl...]) }
+        }
+        var k = ws.count - 1
+        var stable = isStable(ws[k].text) ? 1 : 0
+        while k > 0 {
+            let w = ws[k - 1]
+            if endsClause(w.text) || stable >= anchorWords
+                || s.distance(from: w.range.lowerBound, to: lineEnd) > edgeAnchor { break }
+            k -= 1
+            if isStable(w.text) { stable += 1 }
+        }
+        if k < ws.count - 1, LiteralPattern.isMonthName(String(ws[k].text)) { k += 1 }
+        return String(s[ws[k].range.lowerBound...])
+    }
+
+    /// The start of a literal that stays after a capture: the words on the
+    /// capture's line that follow it, by the same limits as `anchorBefore`,
+    /// up to and including a word that ends a clause. A capture that ends
+    /// its line keeps only the line break (and a blank line after it, which
+    /// lets a payee wrap): the next line is a new field or a footer, and
+    /// either may change.
+    static func anchorAfter(_ s: String, stableWords: Int = anchorWords) -> String {
+        let lineEnd = s.firstIndex(of: "\n") ?? s.endIndex
+        let ws = words(in: s[s.startIndex..<lineEnd])
+        guard !ws.isEmpty else {
+            guard lineEnd < s.endIndex else { return s }
+            let rest = s[lineEnd...]
+            return String(rest.prefix(while: { $0 == "\n" }))
+        }
+        var k = 0
+        var stable = isStable(ws[0].text) ? 1 : 0
+        if !endsClause(ws[0].text) {
+            while k + 1 < ws.count {
+                let w = ws[k + 1]
+                if stable >= stableWords
+                    || s.distance(from: s.startIndex, to: w.range.upperBound) > edgeAnchor { break }
+                k += 1
+                if isStable(w.text) { stable += 1 }
+                if endsClause(w.text) { break }
             }
-            i = s.index(after: i)
         }
-        func wordEnd(_ start: String.Index) -> String.Index {
-            s[start...].firstIndex(where: \.isWhitespace) ?? s.endIndex
-        }
-        func isMonth(_ start: String.Index) -> Bool {
-            LiteralPattern.isMonthName(String(s[start..<wordEnd(start)]))
-        }
-        guard !starts.isEmpty else { return s }
-        if atEnd {
-            var k = starts.count - 1
-            while k > 0, s.distance(from: starts[k - 1], to: s.endIndex) <= edgeAnchor { k -= 1 }
-            if k < starts.count - 1, isMonth(starts[k]) { k += 1 }
-            return String(s[starts[k]...])
-        } else {
-            var k = 0
-            while k + 1 < starts.count,
-                  s.distance(from: s.startIndex, to: wordEnd(starts[k + 1])) <= edgeAnchor { k += 1 }
-            if k > 0, isMonth(starts[k]) { k -= 1 }
-            return String(s[..<wordEnd(starts[k])])
-        }
+        if k > 0, LiteralPattern.isMonthName(String(ws[k].text)) { k -= 1 }
+        return String(s[..<ws[k].range.upperBound])
     }
 
     public static func spanText(in text: String, tokens: [Token], span: Span) -> String {

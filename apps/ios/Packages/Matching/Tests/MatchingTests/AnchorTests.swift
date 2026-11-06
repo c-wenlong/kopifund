@@ -234,8 +234,9 @@ final class AnchorTests: XCTestCase {
     }
 
     /// A payee never spans lines, so a new line appearing between the payee
-    /// and its next anchor cannot be absorbed into the name. The alert
-    /// lands in Unmatched for re-teaching rather than posting a junk payee.
+    /// and the rest of the alert cannot be absorbed into the name. G24: the
+    /// payee is bounded by its own line break alone, so the alert still
+    /// reads, with the name and nothing of the new line.
     func test_a_payee_capture_cannot_swallow_the_next_line() throws {
         let mail = "Paid SGD 4.80\nTo Ah Ma Noodles\nRef kept fixed"
         let p = try pattern(from: mail) { _, t in
@@ -247,8 +248,8 @@ final class AnchorTests: XCTestCase {
         }
         let next = "Paid SGD 9.00\nTo Toast Box\nBalance SGD 90.20\nRef kept fixed"
         switch Matcher.match(text: next, source: "mail", receivedAt: Date(), patterns: [p]) {
-        case .matched(let t): XCTFail("swallowed a line: \(t.payee)")
-        case .unmatched: break
+        case .matched(let t): XCTAssertEqual(t.payee, "Toast Box")
+        case .unmatched(let r): XCTFail("unmatched: \(r)")
         }
     }
 

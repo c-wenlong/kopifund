@@ -116,6 +116,7 @@ public enum Matcher {
         // required
         let blocks = p.segments.split(separator: .ignore, omittingEmptySubsequences: true)
         var dateGroup = 0
+        let stop = restart(of: p)
         var pattern = #"\A"#
         for (b, block) in blocks.enumerated() {
             // a block that opens on a literal starts with that literal's
@@ -152,7 +153,16 @@ public enum Matcher {
                     // payee that ends the template reaches its line's end,
                     // not the text's, so trailing boilerplate stays out of
                     // the name.
-                    pattern += lineCapture("payee", atLineEnd: atLineEnd(p, seg))
+                    //
+                    // G24: a payee the sample followed with a blank line is a
+                    // paragraph of its own, so a long name the bank wrapped
+                    // onto a second or third line still reads whole
+                    if k != block.index(before: block.endIndex),
+                       case .literal(let next) = block[block.index(after: k)], next.hasPrefix("\n\n") {
+                        pattern += paragraphCapture("payee", stop: stop)
+                    } else {
+                        pattern += lineCapture("payee", atLineEnd: atLineEnd(p, seg), stop: stop)
+                    }
                 case .date(let f):
                     pattern += Amounts.noNumberBefore + "(?<date\(dateGroup)>\(f.regex))"
                     dateGroup += 1
@@ -161,7 +171,7 @@ public enum Matcher {
                     // the capture reads the whole tagged text, punctuation
                     // and all; the sample's value is what a later alert must
                     // equal
-                    pattern += lineCapture("accountHint", atLineEnd: atLineEnd(p, seg))
+                    pattern += lineCapture("accountHint", atLineEnd: atLineEnd(p, seg), stop: stop)
                 }
             }
             pattern += ")"
@@ -182,9 +192,48 @@ public enum Matcher {
     /// tries one character first (`??`), then grows. One that ends the
     /// template reads greedily to its line's end; nothing follows it, so it
     /// never backtracks.
-    private static func lineCapture(_ name: String, atLineEnd: Bool) -> String {
-        atLineEnd ? #"(?<\#(name)>\S(?:[^\r\n]*\S)?)"#
-                  : #"(?<\#(name)>\S(?:[^\r\n]{0,\#(maxCaptureLength - 2)}?\S)??)"#
+    ///
+    /// G24: `stop`, when set, is the words the template opens on. A name
+    /// never holds them: with only the nearest words anchoring a field, a
+    /// line that repeats the template ("...was declined, you charged SGD
+    /// 4.80 at ...") would otherwise let the payee read across the repeat.
+    private static func lineCapture(_ name: String, atLineEnd: Bool, stop: String? = nil) -> String {
+        let c = char(stop)
+        let open = stop.map { "(?!\($0))" } ?? ""
+        return atLineEnd ? #"(?<\#(name)>\#(open)\S(?:\#(c)*\S)?)"#
+                         : #"(?<\#(name)>\#(open)\S(?:\#(c){0,\#(maxCaptureLength - 2)}?\S)??)"#
+    }
+
+    /// One character of a line capture, never the start of `stop`.
+    private static func char(_ stop: String?) -> String {
+        stop.map { "(?:(?!\($0))[^\r\n])" } ?? #"[^\r\n]"#
+    }
+
+    /// A payee that may wrap: its first line, then up to two more non-blank
+    /// lines, as few as the blank line after it allows. Each line starts and
+    /// ends on a non-space; the reading joins the lines with one space.
+    private static func paragraphCapture(_ name: String, stop: String?) -> String {
+        let open = stop.map { "(?!\($0))" } ?? ""
+        let line = open + #"\S(?:\#(char(stop)){0,\#(maxCaptureLength - 2)}\S)?"#
+        return #"(?<\#(name)>"# + line + #"(?:[^\S\n]*+\n[^\S\n]*+"# + line + "){0,2}?)"
+    }
+
+    /// The words the template opens on, as a case-blind regex: the last
+    /// line of the literal before the first capture that holds a word.
+    /// Nil when the template opens on a capture.
+    private static func restart(of p: AlertPattern) -> String? {
+        for seg in p.segments {
+            switch seg {
+            case .ignore: continue
+            case .literal(let s):
+                let line = (s.components(separatedBy: "\n").last { $0.contains(where: \.isLetter) } ?? "")
+                    .trimmingCharacters(in: .whitespaces)
+                guard line.contains(where: \.isLetter) else { return nil }
+                return "(?i:" + LiteralPattern.pattern(for: line, trailingSpace: false) + ")"
+            default: return nil
+            }
+        }
+        return nil
     }
 
     /// A capture ends its line when nothing but whitespace literals follows
@@ -259,7 +308,9 @@ public enum Matcher {
         guard parsed.decimals <= 2 else {
             return .failure(MatchError("amount \(a) has \(parsed.decimals) decimals; the app keeps cents"))
         }
-        guard let py = payee?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // a wrapped payee's lines join with one space
+        guard let py = payee?.replacingOccurrences(of: #"\s*\n\s*"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:-")), !py.isEmpty else {
             return .failure(MatchError("payee not readable"))
         }
