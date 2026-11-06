@@ -17,6 +17,7 @@ import { formatAmount } from "../money";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { useAction } from "../components/useAction";
+import { useArmed } from "../components/useArmed";
 import type { LinkDevice, LinkDevices, LinkPending, PairToken, PendingRow } from "../types.gen";
 
 export function LinkCard() {
@@ -137,29 +138,17 @@ export function LinkCard() {
 function DeviceRow({ device, onRevoked, onError }: {
   device: LinkDevice; onRevoked: () => void; onError: (m: string | null) => void;
 }) {
-  const [armed, setArmed] = useState(false);
   const { running: busy, run } = useAction();
-  const disarm = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (disarm.current) clearTimeout(disarm.current);
-  }, []);
+  const confirm = useArmed();
 
-  async function revoke() {
-    // the first press asks; a second within a few seconds revokes
-    if (!armed) {
-      setArmed(true);
-      if (disarm.current) clearTimeout(disarm.current);
-      disarm.current = setTimeout(() => setArmed(false), 4000);
-      return;
-    }
-    if (disarm.current) clearTimeout(disarm.current);
-    setArmed(false);
+  // a revoked phone cannot be paired back: the first press asks (useArmed)
+  const revoke = () => confirm.press(() => {
     onError(null);
-    await run("write", async () => {
+    return run("write", async () => {
       await postJSON("/api/link/devices/revoke", JSON.stringify({ id: device.id }));
       onRevoked();
     }, { onError });
-  }
+  });
 
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line px-3 py-1.5 first:border-t-0">
@@ -168,9 +157,9 @@ function DeviceRow({ device, onRevoked, onError }: {
       <span className="num shrink-0 text-ink-3">paired {formatDay(device.paired_at.slice(0, 10))}</span>
       {device.revoked
         ? <span className="shrink-0 text-[12px] text-ink-3">revoked</span>
-        : <Button size="sm" disabled={busy} onBlur={() => setArmed(false)} onClick={() => void revoke()}
-            aria-label={armed ? `Press again to revoke ${device.name}` : `Revoke ${device.name}`}>
-            {armed ? "Press again to revoke" : "Revoke"}
+        : <Button size="sm" disabled={busy} onBlur={confirm.disarm} onClick={revoke}
+            aria-label={confirm.armed ? `Press again to revoke ${device.name}` : `Revoke ${device.name}`}>
+            {confirm.armed ? "Press again to revoke" : "Revoke"}
           </Button>}
     </li>
   );
@@ -181,36 +170,24 @@ function DeviceRow({ device, onRevoked, onError }: {
 function DismissAll({ count, onDone, onError }: {
   count: number; onDone: () => void; onError: (m: string | null) => void;
 }) {
-  const [armed, setArmed] = useState(false);
   const { running: busy, run } = useAction();
-  const disarm = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (disarm.current) clearTimeout(disarm.current);
-  }, []);
+  const confirm = useArmed();
 
-  async function go() {
-    if (!armed) {
-      setArmed(true);
-      if (disarm.current) clearTimeout(disarm.current);
-      disarm.current = setTimeout(() => setArmed(false), 4000);
-      return;
-    }
-    if (disarm.current) clearTimeout(disarm.current);
-    setArmed(false);
+  const go = () => confirm.press(() => {
     onError(null);
-    await run("write", async () => {
+    return run("write", async () => {
       await postJSON("/api/link/pending/dismiss-all", JSON.stringify({}));
       onDone();
     }, { onError });
-  }
+  });
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-ink-2">
       <span className="min-w-0 grow basis-56">
         {count} phone rows are waiting for a statement.
       </span>
-      <Button size="sm" disabled={busy} onBlur={() => setArmed(false)} onClick={() => void go()}>
-        {armed ? `Press again to dismiss ${count}` : "Dismiss all waiting"}
+      <Button size="sm" disabled={busy} onBlur={confirm.disarm} onClick={go}>
+        {confirm.armed ? `Press again to dismiss ${count}` : "Dismiss all waiting"}
       </Button>
     </div>
   );
