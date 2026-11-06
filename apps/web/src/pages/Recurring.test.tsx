@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { choose } from "../test-select";
 import { notifyChanged } from "../api";
 import type { ActiveSeries, ComingUpRow, RecurringPage, SeriesView } from "../api";
-import { ComingUpItem, DotStrip, mergeSeries, Recurring, stepOn } from "./Recurring";
+import { ComingUpItem, DotStrip, mergeSeries, Recurring, stepOn, URGENCY } from "./Recurring";
 import { leadingIcon } from "../test-icons";
 import { json, stubMatchMedia } from "../test-helpers";
 
@@ -893,5 +893,13 @@ describe("Not recurring on Recurring, G16", () => {
       { url: "/api/recurring/payee", body: { payee: "Club", recurring: null } },
       { url: "/api/recurring/series", body: { id: "payee:Pool:3000", recurring: null } },
     ]);
+  });
+});
+
+// Audit: one order of urgency, Home's Coming up and a series' month both read it
+describe("URGENCY", () => {
+  it("puts what wants a look first", () => {
+    const order = (Object.keys(URGENCY) as (keyof typeof URGENCY)[]).sort((a, b) => URGENCY[a] - URGENCY[b]);
+    expect(order).toEqual(["late", "different", "extra", "due", "paid"]);
   });
 });

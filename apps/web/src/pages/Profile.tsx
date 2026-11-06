@@ -7,6 +7,7 @@ import { Button, buttonClass } from "../components/Button";
 import { Card } from "../components/Card";
 import { CollapsibleRows, COLLAPSED_ROWS } from "../components/CollapsibleRows";
 import { DateField } from "../components/DateField";
+import { StatusChip, type StatusTone } from "../components/StatusChip";
 import { Loaded } from "../components/States";
 import { onLinkClick, useUnsavedGuard } from "../router";
 
@@ -91,7 +92,8 @@ function AccountName({ l }: { l: Line }) {
   );
 }
 
-const CHIP = { true: "bg-good-bg text-good", false: "bg-warn-bg text-warn", null: "bg-tile text-ink-2" } as const;
+// an account's freshness: up to date, behind, or nothing to judge yet
+const CHIP_TONE = { true: "good", false: "warn", null: "neutral" } as const satisfies Record<string, StatusTone>;
 
 function Accounts({ list, folders }: { list: ProfileAccount[]; folders: ProfileT["folders"] }) {
   const rows = lines(list, folders);
@@ -112,9 +114,7 @@ function Accounts({ list, folders }: { list: ProfileAccount[]; folders: ProfileT
               <li title={l.paths?.join("\n")} className="border-t border-line py-2 first:border-t-0">
                 <div className="flex items-center justify-between gap-3">
                   <AccountName l={l} />
-                  <span className={`shrink-0 whitespace-nowrap rounded-full px-2 py-0.5 text-[12px] ${CHIP[String(l.chip.ok) as keyof typeof CHIP]}`}>
-                    {l.chip.text}
-                  </span>
+                  <span className="shrink-0"><StatusChip tone={CHIP_TONE[String(l.chip.ok) as keyof typeof CHIP_TONE]}>{l.chip.text}</StatusChip></span>
                 </div>
                 {(details.length > 0 || to) && (
                   <div className="mt-1 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 pl-7 text-[12px] text-ink-2">
