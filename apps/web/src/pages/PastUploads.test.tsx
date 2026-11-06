@@ -195,3 +195,34 @@ describe("PastUploads", () => {
     expect(screen.getByRole("link", { name: "Upload statements" })).toHaveAttribute("href", "/upload");
   });
 });
+
+describe("PastUploads that do not load", () => {
+  it("says why the history failed, and Try again lists the attempts", async () => {
+    let up = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) =>
+      up ? json(String(url).startsWith("/api/uploads?") ? list : status) : json({ error: "The record is locked." }, 500));
+    render(<PastUploads />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("The record is locked.");
+    expect(screen.queryByRole("button", { expanded: false })).not.toBeInTheDocument();
+    up = true;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findAllByRole("button", { expanded: false })).toHaveLength(2);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("says why one attempt's steps failed, inside that row, and Try again shows them", async () => {
+    let steps = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const u = String(url);
+      if (u.startsWith("/api/uploads?")) return json(list);
+      if (u === "/api/run/status") return json(status);
+      return steps ? json(detail) : json({ error: "That attempt could not be read." }, 500);
+    });
+    render(<PastUploads />);
+    fireEvent.click((await screen.findAllByRole("button", { expanded: false }))[0]);
+    expect(await screen.findByRole("alert")).toHaveTextContent("That attempt could not be read.");
+    steps = true;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Statement doesn't add up")).toBeInTheDocument();
+  });
+});

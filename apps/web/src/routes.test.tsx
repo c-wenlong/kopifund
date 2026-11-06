@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { App } from "./App";
 import { cacheable, type Overview } from "./api";
 import { bottomItems, bottomPages, isUnder, pages } from "./nav";
@@ -121,5 +121,25 @@ describe("the route table", () => {
     expect(await screen.findByRole("heading", { level: 1, name: "Upload" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Past uploads" })).toHaveAttribute("href", "/upload/history");
     expect(document.title).toBe("Upload, Kopifund");
+  });
+});
+
+describe("Home when the overview does not load", () => {
+  it("says why, and Try again asks again and draws Home", async () => {
+    let up = false;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input) => {
+      const url = String(input);
+      if (url.startsWith("/api/setup")) return json({ needed: false });
+      if (url === "/api/overview") return up ? json(overview) : json({ error: "The record is locked." }, 500);
+      return json({ error: "not loaded" }, 404);
+    });
+    window.history.pushState(null, "", "/");
+    render(<App />);
+    expect(await within(screen.getByRole("main")).findByText("The record is locked.")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Spending, last 12 months" })).not.toBeInTheDocument();
+    up = true;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("heading", { name: "Spending, last 12 months" })).toBeInTheDocument();
+    expect(screen.queryByText("The record is locked.")).not.toBeInTheDocument();
   });
 });
