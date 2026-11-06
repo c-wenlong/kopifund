@@ -9,9 +9,7 @@ final class ReviewPageUITests: XCTestCase {
         app.launchArguments = ["-seedNoCategories", "-seedSpend", "580|SGD|\(payee)|2026-10-15"]
         app.launch()
 
-        let tab = app.tabBars.buttons["Inbox"]
-        XCTAssertTrue(tab.waitForExistence(timeout: 5))
-        tab.tap()
+        openTab("Inbox", in: app)
         let row = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", payee)).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 5))
         row.tap()
