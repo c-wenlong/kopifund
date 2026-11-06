@@ -50,6 +50,11 @@ struct AlertsApp: App {
             let seeds = args.indices.filter { args[$0] == "-seedUnmatched" && $0 + 1 < args.count }
             if !seeds.isEmpty {
                 let ctx = ModelContext(c)
+                // each seeded run starts from an empty store, so one test's
+                // patterns and rows never meet the next one's
+                try? ctx.delete(model: UnmatchedRecord.self)
+                try? ctx.delete(model: TransactionRecord.self)
+                try? ctx.delete(model: PatternRecord.self)
                 for (k, i) in seeds.enumerated() {
                     ctx.insert(UnmatchedRecord(text: args[i + 1], source: "uitest",
                                                receivedAt: Date().addingTimeInterval(Double(k) * 60),
