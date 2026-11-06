@@ -392,3 +392,30 @@ func doubleAmountsPastCountingAreRefused(amount: Double) {
     u.receivedDay = nil
     #expect(u.arrivedOn == CalendarDate(arrived, in: .current))
 }
+
+// MARK: - LocalData ("Delete all data")
+
+@Test func localDataCountsWhatDeleteAllWouldRemoveThenRemovesIt() throws {
+    let context = ModelContext(try Store.memory())
+    let (defaults, name) = scratchDefaults()
+    defer { defaults.removePersistentDomain(forName: name) }
+    context.insert(PatternRecord(samplePattern()))
+    for state in ["pending", "approved", "syncing", "failed", "synced", "duplicate", "kopifund"] {
+        let r = try TransactionRecord(from: parsed("1"), accountID: "a1", categoryID: nil)
+        r.state = state
+        context.insert(r)
+    }
+    context.insert(UnmatchedRecord(text: "t", source: nil, receivedAt: day, reasons: "P: no"))
+    context.insert(MetadataRecord(key: "accounts|p1", payload: Data(), fetchedAt: day))
+    try context.save()
+    Suppression.add("You paid # to #", in: defaults)
+
+    #expect(LocalData.counts(in: context)
+            == LocalData.Counts(transactions: 7, unconfirmed: 4, patterns: 1, unmatched: 1))
+
+    LocalData.deleteAll(in: context, suppressions: defaults)
+    #expect(LocalData.counts(in: context)
+            == LocalData.Counts(transactions: 0, unconfirmed: 0, patterns: 0, unmatched: 0))
+    #expect(try context.fetchCount(FetchDescriptor<MetadataRecord>()) == 0)
+    #expect(Suppression.signatures(in: defaults).isEmpty)
+}
