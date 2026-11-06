@@ -203,7 +203,7 @@ class TripRuleTest(unittest.TestCase):
                           "Countries": ["THA"], "Notes": "",
                           "Extra keys": "1a2b3c4d5e6f, deadbeef0000\nc0ffee000000"},
                          TRIP_TYPES), TRIP_TYPES))
-        (trip,) = sync.read_trips(CFG, client)
+        (trip,) = sync.trips_from_pages(client.query_all(CFG.ds("trips")))
         self.assertEqual(trip.keys, {"1a2b3c4d5e6f", "deadbeef0000", "c0ffee000000"})
         self.assertEqual(sync.extra_keys(None), frozenset())
 
@@ -213,7 +213,8 @@ class TripRuleTest(unittest.TestCase):
         client.create(CFG.ds("trips"), notion.to_api(
             canonicalise({"Name": "Draft", "Dates": None, "Countries": [],
                           "Notes": ""}, TRIP_TYPES), TRIP_TYPES))
-        self.assertEqual([t.name for t in sync.read_trips(CFG, client)], ["Somewhere"])
+        self.assertEqual([t.name for t in sync.trips_from_pages(client.query_all(CFG.ds("trips")))],
+                         ["Somewhere"])
 
 
 class TripPlanDatesTest(unittest.TestCase):
@@ -761,9 +762,6 @@ class BudgetSeedTest(unittest.TestCase):
         return {notion.plain(p, "Name").rsplit(" · ", 1)[0]: p
                 for p in self.client.query_all(CFG.ds("budgets"))
                 if notion.plain(p, "Month") == month}
-
-    def test_months_before(self):
-        self.assertEqual(sync.months_before("2026-02", 3), ["2025-11", "2025-12", "2026-01"])
 
     def test_creates_need_and_want_rows_with_the_median(self):
         counts, _ = sync.seed_budgets(CFG, self.client, "2026-10", echo=False)

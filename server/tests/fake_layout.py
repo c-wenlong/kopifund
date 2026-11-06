@@ -21,6 +21,7 @@ import csv
 import re
 from pathlib import Path
 
+from finance.parsers import layouts
 from finance.parsers.layouts import Layout, Seen, by_months
 from finance.parsers.parse_statements import BAL_COLS, TXN_COLS, add_keys
 
@@ -48,6 +49,18 @@ LAYOUT = Layout(
     test=sees, name_file=name_upload, new_types=("Fakebank Other",),
     detected_by="`FAKEBANK STATEMENT OF ACCOUNT` on the first line",
     balance_check="opening + in - out = printed closing")
+
+
+def unregister(name="fakebank"):
+    """Take a test's layout back out of the registry (its addCleanup)."""
+    with layouts._LOCK:
+        layouts._LAYOUTS.pop(name, None)
+
+
+def unregister_bank(key="fakebank"):
+    """Take a test's bank back out of the registry (its addCleanup)."""
+    with layouts._LOCK:
+        layouts._BANKS.pop(key, None)
 
 
 def parse(text, source):

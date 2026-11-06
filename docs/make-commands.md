@@ -1476,9 +1476,8 @@ python3 server/serve.py --port 8770
 | `~/.kopifund/cache/latest.json` | `read by /api/results/<id>, one card per stat` |
 | Notion token | not needed, not read |
 
-Every result becomes one card, in the order set by `DISPLAY_ORDER` in
-[results_cache.py](../server/finance/results_cache.py), so the portfolio card sits between cash and
-runway and the CPF one, with the trips after those. The home page's tiles are the
+Each page reads the results it shows through
+[results_cache.py](../server/finance/results_cache.py). The home page's tiles are the
 Notion hub page's own headline figures, computed by the same `metrics_from()` in
 [server/analytics/publish.py](../server/analytics/publish.py) that writes them there, so the
 app never computes a headline number of its own. `PORT=9000 make serve` moves it.

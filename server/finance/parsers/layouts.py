@@ -91,11 +91,6 @@ class Layout:
     status: str = SAMPLE      # one of STATUSES: CHECKED once a real statement has parsed and balanced
 
     @property
-    def public_sample(self):
-        """Built from a public sample, and not yet checked on a real statement."""
-        return self.status == SAMPLE
-
-    @property
     def per_currency(self):
         """One folder per currency (YouTrip, Wise): the folder gives the
         parser its currency, or must agree with the statement's heading."""
@@ -149,11 +144,6 @@ def register(layout):
     return layout
 
 
-def unregister(name):
-    with _LOCK:
-        _LAYOUTS.pop(name, None)
-
-
 def register_bank(bank):
     """Add one bank to the registry; a parser module calls this at import,
     before the layouts that name it."""
@@ -163,11 +153,6 @@ def register_bank(bank):
             raise ValueError(f"bank {bank.key} is registered already, as {had}")
         _BANKS[bank.key] = bank
     return bank
-
-
-def unregister_bank(key):
-    with _LOCK:
-        _BANKS.pop(key, None)
 
 
 def _load():

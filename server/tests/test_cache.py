@@ -64,11 +64,6 @@ class TestFixtureCache(unittest.TestCase):
     def test_results_all_has_every_stat(self):
         self.assertEqual(sorted(self.results), sorted(SPEC_STATS))
 
-    def test_display_order_names_every_stat(self):
-        self.assertEqual(sorted(results_cache.DISPLAY_ORDER), sorted(SPEC_STATS))
-        self.assertEqual(results_cache.DISPLAY_ORDER[0], "monthly-cashflow")
-        self.assertEqual(results_cache.DISPLAY_ORDER[-1], "data-quality")
-
     def test_every_stat_has_the_spec_fields(self):
         for stat_id, body in self.results.items():
             with self.subTest(stat=stat_id):

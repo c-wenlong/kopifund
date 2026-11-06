@@ -27,8 +27,8 @@ from decimal import ROUND_HALF_UP, Decimal
 AS_OF = "2026-10-01"
 SOURCE = ("https://www.iras.gov.sg/taxes/individual-income-tax/basics-of-individual-income-tax/"
           "tax-residency-and-tax-rates/individual-income-tax-rates")
-RELIEF_SOURCE = ("https://www.iras.gov.sg/taxes/individual-income-tax/basics-of-individual-income-tax/"
-                 "tax-reliefs-rebates-and-deductions/tax-reliefs/earned-income-relief")
+# the earned income relief: https://www.iras.gov.sg/taxes/individual-income-tax/
+# basics-of-individual-income-tax/tax-reliefs-rebates-and-deductions/tax-reliefs/earned-income-relief
 
 # (top of the band in cents, rate on the band); None is everything above
 BRACKETS = (
