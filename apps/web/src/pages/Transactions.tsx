@@ -21,7 +21,7 @@ import { useWide } from "../components/useWide";
 import { useAction } from "../components/useAction";
 import { formatDate, formatDay, formatMonth, formatRange, formatWeekday } from "../dates";
 import { onLinkClick, useUnsavedGuard } from "../router";
-import { useUrlParams } from "../useUrlParams";
+import { pageParam, useUrlPage, useUrlParams } from "../useUrlParams";
 import type { GroupKind, NeedClass } from "../types.gen";
 import { KIND_ICON, KindIcon, NEED_ICON, EYE_ICON, SCAM_FLAG_ICON, SCAM_ICON, TRIP_ICON } from "../icons";
 
@@ -203,7 +203,7 @@ export function Transactions() {
     return p.toString();
   }, [month, category, account, q, payee, named, keys, paymentsOnly, scope.from, scope.to, scope.home, scope.spend, scope.trip, scope.income, scope.transfer,
     scope.need, scope.bucket, scope.categories, scope.notCategories, scope.notPayees, scope.external, scope.standIn, noSynthetic, hideTransfers, scam, noFx]);
-  const urlPage = Math.max(1, Math.floor(Number(params.get("page"))) || 1);
+  const urlPage = pageParam(params);
   // G13: server-side pages. The page starts again at 1 when any filter changes
   // and is clamped when the total shrinks. The total is the one the last answer
   // gave for these filters: a view that has kept the old rows on screen while
@@ -212,18 +212,7 @@ export function Transactions() {
   const [answer, setAnswer] = useState<{ data: TxnPage | null; filters: string }>({ data: null, filters });
   const waiting = answer.filters !== filters && urlPage > 1;
   const pager = usePager("transactions", waiting ? undefined : answer.data?.total, filters, urlPage);
-  // the page and the address follow each other: a click on a page number writes
-  // it, a link to another page of this list (or none) moves the list there
-  const seenUrlPage = useRef(urlPage);
-  useEffect(() => {
-    if (urlPage !== seenUrlPage.current) {
-      seenUrlPage.current = urlPage;
-      if (urlPage !== pager.page) pager.setPage(urlPage);
-    } else if (pager.page !== urlPage) {
-      seenUrlPage.current = pager.page;
-      patch({ page: pager.page > 1 ? String(pager.page) : null });
-    }
-  }, [urlPage, pager, patch]);
+  useUrlPage(pager, urlPage, patch);
   const url = `/api/transactions?${new URLSearchParams({ limit: String(pager.size), offset: String(pager.offset) })}${filters ? `&${filters}` : ""}`;
   const { data, error, loading } = useApi<TxnPage>(url);
   const [open, setOpen] = useState<string | null>(null);   // the row whose panel is open, under it
