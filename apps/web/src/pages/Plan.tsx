@@ -8,7 +8,7 @@ import { SuggestChip } from "../components/SuggestChip";
 import { chipKind, chipText, dollarsText, typedValue } from "../suggest";
 import { centsText, formatSgd, parseCents, type Cents } from "../money";
 import { formatDay, formatMonth, formatRange, isoMonth, shiftMonth } from "../dates";
-import { Button } from "../components/Button";
+import { Button, IconButton } from "../components/Button";
 import { useCopilotContext } from "../copilot/pageFilters";
 import { Card } from "../components/Card";
 import { CollapsibleRows, COLLAPSED_ROWS } from "../components/CollapsibleRows";
@@ -21,7 +21,7 @@ import { SaveBar } from "../components/SaveBar";
 import { Select } from "../components/Select";
 import { TextInput } from "../components/TextInput";
 import { Loading, Problem } from "../components/States";
-import { HEAD_ROW, ROW, TH } from "../components/tableKit";
+import { CARD_CELL, CARD_ROW, HEAD_ROW, ROW, TH } from "../components/tableKit";
 import { Tile, TileGrid } from "../components/Tile";
 import { showToast } from "../components/Toast";
 import { ForwardViewCard } from "./ForwardView";
@@ -598,8 +598,6 @@ const WIDTH: Record<Kind, string> = { date: "w-36", month: "w-36", money: "w-36"
 // Under 1280px a row is a small card (the five columns of a trip do not fit
 // beside a sidebar), each field under its own name: the name and the note take
 // the whole width, the rest sit two to a line.
-const CARD_ROW = "max-xl:relative max-xl:grid max-md:grid-cols-2 md:max-xl:grid-cols-4 max-xl:gap-2 max-xl:rounded-lg max-xl:border max-xl:border-line max-xl:p-3";
-const CARD_CELL = "max-xl:flex max-xl:min-w-0 max-xl:flex-col max-xl:gap-1 max-xl:p-0 max-xl:before:text-[12px] max-xl:before:font-medium max-xl:before:text-ink-2 max-xl:before:content-[attr(data-label)]";
 
 function ListEditor<T extends Record<string, unknown>>({ title, add, rows, onChange, blank, cols, empty }: {
   title: string; add: string; rows: T[]; onChange: (rows: T[]) => void; blank: T; cols: Col[]; empty: string;
@@ -642,8 +640,8 @@ function ListEditor<T extends Record<string, unknown>>({ title, add, rows, onCha
                   </td>
                 ))}
                 <td className="py-0.5 text-right max-xl:absolute max-xl:right-1.5 max-xl:top-1.5 max-xl:p-0">
-                  <button type="button" aria-label={`Remove ${title.toLowerCase()} row ${i + 1}`} onClick={() => onChange(rows.filter((_, j) => j !== i))}
-                    className="rounded-md p-1 text-ink-3 hover:bg-hover hover:text-ink"><Trash2 size={13} /></button>
+                  <IconButton label={`Remove ${title.toLowerCase()} row ${i + 1}`} onClick={() => onChange(rows.filter((_, j) => j !== i))}>
+                    <Trash2 size={13} /></IconButton>
                 </td>
               </tr>
             ))}
