@@ -12,7 +12,8 @@ struct AlertView: View {
     /// Fires back to the list with the toast to show. The list pops this
     /// view and only then deletes the row: deleting the record here, under
     /// a pushed view that still shows it, blanked the page or crashed it.
-    var onFinished: (String) -> Void = { _ in }
+    /// `remove` is false when the row stays in Unmatched.
+    var onFinished: (_ toast: String, _ remove: Bool) -> Void = { _, _ in }
 
     @Environment(\.modelContext) private var context
     @State private var showDismissChoices = false
@@ -89,9 +90,12 @@ struct AlertView: View {
                 NavigationLink {
                     PatternBuilderView(sampleText: record.text, source: record.source,
                                        arrivedOn: record.arrivedOn) {
-                        // the list drops the row only after the re-ingest
-                        // has read it
-                        Task { onFinished(await reIngest()) }
+                        // the list drops the row only after the re-read
+                        // has queued it
+                        Task {
+                            let (toast, moved) = await rematch()
+                            onFinished(toast, moved)
+                        }
                     }
                 } label: {
                     Text("Teach a pattern")
@@ -109,9 +113,9 @@ struct AlertView: View {
         }
         .confirmationDialog("Dismiss this alert?", isPresented: $showDismissChoices,
                             titleVisibility: .visible) {
-            Button("Just this alert") { onFinished(Triage.dismissed) }
+            Button("Just this alert") { onFinished(Triage.dismissed, true) }
             Button("Always ignore alerts like this") {
-                onFinished(Triage.ignoreShape(of: record.text))
+                onFinished(Triage.ignoreShape(of: record.text), true)
             }
             Button("Cancel", role: .cancel) {}
         } message: {
@@ -129,24 +133,27 @@ struct AlertView: View {
         }
     }
 
-    /// The saved pattern should also capture this alert: re-ingest so the
-    /// spend reaches the queue. The list drops the unmatched row once this
-    /// view is off screen.
-    private func reIngest() async -> String {
-        var outcome = "unmatched"
-        if let container = try? Store.container() {
-            outcome = (try? await Ingest.alert(text: record.text, source: record.source,
-                                               receivedAt: record.receivedAt,
-                                               arrivedOn: record.arrivedOn,
-                                               container: container)) ?? "unmatched"
+    /// G24: the saved pattern should capture this alert, and every other
+    /// waiting alert of its template: one pass over Unmatched queues them
+    /// all. This row stays for the list to drop once this page is gone.
+    /// Answers the toast and whether this alert left Unmatched.
+    private func rematch() async -> (String, Bool) {
+        let id = record.id
+        let text = record.text
+        let result: RematchResult
+        switch await PatternRematch.run(context: context, keeping: id) {
+        case .success(let r): result = r
+        case .failure(let error): return ("Pattern saved. " + PatternRematch.failed(error), false)
         }
-        // a pattern that auto-approves queues the row approved: send it now,
-        // not at the next return to the front
-        if outcome == "queued" { Task { await SyncService.flush(context: context) } }
-        switch outcome {
-        case "queued": return "Pattern saved. The alert is in your Inbox"
-        case "ignored": return "Pattern saved, but this shape is ignored"
-        default: return "Pattern saved. The alert still doesn't match"
+        let moved = result.moved.contains { $0.unmatchedID == id }
+        let others = result.moved.count - (moved ? 1 : 0)
+        if moved {
+            return (others > 0 ? result.message() : "Pattern saved. The alert is in your Inbox", true)
         }
+        if Suppression.contains(AlertShape.signature(of: text)) {
+            return ("Pattern saved, but this shape is ignored", false)
+        }
+        if others > 0 { return ("Pattern saved. \(result.message()), but not this one", false) }
+        return ("Pattern saved. The alert still doesn't match", false)
     }
 }
