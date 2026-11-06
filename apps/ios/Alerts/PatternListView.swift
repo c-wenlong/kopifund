@@ -10,6 +10,7 @@ struct PatternListView: View {
     // "always ignore" shapes, listed here so one can be undone without
     // wiping every pattern and transaction
     @State private var ignored: [String] = []
+    @State private var notice = ""
 
     var body: some View {
         NavigationStack {
@@ -55,8 +56,25 @@ struct PatternListView: View {
             .toolbar { Button { showBuilder = true } label: { Image(systemName: "plus") } }
             .sheet(isPresented: $showBuilder) {
                 NavigationStack {
-                    PasteToBuild()
+                    PasteToBuild(onSaved: patternSaved)
                 }
+            }
+        }
+        // on the stack, not the list: a list-level overlay never showed
+        // under the iOS 27 navigation bar (seen on the simulator)
+        .toast($notice)
+    }
+
+    /// G24: a new pattern can take alerts already waiting in Unmatched.
+    private func patternSaved() {
+        showBuilder = false
+        Task {
+            switch await PatternRematch.run(context: context) {
+            case .success(let result):
+                let message = result.message()
+                notice = message.isEmpty ? "Pattern saved" : "Pattern saved. \(message)"
+            case .failure(let error):
+                notice = "Pattern saved. " + PatternRematch.failed(error)
             }
         }
     }
@@ -67,6 +85,7 @@ struct PatternListView: View {
 
     struct PasteToBuild: View {
         @Environment(\.dismiss) private var dismiss
+        var onSaved: () -> Void = {}
         @State private var text = ""
         var body: some View {
             VStack {
@@ -92,7 +111,7 @@ struct PatternListView: View {
                     }
                     Spacer()
                     NavigationLink("Build pattern") {
-                        PatternBuilderView(sampleText: text, source: nil)
+                        PatternBuilderView(sampleText: text, source: nil, onSaved: onSaved)
                     }
                     .disabled(text.isEmpty)
                 }
