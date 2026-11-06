@@ -224,7 +224,9 @@ export function WaterfallChart({ steps, unit = "sgd_minor", notes, height }: {
       <ChartBox height={height}>
         <BarChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid {...GRID} />
-          <XAxis dataKey="step" {...X_AXIS} interval={0}
+          {/* G26: thin the names like the other charts' month labels (X_AXIS's minTickGap), keeping the
+              first and last, so a phone-width card never overlaps them; the gap is wider as names are */}
+          <XAxis dataKey="step" {...X_AXIS} interval="preserveStartEnd" minTickGap={16}
             tickFormatter={(v) => cutName(tickLabel(v), 12)} />
           <YAxis {...Y_AXIS} tickFormatter={(v) => tickValue(v, unit)} />
           <Tooltip cursor={{ fill: "var(--hover)" }} content={({ active, payload }) => {

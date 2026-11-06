@@ -6,7 +6,7 @@ import {
 } from "./Waterfall";
 import { joinFrames } from "./shared";
 import type { WidgetAnswer, WidgetQuery } from "../../../types.gen";
-import { navigate, useSizedCharts } from "../../../test-helpers";
+import { navigate, SizedObserver, useSizedCharts } from "../../../test-helpers";
 
 vi.mock("../../../router", async (actual) => (await import("../../../test-helpers")).withNavigate(await actual()));
 
@@ -153,6 +153,32 @@ describe("WaterfallChart", () => {
     expect(bars(container)).toHaveLength(4);
     const ticks = [...container.querySelectorAll(".recharts-xAxis .recharts-cartesian-axis-tick-value")].map((t) => t.textContent);
     expect(ticks).toEqual(["Opening", "Income", "Spend", "Closing"]);
+  });
+
+  it("thins its names on a narrow card so none overlap, keeping the first and last", () => {
+    class Narrow extends SizedObserver {
+      observe(el: Element) {
+        (this as unknown as { cb: ResizeObserverCallback }).cb(
+          [{ target: el, contentRect: { width: 300, height: 400 } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
+      }
+    }
+    vi.stubGlobal("ResizeObserver", Narrow);
+    // jsdom measures no text, so Recharts would see every name as 0 wide and thin nothing: 7px a character
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const w = (this.textContent ?? "").length * 7;
+      return { width: w, height: 12, top: 0, left: 0, right: w, bottom: 12, x: 0, y: 0, toJSON() {} };
+    });
+    const many: WaterfallStep[] = [
+      steps[0],
+      ...["Groceries and food", "Transport costs", "Entertainment", "Subscriptions", "Healthcare", "Travel bookings", "Education fees"]
+        .map((name): WaterfallStep => ({ name, kind: "out", value: -1000, before: 0, after: 0, href: null })),
+      steps[3],
+    ];
+    const { container } = render(<WaterfallChart steps={many} />);
+    const ticks = [...container.querySelectorAll(".recharts-xAxis .recharts-cartesian-axis-tick-value")].map((t) => t.textContent);
+    expect(ticks.length).toBeLessThan(many.length);
+    expect(ticks[0]).toBe("Opening");
+    expect(ticks[ticks.length - 1]).toBe("Closing");
   });
 
   it("colours a step down in danger, a step up in good, an endpoint in ink", () => {
