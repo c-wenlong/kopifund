@@ -9,6 +9,13 @@ iOS does not let apps read notifications or the SMS inbox, so the app only
 processes text handed to it: through a Shortcuts automation, the share sheet,
 or a paste box inside the app.
 
+The paste box (the clipboard button on the Inbox) is a sheet with a
+multi-line editor and **Paste from clipboard**, which takes the clipboard's
+text exactly, line breaks included. An alert's lines matter: a pattern finds
+a field by the words around it, and "To:" on one line with the merchant on
+the next only reads while that line break survives. Ingest sends the text
+through the same path as Shortcuts and the share sheet, unchanged.
+
 ## Layout
 
 | Folder | What it is |
