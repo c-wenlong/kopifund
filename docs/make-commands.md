@@ -1521,15 +1521,19 @@ loopback hub and pairing can start: see SPEC.md, "Phone link (G25)".
 ## make desktop
 
 Builds the web app, then `Kopifund.app` (G23): a Tauri shell in
-[apps/desktop/](../apps/desktop) that opens Kopifund in its own window. It runs
+[apps/desktop/](../apps/desktop) that opens Kopifund in its own window. The
+build and the install are [apps/desktop/install.sh](../apps/desktop/install.sh),
+the same installer `build_macos.sh` calls on its copy of one commit. It runs
 `npm ci` and `npm run tauri -- build --bundles app -- --locked` in `apps/desktop/`,
 building in the Rust cache `make check` and `build_macos.sh` share
 (`~/Library/Caches/Kopifund/cargo-target`, or `CARGO_TARGET_DIR`), and takes the
 build lock `build_macos.sh` takes, so the two never build or install over each
 other. It removes the last build's bundle first and stops if the build leaves
-none, then copies the new app beside `~/Applications/Kopifund.app` and swaps it
-in, keeping the old app until the new one is in place. Open it from
-Launchpad or Spotlight and keep it in the Dock.
+none or one older than the build's start, then copies the new app beside
+`~/Applications/Kopifund.app` and swaps it in, keeping the old app until the
+new one is in place. `make desktop DESKTOP_APPS=<folder>` installs into that
+folder instead (a scratch folder tests the install without touching
+`~/Applications`). Open it from Launchpad or Spotlight and keep it in the Dock.
 
 On launch the app starts `python3 server/serve.py --app` from this checkout through
 your login shell, so Homebrew's `python3` and `pdftotext`, and any key your

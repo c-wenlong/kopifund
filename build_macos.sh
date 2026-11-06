@@ -28,12 +28,11 @@ done
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUPPORT="$HOME/Library/Application Support/Kopifund"
 BUILDS="$SUPPORT/builds"
-# one Rust build cache for every version, so a rebuild takes minutes, not a fresh compile
-CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/Library/Caches/Kopifund/cargo-target}"
-case "$CARGO_TARGET_DIR" in /*) ;; *) CARGO_TARGET_DIR="$PWD/$CARGO_TARGET_DIR" ;; esac
-export CARGO_TARGET_DIR
-APP_ID="com.kopifund.desktop"
 APPS="/Applications"
+# the one installer, shared with `make desktop`: it builds the shell in one Rust
+# cache for every version (so a rebuild takes minutes, not a fresh compile) and
+# swaps the new app in
+INSTALL="$REPO/apps/desktop/install.sh"
 
 say() { printf '\n==> %s\n' "$*"; }
 fail() { printf '\nbuild_macos.sh: %s\n' "$*" >&2; exit 1; }
@@ -46,11 +45,9 @@ for tool in git python3 node npm cargo pdftotext; do
 done
 
 # one build at a time, this script or `make desktop`: they share the Rust output
-# and its bundle folder, and would delete or install each other's app. The lock
-# is a kernel flock on file descriptor 9, which this script and everything it
-# starts hold open: the kernel drops it when the run ends however it ends, so
-# it is never stale and two runs can never both hold it. (python3 takes it:
-# macOS ships no flock(1).)
+# and its bundle folder, and would delete or install each other's app; this
+# script also deletes older build folders. The lock is the one the installer
+# takes (apps/desktop/install.sh), held here for the whole run and passed down.
 mkdir -p "$SUPPORT"
 exec 9>"$SUPPORT/build.lock.file"
 python3 -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)' 2>/dev/null \
@@ -90,43 +87,10 @@ DT="$DIR/apps/desktop"; [ -d "$DT" ] || DT="$DIR/desktop"
 say "Building the web app"
 (cd "$WEB" && npm ci --no-audit --no-fund --loglevel=error && npm run build)
 
-say "Building Kopifund.app (the first build compiles Rust for a few minutes)"
-BUILT="$CARGO_TARGET_DIR/release/bundle/macos/Kopifund.app"
-# the Rust cache is shared, so the bundle from the last build sits where this one
-# lands: remove it, and accept only a bundle newer than this build's start
-rm -rf "$BUILT"
-STARTED="$DIR/BUILD"
-(cd "$DT" && npm ci --no-audit --no-fund --loglevel=error && npm run tauri -- build --bundles app -- --locked)
-[ -d "$BUILT" ] || fail "the build finished but $BUILT is not there"
-[ "$BUILT/Contents/Info.plist" -nt "$STARTED" ] || fail "$BUILT is older than this build; it is not the one just built"
+# the installer builds the shell, quits the open app (its server still reads the
+# old build folder) and swaps the new app in, keeping the old one until then
+KOPIFUND_BUILD_LOCK_HELD=1 "$INSTALL" --quit-open "$DT" "$APPS"
 trap - ERR
-
-if [ "$(osascript -e "application id \"$APP_ID\" is running" 2>/dev/null)" = true ]; then
-  say "Quitting the Kopifund that is open"
-  osascript -e "tell application id \"$APP_ID\" to quit" >/dev/null 2>&1 || true
-  for _ in $(seq 1 20); do
-    [ "$(osascript -e "application id \"$APP_ID\" is running" 2>/dev/null)" = true ] || break
-    sleep 0.5
-  done
-  # its server still reads the old build folder: replace nothing while it runs
-  [ "$(osascript -e "application id \"$APP_ID\" is running" 2>/dev/null)" != true ] \
-    || fail "Kopifund did not quit; quit it yourself and run this again (the new build is ready in $DIR)"
-fi
-
-say "Installing in $APPS"
-# copied beside the old app first, then swapped in: an interrupted or failed copy
-# leaves the old app where it was
-NEW="$APPS/.Kopifund.app.new"
-OLD="$APPS/.Kopifund.app.old"
-rm -rf "$NEW" "$OLD"
-ditto "$BUILT" "$NEW" || { rm -rf "$NEW"; fail "could not copy the app into $APPS; the old one is still there"; }
-# two renames on one volume: the old app is only deleted once the new one is in place
-if [ -e "$APPS/Kopifund.app" ]; then mv "$APPS/Kopifund.app" "$OLD"; fi
-if ! mv "$NEW" "$APPS/Kopifund.app"; then
-  [ ! -e "$OLD" ] || mv "$OLD" "$APPS/Kopifund.app"
-  fail "could not put the new app in place; the old one is back"
-fi
-rm -rf "$OLD"
 
 # the installed app needs only this build's code and the web app's dist: drop the
 # npm packages, and every older build (no app runs from them any more)

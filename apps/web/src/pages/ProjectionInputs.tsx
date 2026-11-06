@@ -12,13 +12,15 @@ import { useId } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { GrowthInputs, IncomeRow, IncomeSuggestion, ProjectionSettings, SpendHint, Suggestions } from "../api";
 import { addDays, formatMonth, isoMonth, MONTHS } from "../dates";
-import { Button } from "../components/Button";
+import { Button, IconButton } from "../components/Button";
 import { DateField } from "../components/DateField";
+import { Field } from "../components/Field";
 import { EmptyState } from "../components/EmptyState";
 import { isMoneyText, isSignedText, MoneyInput } from "../components/MoneyInput";
 import { MonthField } from "../components/MonthField";
 import { Select } from "../components/Select";
-import { HEAD_ROW, TH } from "../components/tableKit";
+import { TextInput } from "../components/TextInput";
+import { CARD_CELL, CARD_ROW, HEAD_ROW, TH } from "../components/tableKit";
 import { centsText, formatSgd, parseCents, type Cents } from "../money";
 import { SuggestChip } from "../components/SuggestChip";
 import { chipKind, chipText, claims, coversLast, dollarsText, incomeText, typedValue } from "../suggest";
@@ -178,35 +180,9 @@ const blankRow = (rows: IncomeDraft[] = []): IncomeDraft => {
   };
 };
 
-const input = "h-8 w-full min-w-0 rounded-md border border-line bg-panel px-2 text-[13px]";
-const inputBad = "h-8 w-full min-w-0 rounded-md border border-danger bg-panel px-2 text-[13px]";
-
-function Field({ label, children, className = "" }: {
-  label: string; children: (id: string) => React.ReactNode; className?: string;
-}) {
-  const id = useId();
-  return (
-    <div className={`flex min-w-0 flex-col gap-1 ${className}`}>
-      <label htmlFor={id} className="text-[12px] font-medium text-ink-2">{label}</label>
-      {children(id)}
-    </div>
-  );
-}
-
 /** The message for a box or a row, under it. The line is always there, so nothing below it moves when a message comes. */
 function Message({ id, text, className = "" }: { id?: string; text?: string; className?: string }) {
   return <p id={id} aria-live="polite" className={`m-0 min-h-4 text-[12px] leading-4 text-danger ${className}`}>{text}</p>;
-}
-
-/** A figure with its unit either side; the keypad is the decimal one, commas are taken out as they are typed. */
-function NumberBox({ id, label, value, onChange, before, after, placeholder, error, describedBy, group = true, className }: {
-  id?: string; label: string; value: string; onChange: (v: string) => void; before?: string; after?: string; placeholder?: string;
-  error?: string; describedBy?: string; group?: boolean; className?: string;
-}) {
-  return (
-    <MoneyInput id={id} label={label} value={value} onChange={onChange} before={before} after={after} placeholder={placeholder}
-      invalid={!!error} describedBy={error ? describedBy : undefined} group={group} className={className} />
-  );
 }
 
 function Section({ title, action, children }: { title: string; action?: React.ReactNode; children: React.ReactNode }) {
@@ -230,11 +206,7 @@ function AddButton({ onClick, children }: { onClick: () => void; children: React
 }
 
 function RemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button type="button" aria-label={label} onClick={onClick} className="rounded-md p-1 text-ink-3 hover:bg-hover hover:text-ink">
-      <Trash2 size={14} />
-    </button>
-  );
+  return <IconButton label={label} onClick={onClick}><Trash2 size={14} /></IconButton>;
 }
 
 const th = `${TH} px-1 whitespace-nowrap`;
@@ -245,8 +217,6 @@ const td = "px-1 py-1 align-middle";
 // Under 1280px an income row is a small card, each box under its own name
 // (eight columns do not fit beside the sidebar); the card boxes sit two to a
 // line, the name across the top. Nothing scrolls sideways.
-const CARD_ROW = "max-xl:relative max-xl:grid max-md:grid-cols-2 md:max-xl:grid-cols-4 max-xl:gap-x-2 max-xl:gap-y-2 max-xl:rounded-lg max-xl:border max-xl:border-line max-xl:p-3";
-const CARD_CELL = "max-xl:flex max-xl:min-w-0 max-xl:flex-col max-xl:gap-1 max-xl:p-0 max-xl:before:text-[12px] max-xl:before:font-medium max-xl:before:text-ink-2 max-xl:before:content-[attr(data-label)]";
 
 /** One income row on one line, or a small card on a narrow screen; the line under it is for what is wrong with it. */
 function IncomeRowEditor({ row, i, errors, set, remove, chip }: {
@@ -264,8 +234,8 @@ function IncomeRowEditor({ row, i, errors, set, remove, chip }: {
     <>
       <tr aria-label={`Income row ${i + 1}`} className={CARD_ROW}>
         <td data-label="Name" className={`${td} ${CARD_CELL} max-xl:order-1 max-xl:col-span-2 max-xl:pr-8`}>
-          <input aria-label={`Name, ${n}`} value={row.name} placeholder="Main job" className={bad("name") ? inputBad : input}
-            aria-invalid={bad("name") || undefined} aria-describedby={about("name")}
+          <TextInput aria-label={`Name, ${n}`} value={row.name} placeholder="Main job" className="w-full min-w-0 text-[13px]"
+            invalid={bad("name")} aria-describedby={about("name")}
             onChange={(e) => set({ ...row, name: e.target.value })} />
         </td>
         <td data-label="Type" className={`${td} ${CARD_CELL} max-xl:order-2`}>
@@ -287,8 +257,8 @@ function IncomeRowEditor({ row, i, errors, set, remove, chip }: {
             onChange={(to) => set({ ...row, to })} />
         </td>
         <td data-label="Gross a month" className={`${td} ${CARD_CELL} max-xl:order-3`}>
-          <NumberBox label={`Gross a month (S$), ${n}`} before="S$" value={row.gross} placeholder="0"
-            error={errors[`income.${i}.gross`]} describedBy={note} onChange={(v) => set({ ...row, gross: v })} />
+          <MoneyInput label={`Gross a month (S$), ${n}`} before="S$" value={row.gross} placeholder="0"
+            invalid={!!errors[`income.${i}.gross`]} describedBy={errors[`income.${i}.gross`] ? note : undefined} onChange={(v) => set({ ...row, gross: v })} />
         </td>
         <td data-label="Pays CPF" className={`${td} text-center max-xl:order-7 max-xl:col-span-2 max-xl:flex max-xl:items-center max-xl:gap-2 max-xl:p-0 max-xl:text-left max-xl:before:text-[12px] max-xl:before:font-medium max-xl:before:text-ink-2 max-xl:before:content-[attr(data-label)]`}>
           <input type="checkbox" aria-label={`Pays CPF, ${n}`} checked={row.cpf} className="size-5 xl:size-4"
@@ -297,8 +267,8 @@ function IncomeRowEditor({ row, i, errors, set, remove, chip }: {
         <td data-label={employment ? "Bonus" : ""} className={`${td} ${CARD_CELL} max-xl:order-6 max-xl:col-span-2 ${employment ? "" : "max-xl:hidden"}`}>
           {employment && (
             <div className="flex gap-1">
-              <NumberBox label={`Bonus (months of pay), ${n}`} value={row.bonus_months} placeholder="Months" group={false}
-                error={errors[`income.${i}.bonus_months`]} describedBy={note} className="w-20 shrink-0 max-xl:w-0 max-xl:flex-1"
+              <MoneyInput label={`Bonus (months of pay), ${n}`} value={row.bonus_months} placeholder="Months" group={false}
+                invalid={!!errors[`income.${i}.bonus_months`]} describedBy={errors[`income.${i}.bonus_months`] ? note : undefined} className="w-20 shrink-0 max-xl:w-0 max-xl:flex-1"
                 onChange={(v) => set({ ...row, bonus_months: v })} />
               <Select label={`Bonus month, ${n}`} placeholder="Paid in" value={row.bonus_month} className="min-w-0 flex-1"
                 invalid={bad("bonus_month")} onChange={(v) => set({ ...row, bonus_month: v })}
@@ -400,8 +370,8 @@ function StepEditor({ step, i, first, errors, set, remove, chip }: {
             placeholder="From the start" onChange={(from) => set({ ...step, from })} />}
         </Field>
         <Field label="A month">
-          {(id) => <NumberBox id={id} label={`Amount a month (S$), investing step ${i + 1}`} before="S$" value={step.amount}
-            placeholder="0" error={errors[`investing.${i}.amount`]} describedBy={note} onChange={(v) => set({ ...step, amount: v })} />}
+          {(id) => <MoneyInput id={id} label={`Amount a month (S$), investing step ${i + 1}`} before="S$" value={step.amount}
+            placeholder="0" invalid={!!errors[`investing.${i}.amount`]} describedBy={errors[`investing.${i}.amount`] ? note : undefined} onChange={(v) => set({ ...step, amount: v })} />}
         </Field>
         <div className="max-md:absolute max-md:right-2 max-md:top-2">
           <RemoveButton label={`Remove investing step ${i + 1}`} onClick={remove} />
@@ -433,8 +403,8 @@ export function InputsEditor({ draft, onChange, hint, inflation, errors = {}, br
   const assumeNote = useId();
   const rate = (k: Rate, label: string, placeholder?: string) => (
     <Field label={label}>
-      {(id) => <NumberBox id={id} label={label} after="% a year" value={p[k]} placeholder={placeholder} group={false}
-        error={errors[`p.${k}`]} describedBy={k === "spend_growth_pct" ? spendNote : assumeNote} onChange={(v) => setP(k, v)} />}
+      {(id) => <MoneyInput id={id} label={label} after="% a year" value={p[k]} placeholder={placeholder} group={false}
+        invalid={!!errors[`p.${k}`]} describedBy={errors[`p.${k}`] ? (k === "spend_growth_pct" ? spendNote : assumeNote) : undefined} onChange={(v) => setP(k, v)} />}
     </Field>
   );
 
@@ -486,8 +456,8 @@ export function InputsEditor({ draft, onChange, hint, inflation, errors = {}, br
         <Section title="Spending">
           <div className="grid grid-cols-2 gap-2">
             <Field label="A month">
-              {(id) => <NumberBox id={id} label="Spending a month (S$)" before="S$" value={p.spend}
-                placeholder={hint ? dollarsText(hint.per_month) : "0"} error={errors["p.spend"]} describedBy={spendNote}
+              {(id) => <MoneyInput id={id} label="Spending a month (S$)" before="S$" value={p.spend}
+                placeholder={hint ? dollarsText(hint.per_month) : "0"} invalid={!!errors["p.spend"]} describedBy={errors["p.spend"] ? spendNote : undefined}
                 onChange={(v) => setP("spend", v)} />}
             </Field>
             {rate("spend_growth_pct", "Growth", inflation)}
@@ -510,8 +480,8 @@ export function InputsEditor({ draft, onChange, hint, inflation, errors = {}, br
             {rate("salary_growth_pct", "Salary growth")}
             {rate("sums_growth_pct", "FRS and BHS growth")}
             <Field label="Milestone">
-              {(id) => <NumberBox id={id} label="Milestone (S$)" before="S$" value={p.milestone} placeholder="None"
-                error={errors["p.milestone"]} describedBy={assumeNote} onChange={(v) => setP("milestone", v)} />}
+              {(id) => <MoneyInput id={id} label="Milestone (S$)" before="S$" value={p.milestone} placeholder="None"
+                invalid={!!errors["p.milestone"]} describedBy={errors["p.milestone"] ? assumeNote : undefined} onChange={(v) => setP("milestone", v)} />}
             </Field>
           </div>
           <Message id={assumeNote} text={firstOf(errors, "p.milestone", ...RATES.filter((k) => k !== "spend_growth_pct").map((k) => `p.${k}`))} />

@@ -3,40 +3,22 @@ import userEvent from "@testing-library/user-event";
 import { App } from "./App";
 import { navigate, useUnsavedGuard } from "./router";
 import { openEyeList } from "./components/NeedsYourEye";
-
-// G13: below 768px the sidebar gives way to a top bar and a drawer.
-function setWidth(wide: boolean) {
-  window.matchMedia = ((query: string) => ({
-    matches: wide,
-    media: query,
-    onchange: null,
-    addEventListener: () => {},
-    removeEventListener: () => {},
-    addListener: () => {},
-    removeListener: () => {},
-    dispatchEvent: () => false,
-  })) as unknown as typeof window.matchMedia;
-}
-
-const original = window.matchMedia;
+import { stubMatchMedia } from "./test-helpers";
 
 beforeEach(() => {
-  window.localStorage.clear();
   window.history.pushState(null, "", "/settings");
   // no API call ever answers: the shell draws before any figure arrives
   vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise<Response>(() => {}));
 });
 
 afterEach(() => {
-  vi.restoreAllMocks();
-  window.matchMedia = original;
   window.history.pushState(null, "", "/");
 });
 
 const menuButton = () => screen.getByRole("button", { name: "Open menu" });
 
 describe("App shell on a phone", () => {
-  beforeEach(() => setWidth(false));
+  beforeEach(() => stubMatchMedia(false));
 
   it("shows a top bar with the page name in place of the sidebar", () => {
     render(<App />);
@@ -139,7 +121,7 @@ describe("App shell on a phone", () => {
 });
 
 describe("App shell on a desktop", () => {
-  beforeEach(() => setWidth(true));
+  beforeEach(() => stubMatchMedia(true));
 
   it("keeps the sidebar and shows no top bar", () => {
     render(<App />);
@@ -151,7 +133,7 @@ describe("App shell on a desktop", () => {
 
 describe("keyboard ways round the shell (audit)", () => {
   it("offers a skip link first that puts the focus on the page", async () => {
-    setWidth(true);
+    stubMatchMedia(true);
     render(<App />);
     await userEvent.tab();
     const skip = screen.getByRole("link", { name: "Skip to content" });
@@ -161,7 +143,7 @@ describe("keyboard ways round the shell (audit)", () => {
   });
 
   it("keeps Tab inside the phone menu, which says it is modal", async () => {
-    setWidth(false);
+    stubMatchMedia(false);
     render(<App />);
     expect(menuButton()).not.toHaveAttribute("aria-controls");
     await userEvent.click(menuButton());

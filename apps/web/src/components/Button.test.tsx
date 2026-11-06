@@ -1,7 +1,8 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { createRef } from "react";
-import { Button, buttonClass, buttonLook } from "./Button";
+import { vi } from "vitest";
+import { Button, buttonClass, buttonLook, IconButton } from "./Button";
 
 // G18 (U9): the one button look
 describe("Button", () => {
@@ -35,5 +36,16 @@ describe("Button", () => {
         expect(cls).toMatch(/text-\[1[1-4]px\]/);
       }
     }
+  });
+});
+
+describe("IconButton", () => {
+  it("is a button named by its label, never a submit, and stays off while disabled", () => {
+    const onClick = vi.fn();
+    render(<form><IconButton label="Delete Kopitiam" onClick={onClick} disabled><svg /></IconButton></form>);
+    const b = screen.getByRole("button", { name: "Delete Kopitiam" });
+    expect(b).toHaveAttribute("type", "button");
+    fireEvent.click(b);
+    expect(onClick).not.toHaveBeenCalled();
   });
 });

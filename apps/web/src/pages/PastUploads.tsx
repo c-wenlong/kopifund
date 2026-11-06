@@ -10,7 +10,7 @@ import { StatusChip, type StatusTone } from "../components/StatusChip";
 import { TxnRowsTable, type TxnRow } from "../components/TxnRowsTable";
 import { buttonClass } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
-import { Loading, Problem } from "../components/States";
+import { Loaded, Loading, Problem } from "../components/States";
 import { BankMark } from "../components/BankMark";
 import { KindLabel, STEP_ICON, STEP_STATUS_ICON } from "../icons";
 import { folderAccount } from "../uploadProblems";
@@ -150,12 +150,12 @@ function StepTrail({ steps }: { steps: UploadStepOutline[] }) {
 
 function AttemptDetail({ id, accounts }: { id: number; accounts: ReturnType<typeof folderAccounts> }) {
   const detail = useApi<UploadAttempt<UploadStep>>(`/api/uploads/${id}`);
-  if (detail.loading) return <div className="px-4 pb-3"><Loading what="Loading the steps" /></div>;
-  if (detail.error || !detail.data) return <div className="px-4 pb-3"><Problem message={detail.error ?? "Not found"} retry /></div>;
   return (
-    <ol className="m-0 flex list-none flex-col gap-3 border-t border-line px-4 py-3">
-      {detail.data.steps.map((s) => <StepDetail key={s.id} step={s} accounts={accounts} />)}
-    </ol>
+    <Loaded state={detail} what="Loading the steps" missing="Not found" className="px-4 pb-3">{(d) => (
+      <ol className="m-0 flex list-none flex-col gap-3 border-t border-line px-4 py-3">
+        {d.steps.map((s) => <StepDetail key={s.id} step={s} accounts={accounts} />)}
+      </ol>
+    )}</Loaded>
   );
 }
 
