@@ -1,8 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { WidgetAnswer } from "../../../types.gen";
 import { widgetQueryUrl } from "../../../widgets";
 import { FlowWidget } from "./FlowWidget";
+import { json } from "../../../test-helpers";
 
 // Invented figures only: S$5,000 of income in 2026-09 over two made-up
 // buckets, their made-up categories and one invented savings transfer.
@@ -62,13 +63,11 @@ function stubFetch(answer: (url: string) => WidgetAnswer | { error: string } = a
     asked.push(url);
     const a = answer(url);
     return "error" in a
-      ? new Response(JSON.stringify(a), { status: 400 })
-      : new Response(JSON.stringify(a), { status: 200 });
+      ? json(a, 400)
+      : json(a);
   }));
   return asked;
 }
-
-afterEach(() => vi.unstubAllGlobals());
 
 describe("FlowWidget", () => {
   it("renders the flow: income, the buckets, their categories, transfers and the unspent rest", async () => {
@@ -160,7 +159,7 @@ describe("FlowWidget", () => {
       const a = q.metric === "income"
         ? { ...INCOME, series: [{ name: "income", values_minor: [0] }] }
         : q.metric === "transfers" ? { ...TRANSFERS, labels: [], series: [], label_links: [] } : EMPTY;
-      return new Response(JSON.stringify(a), { status: 200 });
+      return json(a);
     }));
     render(<FlowWidget config={{ range: RANGE }} />);
     await waitFor(() => expect(screen.getByText("No income or spending in this range.")).toBeInTheDocument());
@@ -176,12 +175,12 @@ describe("FlowWidget", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const q = JSON.parse(decodeURIComponent(url.slice(url.indexOf("?q=") + 3)));
       if (q.dimension === "category" && q.filters?.bucket === "Transport") {
-        return new Response(JSON.stringify({ error: "boom" }), { status: 400 });
+        return json({ error: "boom" }, 400);
       }
       const a = answerFor(url);
       return "error" in a
-        ? new Response(JSON.stringify(a), { status: 400 })
-        : new Response(JSON.stringify(a), { status: 200 });
+        ? json(a, 400)
+        : json(a);
     }));
     render(<FlowWidget config={{ range: RANGE }} />);
     await waitFor(() => expect(screen.getByText(/Eating out/)).toBeInTheDocument());
@@ -198,8 +197,8 @@ describe("FlowWidget", () => {
         ? { ...INCOME, series: [{ name: "income", values_minor: [250_000] }] }
         : answerFor(url);
       return "error" in a
-        ? new Response(JSON.stringify(a), { status: 400 })
-        : new Response(JSON.stringify(a), { status: 200 });
+        ? json(a, 400)
+        : json(a);
     }));
     render(<FlowWidget config={{ range: RANGE }} />);
     await waitFor(() => expect(screen.getByText(/Beyond income/)).toBeInTheDocument());

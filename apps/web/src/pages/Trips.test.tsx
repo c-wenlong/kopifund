@@ -1,17 +1,18 @@
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Trip } from "../api";
-import { clearToasts, Toaster } from "../components/Toast";
+import { Toaster } from "../components/Toast";
 import { averagePerDay, bubblesOf, costPerDay, dayOfYear, groupByYear, isDear, isPlanned, summarise, Trips } from "./Trips";
 import { leadingIcon } from "../test-icons";
+import { json, navigate, SizedObserver, stubMatchMedia, useSizedCharts } from "../test-helpers";
 
-const navigate = vi.fn();
 // G18: the Sheet the trip form opens in uses the router's unsaved guard, so only the moves are stood in for
-vi.mock("../router", async (importOriginal) => ({
-  ...await importOriginal<typeof import("../router")>(),
-  navigate: (to: string) => navigate(to),
-  onLinkClick: (to: string) => (e: { preventDefault: () => void }) => { e.preventDefault(); navigate(to); },
-}));
+vi.mock("../router", async (actual) => {
+  const { navigate, withNavigate } = await import("../test-helpers");
+  return { ...withNavigate(await actual()),
+    onLinkClick: (to: string) => (e: { preventDefault: () => void }) => { e.preventDefault(); navigate(to); },
+  };
+});
 
 const MY = "\u{1F1F2}\u{1F1FE}";
 const SE = "\u{1F1F8}\u{1F1EA}";
@@ -52,28 +53,13 @@ function stubFetch() {
     const posted = url === "/api/trips/remove" ? { removed: "Trip A", id: a, restore: { trip: { id: a, name: "Trip A" }, txn_keys: ["k1"] } }
       : url === "/api/trips" ? { id: a, name: "Trip A", relinked: { changed: 14, written: 14 }, undo: { after: { id: a, name: "Trip A" } } }
       : { name: "Trip A", relinked: { changed: 14, written: 14 } };
-    return new Response(JSON.stringify(init?.method === "POST" ? posted : body), { status: 200 });
+    return json(init?.method === "POST" ? posted : body);
   }));
   return calls;
 }
 
-// a real size for ResponsiveContainer, so the chart draws its bars and axis
-class SizedObserver {
-  constructor(private cb: ResizeObserverCallback) {}
-  observe(el: Element) {
-    this.cb([{ target: el, contentRect: { width: 800, height: 400 } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
-  }
-  unobserve() {}
-  disconnect() {}
-}
-
 describe("Trips", () => {
-  const real = globalThis.ResizeObserver;
-  beforeEach(() => {
-    globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver;
-    navigate.mockReset();
-  });
-  afterEach(() => { vi.unstubAllGlobals(); clearToasts(); globalThis.ResizeObserver = real; });
+  useSizedCharts();
 
   it("edits a trip and keeps its pinned rows", async () => {
     const calls = stubFetch();
@@ -269,9 +255,7 @@ describe("groupByYear", () => {
 });
 
 describe("Trips cards", () => {
-  const real = globalThis.ResizeObserver;
-  beforeEach(() => { globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver; navigate.mockReset(); });
-  afterEach(() => { vi.unstubAllGlobals(); clearToasts(); globalThis.ResizeObserver = real; window.matchMedia = REAL_MEDIA; });
+  useSizedCharts();
 
   // two years of trips, three in the newest
   const spread = { long_stay_days: 60, last_txn: "2026-09-20", trips: [
@@ -281,9 +265,8 @@ describe("Trips cards", () => {
     trip("Autumn", 3_000, { start: "2026-09-10", end: "2026-09-10", days: 1, spend_sgd: 3_000 }),
     trip("Earlier A", 1_500, { start: "2025-06-01" }), trip("Earlier B", 2_500, { start: "2025-02-01" }),
   ] };
-  const stubSpread = () => vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(
-    url.startsWith("/api/trips") ? spread : url === "/api/results/travel" ? { id: "travel", title: "Trips", findings: [], data: {} } : { results: [] }),
-    { status: 200 })));
+  const stubSpread = () => vi.stubGlobal("fetch", vi.fn(async (url: string) => json(
+    url.startsWith("/api/trips") ? spread : url === "/api/results/travel" ? { id: "travel", title: "Trips", findings: [], data: {} } : { results: [] })));
 
   it("groups cards under a year header with its trip count and total, newest year first", async () => {
     stubSpread();
@@ -309,8 +292,8 @@ describe("Trips cards", () => {
   });
 
   it("has nothing to fold when every trip is in one year", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(
-      url.startsWith("/api/trips") ? { long_stay_days: 60, trips: [trip("One", 1_000), trip("Two", 2_000)] } : { results: [] }), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => json(
+      url.startsWith("/api/trips") ? { long_stay_days: 60, trips: [trip("One", 1_000), trip("Two", 2_000)] } : { results: [] })));
     render(<Trips />);
     await screen.findByRole("link", { name: "One" });
     expect(screen.queryByRole("button", { name: /Show all/ })).not.toBeInTheDocument();
@@ -345,12 +328,12 @@ describe("Trips cards", () => {
   });
 
   it("shows the spending of a planned trip that has payments linked to it, since the totals count it", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => json(
       url.startsWith("/api/trips") ? { long_stay_days: 60, last_txn: "2026-09-20", trips: [
         trip("Moved ahead", 2_000, { start: "2026-12-01", end: "2026-12-03", days: 3, spend_sgd: 6_000, rows: 2,
           top_categories: [{ name: "Eating out", spend: 6_000 }] }),
         trip("Nothing yet", 0, { start: "2026-12-10", end: "2026-12-12", days: 3, spend_sgd: 0, rows: 0, per_day: 0 }),
-      ] } : { results: [] }), { status: 200 })));
+      ] } : { results: [] })));
     render(<Trips />);
     const linked = within((await screen.findByRole("link", { name: "Moved ahead" })).closest("li")!);
     expect(linked.getByText("Planned")).toBeInTheDocument();
@@ -373,7 +356,7 @@ describe("Trips cards", () => {
   });
 
   it("makes the buttons big enough to touch on a phone", async () => {
-    setWide(false);
+    stubMatchMedia(false);
     stubFetch();
     render(<Trips />);
     const edit = await screen.findByRole("button", { name: "Edit Trip A" });
@@ -382,26 +365,13 @@ describe("Trips cards", () => {
   });
 });
 
-const REAL_MEDIA = window.matchMedia;
-function setWide(wide: boolean) {
-  window.matchMedia = ((query: string) => ({
-    matches: wide, media: query, onchange: null, addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })) as unknown as typeof window.matchMedia;
-}
-
 describe("Trips, friendlier than a table", () => {
-  const real = globalThis.ResizeObserver;
   beforeEach(() => {
-    globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver;
+    vi.stubGlobal("ResizeObserver", SizedObserver);
     vi.useFakeTimers({ toFake: ["Date"], now: new Date(2026, 9, 17) });
-    navigate.mockReset();
   });
   afterEach(() => {
     vi.useRealTimers();
-    vi.unstubAllGlobals();
-    globalThis.ResizeObserver = real;
-    window.matchMedia = REAL_MEDIA;
   });
 
   it("opens with tiles: how many trips, what they cost, the day rate and this year against last", async () => {
@@ -439,10 +409,10 @@ describe("Trips, friendlier than a table", () => {
   it("marks only trips at least a quarter above the average, not every bar over the line", async () => {
     // one-day trips at S$10, S$10, S$13 and S$15: the average is S$12, a quarter above it is S$15
     const day = (name: string, cents: number) => trip(name, cents, { days: 1, spend_sgd: cents, start: "2026-03-01", end: "2026-03-01" });
-    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => json(
       url.startsWith("/api/trips") ? { long_stay_days: 60, last_txn: "2026-09-20",
         trips: [day("Cheap one", 1_000), day("Cheap two", 1_000), day("Over the line", 1_300), day("Well over", 1_500)] }
-        : { results: [] }), { status: 200 })));
+        : { results: [] })));
     const { container } = render(<Trips />);
     await waitFor(() => expect(container.querySelectorAll(".recharts-bar-rectangle path")).toHaveLength(4));
     const rows = [...container.querySelectorAll(".recharts-yAxis .recharts-cartesian-axis-tick-value")].map((t) => t.textContent!.replace(/^\S+ /, ""));
@@ -454,8 +424,8 @@ describe("Trips, friendlier than a table", () => {
   });
 
   it("draws no average line for a single short trip", async () => {
-    vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(
-      url.startsWith("/api/trips") ? { long_stay_days: 60, last_txn: "2026-09-20", trips: [trip("Only trip", 3_000)] } : { results: [] }), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => json(
+      url.startsWith("/api/trips") ? { long_stay_days: 60, last_txn: "2026-09-20", trips: [trip("Only trip", 3_000)] } : { results: [] })));
     const { container } = render(<Trips />);
     await waitFor(() => expect(container.querySelectorAll(".recharts-bar-rectangle path")).toHaveLength(1));
     expect(container.querySelectorAll(".recharts-reference-line")).toHaveLength(0);
@@ -489,11 +459,11 @@ describe("Trips, friendlier than a table", () => {
     let release: (r: Response) => void = () => {};
     vi.stubGlobal("fetch", vi.fn((url: string) => url === "/api/countries"
       ? new Promise<Response>((r) => { release = r; })
-      : Promise.resolve(new Response(JSON.stringify(url.startsWith("/api/trips") ? trips : { results: [] }), { status: 200 }))));
+      : Promise.resolve(json(url.startsWith("/api/trips") ? trips : { results: [] }))));
     render(<Trips />);
     fireEvent.click(await screen.findByRole("button", { name: "Edit Trip A" }));
     expect(screen.getByRole("button", { name: "Save trip" })).toBeDisabled();
-    release(new Response(JSON.stringify(COUNTRIES), { status: 200 }));
+    release(json(COUNTRIES));
     await screen.findByText(/XXX is not an ISO country code/);
     fireEvent.click(screen.getByRole("button", { name: "Remove XXX" }));
     expect(screen.getByRole("button", { name: "Save trip" })).toBeEnabled();
@@ -559,16 +529,10 @@ describe("the trip summary", () => {
 
 // G18: the trips drawn as bubbles, a circle's area its spending
 describe("Trips as bubbles", () => {
-  const real = globalThis.ResizeObserver;
-  beforeEach(() => {
-    globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver;
-    navigate.mockReset();
-  });
-  afterEach(() => { vi.unstubAllGlobals(); clearToasts(); localStorage.clear(); globalThis.ResizeObserver = real; });
+  useSizedCharts();
 
-  const serve = (list: Trip[], last = "2026-09-20") => vi.stubGlobal("fetch", vi.fn(async (url: string) => new Response(JSON.stringify(
-    url.startsWith("/api/trips") ? { long_stay_days: 60, last_txn: last, trips: list } : url === "/api/countries" ? COUNTRIES : { results: [] }),
-    { status: 200 })));
+  const serve = (list: Trip[], last = "2026-09-20") => vi.stubGlobal("fetch", vi.fn(async (url: string) => json(
+    url.startsWith("/api/trips") ? { long_stay_days: 60, last_txn: last, trips: list } : url === "/api/countries" ? COUNTRIES : { results: [] })));
   const bubble = (container: HTMLElement, name: string) => container.querySelector<SVGGElement>(`g[data-trip="${name}"]`)!;
   const radius = (container: HTMLElement, name: string) => Number(bubble(container, name).querySelector("[data-bubble]")!.getAttribute("r"));
 
@@ -710,9 +674,7 @@ describe("Trips as bubbles", () => {
 });
 
 describe("the trip form in a Sheet", () => {
-  const real = globalThis.ResizeObserver;
-  beforeEach(() => { globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver; navigate.mockReset(); });
-  afterEach(() => { vi.unstubAllGlobals(); clearToasts(); globalThis.ResizeObserver = real; });
+  useSizedCharts();
 
   it("opens Add a trip in a dialog named for it, and Cancel closes it without saving", async () => {
     const calls = stubFetch();
@@ -783,9 +745,7 @@ describe("bubblesOf", () => {
 
 // G18: Greptile on #95. A save that fails after the Sheet was closed must still be seen.
 describe("a trip save that answers late", () => {
-  const real = globalThis.ResizeObserver;
-  beforeEach(() => { globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver; navigate.mockReset(); });
-  afterEach(() => { vi.unstubAllGlobals(); clearToasts(); globalThis.ResizeObserver = real; });
+  useSizedCharts();
 
   // the save waits on `answer`; every other request answers at once
   function stubSlowSave() {
@@ -793,9 +753,9 @@ describe("a trip save that answers late", () => {
     vi.stubGlobal("fetch", vi.fn((url: string, init?: RequestInit) => {
       if (url === "/api/trips" && init?.method === "POST") return new Promise<Response>((r) => { answer = r; });
       const body = url.startsWith("/api/trips") ? trips : url === "/api/countries" ? COUNTRIES : { results: [] };
-      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+      return Promise.resolve(json(body));
     }));
-    return (status: number, body: unknown) => answer(new Response(JSON.stringify(body), { status }));
+    return (status: number, body: unknown) => answer(json(body, status));
   }
 
   it("shows a refusal in the form while it is open", async () => {

@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { HIDE_TRANSFERS_KEY, Transactions } from "./Transactions";
 import { leadingIcon } from "../test-icons";
 import { choose } from "../test-select";
-import { clearToasts, Toaster } from "../components/Toast";
+import { Toaster } from "../components/Toast";
+import { json, stubMatchMedia } from "../test-helpers";
 
 // what the server sends for the days on a page: each day's rows, money in and money out
 type StubRow = { date: string; amount_sgd: number | null };
@@ -67,7 +68,7 @@ function stubFetch(rows = page.rows, pinnedPayee = "A friend", applied = true) {
       : url === "/api/rules/pin" ? { file: "keys.csv", change: "p1", relinked: { changed: 1, written: 1 },
         pinned: { payee: pinnedPayee, kind: pinnedPayee ? "Person" : "", country: pinnedPayee ? "SGP" : "", category: JSON.parse(init!.body as string).category } }
       : { file: "keys.csv" };
-    return new Response(JSON.stringify(body), { status: 200 });
+    return json(body);
   }));
   return calls;
 }
@@ -77,8 +78,7 @@ const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancel
 const bare = () => window.history.replaceState(null, "", "/transactions");
 
 describe("Transactions", () => {
-  beforeEach(() => { window.localStorage.clear(); bare(); });
-  afterEach(() => { vi.unstubAllGlobals(); clearToasts(); });
+  beforeEach(() => { bare(); });
 
   it("says why a row is flagged as a possible scam and saves This is fine", async () => {
     const flagged = [{ ...page.rows[0], flags: [{ code: "new_payee" as const, text: "S$100 to a new payee, the first payment to them" }] }];
@@ -209,7 +209,7 @@ describe("Transactions", () => {
         const change = JSON.parse(init!.body as string).change;
         if (change === "p1" && !ruleUndone) {
           calls.push({ url, body: init!.body as string });
-          return new Response(JSON.stringify({ error: "The rules have changed since this save, so it cannot be undone here" }), { status: 409 });
+          return json({ error: "The rules have changed since this save, so it cannot be undone here" }, 409);
         }
         if (change === "a1b2c3") ruleUndone = true;
       }
@@ -349,7 +349,7 @@ describe("Transactions", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       // the More form's save (the chip's sends no kind) waits, then is refused
       if (url === "/api/rules/pin" && "kind" in JSON.parse(String(init!.body))) {
-        return new Promise<Response>((done) => { fail = () => done(new Response(JSON.stringify({ error: "disk full" }), { status: 500 })); });
+        return new Promise<Response>((done) => { fail = () => done(json({ error: "disk full" }, 500)); });
       }
       return answer(url, init);
     }));
@@ -372,7 +372,7 @@ describe("Transactions", () => {
     let fail: (() => void) | null = null;
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       if (url === "/api/rules/pin" && "kind" in JSON.parse(String(init!.body))) {
-        return new Promise<Response>((done) => { fail = () => done(new Response(JSON.stringify({ error: "disk full" }), { status: 500 })); });
+        return new Promise<Response>((done) => { fail = () => done(json({ error: "disk full" }, 500)); });
       }
       return answer(url, init);
     }));
@@ -630,7 +630,7 @@ describe("Transactions", () => {
 });
 
 describe("Transactions opened from the Spending explorer", () => {
-  afterEach(() => { vi.unstubAllGlobals(); window.history.replaceState(null, "", "/"); });
+  afterEach(() => { window.history.replaceState(null, "", "/"); });
 
   it("asks for the explorer's range, scope and spending, shows them, and clears them", async () => {
     window.history.replaceState(null, "", "/transactions?from=2025-10&to=2026-09&spend=1&home=1&category=Eating+out");
@@ -670,7 +670,7 @@ describe("Transactions opened from the Spending explorer", () => {
 });
 
 describe("Transactions opened from a stat's bar", () => {
-  afterEach(() => { vi.unstubAllGlobals(); window.history.replaceState(null, "", "/"); });
+  afterEach(() => { window.history.replaceState(null, "", "/"); });
 
   const open = async (query: string, chip: string) => {
     window.history.replaceState(null, "", `/transactions?${query}`);
@@ -724,7 +724,7 @@ describe("Transactions opened from a stat's bar", () => {
 });
 
 describe("Transactions opened from a figure on another page", () => {
-  afterEach(() => { vi.unstubAllGlobals(); window.history.replaceState(null, "", "/"); });
+  afterEach(() => { window.history.replaceState(null, "", "/"); });
 
   it("asks for a payee by its exact name, shows it as a chip, and clears it with the button", async () => {
     window.history.replaceState(null, "", "/transactions?payee=Gym&named=1&out=1&synthetic=0&hide_transfers=0");
@@ -767,12 +767,11 @@ describe("Transactions pages", () => {
       const q = new URL(url, "http://x").searchParams;
       const limit = Number(q.get("limit")), offset = Number(q.get("offset"));
       const rows = Array.from({ length: Math.max(0, Math.min(limit, total - offset)) }, (_, i) => row(offset + i + 1));
-      return new Response(JSON.stringify({ ...page, days: daysOf(rows), rows, total }), { status: 200 });
+      return json({ ...page, days: daysOf(rows), rows, total });
     }));
     return calls;
   }
-  beforeEach(() => { window.localStorage.clear(); bare(); });
-  afterEach(() => { vi.unstubAllGlobals(); clearToasts(); });
+  beforeEach(() => { bare(); });
 
   it("asks the server for a page of 25 and moves by page number", async () => {
     const calls = stubPaged();
@@ -833,7 +832,7 @@ describe("Transactions pages", () => {
       const q = new URL(url, "http://x").searchParams;
       const limit = Number(q.get("limit")), offset = Number(q.get("offset"));
       const rows = Array.from({ length: Math.max(0, Math.min(limit, total - offset)) }, (_, i) => row(offset + i + 1));
-      return new Response(JSON.stringify({ ...page, days: daysOf(rows), rows, total }), { status: 200 });
+      return json({ ...page, days: daysOf(rows), rows, total });
     }));
     render(<Transactions />);
     await screen.findByText("Shop 1");
@@ -849,27 +848,19 @@ describe("Transactions pages", () => {
 
 // ---- G13: the friendlier page ----
 
-function stubPhone(wide: boolean) {
-  // useWide asks for (min-width: 48rem): a phone says no
-  vi.stubGlobal("matchMedia", (query: string) => ({
-    matches: wide, media: query, addEventListener: () => {}, removeEventListener: () => {},
-  }));
-}
-
 const money = (i: number, over: object = {}) => ({ ...page.rows[0], key: `m${i}`, payee: `Shop ${i}`, category: "Shopping", ...over });
 
 function stubTxns(body: object) {
   const calls: string[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
     calls.push(url);
-    return new Response(JSON.stringify({ ...page, days: daysOf((body as { rows?: StubRow[] }).rows ?? page.rows), ...body }), { status: 200 });
+    return json({ ...page, days: daysOf((body as { rows?: StubRow[] }).rows ?? page.rows), ...body });
   }));
   return calls;
 }
 
 describe("Transactions on a phone", () => {
-  beforeEach(() => { window.localStorage.clear(); bare(); stubPhone(false); });
-  afterEach(() => { vi.unstubAllGlobals(); });
+  beforeEach(() => { bare(); stubMatchMedia(false); });
 
   it("shows each row on two lines in place of a table, so the amount is never off the edge", async () => {
     stubTxns({ rows: [money(1, { amount: -4550, amount_sgd: -4550 })], total: 1 });
@@ -920,8 +911,7 @@ describe("Transactions on a phone", () => {
 });
 
 describe("Transactions on a wide screen", () => {
-  beforeEach(() => { window.localStorage.clear(); bare(); stubPhone(true); });
-  afterEach(() => { vi.unstubAllGlobals(); clearToasts(); });
+  beforeEach(() => { bare(); stubMatchMedia(true); });
 
   it("keeps the table, and formats a foreign amount with thousands separators and a true minus", async () => {
     stubTxns({
@@ -949,8 +939,7 @@ describe("Transactions on a wide screen", () => {
 });
 
 describe("Transactions summary", () => {
-  beforeEach(() => { window.localStorage.clear(); bare(); });
-  afterEach(() => { vi.unstubAllGlobals(); clearToasts(); });
+  beforeEach(() => { bare(); });
 
   it("shows money in, money out and the net of the rows that match", async () => {
     stubTxns({ rows: [money(1)], total: 312, in_sgd: 300000, out_sgd: -1234567, sum_sgd: -934567 });
@@ -1036,7 +1025,7 @@ describe("Transactions summary", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       calls.push(url);
       const rows = url.includes("hide_transfers=1") ? [] : [money(1)];
-      return new Response(JSON.stringify({ ...page, rows, days: daysOf(rows), total: rows.length }), { status: 200 });
+      return json({ ...page, rows, days: daysOf(rows), total: rows.length });
     }));
     render(<Transactions />);
     fireEvent.click(await screen.findByRole("button", { name: /Transfers hidden/ }));
@@ -1047,8 +1036,7 @@ describe("Transactions summary", () => {
 });
 
 describe("Transactions filters in the address", () => {
-  beforeEach(() => { window.localStorage.clear(); bare(); });
-  afterEach(() => { vi.unstubAllGlobals(); clearToasts(); });
+  beforeEach(() => { bare(); });
 
   const months = { months: ["2026-09", "2026-08"] };
 
@@ -1191,7 +1179,7 @@ describe("Transactions filters in the address", () => {
       const q = new URL(url, "http://x").searchParams;
       const limit = Number(q.get("limit")), offset = Number(q.get("offset"));
       const rows = Array.from({ length: Math.max(0, Math.min(limit, 312 - offset)) }, (_, i) => row(offset + i + 1));
-      return new Response(JSON.stringify({ ...page, days: daysOf(rows), rows, total: 312 }), { status: 200 });
+      return json({ ...page, days: daysOf(rows), rows, total: 312 });
     }));
     const { unmount } = render(<Transactions />);
     await screen.findByText("Shop 1");
@@ -1223,8 +1211,7 @@ describe("Transactions filters in the address", () => {
 });
 
 describe("The row form opens on what the row has", () => {
-  beforeEach(() => { window.localStorage.clear(); bare(); });
-  afterEach(() => { vi.unstubAllGlobals(); clearToasts(); });
+  beforeEach(() => { bare(); });
 
   function stubRow(extra: object) {
     const calls: { url: string; body?: string }[] = [];
@@ -1234,7 +1221,7 @@ describe("The row form opens on what the row has", () => {
         ? { ...page, categories: ["(none)", "Donations", "Shopping"], rows: [{ ...page.rows[0], payee: "Shop", category: "Shopping" }] }
         : url.startsWith("/api/rules/rows") ? { ...one(false), rows: [{ ...one(false).rows[0], ...extra }] }
         : {};
-      return new Response(JSON.stringify(body), { status: 200 });
+      return json(body);
     }));
     return calls;
   }
@@ -1280,8 +1267,7 @@ describe("The row form opens on what the row has", () => {
 });
 
 describe("Transactions: review fixes", () => {
-  beforeEach(() => { window.localStorage.clear(); bare(); });
-  afterEach(() => { vi.unstubAllGlobals(); clearToasts(); });
+  beforeEach(() => { bare(); });
 
   it("keeps an explicit hide_transfers=0 when Clear filters runs", async () => {
     window.history.replaceState(null, "", "/transactions?q=shop&hide_transfers=0");
@@ -1309,7 +1295,7 @@ describe("Transactions: review fixes", () => {
       const total = q.get("q") === "one" ? 1 : 312;
       const limit = Number(q.get("limit")), offset = Number(q.get("offset"));
       const rows = Array.from({ length: Math.max(0, Math.min(limit, total - offset)) }, (_, i) => row(offset + i + 1));
-      return new Response(JSON.stringify({ ...page, days: daysOf(rows), rows, total }), { status: 200 });
+      return json({ ...page, days: daysOf(rows), rows, total });
     }));
     window.history.replaceState(null, "", "/transactions?q=one");
     render(<Transactions />);
@@ -1324,17 +1310,11 @@ describe("Transactions: review fixes", () => {
   });
 
   it("keeps what was typed in a row's form when the layout changes under it", async () => {
-    let wide = false;
-    const listeners = new Set<() => void>();
-    vi.stubGlobal("matchMedia", (query: string) => ({
-      get matches() { return wide; }, media: query,
-      addEventListener: (_: string, f: () => void) => listeners.add(f),
-      removeEventListener: (_: string, f: () => void) => listeners.delete(f),
-    }));
+    const screenWidth = stubMatchMedia(false);
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const body = url.startsWith("/api/transactions") ? { ...page, rows: [{ ...page.rows[0], payee: "A shop" }] }
         : { ...one(false), rows: [{ ...one(false).rows[0], category: "Shopping", payee: "A shop" }] };
-      return new Response(JSON.stringify(body), { status: 200 });
+      return json(body);
     }));
     render(<Transactions />);
     fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row A shop/ }));
@@ -1342,7 +1322,7 @@ describe("Transactions: review fixes", () => {
     fireEvent.click(await screen.findByRole("button", { name: "More" }));
     fireEvent.change(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
-    act(() => { wide = true; listeners.forEach((f) => f()); });
+    screenWidth.change(true);
     expect(await screen.findByRole("table")).toBeInTheDocument();
     expect(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).toHaveValue("a gift");
   });
@@ -1350,25 +1330,18 @@ describe("Transactions: review fixes", () => {
 
 describe("Transactions: a row save across a change of layout", () => {
   beforeEach(() => bare());
-  afterEach(() => { vi.unstubAllGlobals(); clearToasts(); });
 
   it("leaves the question to the form that replaced the one whose save failed", async () => {
-    let wide = false;
-    const listeners = new Set<() => void>();
-    vi.stubGlobal("matchMedia", (query: string) => ({
-      get matches() { return wide; }, media: query,
-      addEventListener: (_: string, f: () => void) => listeners.add(f),
-      removeEventListener: (_: string, f: () => void) => listeners.delete(f),
-    }));
+    const screenWidth = stubMatchMedia(false);
     let fail: (() => void) | null = null;
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       if (url === "/api/rules/pin" && "kind" in JSON.parse(String(init!.body))) {
-        return new Promise<Response>((done) => { fail = () => done(new Response(JSON.stringify({ error: "disk full" }), { status: 500 })); });
+        return new Promise<Response>((done) => { fail = () => done(json({ error: "disk full" }, 500)); });
       }
       const body = url.startsWith("/api/transactions") ? { ...page, rows: [{ ...page.rows[0], payee: "A shop" }] }
         : url === "/api/rules/pin" ? { file: "keys.csv", change: "p1", relinked: { changed: 1, written: 1 } }
         : { ...one(false), rows: [{ ...one(false).rows[0], category: "Shopping", payee: "A shop" }] };
-      return new Response(JSON.stringify(body), { status: 200 });
+      return json(body);
     }));
     render(<Transactions />);
     fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row A shop/ }));
@@ -1377,7 +1350,7 @@ describe("Transactions: a row save across a change of layout", () => {
     await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" });
     // an unchanged form saved, the layout changes under it, and a note goes into the form that replaced it
     fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
-    act(() => { wide = true; listeners.forEach((f) => f()); });
+    screenWidth.change(true);
     expect(await screen.findByRole("table")).toBeInTheDocument();
     fireEvent.change(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
     await waitFor(() => expect(fail).not.toBeNull());
@@ -1388,8 +1361,7 @@ describe("Transactions: a row save across a change of layout", () => {
 });
 
 describe("Transactions page survives a reload and Back", () => {
-  beforeEach(() => { window.localStorage.clear(); bare(); });
-  afterEach(() => { vi.unstubAllGlobals(); clearToasts(); });
+  beforeEach(() => { bare(); });
 
   it("comes back on page 4 after a reload, and after leaving and pressing Back", async () => {
     const row = (i: number) => ({ ...page.rows[0], key: `r${i}`, payee: `Shop ${i}` });
@@ -1399,7 +1371,7 @@ describe("Transactions page survives a reload and Back", () => {
       const q = new URL(url, "http://x").searchParams;
       const limit = Number(q.get("limit")), offset = Number(q.get("offset"));
       const rows = Array.from({ length: Math.max(0, Math.min(limit, 312 - offset)) }, (_, i) => row(offset + i + 1));
-      return new Response(JSON.stringify({ ...page, days: daysOf(rows), rows, total: 312 }), { status: 200 });
+      return json({ ...page, days: daysOf(rows), rows, total: 312 });
     }));
     const first = render(<Transactions />);
     await screen.findByText("Shop 1");
@@ -1431,8 +1403,7 @@ describe("Transactions page survives a reload and Back", () => {
 
 // G13: the rows sit under a header for their day, with that day's spending and money in
 describe("Transactions grouped by day", () => {
-  beforeEach(() => { window.localStorage.clear(); bare(); });
-  afterEach(() => vi.unstubAllGlobals());
+  beforeEach(() => { bare(); });
 
   const rows = [
     money(1, { date: "2026-09-12", amount: -4550, amount_sgd: -4550 }),
@@ -1496,7 +1467,7 @@ describe("Transactions grouped by day", () => {
   });
 
   it("groups the phone's rows under the same headers, and keeps the date off the rows", async () => {
-    stubPhone(false);
+    stubMatchMedia(false);
     stubTxns({ rows, total: 4 });
     const { container } = render(<Transactions />);
     await screen.findByText("Shop 1");
@@ -1510,8 +1481,7 @@ describe("Transactions grouped by day", () => {
 });
 
 describe("Transactions from Home's needs-a-category line", () => {
-  beforeEach(() => { window.localStorage.clear(); bare(); });
-  afterEach(() => vi.unstubAllGlobals());
+  beforeEach(() => { bare(); });
 
   it("asks for the rows its count has, and Clear filters drops that", async () => {
     window.history.replaceState(null, "", "/transactions?category=(none)&synthetic=0");
