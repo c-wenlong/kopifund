@@ -53,6 +53,8 @@ notes/
 *.db-wal
 *.db-shm
 apps/ios/Alerts.xcodeproj/
+# the owner's signing team (apps/ios/README.md, "Build")
+apps/ios/Local.xcconfig
 **/.build/
 
 # Ad hoc screenshots at the repo root (they can show real figures). Images
