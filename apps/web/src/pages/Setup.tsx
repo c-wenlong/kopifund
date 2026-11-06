@@ -6,13 +6,13 @@ import { BankMark } from "../components/BankMark";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { useAction } from "../components/useAction";
+import { sentence } from "../words";
 
 // G13: a wallet is one tile with a chip for each currency; every other provider is a tile of its own
 // G21: each provider brings its bank's mark and its account's name from the layout registry, and its
 // status: whether a real statement has checked the layout or it comes from a public sample
 type Tile = { key: string; title: string; bank: Bank; providers: Provider[]; wallets: boolean };
 
-const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 function tiles(providers: Provider[]): Tile[] {
   const out: Tile[] = [];

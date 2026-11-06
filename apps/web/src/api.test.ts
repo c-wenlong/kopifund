@@ -1,7 +1,10 @@
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MAX_KEPT, OFFLINE, REVALIDATE_EVERY, getJSON, notifyChanged, postJSON, prefetch, rereadAfter, resetLink, revalidate, useApi, useLink } from "./api";
-import { json } from "./test-helpers";
+import { fakeClock, json, settle } from "./test-helpers";
+
+// everything the page has kept in localStorage, as one string
+const kept = () => Object.keys(window.localStorage).map((k) => window.localStorage.getItem(k)).join("\n");
 
 describe("useApi", () => {
   it("reloads after any successful write, keeping the old data on screen meanwhile", async () => {
@@ -194,7 +197,7 @@ describe("useApi's cache", () => {
     await waitFor(() => expect(s.asked).toHaveLength(2));
     expect(s.asked[1]).toEqual({ url: "/api/net-worth", tag: '"1"' });
     // a 304 keeps the very object on screen
-    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    await settle();
     expect(again.result.current.data).toBe(shown);
   });
 
@@ -238,7 +241,7 @@ describe("useApi's cache", () => {
     n = 2;
     notifyChanged();                                 // the write lands
     release();
-    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    await settle();
     const page = renderHook(() => useApi<{ n: number }>("/api/growth"));
     expect(page.result.current.data).toBeNull();
     await waitFor(() => expect(page.result.current.data?.n).toBe(2));
@@ -268,6 +271,7 @@ describe("useApi's cache", () => {
   });
 
   it("asks a live GET afresh every time and paints nothing kept", async () => {
+    const clock = fakeClock();
     const s = server();
     const one = renderHook(() => useApi<{ n: number }>("/api/run/status"));
     await waitFor(() => expect(one.result.current.data?.n).toBe(1));
@@ -276,7 +280,7 @@ describe("useApi's cache", () => {
     expect(again.result.current).toMatchObject({ data: null, loading: true });
     await waitFor(() => expect(again.result.current.data?.n).toBe(1));
     expect(s.asked.map((a) => a.tag)).toEqual([null, null]);
-    await act(async () => { await new Promise((r) => setTimeout(r, 500)); });   // past the save's wait
+    await clock.pass(500);   // past the save's wait
     for (const k of Object.keys(window.localStorage)) expect(window.localStorage.getItem(k)).not.toContain("/api/run/status");
   });
 
@@ -287,7 +291,7 @@ describe("useApi's cache", () => {
       : json({ error: "no kopifund.db yet" }, 404)));
     const one = renderHook(() => useApi<{ n: number }>("/api/overview"));
     await waitFor(() => expect(one.result.current.data?.n).toBe(1));
-    await act(async () => { await new Promise((r) => setTimeout(r, 500)); });   // saved
+    await waitFor(() => expect(kept()).toContain("/api/overview"));   // saved
     one.unmount();
     ok = false;
     const again = renderHook(() => useApi<{ n: number }>("/api/overview"));
@@ -302,17 +306,18 @@ describe("useApi's cache", () => {
   });
 
   it("keeps at most MAX_KEPT answers in memory, the least recently read going first", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
     const s = server();
     const url = (i: number) => `/api/transactions?offset=${i}`;
     const first = renderHook(() => useApi<{ n: number }>(url(0)));
     await waitFor(() => expect(first.result.current.data?.n).toBe(1));
     first.unmount();
     for (let i = 1; i <= MAX_KEPT; i++) {
-      await new Promise((r) => setTimeout(r, 2));                   // each read a moment later
+      vi.advanceTimersByTime(2);                                    // each read a moment later
       prefetch([url(i)]);
       await waitFor(() => expect(s.asked).toHaveLength(i + 1));
     }
-    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    await settle();
     // the oldest is gone, the newest still paints at once
     expect(renderHook(() => useApi<{ n: number }>(url(0))).result.current.data).toBeNull();
     expect(renderHook(() => useApi<{ n: number }>(url(MAX_KEPT))).result.current.data?.n).toBe(1);
@@ -343,7 +348,7 @@ describe("useApi's cache", () => {
     await waitFor(() => expect(s.asked).toHaveLength(1));
     const page = renderHook(() => useApi<{ n: number }>("/api/recurring"));
     expect(page.result.current.data?.n).toBe(1);
-    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    await settle();
     prefetch(["/api/recurring"]);                    // confirmed moments ago: not asked again
     expect(s.asked.filter((a) => a.url === "/api/recurring")).toHaveLength(2);
   });
@@ -352,7 +357,7 @@ describe("useApi's cache", () => {
     server();
     const one = renderHook(() => useApi<{ n: number }>("/api/plan"));
     await waitFor(() => expect(one.result.current.data?.n).toBe(1));
-    await act(async () => { await new Promise((r) => setTimeout(r, 500)); });   // saved after a short wait
+    await waitFor(() => expect(kept()).toContain("/api/plan"));   // saved after a short wait
     const key = Object.keys(window.localStorage).find((k) => k.startsWith("kopifund:api:"))!;
     expect(window.localStorage.getItem(key)).toContain("/api/plan");
 

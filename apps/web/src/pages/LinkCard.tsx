@@ -12,7 +12,7 @@ import QRCode from "react-qr-code";
 import { Copy, Smartphone } from "lucide-react";
 import { postJSON, useApi } from "../api";
 import { onLinkClick } from "../router";
-import { formatDay } from "../dates";
+import { formatDay, formatStampDay } from "../dates";
 import { formatAmount } from "../money";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
@@ -154,7 +154,7 @@ function DeviceRow({ device, onRevoked, onError }: {
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line px-3 py-1.5 first:border-t-0">
       <Smartphone size={14} aria-hidden className="shrink-0 text-ink-3" />
       <span className="min-w-0 flex-1 truncate">{device.name}</span>
-      <span className="num shrink-0 text-ink-3">paired {formatDay(device.paired_at.slice(0, 10))}</span>
+      <span className="num shrink-0 text-ink-3">paired {formatStampDay(device.paired_at)}</span>
       {device.revoked
         ? <span className="shrink-0 text-[12px] text-ink-3">revoked</span>
         : <Button size="sm" disabled={busy} onBlur={confirm.disarm} onClick={revoke}
