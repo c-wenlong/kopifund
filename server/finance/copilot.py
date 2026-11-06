@@ -42,13 +42,13 @@ import os
 import re
 import secrets
 import sys
-import tempfile
 import threading
 import traceback
 from datetime import date, datetime, timezone
 from pathlib import Path
 
 from . import ai, copilot_tools as tools, dates
+from .atomic import write_private
 from .errors import NotFound
 
 MAX_ROUNDS = 8
@@ -138,15 +138,7 @@ def save(thread):
     with _LOCK:
         folder.mkdir(parents=True, exist_ok=True)
         os.chmod(folder, 0o700)
-    fd, tmp = tempfile.mkstemp(dir=folder, prefix=".thread-", suffix=".tmp")   # mkstemp makes it 600
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(thread, fh, ensure_ascii=False, indent=1)
-        os.replace(tmp, _path(thread["id"]))
-    except BaseException:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
-        raise
+    write_private(_path(thread["id"]), json.dumps(thread, ensure_ascii=False, indent=1))
 
 
 def open_thread(thread_id):

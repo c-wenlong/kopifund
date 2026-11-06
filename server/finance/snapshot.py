@@ -41,12 +41,11 @@ construction, and two builds over the same data are byte-identical apart from
 `meta.generated_at`.
 """
 import json
-import os
-import tempfile
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 from finance import notion, sync
+from finance.atomic import write_private
 from finance.model import num
 from finance.money import to_cents
 from finance.paths import cache_dir
@@ -339,7 +338,7 @@ def write_categories_fallback(snapshot, path=None):
                      "`python3 server/finance.py analyse --refresh`."),
             "generated_at": now(),
             "categories": snapshot["categories"]}
-    write_atomic(path, json.dumps(body, indent=2, ensure_ascii=False) + "\n")
+    write_private(path, json.dumps(body, indent=2, ensure_ascii=False) + "\n")
     return path
 
 
@@ -756,23 +755,6 @@ def snapshot_name(day=None):
     return f"snapshot-{day or date.today().isoformat()}.json"
 
 
-def write_atomic(path, text):
-    """Write `text` to `path` so a reader sees the old file or the new one,
-    never half of either: a temp file in the same folder, then os.replace. The
-    app reads these files while `analyse` writes them."""
-    path = Path(path)
-    fd, tmp = tempfile.mkstemp(prefix=f".{path.name}.", suffix=".tmp", dir=path.parent)
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(text)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, path)
-    except BaseException:
-        Path(tmp).unlink(missing_ok=True)
-        raise
-    return path
-
 
 def read_latest(cache=CACHE):
     """cache/latest.json, or an empty pointer when there is none."""
@@ -784,7 +766,7 @@ def read_latest(cache=CACHE):
 
 def write_latest(latest, cache=CACHE):
     Path(cache).mkdir(parents=True, exist_ok=True)
-    write_atomic(Path(cache) / "latest.json", dumps(latest))
+    write_private(Path(cache) / "latest.json", dumps(latest))
 
 
 def save(snapshot, cache=CACHE, day=None):
@@ -792,7 +774,7 @@ def save(snapshot, cache=CACHE, day=None):
     cache = Path(cache)
     (cache / "results").mkdir(parents=True, exist_ok=True)
     name = snapshot_name(day)
-    write_atomic(cache / name, dumps(snapshot))
+    write_private(cache / name, dumps(snapshot))
     latest = read_latest(cache)
     latest["snapshot"] = name
     latest.setdefault("results", {})

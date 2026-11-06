@@ -22,7 +22,6 @@ import re
 import shutil
 import subprocess
 import sys
-import tempfile
 import threading
 from contextlib import contextmanager
 from pathlib import Path
@@ -33,6 +32,7 @@ except ImportError:              # not on Windows: the thread lock alone keeps o
     fcntl = None
 
 from . import dotenv
+from .atomic import write_private
 from .paths import data_root
 
 ACCOUNT = "kopifund"
@@ -179,17 +179,7 @@ class EnvFile:
     def _write(self, lines):
         path = self.path
         path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".env-", suffix=".tmp")   # mkstemp makes it 600
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:
-                fh.write("".join(line + "\n" for line in lines))
-            os.chmod(tmp, 0o600)
-            os.replace(tmp, path)
-        except BaseException:
-            if os.path.exists(tmp):
-                os.unlink(tmp)
-            raise
-        os.chmod(path, 0o600)
+        write_private(path, "".join(line + "\n" for line in lines))
 
     def save(self, provider, key):
         key = check(key)
