@@ -3,8 +3,11 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { Toaster } from "../components/Toast";
 import type { AiSettings, CopilotCard, CopilotEvent, CopilotThread } from "../types.gen";
-import { CopilotSide } from "./CopilotPanel";
+import { ANSWER_FAILED, CopilotSide } from "./CopilotPanel";
+import { GARBLED } from "./stream";
 import { CUT_SHORT, stepsOf, useCopilot } from "./useCopilot";
+import { zoneSwitch } from "../test-zone";
+import { json } from "../test-helpers";
 
 // G22: the Ask Kopifund panel: the answer's steps as they come, the answer and its parts, confirm cards, and its states.
 
@@ -40,9 +43,9 @@ function stub(ai: AiSettings | null, handle: Handler = () => undefined) {
     if (init?.method === "POST") posts.push({ url, body: init.body ? JSON.parse(init.body as string) : null });
     const own = await handle(url, init);
     if (own) return own;
-    if (url === "/api/ai") return new Response(JSON.stringify(ai), { status: 200 });
+    if (url === "/api/ai") return json(ai);
     if (url === "/api/health") return new Response("{}", { status: 200 });
-    return new Response(JSON.stringify({ error: "not here" }), { status: 404 });
+    return json({ error: "not here" }, 404);
   }));
 }
 
@@ -73,8 +76,6 @@ async function askIt(q: string) {
 }
 
 afterEach(() => {
-  vi.unstubAllGlobals();
-  onClose.mockReset();
   window.history.pushState(null, "", "/");
 });
 
@@ -161,7 +162,7 @@ describe("Ask Kopifund panel", () => {
       if (url !== "/api/copilot/ask") return undefined;
       if (first) {
         first = false;
-        return new Response(JSON.stringify({ error: "The provider is busy." }), { status: 422 });
+        return json({ error: "The provider is busy." }, 422);
       }
       return lines([{ type: "text", text: "Here it is" }, { type: "done" }]);
     });
@@ -182,11 +183,11 @@ describe("Ask Kopifund panel", () => {
       { role: "assistant", text: "S$310 on kopi", at: "2026-10-22T09:00:05", page: null, tools: [], steps: [], charts: [], links: [], cards: [], followups: [] },
     ] };
     stub(aiOn, (url) => {
-      if (url === "/api/copilot/threads") return new Response(JSON.stringify({ threads }), { status: 200 });
-      if (url === "/api/copilot/threads/b") return new Response(JSON.stringify(thread), { status: 200 });
+      if (url === "/api/copilot/threads") return json({ threads });
+      if (url === "/api/copilot/threads/b") return json(thread);
       if (url === "/api/copilot/threads/remove") {
         threads = [];
-        return new Response(JSON.stringify({ threads }), { status: 200 });
+        return json({ threads });
       }
       if (url === "/api/copilot/ask") return lines([{ type: "text", text: "Fresh answer" }, { type: "done" }]);
       return undefined;
@@ -328,11 +329,11 @@ describe("Ask Kopifund panel", () => {
         charts: [], links: [], cards: [], followups: [] },
     ] };
     stub(aiOn, (url) => {
-      if (url === "/api/copilot/threads") return new Response(JSON.stringify({ threads }), { status: 200 });
-      if (url === "/api/copilot/threads/b") return new Response(JSON.stringify(thread), { status: 200 });
+      if (url === "/api/copilot/threads") return json({ threads });
+      if (url === "/api/copilot/threads/b") return json(thread);
       if (url === "/api/copilot/threads/remove") {
         threads = threads.slice(0, 1);
-        return new Response(JSON.stringify({ threads }), { status: 200 });
+        return json({ threads });
       }
       return undefined;
     });
@@ -433,11 +434,11 @@ describe("an answer's steps", () => {
       msg("assistant", "S$310 on kopi", { tools: [{ name: "query", label: "Looking it up in the record" }, { name: "trips", label: "Trips" }] }),
     ] } as unknown as CopilotThread;
     stub(aiOn, (url) => {
-      if (url === "/api/copilot/threads") return new Response(JSON.stringify({ threads: [
+      if (url === "/api/copilot/threads") return json({ threads: [
         { id: "s", title: "Runway", updated_at: saved.updated_at, turns: 1 },
-        { id: "o", title: "Kopi", updated_at: older.updated_at, turns: 1 }] }), { status: 200 });
-      if (url === "/api/copilot/threads/s") return new Response(JSON.stringify(saved), { status: 200 });
-      if (url === "/api/copilot/threads/o") return new Response(JSON.stringify(older), { status: 200 });
+        { id: "o", title: "Kopi", updated_at: older.updated_at, turns: 1 }] });
+      if (url === "/api/copilot/threads/s") return json(saved);
+      if (url === "/api/copilot/threads/o") return json(older);
       return undefined;
     });
     render(<Panel />);
@@ -467,8 +468,8 @@ describe("a confirm card", () => {
   it("saves only on Confirm, then Undo uses the endpoint's own way back", async () => {
     stub(aiOn, (url) => {
       if (url === "/api/copilot/ask") return lines([{ type: "text", text: "Here is a rule." }, { type: "card", card: ruleCard }, { type: "done" }]);
-      if (url === "/api/rules/save") return new Response(JSON.stringify({ file: "merchants.csv", line: 4, change: "c-77", relinked: { changed: 3 } }), { status: 200 });
-      if (url === "/api/rules/undo") return new Response(JSON.stringify({ undone: "GRAB*", relinked: { changed: 3 } }), { status: 200 });
+      if (url === "/api/rules/save") return json({ file: "merchants.csv", line: 4, change: "c-77", relinked: { changed: 3 } });
+      if (url === "/api/rules/undo") return json({ undone: "GRAB*", relinked: { changed: 3 } });
       return undefined;
     });
     render(<Panel />);
@@ -500,10 +501,10 @@ describe("a confirm card", () => {
           state.planned = JSON.parse(init.body as string).planned;
           return new Response("{}", { status: 200 });
         }
-        return new Response(JSON.stringify({ month: "2026-10", groups: [], months: [], need_classes: [], rows: [
+        return json({ month: "2026-10", groups: [], months: [], need_classes: [], rows: [
           { category_id: 3, category: "Transport", need_class: null, bucket: "Spend", category_group: "Daily", kind: "spend", planned: 20_000, actual: 0 },
           { category_id: 7, category: "Food", need_class: null, bucket: "Spend", category_group: "Daily", kind: "spend", planned: state.planned, actual: 0 },
-        ] }), { status: 200 });
+        ] });
       }
       return undefined;
     });
@@ -551,7 +552,7 @@ describe("a confirm card", () => {
   it("keeps Saved after the panel closes and opens again, so Confirm never shows twice", async () => {
     stub(aiOn, (url) => {
       if (url === "/api/copilot/ask") return lines([{ type: "card", card: ruleCard }, { type: "card", card: { ...ruleCard, id: "c9", title: "Second rule" } }, { type: "done" }]);
-      if (url === "/api/rules/save") return new Response(JSON.stringify({ change: "c-77" }), { status: 200 });
+      if (url === "/api/rules/save") return json({ change: "c-77" });
       return undefined;
     });
     render(<Shell />);
@@ -576,9 +577,9 @@ describe("a confirm card", () => {
       { role: "assistant", text: "Here is a rule.", at: "2026-10-22T09:00:05", page: null, tools: [], steps: [], charts: [], links: [], cards: [ruleCard], followups: [] },
     ] };
     stub(aiOn, (url) => {
-      if (url === "/api/copilot/threads") return new Response(JSON.stringify({ threads: [{ id: "b", title: "Grab", updated_at: thread.updated_at, turns: 2 }] }), { status: 200 });
-      if (url === "/api/copilot/threads/b") return new Response(JSON.stringify(thread), { status: 200 });
-      if (url === "/api/rules/save") return new Response(JSON.stringify({ change: "c-77" }), { status: 200 });
+      if (url === "/api/copilot/threads") return json({ threads: [{ id: "b", title: "Grab", updated_at: thread.updated_at, turns: 2 }] });
+      if (url === "/api/copilot/threads/b") return json(thread);
+      if (url === "/api/rules/save") return json({ change: "c-77" });
       return undefined;
     });
     render(<Panel />);
@@ -619,15 +620,15 @@ describe("choosing threads", () => {
     let first!: Promise<void>, second!: Promise<void>;
     act(() => { first = result.current.open("aaaaaaaaaaaaaaaa"); });
     act(() => { second = result.current.open("bbbbbbbbbbbbbbbb"); });
-    await act(async () => { waiting["/api/copilot/threads/bbbbbbbbbbbbbbbb"](new Response(JSON.stringify(thread("bbbbbbbbbbbbbbbb", "Second")))); await second; });
-    await act(async () => { waiting["/api/copilot/threads/aaaaaaaaaaaaaaaa"](new Response(JSON.stringify(thread("aaaaaaaaaaaaaaaa", "First")))); await first; });
+    await act(async () => { waiting["/api/copilot/threads/bbbbbbbbbbbbbbbb"](json(thread("bbbbbbbbbbbbbbbb", "Second"))); await second; });
+    await act(async () => { waiting["/api/copilot/threads/aaaaaaaaaaaaaaaa"](json(thread("aaaaaaaaaaaaaaaa", "First"))); await first; });
     expect(result.current.thread).toBe("bbbbbbbbbbbbbbbb");
     expect(result.current.turns.map((t) => t.text)).toEqual(["Second"]);
 
     let third!: Promise<void>;
     act(() => { third = result.current.open("cccccccccccccccc"); });
     act(() => { result.current.reset(); });
-    await act(async () => { waiting["/api/copilot/threads/cccccccccccccccc"](new Response(JSON.stringify(thread("cccccccccccccccc", "Third")))); await third; });
+    await act(async () => { waiting["/api/copilot/threads/cccccccccccccccc"](json(thread("cccccccccccccccc", "Third"))); await third; });
     expect(result.current.thread).toBeNull();
     expect(result.current.turns).toEqual([]);
   });
@@ -640,5 +641,69 @@ describe("a reopened answer's steps", () => {
       { kind: "text" as const, text: "Groceries came to S$100.00.", tools: [] }];
     expect(stepsOf({ text: "Groceries came to S$100.00.", tools, steps }).map((s) => s.kind)).toEqual(["thinking"]);
     expect(stepsOf({ text: "Something else.", tools, steps }).map((s) => s.kind)).toEqual(["thinking", "text"]);
+  });
+});
+
+describe("a garbled answer", () => {
+  // Audit: the request was left open, so the model ran on while the panel showed the parser's words
+  it("stops the request and says the answer came back garbled", async () => {
+    let signal: AbortSignal | undefined;
+    stub(aiOn, (url, init) => {
+      if (url !== "/api/copilot/ask") return undefined;
+      signal = init?.signal ?? undefined;
+      return new Response(new ReadableStream<Uint8Array>({
+        start(c) { c.enqueue(enc.encode('{"type":"text","text":"Half"}\n<<not json>>\n')); },
+      }), { status: 200 });
+    });
+    render(<Panel />);
+    await askIt("What happened?");
+    expect(await screen.findByText(GARBLED)).toBeInTheDocument();
+    expect(signal?.aborted).toBe(true);
+  });
+});
+
+describe("an answer the panel cannot draw", () => {
+  // Audit: a part in a shape this build does not know used to take the whole app down with it
+  it("shows a problem in the panel and keeps the box", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const odd = { type: "chart", chart: { title: "Odd", result: "not a result" } } as unknown as CopilotEvent;
+    stub(aiOn, (url) => (url === "/api/copilot/ask" ? lines([odd, { type: "done" }]) : undefined));
+    render(<Panel />);
+    await askIt("Show me something odd");
+    expect(await screen.findByText(ANSWER_FAILED)).toBeInTheDocument();
+    await waitFor(() => expect(box()).toBeEnabled());
+  });
+
+  // Greptile on #305: one bad answer used to hide every later reply in the thread
+  it("still draws the answers after it", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const odd = { type: "chart", chart: { title: "Odd", result: "not a result" } } as unknown as CopilotEvent;
+    let n = 0;
+    stub(aiOn, (url) => {
+      if (url !== "/api/copilot/ask") return undefined;
+      n += 1;
+      return n === 1 ? lines([odd, { type: "done" }]) : lines([{ type: "text", text: "S$42 on kopi" }, { type: "done" }]);
+    });
+    render(<Panel />);
+    await askIt("Show me something odd");
+    expect(await screen.findByText(ANSWER_FAILED)).toBeInTheDocument();
+    await askIt("And kopi?");
+    expect(await screen.findByText("S$42 on kopi")).toBeInTheDocument();
+    expect(screen.getAllByText(ANSWER_FAILED)).toHaveLength(1);
+  });
+});
+
+describe("a thread's day", () => {
+  const inZone = zoneSwitch();
+
+  // Audit: the server stamps threads in UTC; the day was cut from the stamp, so a Singapore morning showed yesterday
+  it("is the day in this device's time", async () => {
+    inZone("Asia/Singapore");
+    const threads = [{ id: "m", title: "Early question", updated_at: "2026-10-03T22:30:00+00:00", turns: 1 }];
+    stub(aiOn, (url) => (url === "/api/copilot/threads" ? json({ threads }) : undefined));
+    render(<Panel />);
+    fireEvent.click(await screen.findByRole("button", { name: "History" }));
+    const list = await screen.findByRole("list", { name: "Threads" });
+    expect(within(list).getByRole("listitem")).toHaveTextContent("Early question4 Oct 2026");
   });
 });

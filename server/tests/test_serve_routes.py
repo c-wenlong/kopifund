@@ -1,11 +1,14 @@
 """G19: serve.py's route tables, its one body parser and its one connection per request."""
 import isolate  # noqa: F401  first: no test writes the real record or cache
+import contextlib
 import inspect
+import io
 import json
 import os
 import re
 import tempfile
 import threading
+import time
 import unittest
 import urllib.error
 import urllib.request
@@ -105,13 +108,15 @@ class RouteTableTest(unittest.TestCase):
             serve.answer("/api/overveiw", {})
 
     def test_the_families_are_what_the_separate_lists_held(self):
-        self.assertEqual(serve.PLANNING_WRITES, (
+        def tagged(tag):
+            return tuple(p for p, route in serve.POST_ROUTES.items() if route.tag == tag)
+        self.assertEqual(tagged("planning"), (
             "/api/budgets", "/api/budgets/copy", "/api/plan", "/api/categories",
             "/api/trips", "/api/trips/remove", "/api/trips/restore", "/api/trips/undo"))
-        self.assertEqual(serve.RULE_WRITES, (
+        self.assertEqual(tagged("rules"), (
             "/api/rules/remove", "/api/rules/save", "/api/rules/undo", "/api/rules/apply",
             "/api/rules/batch", "/api/rules/pin"))
-        self.assertEqual(serve.CATEGORY_WRITES, (
+        self.assertEqual(tagged("categories"), (
             "/api/categories/add", "/api/categories/rename", "/api/categories/move", "/api/categories/delete",
             "/api/category-groups/add", "/api/category-groups/rename", "/api/category-groups/reorder",
             "/api/category-groups/delete", "/api/category-groups/style"))
@@ -349,7 +354,7 @@ class ConnectionTest(Server):
         self.assertEqual(self.count["opened"], 0)
 
     def test_a_route_that_raises_closes_its_connection_too(self):
-        with mock.patch.object(self.server, "handle_error"):             # the traceback it would print
+        with contextlib.redirect_stderr(io.StringIO()):                  # the traceback it prints
             with mock.patch("finance.rules_app.categories", side_effect=RuntimeError("boom")):
                 self.assertEqual(self.seen("GET", "/api/rules"), (1, 1))
             with mock.patch("finance.planning.set_budget", side_effect=RuntimeError("boom")):
@@ -358,9 +363,13 @@ class ConnectionTest(Server):
     def test_a_direct_call_leaves_the_record_to_its_caller(self):
         # the tests of the routes hand over their own record through _conn or db.connect and go on using it
         self.count.update(opened=0, closed=0)
-        serve.answer("/api/trips", {})
-        serve.answer("/api/trips", {})
+        handed, counted = [], db.connect
+        with mock.patch.object(db, "connect", lambda *a, **k: handed.append(counted(*a, **k)) or handed[-1]):
+            serve.answer("/api/trips", {})
+            serve.answer("/api/trips", {})
         self.assertEqual((self.count["opened"], self.count["closed"]), (2, 0))
+        for conn in handed:               # the caller's now, so the caller closes them
+            conn.close()
 
 
 class DownloadTest(Server):
@@ -416,9 +425,97 @@ class ServerControlTest(Server):
         # the side effect is patched out: an unpatched one would take the shared server down with it
         for path, fn in (("/api/server/stop", serve._stop), ("/api/server/restart", serve._restart)):
             seen = []
-            with mock.patch.object(serve, "_after_response", seen.append):
+            with mock.patch.object(serve, "_after_response", seen.append), \
+                    mock.patch.object(serve, "_STOPPING", False):
                 status, body = self.post(path, None)
-            self.assertEqual((status, body, seen), (200, {"ok": True}, [fn]), path)
+                self.assertTrue(serve._STOPPING)
+            self.assertEqual((status, body, seen),
+                             (200, {"ok": True, "waiting_for": [], "timeout": serve.DRAIN_TIMEOUT}, [fn]), path)
+
+    def test_a_stopping_server_refuses_new_writes_and_still_answers_reads(self):
+        # The client has its answer before the request's thread drops its
+        # count, so the count is read only once that thread has ended. The
+        # pause after each answer holds that gap open: a bare read of
+        # _INFLIGHT straight after the GET fails here every time.
+        send = self.server.RequestHandlerClass.send_body
+
+        def send_then_pause(handler, *args, **kwargs):
+            send(handler, *args, **kwargs)
+            handler.wfile.flush()
+            time.sleep(0.3)
+        with mock.patch.object(self.server.RequestHandlerClass, "send_body", send_then_pause), \
+                mock.patch.object(serve, "_STOPPING", True):
+            status, body = self.post("/api/trips", {"name": "Bali"})
+            self.assertEqual(status, 503)
+            self.assertIn("stopping", body["error"])
+            self.assertEqual(self.get("/api/server")[0], 200)
+            self.assertEqual(serve._drain(timeout=5), [])
+        self.assertEqual(serve._INFLIGHT, {})
+
+    def test_stop_waits_for_a_load_in_flight_then_ends(self):
+        """Stop pressed while another tab runs a load: the answer names the
+        load, and the server shuts down only once the load has finished."""
+        started, release, finished = threading.Event(), threading.Event(), threading.Event()
+
+        def slow_load(req):
+            started.set()
+            release.wait(10)
+            finished.set()
+            return {"ok": True}
+
+        class Fake:
+            stopped_after_load = None
+            def shutdown(self):
+                self.stopped_after_load = finished.is_set()
+        fake, seen = Fake(), []
+        with mock.patch.dict(serve._ROUTERS["POST"].exact, {"/api/run/load": serve.Route(slow_load)}), \
+                mock.patch.object(serve, "_after_response", seen.append), \
+                mock.patch.object(serve, "_STOPPING", False), mock.patch.object(serve, "_SERVER", fake):
+            load = threading.Thread(target=self.post, args=("/api/run/load", {}))
+            load.start()
+            self.assertTrue(started.wait(10))
+            status, body = self.post("/api/server/stop", None)
+            self.assertEqual((status, body["waiting_for"]), (200, ["a load"]))
+            stopping = threading.Thread(target=seen[0])
+            stopping.start()
+            stopping.join(0.6)
+            self.assertTrue(stopping.is_alive(), "the stop did not wait for the load")
+            self.assertIsNone(fake.stopped_after_load)
+            release.set()
+            load.join(10)
+            stopping.join(10)
+            self.assertTrue(fake.stopped_after_load)
+
+    def test_the_wait_covers_the_stats_rebuild_and_is_bounded(self):
+        with mock.patch.object(serve.stats_rebuild, "running", return_value=True):
+            self.assertEqual(serve._running_work(), ["the stats rebuild"])
+            t0 = time.monotonic()
+            self.assertEqual(serve._drain(timeout=0.3), ["the stats rebuild"])
+            self.assertLess(time.monotonic() - t0, 2)
+        answers = iter([True, True, False])
+        with mock.patch.object(serve.stats_rebuild, "running", side_effect=lambda: next(answers, False)):
+            self.assertEqual(serve._drain(timeout=5), [])
+
+    def test_a_read_still_running_at_the_deadline_is_named(self):
+        # patch.dict snapshots and restores the live counter, so a request
+        # from an earlier test still ending would come back as a phantom
+        self.assertEqual(serve._drain(timeout=5), [])
+        with mock.patch.dict(serve._INFLIGHT, {("GET", "/api/exports/x/y.csv"): 1}):
+            self.assertEqual(serve._running_work(), [])      # the card names no reads
+            self.assertEqual(serve._drain(timeout=0.2), ["1 read"])
+
+    def test_a_stop_past_the_deadline_says_what_it_cut_off(self):
+        class Fake:
+            stopped = False
+            def shutdown(self):
+                self.stopped = True
+        fake = Fake()
+        with mock.patch.object(serve, "_SERVER", fake), mock.patch.object(serve, "DRAIN_TIMEOUT", 0.2), \
+                mock.patch.object(serve.stats_rebuild, "running", return_value=True), \
+                mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            serve._stop()
+        self.assertTrue(fake.stopped)
+        self.assertIn("the stats rebuild still running", err.getvalue())
 
     def test_restart_flags_the_exec_and_stops_the_server(self):
         class Fake:
@@ -426,7 +523,8 @@ class ServerControlTest(Server):
             def shutdown(self):
                 self.stopped = True
         fake = Fake()
-        with mock.patch.object(serve, "_SERVER", fake), mock.patch.object(serve, "_RESTART", False):
+        with mock.patch.object(serve, "_SERVER", fake), mock.patch.object(serve, "_RESTART", False), \
+                mock.patch.object(serve, "_drain", return_value=[]):
             serve._restart()
             self.assertTrue(fake.stopped)
             self.assertTrue(serve._RESTART)

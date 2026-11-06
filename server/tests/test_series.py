@@ -20,6 +20,8 @@ from unittest import mock
 import serve
 from analytics.stats import recurring_detector as rd
 from finance import db, home, recurring, series
+import support
+from support import DataFolder
 from test_db import SNAP, block, parsed, row
 from test_recurring import CATEGORIES, SUBS
 
@@ -561,6 +563,7 @@ class Readers(unittest.TestCase):
     def test_the_new_subscription_check_reads_the_owner_s_edits(self):
         from finance import scam_checks
         conn = self.record([(f"s{m}", PAYEE, f"2026-0{m}-05", "-15.99", "Subscriptions") for m in (5, 6, 7, 8)])
+        self.addCleanup(conn.close)
         scam_checks.save_settings(conn, {"new_sub_days": 120})
         res = stat(conn)
         sid = self.sid(conn, res, PAYEE)
@@ -588,6 +591,7 @@ class Readers(unittest.TestCase):
         from finance import scam_checks
         days = ("2026-01-05", "2026-02-05", "2026-03-05", "2026-04-05", "2026-07-05", "2026-08-05")
         conn = self.record([(f"s{d[5:7]}", PAYEE, d, "-15.99", "Subscriptions") for d in days])
+        self.addCleanup(conn.close)
         res = stat(conn)
         sid = self.sid(conn, res, PAYEE)
 
@@ -601,6 +605,7 @@ class Readers(unittest.TestCase):
     def test_plan_s_insurance_reads_the_owner_s_edits(self):
         from finance import suggestions
         conn = self.record([(f"i{m}", self.INSURER, f"2026-0{m}-10", "-120.00", "Insurance") for m in range(1, 9)])
+        self.addCleanup(conn.close)
         res = stat(conn)
         sid = self.sid(conn, res, self.INSURER)
 
@@ -625,6 +630,7 @@ class Readers(unittest.TestCase):
     def test_plan_s_repayments_read_the_owner_s_edits(self):
         from finance import suggestions
         conn = self.record([(f"r{m}", "Lendco", f"2026-0{m}-03", "-450.00", "Subscriptions") for m in range(1, 9)])
+        self.addCleanup(conn.close)
         res = stat(conn)
         sid = self.sid(conn, res, "Lendco")
         kept = {"repayment_payee": "Lendco"}
@@ -639,16 +645,11 @@ class Readers(unittest.TestCase):
         self.assertIsNone(repayments())
 
 
-class Upgrade(unittest.TestCase):
+class Upgrade(DataFolder):
     """Version 6 on a version 5 record: every row kept, the edit tables added, a copy left."""
 
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.tmp.cleanup)
-        self.path = Path(self.tmp.name) / "kopifund.db"
-        p = mock.patch.dict(os.environ, {"KOPIFUND_DATA": self.tmp.name, "KOPIFUND_DB": str(self.path)})
-        p.start()
-        self.addCleanup(p.stop)
+        super().setUp()
         v5 = (Path(__file__).parent / "fixtures" / "record-v5.sql").read_text(encoding="utf-8")
         with closing(__import__("sqlite3").connect(self.path)) as c:
             c.executescript(v5 + """
@@ -668,7 +669,7 @@ PRAGMA user_version = 5;
             before = {t: c.execute(f'SELECT COUNT(*) FROM "{t}"').fetchone()[0]
                       for (t,) in c.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
         with closing(db.connect()) as conn:
-            self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 7)
+            self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], db.SCHEMA_VERSION)
             self.assertEqual(conn.execute("PRAGMA foreign_key_check").fetchall(), [])
             for t, n in before.items():
                 if n:          # (the upgrade seeds the shipped buckets, which this made-up record lacks)
@@ -677,7 +678,7 @@ PRAGMA user_version = 5;
             series.set_payee(conn, "Gym", False)
             self.assertEqual(series.payees_off_in(conn), {"Gym"})
         [copy] = sorted((Path(self.tmp.name) / "backups").glob("kopifund-*.db"))
-        self.assertIn("v5-before-v7", copy.name)
+        self.assertIn(f"v5-before-v{db.SCHEMA_VERSION}", copy.name)
         # opened again at the version: nothing more to do, the edit kept
         with closing(db.connect()) as conn:
             self.assertEqual(series.payees_off_in(conn), {"Gym"})
@@ -707,23 +708,23 @@ class Api(unittest.TestCase):
         self.sid = res[recurring.STAT]["data"]["series"][0]["id"]
 
     def post(self, path, body):
-        return serve.write(path, {}, json.dumps(body).encode())
+        return support.write(path, {}, json.dumps(body).encode())
 
     def test_the_view_the_edit_and_the_refusals(self):
-        view = serve.answer("/api/recurring/series", {"id": self.sid})
+        view = support.answer("/api/recurring/series", {"id": self.sid})
         self.assertEqual((view["id"], view["payee"], view["edit"]), (self.sid, PAYEE, dict.fromkeys(series.EDITS)))
         with self.assertRaises(serve.NotFound):
-            serve.answer("/api/recurring/series", {"id": "payee:Nobody:1"})
+            support.answer("/api/recurring/series", {"id": "payee:Nobody:1"})
         saved = self.post("/api/recurring/series", {"id": self.sid, "amount": 1650, "cadence": "monthly", "day": 9})
         self.assertEqual((saved["amount"], saved["day"], saved["edit"]["cadence"]), (1650, 9, "monthly"))
-        self.assertEqual(serve.answer("/api/recurring", {})["active"][0]["amount"], 1650)
+        self.assertEqual(support.answer("/api/recurring", {})["active"][0]["amount"], 1650)
         with self.assertRaisesRegex(serve.Refused, "How often"):
             self.post("/api/recurring/series", {"id": self.sid, "cadence": "daily"})
         with self.assertRaisesRegex(serve.Refused, "No payee"):
             self.post("/api/recurring/payee", {"payee": "Nobody", "recurring": False})
         self.assertEqual(self.post("/api/recurring/payee", {"payee": PAYEE, "recurring": False}),
                          {"payee": PAYEE, "recurring": False})
-        self.assertEqual(serve.answer("/api/recurring", {})["active"], [])
+        self.assertEqual(support.answer("/api/recurring", {})["active"], [])
 
 
 if __name__ == "__main__":

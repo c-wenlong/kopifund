@@ -18,13 +18,13 @@ sharing it (docs/parsing.md, "Trust, GXS and MariBank: no layout yet").
 Stdlib only. It reads the PDF and writes one text file; it never changes or
 moves the PDF, never writes into the repository and sends nothing anywhere.
 """
-import os
 import re
 import subprocess
-import tempfile
 from pathlib import Path
 
+from .atomic import write_private
 from .paths import REPO
+from .pdftext import pdf_text
 
 # the kinds, in the order the report names them
 KINDS = ("name", "address", "postcode", "id", "email", "phone", "account")
@@ -269,12 +269,6 @@ def scrub(text):
     return out, counts
 
 
-def pdf_text(pdf):
-    """The PDF's text as the parsers read it."""
-    return subprocess.run(["pdftotext", "-layout", str(pdf), "-"], capture_output=True,
-                          text=True, check=True).stdout
-
-
 class SampleRefused(Exception):
     """A sample this will not write; the message says why."""
 
@@ -313,16 +307,10 @@ def write(pdf, out=None, read=None):
     # a new file, private until the owner has read it, put in place in one step:
     # an existing file's looser mode is never kept, and a file linked to another
     # name (the PDF included) is replaced, never written through
-    fresh = None
     try:
         to.parent.mkdir(parents=True, exist_ok=True)
-        fd, fresh = tempfile.mkstemp(prefix=".sample.", dir=to.parent)   # mode 0600; a short name that always fits
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            fh.write(scrubbed)
-        os.replace(fresh, to)
+        write_private(to, scrubbed)
     except OSError as e:
-        if fresh:
-            Path(fresh).unlink(missing_ok=True)
         raise SampleRefused(f"Could not write {to}: {e.strerror or e}") from e
     return to, counts, scrubbed.count("\n") + 1
 

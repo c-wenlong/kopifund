@@ -136,12 +136,12 @@ final class CandidateTests: XCTestCase {
     }
 
     func test_caps_run_becomes_a_suggestion_not_a_pretag() {
-        let text = "Payment made. SGH - DIGESTIVE & LIVE billed your card."
+        let text = "Payment made. HVC - DENTAL & EYE billed your card."
         let c = detect(text)
         let caps = c.first { $0.field == .payee && $0.tokenIndexes.count > 1 }
         XCTAssertNotNil(caps)
         XCTAssertFalse(caps!.confident)
-        XCTAssertEqual(spanText(text, caps!), "SGH - DIGESTIVE & LIVE")
+        XCTAssertEqual(spanText(text, caps!), "HVC - DENTAL & EYE")
     }
 
     func test_no_amount_no_confident_amount() {
@@ -160,18 +160,61 @@ final class CandidateTests: XCTestCase {
     func test_merchant_anchor_beats_bank_anchor() {
         // "from DBS ... to MERCHANT": the merchant's "at/to" anchor ranks
         // above the bank's "from/via" anchor
-        let text = "SGD 4.80 from DBS/POSB card ending 1234 to SGH - DIGESTIVE"
+        let text = "SGD 4.80 from DBS/POSB card ending 1234 to HVC - DENTAL"
         let c = detect(text)
         let payees = c.filter { $0.field == .payee && $0.confident }
         let best = payees.min(by: { $0.rank < $1.rank })
-        XCTAssertEqual(best.map { spanText(text, $0) }, "SGH - DIGESTIVE")
+        XCTAssertEqual(best.map { spanText(text, $0) }, "HVC - DENTAL")
     }
 
     func test_card_clause_stops_a_payee_run() {
-        let text = "SGD 4.80 from DBS/POSB card ending 1234 to SGH"
+        let text = "SGD 4.80 from DBS/POSB card ending 1234 to HVC"
         let c = detect(text)
         let bank = c.first { $0.field == .payee && spanText(text, $0).contains("DBS") }
         XCTAssertEqual(bank.map { spanText(text, $0) }, "DBS/POSB")
+    }
+
+    /// "ending 1234" names the card or account the charge went through, so
+    /// the digits after it arrive pre-tagged as the card.
+    func test_card_digits_after_ending_are_a_confident_card() {
+        let text = "You made a payment of SGD 12.50 to KOPI CORNER PTE LTD on 29 Oct 2026 "
+            + "using your DBS Card ending 1234."
+        let card = detect(text).first { $0.field == .account && $0.confident }
+        XCTAssertEqual(card.map { spanText(text, $0) }, "1234")
+    }
+
+    /// The confident guesses, card included, tag straight into a pattern
+    /// that reads the alert back with its card.
+    func test_pretagged_card_builds_a_pattern_that_reads_the_card() throws {
+        let text = "You made a payment of SGD 12.50 to KOPI CORNER PTE LTD on 29 Oct 2026 "
+            + "using your DBS Card ending 1234."
+        let tokens = Tokenizer.tokenize(text)
+        var tags: [Int: PatternBuilder.Field] = [:]
+        for c in Candidates.detect(in: text, tokens: tokens) where c.confident {
+            if c.field == .payee, tags.values.contains(.payee) { continue }
+            for i in c.tokenIndexes where tags[i] == nil { tags[i] = c.field }
+        }
+        let segs = try PatternBuilder.segments(in: text, tokens: tokens,
+                                               spans: PatternBuilder.spans(from: tags, tokens: tokens))
+        let p = AlertPattern(name: "Kopi", direction: .outflow, accountID: "a",
+                             segments: segs, sampleText: text)
+        switch Matcher.test(p, text: text) {
+        case .success(let t): XCTAssertEqual(t.accountHint, "1234")
+        case .failure(let e): XCTFail("does not read: \(e.reason)")
+        }
+    }
+
+    func test_ending_in_and_a_mobile_wallet_are_cards_too() {
+        let a = "Paid SGD 4.80 with card ending in 5678 at KOPITIAM"
+        XCTAssertEqual(detect(a).first { $0.field == .account }.map { spanText(a, $0) }, "5678")
+        let b = "From:\nPayLah! Wallet (Mobile ending 2468)"
+        XCTAssertEqual(detect(b).first { $0.field == .account }.map { spanText(b, $0) }, "2468")
+    }
+
+    func test_a_number_with_no_ending_is_no_card() {
+        // a bare reference or an amount must never read as the card
+        XCTAssertNil(detect("Reference 1234. You charged SGD 4.80 at KOPITIAM")
+            .first { $0.field == .account })
     }
 
     /// A wallet app's transfer email, scrubbed: field labels carry their
@@ -222,9 +265,9 @@ final class CandidateTests: XCTestCase {
     /// out of the kept three: the cap takes the best ranks, not the first
     /// three in text order.
     func test_a_label_payee_survives_a_late_position() {
-        let text = "You paid at KOPITIAM to FRIEND via APP store\nTo:\nCHINESE COOKED FOOD"
+        let text = "You paid at KOPITIAM to FRIEND via APP store\nTo:\nGOLDEN WOK KITCHEN"
         let c = detect(text)
-        XCTAssertTrue(c.contains { $0.field == .payee && spanText(text, $0) == "CHINESE COOKED FOOD" })
+        XCTAssertTrue(c.contains { $0.field == .payee && spanText(text, $0) == "GOLDEN WOK KITCHEN" })
     }
 
     /// An inline payee span must not absorb the next line: the capture

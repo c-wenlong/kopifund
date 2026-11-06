@@ -16,11 +16,16 @@ packages:
     path: Packages/Storage
   Intents:
     path: Packages/Intents
+# G24: the signing team comes from Signing.xcconfig, which includes an
+# optional, gitignored Local.xcconfig (README, "Build"); a team set here would
+# override it, and a real one must never be committed
+configFiles:
+  Debug: Signing.xcconfig
+  Release: Signing.xcconfig
 settings:
   SWIFT_VERSION: "6.0"
   CURRENT_PROJECT_VERSION: "1"
   MARKETING_VERSION: "0.1"
-  DEVELOPMENT_TEAM: XXXXXXXXXX
   CODE_SIGN_STYLE: Automatic
 targets:
   Alerts:
@@ -100,7 +105,9 @@ targets:
   AlertsUITests:
     type: bundle.ui-testing
     platform: iOS
-    sources: [AlertsUITests]
+    # AppIcons.swift (written by make app-icon) too, so AppIconUITests
+    # expects the build's own default set and labels
+    sources: [AlertsUITests, Alerts/AppIcons.swift]
     dependencies:
       - target: Alerts
     settings:

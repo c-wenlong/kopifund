@@ -6,17 +6,16 @@ bucket's icon and colour."""
 import isolate  # noqa: F401  first: no test writes the real record or cache
 import hashlib
 import json
-import os
 import re
 import sqlite3
-import tempfile
 import unittest
 from contextlib import closing
 from pathlib import Path
 from unittest import mock
 
 from finance import api, categories, db, local, planning, spending, sync
-from test_db import SNAP, block, parsed, row
+import support
+from test_db import block, parsed, row
 
 REPO = Path(__file__).resolve().parents[2]
 V4 = (REPO / "server" / "tests" / "fixtures" / "record-v4.sql").read_text(encoding="utf-8")
@@ -59,15 +58,8 @@ PRAGMA user_version = 4;
 """
 
 
-class DataFolder(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        self.path = self.root / "kopifund.db"
-        p = mock.patch.dict(os.environ, {"KOPIFUND_DATA": str(self.root), "KOPIFUND_DB": str(self.path)})
-        p.start()
-        self.addCleanup(p.stop)
-        self.addCleanup(self.tmp.cleanup)
+class DataFolder(support.DataFolder):
+    """The shared throwaway data folder, with a version 4 record to upgrade."""
 
     def v4_record(self, extra=""):
         with closing(sqlite3.connect(self.path)) as c:
@@ -187,11 +179,8 @@ class UpgradeTest(DataFolder):
 def record():
     """A version 5 record in memory with the test_db rows: one trip (MYS,
     pinned k9), a budget, two transactions."""
-    conn = db.connect(":memory:")
-    db.import_user_tables(conn, SNAP)
-    db.load_parsed(conn, parsed([block()], [row("k1", "-12.50"), row("k2", "-5.00", category="Salary")]),
-                   payees=[{"name": "Grab", "kind": "Merchant"}], trips_by_key={"k1": "Trip A"})
-    return conn
+    return support.build_record([row("k1", "-12.50"), row("k2", "-5.00", category="Salary")],
+                                payees=[{"name": "Grab", "kind": "Merchant"}], trips_by_key={"k1": "Trip A"})
 
 
 class OnDeleteTest(unittest.TestCase):
@@ -264,9 +253,11 @@ V5_LISTS = {
 V6_LISTS = {**V5_LISTS, "series_group": ("payee", "text", "amount"),
             "cadence": ("weekly", "fortnightly", "twice-monthly", "monthly", "two-monthly", "quarterly",
                         "half-yearly", "yearly")}
-# G25: version 7 kept version 6's lists; pending_txn's states are an inline
+# G25: version 7 kept version 6's lists; pending_txn's states were an inline
 # CHECK, not a Python list
 V7_LISTS = V6_LISTS
+# G25: version 8 builds pending_txn's states from pending.STATES, with 'expired'
+V8_LISTS = {**V7_LISTS, "pending_state": ("waiting", "matched", "dismissed", "expired")}
 
 
 class CheckTest(unittest.TestCase):
@@ -279,6 +270,9 @@ class CheckTest(unittest.TestCase):
         # G16 (version 6): a series' edit
         self.conn.execute("INSERT INTO series_override(id, series_id, group_kind, group_name, saved_at) "
                           "VALUES (1, 'payee:Gym:5000', 'payee', 'Gym', 'x')")
+        # G25 (version 8): a phone row
+        self.conn.execute("INSERT INTO pending_txn(id, import_id, txn_date, amount_minor, currency, created_at) "
+                          "VALUES (1, 'imp1', '2026-08-03', -1250, 'SGD', 'x')")
 
     # a write that puts `value` into each checked column
     WRITES = {
@@ -292,6 +286,7 @@ class CheckTest(unittest.TestCase):
         ("upload_step", "status"): "UPDATE upload_step SET status = ? WHERE id = 1",
         ("series_override", "group_kind"): "UPDATE series_override SET group_kind = ? WHERE id = 1",
         ("series_override", "cadence"): "UPDATE series_override SET cadence = ? WHERE id = 1",
+        ("pending_txn", "state"): "UPDATE pending_txn SET state = ? WHERE id = 1",
     }
 
     def test_every_listed_column_refuses_a_value_outside_its_list_and_takes_every_one_in_it(self):
@@ -320,11 +315,11 @@ class CheckTest(unittest.TestCase):
         sql = self.conn.execute("SELECT sql FROM sqlite_master WHERE name = 'upload_step'").fetchone()[0]
         self.assertIn("'duplicate'", sql)
 
-    def test_the_lists_are_the_ones_version_7_was_built_with(self):
-        # G25: version 7 kept version 6's lists and added pending_txn
-        self.assertEqual(db.SCHEMA_VERSION, 7, "a new version: copy its lists into a V8_LISTS")
-        self.assertEqual(db.enums(), V7_LISTS,
-                         "a record built at version 7 refuses a value added since: bump SCHEMA_VERSION "
+    def test_the_lists_are_the_ones_version_8_was_built_with(self):
+        # G25: version 8 added pending_txn's states, with 'expired'
+        self.assertEqual(db.SCHEMA_VERSION, 8, "a new version: copy its lists into a V9_LISTS")
+        self.assertEqual(db.enums(), V8_LISTS,
+                         "a record built at version 8 refuses a value added since: bump SCHEMA_VERSION "
                          "so the upgrade rebuilds the tables with the new list")
 
 
@@ -476,14 +471,14 @@ class StyleEndpointTest(DataFolder):
         db.connect().close()
         with closing(db.connect()) as conn:
             gid = conn.execute("SELECT id FROM category_group WHERE name = 'Giving'").fetchone()[0]
-        out = serve.write("/api/category-groups/style", {},
+        out = support.write("/api/category-groups/style", {},
                           json.dumps({"id": gid, "name": "Giving", "colour": "c11"}).encode())
         self.assertEqual(out, {"id": gid, "name": "Giving", "icon": "gift", "colour": "c11", "shown": "c11",
                                "swapped": "Transfers"})
         with self.assertRaises(serve.Refused):
-            serve.write("/api/category-groups/style", {}, json.dumps({"id": gid, "icon": "rocket-ship"}).encode())
+            support.write("/api/category-groups/style", {}, json.dumps({"id": gid, "icon": "rocket-ship"}).encode())
         with self.assertRaises(ValueError):
-            serve.write("/api/category-groups/style", {}, json.dumps({"id": gid}).encode())
+            support.write("/api/category-groups/style", {}, json.dumps({"id": gid}).encode())
 
 
 if __name__ == "__main__":

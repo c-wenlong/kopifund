@@ -1,13 +1,14 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { StrictMode } from "react";
 import { revalidate, type DashboardLayout, type DashboardLayouts } from "../api";
 import { Toaster } from "../components/Toast";
+import { keepEditing, navigate } from "../router";
 import { Dashboard } from "./Dashboard";
+import { fakeClock, json } from "../test-helpers";
 
 // G26: the Dashboard page against a stand-in server that keeps what is posted,
 // so a second render sees what the first saved, as a reload would. All figures
 // and names are invented.
-
-const ok = (data: unknown) => new Response(JSON.stringify(data), { status: 200 });
 
 const ANSWER = {
   source: "net-worth", metric: "total", dimension: "month", unit: "sgd_minor",
@@ -30,9 +31,9 @@ function stubServer(saved: { layouts: DashboardLayout[]; active: string | null }
         posts.push({ url, body });
         saved.layouts = body.layouts.map((d: DashboardLayout) => doc(d.id, d.name, d.widgets));
         saved.active = body.active ?? saved.active;
-        return ok({ layouts: saved.layouts, active: saved.active });
+        return json({ layouts: saved.layouts, active: saved.active });
       }
-      return ok({ layouts: saved.layouts, active: saved.active } satisfies DashboardLayouts);
+      return json({ layouts: saved.layouts, active: saved.active } satisfies DashboardLayouts);
     }
     const one = url.match(/^\/api\/dashboard\/layouts\/([a-z0-9_-]+)$/);
     if (one && init?.method === "POST") {
@@ -41,10 +42,10 @@ function stubServer(saved: { layouts: DashboardLayout[]; active: string | null }
       const d = doc(one[1], body.name, body.widgets ?? []);
       saved.layouts = [...saved.layouts.filter((x) => x.id !== d.id), d];
       if (body.active) saved.active = d.id;
-      return ok(d);
+      return json(d);
     }
-    if (url.startsWith("/api/dashboard/query")) return ok(ANSWER);
-    return new Response(JSON.stringify({ error: "not here" }), { status: 404 });
+    if (url.startsWith("/api/dashboard/query")) return json(ANSWER);
+    return json({ error: "not here" }, 404);
   });
   return posts;
 }
@@ -149,9 +150,9 @@ describe("Dashboard", () => {
           posts.push({ url, body });
           saved.layouts = body.layouts.map((d: DashboardLayout) => doc(d.id, d.name, d.widgets));
           saved.active = body.active ?? saved.active;
-          return ok({ layouts: saved.layouts, active: saved.active });
+          return json({ layouts: saved.layouts, active: saved.active });
         }
-        return ok({ layouts: saved.layouts, active: saved.active });
+        return json({ layouts: saved.layouts, active: saved.active });
       }
       const one = url.match(/^\/api\/dashboard\/layouts\/([a-z0-9_-]+)$/);
       if (one && init?.method === "POST") {
@@ -165,10 +166,10 @@ describe("Dashboard", () => {
         const d = doc(one[1], body.name, body.widgets ?? []);
         saved.layouts = [...saved.layouts.filter((x) => x.id !== d.id), d];
         if (body.active) saved.active = d.id;
-        return ok(d);
+        return json(d);
       }
-      if (url.startsWith("/api/dashboard/query")) return ok(ANSWER);
-      return new Response(JSON.stringify({ error: "not here" }), { status: 404 });
+      if (url.startsWith("/api/dashboard/query")) return json(ANSWER);
+      return json({ error: "not here" }, 404);
     });
     render(<><Dashboard /><Toaster /></>);
     await screen.findByText("kept");
@@ -207,6 +208,207 @@ describe("Dashboard", () => {
       expect(a.widgets.map((w) => w.id)).toEqual(["w-a"]);
       expect(b.widgets.map((w) => w.id)).toEqual(["w-b"]);
     }, { timeout: 3000 });
+    // the undo saved the board left behind without making it the one the next visit opens
+    expect(saved.active).toBe("board-b");
+  });
+
+  it("switches board by writing that board alone, never this tab's copy of the others", async () => {
+    const saved = {
+      layouts: [
+        doc("default", "Default", [
+          { id: "w-a", type: "note", title: "Note A", options: { text: "first board" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+        ]),
+        doc("board-b", "Second", [
+          { id: "w-b", type: "note", title: "Note B", options: { text: "second board" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+        ]),
+      ],
+      active: "default",
+    };
+    const posts = stubServer(saved);
+    render(<Dashboard />);
+    await screen.findByText("first board");
+    // another tab edits the first board after this one read it
+    saved.layouts = saved.layouts.map((d) => d.id === "default"
+      ? { ...d, name: "Edited elsewhere" } : d);
+    fireEvent.click(screen.getByRole("button", { name: "Layout" }));
+    fireEvent.mouseDown(await screen.findByRole("option", { name: "Second" }));
+    await waitFor(() => expect(saved.active).toBe("board-b"));
+    expect(posts.map((p) => p.url)).toEqual(["/api/dashboard/layouts/board-b"]);
+    expect(saved.layouts.find((d) => d.id === "default")!.name).toBe("Edited elsewhere");
+  });
+
+  it("lets the page be left inside the wait before a save, and saves on the way out", async () => {
+    const saved = {
+      layouts: [doc("default", "Default", [
+        { id: "w-note", type: "note", title: "A note", options: { text: "kept" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+      ])],
+      active: "default",
+    };
+    window.history.replaceState(window.history.state, "", "/dashboard");
+    stubServer(saved);
+    const { unmount } = render(<Dashboard />);
+    await screen.findByText("kept");
+    fireEvent.click(screen.getByRole("button", { name: "Remove A note" }));
+    // no "Leave without saving?": the move goes through at once
+    act(() => navigate("/transactions"));
+    expect(window.location.pathname).toBe("/transactions");
+    unmount();
+    await waitFor(() => expect(saved.layouts[0].widgets).toHaveLength(0));
+    keepEditing();
+  });
+
+  it("says so, and can try again, when the save made on leaving fails", async () => {
+    const saved = {
+      layouts: [doc("default", "Default", [
+        { id: "w-note", type: "note", title: "A note", options: { text: "kept" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+      ])],
+      active: "default",
+    };
+    stubServer(saved);
+    const { unmount } = render(<><Dashboard /><Toaster /></>);
+    await screen.findByText("kept");
+    fireEvent.click(screen.getByRole("button", { name: "Remove A note" }));
+    const real = globalThis.fetch;
+    let fail = true;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) =>
+      fail && init?.method === "POST"
+        ? json({ error: "disk full" }, 500)
+        : real(input, init));
+    unmount();
+    render(<Toaster />);
+    expect(await screen.findByText(/dashboard was not saved: disk full/)).toBeInTheDocument();
+    fail = false;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(saved.layouts[0].widgets).toHaveLength(0));
+  });
+
+  it("drops a retry of a save made on leaving once a newer save of that board has gone out", async () => {
+    const saved = {
+      layouts: [doc("default", "Default", [
+        { id: "w-a", type: "note", title: "Note A", options: { text: "kept" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+        { id: "w-b", type: "note", title: "Note B", options: { text: "b" }, layout: { x: 4, y: 0, w: 4, h: 2 } },
+      ])],
+      active: "default",
+    };
+    stubServer(saved);
+    const first = render(<><Dashboard /><Toaster /></>);
+    await screen.findByText("kept");
+    fireEvent.click(screen.getByRole("button", { name: "Remove Note A" }));
+    const real = globalThis.fetch;
+    let fail = true;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) =>
+      fail && init?.method === "POST"
+        ? json({ error: "disk full" }, 500)
+        : real(input, init));
+    first.unmount();
+    render(<Toaster />);
+    const retry = await screen.findByRole("button", { name: "Try again" });
+    fail = false;
+    // the page opens again (the failed save never landed, so A is back) and a newer edit saves: B gone
+    render(<Dashboard />);
+    fireEvent.click(await screen.findByRole("button", { name: "Remove Note B" }));
+    await waitFor(() => expect(saved.layouts[0].widgets.map((w) => w.id)).toEqual(["w-a"]), { timeout: 3000 });
+    // the old retry (A removed, B kept) would undo that edit: it is dropped
+    fireEvent.click(retry);
+    expect(await screen.findByText(/newer change to that board was saved/)).toBeInTheDocument();
+    expect(saved.layouts[0].widgets.map((w) => w.id)).toEqual(["w-a"]);
+  });
+
+  it("hands a waiting save off once on leaving, and a slow save in flight sends nothing after", async () => {
+    const saved = {
+      layouts: [doc("default", "Default", [
+        { id: "w-a", type: "note", title: "Note A", options: { text: "kept" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+        { id: "w-b", type: "note", title: "Note B", options: { text: "b" }, layout: { x: 4, y: 0, w: 4, h: 2 } },
+      ])],
+      active: "default",
+    };
+    const clock = fakeClock();
+    const posts = stubServer(saved);
+    const real = globalThis.fetch;
+    let release: () => void = () => {};
+    let held = true;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (held && init?.method === "POST") {
+        held = false;
+        await new Promise<void>((r) => { release = r; });
+      }
+      return real(input, init);
+    });
+    const { unmount } = render(<Dashboard />);
+    await screen.findByText("kept");
+    fireEvent.click(screen.getByRole("button", { name: "Remove Note A" }));
+    await waitFor(() => expect(held).toBe(false), { timeout: 3000 });     // the first save is on the wire, held
+    fireEvent.click(screen.getByRole("button", { name: "Remove Note B" }));   // a second waits behind it
+    unmount();                                                                 // left: the waiting one goes now
+    await waitFor(() => expect(posts.length).toBe(1));
+    release();
+    await clock.pass(900);
+    // the held save landed, and the page's loop sent nothing after the page was gone:
+    // no third post re-sending the board that went out on leaving
+    expect(posts.length).toBe(2);
+    expect((posts[0].body as DashboardLayout).widgets).toHaveLength(0);
+  });
+
+  it("saves under StrictMode, whose second setup must not leave the page marked gone", async () => {
+    const saved = {
+      layouts: [doc("default", "Default", [
+        { id: "w-note", type: "note", title: "A note", options: { text: "kept" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+      ])],
+      active: "default",
+    };
+    stubServer(saved);
+    render(<StrictMode><Dashboard /></StrictMode>);
+    await screen.findByText("kept");
+    fireEvent.click(screen.getByRole("button", { name: "Remove A note" }));
+    await waitFor(() => expect(saved.layouts[0].widgets).toHaveLength(0), { timeout: 3000 });
+  });
+
+  it("reports a save that was on the wire when the page was left and then failed", async () => {
+    const saved = {
+      layouts: [doc("default", "Default", [
+        { id: "w-note", type: "note", title: "A note", options: { text: "kept" }, layout: { x: 0, y: 0, w: 4, h: 2 } },
+      ])],
+      active: "default",
+    };
+    stubServer(saved);
+    const real = globalThis.fetch;
+    let fail: () => void = () => {};
+    let held = true;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      if (held && init?.method === "POST") {
+        held = false;
+        await new Promise<void>((r) => { fail = r; });
+        return json({ error: "disk full" }, 500);
+      }
+      return real(input, init);
+    });
+    const { unmount } = render(<><Dashboard /><Toaster /></>);
+    await screen.findByText("kept");
+    fireEvent.click(screen.getByRole("button", { name: "Remove A note" }));
+    await waitFor(() => expect(held).toBe(false), { timeout: 3000 });
+    unmount();
+    render(<Toaster />);
+    fail();
+    expect(await screen.findByText(/dashboard was not saved: disk full/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    await waitFor(() => expect(saved.layouts[0].widgets).toHaveLength(0));
+  });
+
+  it("makes no board when the picker closes with nothing picked, and the Default one with the first widget", async () => {
+    const saved = { layouts: [] as DashboardLayout[], active: null as string | null };
+    const clock = fakeClock();
+    const posts = stubServer(saved);
+    render(<Dashboard />);
+    fireEvent.click(await screen.findByRole("button", { name: /^Add a widget/ }));
+    const sheet = await screen.findByRole("dialog", { name: "Add a widget" });
+    fireEvent.keyDown(sheet, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Add a widget" })).not.toBeInTheDocument());
+    await clock.pass(900);
+    expect(posts).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: /^Add a widget/ }));
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "Add a widget" })).getByRole("button", { name: /^A note/ }));
+    await waitFor(() => expect(saved.layouts.map((d) => [d.name, d.widgets.length])).toEqual([["Default", 1]]), { timeout: 3000 });
+    expect(saved.active).toBe("default");
   });
 
   it("adopts another tab's write that shares our save's whole-second stamp", async () => {

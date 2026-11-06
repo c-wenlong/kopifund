@@ -63,6 +63,7 @@ class ValuesTest(unittest.TestCase):
 class RecordTest(unittest.TestCase):
     def setUp(self):
         self.conn = db.connect(":memory:")
+        self.addCleanup(self.conn.close)
         db.import_user_tables(self.conn, {k: [dict(x) for x in v] for k, v in SNAP.items()},
                               plan={"dca": 100})
 
@@ -81,7 +82,7 @@ class RecordTest(unittest.TestCase):
     def test_a_second_identical_load_changes_nothing(self):
         self.load([row("k1", "-12.50")])
         counts = self.load([row("k1", "-12.50")])
-        self.assertEqual(counts, {"inserted": 0, "updated": 0, "archived": 0})
+        self.assertEqual(counts, {"inserted": 0, "updated": 0, "archived": 0, "rekeyed": 0})
 
     def test_a_changed_row_is_updated_in_place(self):
         self.load([row("k1", "-12.50")])
@@ -168,6 +169,7 @@ class RecordTest(unittest.TestCase):
 class TripsTest(unittest.TestCase):
     def setUp(self):
         self.conn = db.connect(":memory:")
+        self.addCleanup(self.conn.close)
         db.import_user_tables(self.conn, {k: [dict(x) for x in v] for k, v in SNAP.items()})
 
     def test_trips_come_back_as_the_sync_s_trip_objects(self):
@@ -189,6 +191,7 @@ class TripsTest(unittest.TestCase):
 class SeedCategoriesTest(unittest.TestCase):
     def test_blanks_are_filled_and_set_values_kept(self):
         conn = db.connect(":memory:")
+        self.addCleanup(conn.close)
         conn.execute("INSERT INTO category(name) VALUES ('Transport')")
         conn.execute("INSERT INTO category(name, bucket, grp, need_class, sort_order) "
                      "VALUES ('Groceries', 'Spend', 'Fixed', 'Want', 1)")
@@ -203,6 +206,7 @@ class SeedCategoriesTest(unittest.TestCase):
 
     def test_a_renamed_shipped_category_keeps_its_rows(self):
         conn = db.connect(":memory:")
+        self.addCleanup(conn.close)
         conn.execute("INSERT INTO category(name, bucket, grp, need_class, sort_order) "
                      "VALUES ('Tuition', 'Spend', 'Fixed', 'Need', 90)")
         old_id = conn.execute("SELECT id FROM category WHERE name='Tuition'").fetchone()[0]
@@ -213,12 +217,14 @@ class SeedCategoriesTest(unittest.TestCase):
 
     def test_a_record_that_has_both_names_is_left_alone(self):
         conn = db.connect(":memory:")
+        self.addCleanup(conn.close)
         conn.executemany("INSERT INTO category(name) VALUES (?)", [("Tuition",), ("Education",)])
         db.seed_categories(conn, [])
         self.assertEqual({r[0] for r in conn.execute("SELECT name FROM category")}, {"Tuition", "Education"})
 
     def test_a_row_whose_rule_says_the_old_name_lands_under_the_new_one(self):
         conn = db.connect(":memory:")
+        self.addCleanup(conn.close)
         education = conn.execute("INSERT INTO category(name) VALUES ('Education')").lastrowid
         self.assertEqual(db.category_ids(conn)["Tuition"], education)
         tuition = conn.execute("INSERT INTO category(name) VALUES ('Tuition')").lastrowid
@@ -266,6 +272,7 @@ class ImportReviewTest(unittest.TestCase):
 
     def setUp(self):
         self.conn = db.connect(":memory:")
+        self.addCleanup(self.conn.close)
         db.import_user_tables(self.conn, {k: [dict(x) for x in v] for k, v in SNAP.items()})
 
     def snap(self, **changes):
@@ -415,7 +422,7 @@ class SchemaVersionTest(unittest.TestCase):
         import hashlib
         self.assertEqual(
             (db.SCHEMA_VERSION, hashlib.sha256(db.schema().encode()).hexdigest()),
-            (7, "adb75a3f512944a80b2eb28588719aff10d2f6f8ce0d0d7e7e3d3708ef8b6624"))
+            (8, "2b9584bcf65b650be4092daae9174b7af73203c0131ce8488911e25a186eb482"))
 
     def test_a_version_1_record_gains_the_upload_history(self):
         import sqlite3

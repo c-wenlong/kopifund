@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { kpiOf, KpiState } from "./KpiState";
 import type { WidgetAnswer, WidgetQuery } from "../../../types.gen";
+import { json } from "../../../test-helpers";
 
 // invented figures only
 const QUERY: WidgetQuery = { source: "spending", metric: "spend", dimension: "month" };
@@ -20,11 +21,10 @@ const BY_PART: WidgetAnswer = {
 };
 
 function stubApi(answer: unknown = BY_MONTH, status = 200) {
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(answer), { status })));
+  vi.stubGlobal("fetch", vi.fn(async () => json(answer, status)));
 }
 
 beforeEach(() => stubApi());
-afterEach(() => vi.unstubAllGlobals());
 
 describe("kpiOf", () => {
   it("reads the latest figure, the one before it, and the run", () => {
@@ -45,6 +45,16 @@ describe("kpiOf", () => {
     expect(k.value).toBe(60_000);
     expect(k.prior).toBe(150_000);
     expect(k.priorLabel).toBe("2026-08");
+  });
+
+  it("steps over a month the answer calls partial, so half a month is not set against a whole one", () => {
+    const k = kpiOf({ ...BY_MONTH, partial: ["2026-10"] });
+    expect(k.value).toBe(175_000);
+    expect(k.prior).toBe(150_000);
+    expect(k.atLabel).toBe("2026-09");
+    expect(k.run).toEqual([150_000, 175_000]);
+    // a sum over the range still counts every month, the partial one included
+    expect(kpiOf({ ...BY_MONTH, partial: ["2026-10"] }, undefined, "sum").value).toBe(385_000);
   });
 
   it("sums the answer when asked, and reads a named series", () => {

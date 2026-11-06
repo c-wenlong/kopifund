@@ -21,7 +21,6 @@ import os
 import re
 import sqlite3
 import subprocess
-import tempfile
 import threading
 import time
 import urllib.error
@@ -32,6 +31,7 @@ from pathlib import Path
 from typing import NamedTuple
 
 from . import dotenv, keys
+from .atomic import write_private
 from .paths import cache_dir, data_root
 
 # provider -> (wire format, base URL, the variables its key usually lives in,
@@ -132,19 +132,20 @@ def _sources(ai, root):
         yield "key_file", dotenv.read(f)
 
 
-def _lookup(name, ai, root):
-    """(value, place) of one variable from the first source that has it, or None."""
-    return next(((src[name], place) for place, src in _sources(ai, root) if src.get(name)), None)
+def _lookup(name, ai, root, sources=None):
+    """(value, place) of one variable from the first source that has it, or
+    None. `sources`, a list from _sources, saves reading the files again."""
+    return next(((src[name], place) for place, src in (sources or _sources(ai, root)) if src.get(name)), None)
 
 
-def _detected(provider, ai, root):
+def _detected(provider, ai, root, sources=None):
     """(key, place) for `provider` from the variables it usually lives in, then
     the `<PROVIDER>_API_KEY` every provider tends to use, or None. Every name is
     tried in the environment before any file, so a key exported now beats an
-    old one on disk."""
+    old one on disk. `sources` as for _lookup."""
     names = PROVIDERS.get(provider, ("", "", (), ""))[2] + (f"{provider.upper()}_API_KEY",)
     names = tuple(dict.fromkeys(names))
-    for place, src in _sources(ai, root):
+    for place, src in (sources or _sources(ai, root)):
         key = next((src[n] for n in names if src.get(n)), None)
         if key:
             return key, place
@@ -261,11 +262,15 @@ def settings(cfg, conn=None, saved=None):
             for k in ("model", "copilot_model"):
                 if saved.get(k):
                     ai[k] = saved[k]
+    sources = None
     if ai.get("provider", "auto") == "auto":
+        # Audit: every file read once and the Keychain asked once per provider
+        # for the whole pick, not once per provider per file
+        sources = list(_sources(ai, root))
         pick = next((p for p, (_, _, _, model) in PROVIDERS.items()
-                     if model and (_detected(p, ai, root) or _saved_key(p))), None)
+                     if model and (_detected(p, ai, root, sources) or _saved_key(p))), None)
         if pick is None:
-            found = [p for p in PROVIDERS if PROVIDERS[p][2] and _detected(p, ai, root)]
+            found = [p for p in PROVIDERS if PROVIDERS[p][2] and _detected(p, ai, root, sources)]
             if found:
                 raise AIError(f"[ai] found keys for {', '.join(found)} but no default model: "
                               "set provider and model")
@@ -283,7 +288,7 @@ def settings(cfg, conn=None, saved=None):
     ai["copilot_model"] = ai.get("copilot_model") or COPILOT_DEFAULTS.get(ai["provider"]) or ai["model"] or ""
     ai.setdefault("send_amounts", True)
     if ai["format"] == "anthropic" and not ai.get("workspace_id"):
-        found = _lookup("ANTHROPIC_WORKSPACE_ID", ai, root)
+        found = _lookup("ANTHROPIC_WORKSPACE_ID", ai, root, sources)
         ai["workspace_id"] = found[0] if found else ""
     return ai
 
@@ -407,26 +412,59 @@ def asked(groups, send_amounts):
     return items
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Audit: urllib's own handler follows a redirect to any host with every
+    header copied, the key's included. No provider API redirects, so a 3xx is
+    answered as the error it is and the key goes nowhere but the URL asked."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+# header values that are not secrets, left in an error's words as they are
+_PLAIN_HEADERS = frozenset({"content-type", "accept", "anthropic-version", "anthropic-beta"})
+
+
+def _scrubbed(text, headers):
+    """`text` with every secret header value taken out (an `authorization`
+    value with and without its scheme), should a provider echo one back."""
+    for name, value in headers.items():
+        if name.lower() in _PLAIN_HEADERS or not isinstance(value, str):
+            continue
+        # longest first, so the bare key never splits a match of the whole value
+        for secret in sorted({value, value.split(" ", 1)[-1]}, key=len, reverse=True):
+            if secret:
+                text = text.replace(secret, "(the key)")
+    return text
+
+
 def _request(url, headers, body=None, timeout=TIMEOUT):
     """POST `body` as JSON (GET when it is None), return the decoded JSON reply,
-    or AIError in words for the app. The key travels in a header only, and no
-    message here ever holds a header."""
+    or AIError in words for the app. The key travels in a header only, to `url`
+    alone (a redirect is refused), and no message here ever holds a header's
+    value, even when the provider's own error repeats it."""
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(url, data=data, method="GET" if body is None else "POST",
                                  headers={"content-type": "application/json", **headers})
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as r:
+        with _OPENER.open(req, timeout=timeout) as r:
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
-        # read the whole (small) error body so its JSON parses, then keep the message short
-        detail = e.read(20_000).decode("utf-8", "replace")
+        with e:  # the error is the provider's reply: close it, not leave it for the collector
+            if 300 <= e.code < 400:
+                raise AIError(f"The AI provider answered {e.code}, a redirect to another address, which Kopifund "
+                              "does not follow with the key: check the provider's base_url") from None
+            # read the whole (small) error body so its JSON parses, then keep the message short
+            detail = e.read(20_000).decode("utf-8", "replace")
         try:
             detail = json.loads(detail)["error"]["message"]
         except (ValueError, KeyError, TypeError):
             pass
-        raise AIError(f"The AI provider said {e.code}: {str(detail)[:300]}") from None
+        # the key out before the cut, so a key the cut would split leaves no part behind
+        raise AIError(f"The AI provider said {e.code}: {_scrubbed(str(detail), headers)[:300]}") from None
     except (urllib.error.URLError, TimeoutError) as e:
-        raise AIError(f"Could not reach the AI provider: {getattr(e, 'reason', e)}") from None
+        raise AIError(_scrubbed(f"Could not reach the AI provider: {getattr(e, 'reason', e)}", headers)) from None
     except ValueError:
         raise AIError("The AI provider's answer was not JSON") from None
 
@@ -516,19 +554,12 @@ _CACHE_LOCK = threading.Lock()
 def _merge_cache(new):
     """Add answers to the cache file: reread it first, so answers another
     request saved meanwhile stay, then replace it through a temporary file of
-    this call's own."""
+    this call's own (write_private)."""
     with _CACHE_LOCK:
         cache = {**_load_cache(), **new}
         path = _cache_path()
         path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".ai-suggestions-", suffix=".tmp")
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as fh:   # mkstemp makes it 600
-                json.dump(cache, fh, indent=1, sort_keys=True)
-            os.replace(tmp, path)
-        except BaseException:
-            os.unlink(tmp)
-            raise
+        write_private(path, json.dumps(cache, indent=1, sort_keys=True))
         return cache
 
 
@@ -833,10 +864,7 @@ def models(cfg, conn, provider=None, q="", get=None, now=None):
                   "fetched_at": datetime.fromtimestamp(now, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
                   "models": listed}
         path.parent.mkdir(parents=True, exist_ok=True)
-        fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".models-", suffix=".tmp")
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(cached, fh)
-        os.replace(tmp, path)
+        write_private(path, json.dumps(cached))
     q = (q or "").strip().lower()
     found = [{"id": m["id"], "label": m["label"]} for m in cached["models"]
              if not q or q in m["id"].lower() or q in m["label"].lower()]

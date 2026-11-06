@@ -1,16 +1,28 @@
 import "@testing-library/jest-dom/vitest";
-import { afterEach } from "vitest";
+import { afterEach, vi } from "vitest";
 import { clearApiCache, resetLink } from "./api";
 import { clearToasts } from "./components/Toast";
 import { clearModelCache } from "./components/ModelField";
+import { resetSheets } from "./components/LeaveBar";
+import { resetPublished } from "./copilot/pageFilters";
+import { resetRouter } from "./router";
+import { resetAppIcon } from "./components/appIcon";
 
 // G13: the API cache lives as long as the module, so each test starts from an
-// empty one (and an empty kept copy), as a fresh page would
+// empty one (and an empty kept copy), as a fresh page would. Audit: so does
+// every other module's state: the router's guards and held move, the Sheets
+// the LeaveBar counts, the filters a page published to the copilot, and the
+// app icon pick a tab holds.
 afterEach(() => {
+  vi.useRealTimers();
   clearApiCache();
   resetLink();
   clearToasts();
   clearModelCache();
+  resetRouter();
+  resetSheets();
+  resetPublished();
+  resetAppIcon();
   try {
     window.localStorage.clear();
   } catch {

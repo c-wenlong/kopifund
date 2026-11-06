@@ -134,16 +134,17 @@ def _one_off_key(conn, r):
     return row[0] if row else None
 
 
-def needs_your_eye(conn, results, up, folders=(), today=None, listing=()):
+def needs_your_eye(conn, results, up, folders=(), today=None, listing=(), rec=None):
     """What the "Needs your eye" card is built from, and its `lines`: one for
     each part that is true. `up` is this month's coming-up list; `folders`
     (the config's) and `listing` (the app's statement folders) name and find
-    an account as Your profile does (server/finance/profile.py, accounts)."""
+    an account as Your profile does (server/finance/profile.py, accounts). `rec` is the
+    recurring.Record `overview` built for `up`, read again here rather than rebuilt."""
     needs = conn.execute("""SELECT COUNT(*) FROM v_txn WHERE flow_class = 'External'
                             AND category_id IS NULL AND is_synthetic = 0""").fetchone()[0]
     trend = stat_cents(_data(results, "savings-runway").get("summary"), "trend_6m")
     # G16: the result as the Recurring page reads it, payees loaded since the stat ran read again
-    detector = recurring.refreshed(conn, results)
+    detector = recurring.refreshed(conn, results, rec)
     eye = {
         "needs_category": needs,
         # G16: one line per series, its most urgent payment, the pick the Recurring page's chip
@@ -154,14 +155,14 @@ def needs_your_eye(conn, results, up, folders=(), today=None, listing=()):
         "one_off": biggest_one_off(results, up["month"], conn),
         "cash_trend_6m": trend,
         "irregular": len((detector.get("flag_mismatches") or {}).get("flagged_not_detected") or ()),
-        "scam": scam_line(conn, results),
+        "scam": scam_line(conn, results, rec),
         # G18: what other pages flag, gathered here for the sidebar's list
         "upload": upload_state(conn),
         "needs_rule": rules_app.needs_rule_count(conn),
         "missing_fx": conn.execute("SELECT COUNT(*) FROM v_missing_fx").fetchone()[0],
         "stale_accounts": stale_accounts(conn, today or date.today(), folders, listing),
         # G25: phone rows still waiting for a statement to confirm them
-        "pending": pending.waiting_count(conn),
+        "pending": pending.waiting_count(conn, today),
     }
     eye["lines"] = eye_lines(eye)
     return eye
@@ -269,7 +270,7 @@ def eye_lines(e):
     # the quiet lines; the Settings card is where a row is dismissed
     if e["pending"]:
         line("pending", f"{_n(e['pending'], 'spend from the phone waits', 'spends from the phone wait')} "
-             "for a statement", "/settings")
+             "for a statement", "/settings?phone_rows=waiting")
     if e["irregular"] > 0:
         line("irregular", f"{_n(e['irregular'], 'payee marked recurring has', 'payees marked recurring have')} "
              "no regular spacing", "/recurring")
@@ -401,12 +402,12 @@ def stale_accounts(conn, today, folders=(), listing=()):
     return sorted(out, key=lambda a: (-a["months"], a["name"]))
 
 
-def scam_line(conn, results=None):
+def scam_line(conn, results=None, rec=None):
     """G15: how many payments the scam checks flag (`count`), how many of
     those for a reason that points at a scam (`scams`, scam_checks.SCAMS),
     and the one Home names: the newest scam, else the newest flag, with the
     `code` and `reason` it is named for. None when none is flagged."""
-    rows = scam_checks.flags(conn, results=results)
+    rows = scam_checks.flags(conn, results=results, rec=rec)
     if not rows:
         return None
 
@@ -454,7 +455,10 @@ def overview(conn, results, today=None, folders=(), listing=()):
                 if cents(name) is not None]
     missing_fx = conn.execute("SELECT COUNT(*) FROM v_missing_fx").fetchone()[0]
     last = conn.execute("SELECT MAX(txn_date) FROM v_txn").fetchone()[0]
-    up = recurring.coming_up(conn, results, today)
+    # Audit: one Record for every reader of the recurring result, so the detector runs
+    # once per group for this answer
+    rec = recurring.record(conn, results)
+    up = recurring.coming_up(conn, results, today, rec)
     return {"as_of": last, "headline": headline, "holdings": holdings, "missing_fx": missing_fx,
             "spending": spending_chart(conn, results), "coming_up": up,
-            "needs_your_eye": needs_your_eye(conn, results, up, folders, today, listing)}
+            "needs_your_eye": needs_your_eye(conn, results, up, folders, today, listing, rec)}

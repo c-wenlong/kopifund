@@ -1,8 +1,10 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { choose } from "../test-select";
+import { notifyChanged } from "../api";
 import type { AiKey, AiSettings } from "../types.gen";
 import { AiCard } from "./AiCard";
+import { expectAsks, expectFree, json } from "../test-helpers";
 
 // G22: the AI card on Settings: provider, models, the key (never shown), Test and consent.
 
@@ -27,14 +29,12 @@ function stub(first: AiSettings, after: (url: string, body: Record<string, unkno
       posts.push({ url, body });
       const out = after(url, body);
       if ("providers" in out) now = out as AiSettings;
-      return new Response(JSON.stringify(out), { status: 200 });
+      return json(out);
     }
-    if (url === "/api/ai") return new Response(JSON.stringify(now), { status: 200 });
-    return new Response(JSON.stringify({ provider: "anthropic", models: [], fetched_at: null, error: null }), { status: 200 });
+    if (url === "/api/ai") return json(now);
+    return json({ provider: "anthropic", models: [], fetched_at: null, error: null });
   }));
 }
-
-afterEach(() => vi.unstubAllGlobals());
 
 const card = async () => (await screen.findByRole("heading", { name: "AI" })).closest("section")!;
 
@@ -107,6 +107,104 @@ describe("the AI card's settings", () => {
     expect(within(c).getByRole("checkbox", { name: "Send matching rows to Anthropic" })).toBeChecked();
   });
 
+  it("keeps what is typed while a save is on its way, a box set back to the old saved value included", async () => {
+    stub(settings(keychain));
+    let release: () => void = () => {};
+    const ask = globalThis.fetch;
+    let now = settings(keychain);
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/ai/settings" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        return new Promise<Response>((done) => {
+          release = () => { now = settings(keychain, body); done(json(now)); };
+        });
+      }
+      if (url === "/api/ai") return json(now);
+      return ask(url, init);
+    }));
+    render(<AiCard />);
+    const c = await card();
+    fireEvent.change(within(c).getByRole("combobox", { name: "Ask Kopifund model" }), { target: { value: "claude-opus-4-1" } });
+    fireEvent.click(within(c).getByRole("button", { name: "Save" }));
+    // typed while the save is on its way: the consent ticked, and the model set back to the old saved one (none)
+    fireEvent.click(within(c).getByRole("checkbox", { name: "Send matching rows to Anthropic" }));
+    fireEvent.change(within(c).getByRole("combobox", { name: "Ask Kopifund model" }), { target: { value: "" } });
+    await act(async () => release());
+    await waitFor(() => expect(now.copilot_model).toBe("claude-opus-4-1"));
+    await waitFor(() => expect(within(c).getByRole("button", { name: "Save" })).toBeEnabled());
+    expect(within(c).getByRole("checkbox", { name: "Send matching rows to Anthropic" })).toBeChecked();
+    expect(within(c).getByRole("combobox", { name: "Ask Kopifund model" })).toHaveValue("");
+    expect(within(c).getByText("Unsaved changes")).toBeInTheDocument();
+  });
+
+  it("counts a box set back to the old value during a save as unsaved, before and after the save lands", async () => {
+    stub(settings(keychain));
+    let releasePost: () => void = () => {};
+    let releaseRead: (() => void) | null = null;
+    let posted = false;
+    const ask = globalThis.fetch;
+    let now = settings(keychain);
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/ai/settings" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        return new Promise<Response>((done) => {
+          releasePost = () => { now = settings(keychain, body); posted = true; done(json(now)); };
+        });
+      }
+      // the settings asked for again after the save wait until let go
+      if (url === "/api/ai" && posted) return new Promise<Response>((done) => { releaseRead = () => done(json(now)); });
+      if (url === "/api/ai") return json(now);
+      return ask(url, init);
+    }));
+    render(<AiCard />);
+    const c = await card();
+    const model = within(c).getByRole("combobox", { name: "Ask Kopifund model" });
+    fireEvent.change(model, { target: { value: "claude-opus-4-1" } });
+    fireEvent.click(within(c).getByRole("button", { name: "Save" }));
+    // back to none while the save that sets claude-opus-4-1 is on its way: an edit, so leaving asks
+    fireEvent.change(model, { target: { value: "" } });
+    expect(within(c).getByText("Unsaved changes")).toBeInTheDocument();
+    // the save lands; another box changed before the settings are read again keeps the first edit
+    await act(async () => releasePost());
+    fireEvent.click(within(c).getByRole("checkbox", { name: "Send matching rows to Anthropic" }));
+    expect(model).toHaveValue("");
+    await waitFor(() => expect(releaseRead).not.toBeNull());
+    await act(async () => releaseRead!());
+    expect(model).toHaveValue("");
+    expect(within(c).getByText("Unsaved changes")).toBeInTheDocument();
+  });
+
+  it("lets a failed save leave no edit behind for a box set back to the saved value meanwhile", async () => {
+    let fail: (() => void) | null = null;
+    let now = settings(keychain);
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (url === "/api/ai/settings" && init?.method === "POST") {
+        return new Promise<Response>((done) => { fail = () => done(json({ error: "disk full" }, 500)); });
+      }
+      if (url === "/api/ai") return json(now);
+      return json({ provider: "anthropic", models: [], fetched_at: null, error: null });
+    }));
+    render(<AiCard />);
+    const c = await card();
+    fireEvent.change(within(c).getByRole("combobox", { name: "Ask Kopifund model" }), { target: { value: "claude-opus-4-1" } });
+    fireEvent.click(within(c).getByRole("button", { name: "Save" }));
+    // a save on its way may still fail: leaving asks until it lands
+    await expectAsks();
+    // the consent ticked and unticked while the save is on its way
+    const consent = within(c).getByRole("checkbox", { name: "Send matching rows to Anthropic" });
+    fireEvent.click(consent);
+    fireEvent.click(consent);
+    await waitFor(() => expect(fail).not.toBeNull());
+    await act(async () => fail!());
+    expect(await within(c).findByText("disk full")).toBeInTheDocument();
+    // it failed: the model typed is still unsaved
+    await expectAsks();
+    // another tab turns the consent on: the card follows, since nothing here holds it off
+    now = settings(keychain, { send_rows: true });
+    await act(async () => notifyChanged());
+    await waitFor(() => expect(within(c).getByRole("checkbox", { name: "Send matching rows to Anthropic" })).toBeChecked());
+  });
+
   it("tests the provider and says how it went", async () => {
     stub(settings(keychain), (url) => (url === "/api/ai/test" ? { ok: true, message: "claude-sonnet-4-5 answered", ms: 812 } : settings(keychain)));
     render(<AiCard />);
@@ -173,7 +271,8 @@ describe("turning AI off", () => {
     // the server says AI is off: the card shows Off, with nothing to test and no unsaved change
     await waitFor(() => expect(within(c).getByRole("button", { name: "Provider" })).toHaveTextContent("Off"));
     expect(within(c).queryByText("Unsaved changes")).not.toBeInTheDocument();
-    expect(within(c).queryByRole("button", { name: "Test" })).not.toBeInTheDocument();
+    // Off shows as the save lands; Test goes once the settings are read again
+    await waitFor(() => expect(within(c).queryByRole("button", { name: "Test" })).not.toBeInTheDocument());
   });
 
   it("shows Off when AI is off, though config.toml names a provider, and a provider turns it on", async () => {
@@ -245,5 +344,87 @@ describe("a custom provider from config.toml", () => {
     expect(within(c).getByText("Set in config.toml: model lab-1")).toBeInTheDocument();
     expect(within(c).queryByRole("checkbox")).not.toBeInTheDocument();
     expect(within(c).queryByLabelText("API key")).not.toBeInTheDocument();
+  });
+});
+
+// each write on the card can be refused, and says why where it was pressed
+describe("the AI card when a write is refused", () => {
+  /** a card whose POSTs to `refused` answer 500 with `message` until `state.on` is turned off */
+  function refusing(first: AiSettings, refused: string, message: string) {
+    const state = { on: true };
+    stub(first, (url, body) => (url === "/api/ai/settings" ? settings(keychain, body as Partial<AiSettings>) : first));
+    const real = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST" && url === refused && state.on) {
+        posts.push({ url, body: init.body ? JSON.parse(init.body as string) : {} });
+        return json({ error: message }, 500);
+      }
+      return real(url, init);
+    }));
+    return state;
+  }
+
+  it("says why the settings were not saved, keeps the edit unsaved, and saves it on a second try", async () => {
+    const state = refusing(settings(keychain), "/api/ai/settings", "config.toml is read only.");
+    render(<AiCard />);
+    const c = await card();
+    fireEvent.click(within(c).getByRole("checkbox", { name: "Send matching rows to Anthropic" }));
+    fireEvent.click(within(c).getByRole("button", { name: "Save" }));
+    expect(await within(c).findByText("config.toml is read only.")).toBeInTheDocument();
+    expect(within(c).getByText("Unsaved changes")).toBeInTheDocument();
+    expect(within(c).getByRole("checkbox", { name: "Send matching rows to Anthropic" })).toBeChecked();
+    expect(within(c).getByRole("button", { name: "Save" })).toBeEnabled();
+    await expectAsks();
+    state.on = false;
+    fireEvent.click(within(c).getByRole("button", { name: "Save" }));
+    expect(await within(c).findByText("Saved")).toBeInTheDocument();
+    await expectFree();
+  });
+
+  it("clears the reason when the edit is changed or discarded", async () => {
+    refusing(settings(keychain), "/api/ai/settings", "config.toml is read only.");
+    render(<AiCard />);
+    const c = await card();
+    const consent = () => within(c).getByRole("checkbox", { name: "Send matching rows to Anthropic" });
+    fireEvent.click(consent());
+    fireEvent.click(within(c).getByRole("button", { name: "Save" }));
+    expect(await within(c).findByText("config.toml is read only.")).toBeInTheDocument();
+    fireEvent.click(within(c).getByRole("button", { name: "Discard" }));
+    expect(within(c).queryByText("config.toml is read only.")).not.toBeInTheDocument();
+    expect(consent()).not.toBeChecked();
+  });
+
+  it("says why a key was not saved, and still forgets what was typed", async () => {
+    const state = refusing(settings(none), "/api/ai/key", "The Keychain is locked.");
+    render(<AiCard />);
+    const c = await card();
+    fireEvent.change(within(c).getByLabelText("API key"), { target: { value: "sk-ant-secret-9xQz" } });
+    fireEvent.click(within(c).getByRole("button", { name: "Save key" }));
+    expect(await within(c).findByText("The Keychain is locked.")).toBeInTheDocument();
+    // the key left the page's state as it was sent, whatever the answer
+    expect(within(c).getByLabelText("API key")).toHaveValue("");
+    expect(c.innerHTML).not.toContain("sk-ant-secret");
+    expect(within(c).getByRole("button", { name: "Save key" })).toBeDisabled();
+    state.on = false;
+  });
+
+  it("says why a key was not removed, and keeps the key row", async () => {
+    refusing(settings(keychain), "/api/ai/key/remove", "The Keychain is locked.");
+    render(<AiCard />);
+    const c = await card();
+    fireEvent.click(within(c).getByRole("button", { name: "Remove" }));
+    fireEvent.click(within(c).getByRole("button", { name: "Press again to remove" }));
+    expect(await within(c).findByText("The Keychain is locked.")).toBeInTheDocument();
+    expect(within(c).getByText("Saved in your Keychain · ends in 9xQz")).toBeInTheDocument();
+    expect(within(c).getByRole("button", { name: "Remove" })).toBeEnabled();
+  });
+
+  it("says Failed with the reason when the test is refused", async () => {
+    refusing(settings(keychain), "/api/ai/test", "The provider did not answer.");
+    render(<AiCard />);
+    const c = await card();
+    fireEvent.click(within(c).getByRole("button", { name: "Test" }));
+    expect(await within(c).findByRole("status")).toHaveTextContent("Failed: The provider did not answer.");
+    expect(within(c).getByRole("button", { name: "Test" })).toBeEnabled();
   });
 });

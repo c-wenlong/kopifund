@@ -5,6 +5,7 @@ import { SpendingExplorer } from "../pages/SpendingExplorer";
 import type { AiSettings, CopilotEvent } from "../types.gen";
 import { CopilotSide } from "./CopilotPanel";
 import { useCopilot } from "./useCopilot";
+import { json } from "../test-helpers";
 
 // G22: a question carries what the page shows, selections it keeps in state included, not only its address.
 
@@ -14,7 +15,6 @@ const ai: AiSettings = {
   key: { where: "keychain", last4: "9xQz", can_remove: true }, send_rows: true, local: false, from_config: false,
   config_provider: null,
 };
-const json = (b: unknown) => new Response(JSON.stringify(b), { status: 200 });
 const events: CopilotEvent[] = [{ type: "text", text: "ok" }, { type: "done" }];
 const done = () => new Response(events.map((e) => JSON.stringify(e)).join("\n"), { status: 200 });
 
@@ -27,7 +27,7 @@ function stub(more: (url: string) => Response | undefined) {
       return done();
     }
     if (url === "/api/ai") return json(ai);
-    return more(url) ?? new Response(JSON.stringify({ error: "not here" }), { status: 404 });
+    return more(url) ?? json({ error: "not here" }, 404);
   }));
 }
 
@@ -46,7 +46,6 @@ async function ask() {
 }
 
 afterEach(() => {
-  vi.unstubAllGlobals();
   window.history.pushState(null, "", "/");
 });
 
@@ -67,7 +66,8 @@ describe("the page's selections go with a question", () => {
     fireEvent.click(screen.getByRole("radio", { name: "3M" }));
     fireEvent.click(screen.getByRole("radio", { name: "Include overseas" }));
     fireEvent.click(screen.getByRole("radio", { name: "By payee" }));
-    expect(await ask()).toEqual({ view: "lines", from: "2026-07", to: "2026-09", scope: "all", by: "payee" });
+    // the controls are in the address now too (range among them); the months they cover are published
+    expect(await ask()).toEqual({ view: "lines", range: "3", from: "2026-07", to: "2026-09", scope: "all", by: "payee" });
   });
 
   it("sends the budget month Plan shows", async () => {

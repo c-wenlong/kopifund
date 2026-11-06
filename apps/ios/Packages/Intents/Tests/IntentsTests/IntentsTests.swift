@@ -9,13 +9,13 @@ import Storage
 /// the queue. Fixtures stand in for a Wallet row (alertText empty) and an
 /// alert row (alertText set); dates share one local calendar day.
 @MainActor
-private func makeRow(payee: String = "Sgh - Digestive & Live", cents: Int = 4453,
+private func makeRow(payee: String = "Hvc - Dental & Eye", cents: Int = 3817,
                      state: String = "pending", at: Date, rich: Bool = false) -> TransactionRecord {
     let row = TransactionRecord(walletAmountCents: cents, merchant: payee,
                                 card: nil, date: at, accountID: "a1")
     row.state = state
     row.receivedAt = at
-    if rich { row.alertText = "A card txn of SGD44.53 ... was completed." }
+    if rich { row.alertText = "A card txn of SGD38.17 ... was completed." }
     return row
 }
 
@@ -24,7 +24,7 @@ private let day = Calendar.current.date(
 
 @Test @MainActor func syncedSiblingParksNewRow() throws {
     let context = ModelContext(try Store.memory())
-    let sib = makeRow(payee: "SGH - DIGESTIVE & LIVE", state: "synced", at: day)
+    let sib = makeRow(payee: "HVC - DENTAL & EYE", state: "synced", at: day)
     context.insert(sib)
     let row = makeRow(at: day.addingTimeInterval(3600), rich: true)
     context.insert(row)
@@ -63,7 +63,7 @@ private let day = Calendar.current.date(
     let context = ModelContext(try Store.memory())
     let sib = makeRow(at: day)
     context.insert(sib)
-    let row = makeRow(payee: "SGH - DIGESTIVE & LIVE", at: day, rich: true)
+    let row = makeRow(payee: "HVC - DENTAL & EYE", at: day, rich: true)
     context.insert(row)
     Ingest.settleDuplicates(of: row, in: context)
     #expect(sib.state == "duplicate")
@@ -75,7 +75,7 @@ private let day = Calendar.current.date(
     let context = ModelContext(try Store.memory())
     let sib = makeRow(at: day, rich: true)
     context.insert(sib)
-    let row = makeRow(payee: "SGH - DIGESTIVE & LIVE", at: day)
+    let row = makeRow(payee: "HVC - DENTAL & EYE", at: day)
     context.insert(row)
     Ingest.settleDuplicates(of: row, in: context)
     #expect(row.state == "duplicate")
@@ -166,7 +166,7 @@ private let day = Calendar.current.date(
 
 /// A batched automation run (the Email trigger can deliver several mails at
 /// once) must write one record per item rather than one stitched blob.
-@Test @MainActor func batchedIngestWritesOneRecordPerItem() throws {
+@Test @MainActor func batchedIngestWritesOneRecordPerItem() async throws {
     let container = try Store.memory()
     let context = ModelContext(container)
     let pattern = AlertPattern(name: "Card spend", direction: .outflow,
@@ -176,16 +176,356 @@ private let day = Calendar.current.date(
                                sampleText: "You charged SGD5.00 at KOPITIAM")
     context.insert(PatternRecord(pattern))
     try context.save()
-    let outcome = try Ingest.alert(
+    let (defaults, name) = scratchDefaults()
+    defer { defaults.removePersistentDomain(forName: name) }
+    let outcome = try await Ingest.alert(
         texts: ["You charged SGD5.00 at KOPITIAM",
                 "a reminder about a mentorship evening, no spend here",
                 "   "],
-        source: "email", receivedAt: day, container: container)
+        source: "email", receivedAt: day, container: container, defaults: defaults)
     #expect(outcome == "1 queued, 1 unmatched")
     #expect(try context.fetchCount(FetchDescriptor<TransactionRecord>()) == 1)
     #expect(try context.fetchCount(FetchDescriptor<UnmatchedRecord>()) == 1)
     // a single item keeps the single-ingest wording
-    #expect(try Ingest.alert(texts: ["You charged SGD9.00 at STARBUCKS"],
+    #expect(try await Ingest.alert(texts: ["You charged SGD9.00 at STARBUCKS"],
                            source: "email", receivedAt: day,
-                           container: container) == "queued")
+                           container: container, defaults: defaults) == "queued")
+}
+
+// MARK: - currency and Wallet input (G24 audit)
+
+/// A defaults suite no other test or the App Group reads.
+private func scratchDefaults(planCurrency: String? = nil) -> (UserDefaults, String) {
+    let name = "kopifund.intents-tests.\(UUID().uuidString)"
+    let defaults = UserDefaults(suiteName: name)!
+    if let planCurrency { PlanCurrency.remember(planCurrency, planID: "p1", in: defaults) }
+    return (defaults, name)
+}
+
+@MainActor
+private func cardPattern(autoApprove: Bool) -> AlertPattern {
+    AlertPattern(name: "Card spend", direction: .outflow, accountID: "a1",
+                 autoApprove: autoApprove,
+                 segments: [.literal("charged"), .amount, .literal("at"), .payee],
+                 sampleText: "You charged SGD5.00 at KOPITIAM")
+}
+
+@MainActor
+private func store(_ pattern: AlertPattern) throws -> ModelContainer {
+    let container = try Store.memory()
+    let context = ModelContext(container)
+    context.insert(PatternRecord(pattern))
+    try context.save()
+    return container
+}
+
+@MainActor
+private func rows(_ container: ModelContainer) throws -> [TransactionRecord] {
+    try ModelContext(container).fetch(FetchDescriptor<TransactionRecord>())
+}
+
+@Test(arguments: [Double.nan, .infinity, -.infinity, 1e13, -1e13])
+@MainActor func walletRefusesAnAmountItCannotCount(amount: Double) throws {
+    // untrusted Shortcuts input: a NaN used to trap on Int(amount * 100)
+    let container = try Store.memory()
+    let (defaults, name) = scratchDefaults()
+    defer { defaults.removePersistentDomain(forName: name) }
+    #expect(throws: WalletInputError.self) {
+        _ = try Ingest.wallet(amount: amount, merchant: "Lawson", card: nil, date: day,
+                              currency: nil, container: container, defaults: defaults)
+    }
+    #expect(try rows(container).isEmpty)
+}
+
+@Test @MainActor func walletRefusesAWordForACurrency() throws {
+    let container = try Store.memory()
+    let (defaults, name) = scratchDefaults()
+    defer { defaults.removePersistentDomain(forName: name) }
+    #expect(throws: WalletInputError.currency("dollars")) {
+        _ = try Ingest.wallet(amount: 1200, merchant: "Lawson", card: nil, date: day,
+                              currency: "dollars", container: container, defaults: defaults)
+    }
+    #expect(WalletInputError.currency("dollars").localizedDescription.contains("three-letter"))
+}
+
+@Test @MainActor func foreignWalletTapIsHeldNotPostedAsTheLocalCurrency() throws {
+    // the audit's case: JPY 1,200 in Tokyo used to read SGD 1200.00
+    let container = try Store.memory()
+    let (defaults, name) = scratchDefaults(planCurrency: "SGD")
+    defer { defaults.removePersistentDomain(forName: name) }
+    #expect(try Ingest.wallet(amount: 1200, merchant: "Lawson", card: nil, date: day,
+                              currency: "jpy", container: container, defaults: defaults) == "queued")
+    let row = try #require(try rows(container).first)
+    #expect(row.currency == "JPY")
+    #expect(row.amountCents == 120000)
+    #expect(row.state == "pending")
+    #expect(row.syncError?.contains("JPY") == true)
+    #expect(row.checkCurrency(against: "SGD") == false)
+}
+
+@Test @MainActor func walletTapWithNoCurrencyStaysUnstatedUntilTheSync() throws {
+    // intake leaves it empty so a capture stating one can still pair with
+    // it; the sync's check counts it in the plan's currency
+    let container = try Store.memory()
+    let (defaults, name) = scratchDefaults(planCurrency: "SGD")
+    defer { defaults.removePersistentDomain(forName: name) }
+    defaults.set("acct-wallet", forKey: "defaultAccountID")
+    _ = try Ingest.wallet(amount: 4.53, merchant: "Kopitiam", card: "Visa", date: day,
+                          currency: nil, container: container, defaults: defaults)
+    let row = try #require(try rows(container).first)
+    #expect(row.currency == "")
+    #expect(row.amountCents == 453)
+    #expect(row.accountID == "acct-wallet")
+    #expect(row.syncError == nil)
+    #expect(row.checkCurrency(against: "SGD"))
+    #expect(row.currency == "SGD")
+}
+
+@Test @MainActor func aCurrencyInheritedByAPostedRowOwesTheHubARepost() async throws {
+    // the keeper went to the hub counted in the plan's currency; the tap
+    // that pairs with it states another, so the hub's copy is stale
+    let container = try store(cardPattern(autoApprove: true))
+    let (defaults, name) = scratchDefaults(planCurrency: "SGD")
+    defer { defaults.removePersistentDomain(forName: name) }
+    _ = try await Ingest.alert(text: "You charged 1200.00 at LAWSON", source: "sms",
+                               receivedAt: day, container: container, defaults: defaults)
+    let first = try #require(try rows(container).first)
+    first.kopifundID = "kph_test"
+    first.kopifundSent = "accepted"
+    try first.modelContext?.save()
+    _ = try Ingest.wallet(amount: 1200, merchant: "Lawson", card: nil, date: day,
+                          currency: "JPY", container: container, defaults: defaults)
+    let alert = try #require(try rows(container).first { !$0.alertText.isEmpty })
+    #expect(alert.currency == "JPY")
+    #expect(alert.kopifundSent == nil)
+}
+
+@Test @MainActor func unstatedAlertPairsWithALaterForeignTapAndIsHeld() async throws {
+    // Greptile on #319: filling SGD at intake stopped this pair forming, so
+    // the auto-approved alert posted JPY 1,200 as S$1,200
+    let container = try store(cardPattern(autoApprove: true))
+    let (defaults, name) = scratchDefaults(planCurrency: "SGD")
+    defer { defaults.removePersistentDomain(forName: name) }
+    _ = try await Ingest.alert(text: "You charged 1200.00 at LAWSON", source: "sms",
+                         receivedAt: day, container: container, defaults: defaults)
+    let first = try #require(try rows(container).first)
+    #expect(first.currency == "")
+    #expect(first.state == "approved")
+    _ = try Ingest.wallet(amount: 1200, merchant: "Lawson", card: nil, date: day,
+                          currency: "JPY", container: container, defaults: defaults)
+    let all = try rows(container)
+    let alert = try #require(all.first { !$0.alertText.isEmpty })
+    let tap = try #require(all.first { $0.alertText.isEmpty })
+    #expect(tap.state == "duplicate")
+    #expect(alert.currency == "JPY")
+    #expect(alert.state == "pending")
+    #expect(alert.syncError?.contains("JPY") == true)
+}
+
+@Test @MainActor func walletTapBeforeAnySyncLeavesCurrencyUnstated() throws {
+    // no plan currency read yet: nothing is invented; the sync fills it
+    let container = try Store.memory()
+    let (defaults, name) = scratchDefaults()
+    defer { defaults.removePersistentDomain(forName: name) }
+    _ = try Ingest.wallet(amount: 4.53, merchant: "Kopitiam", card: nil, date: day,
+                          currency: nil, container: container, defaults: defaults)
+    #expect(try rows(container).first?.currency == "")
+}
+
+@Test @MainActor func foreignAlertIsHeldEvenOnAnAutoApprovePattern() async throws {
+    let container = try store(cardPattern(autoApprove: true))
+    let (defaults, name) = scratchDefaults(planCurrency: "SGD")
+    defer { defaults.removePersistentDomain(forName: name) }
+    _ = try await Ingest.alert(text: "You charged USD 12.00 at AMAZON", source: "sms",
+                         receivedAt: day, container: container, defaults: defaults)
+    let row = try #require(try rows(container).first)
+    #expect(row.currency == "USD")
+    #expect(row.amountCents == 1200)
+    #expect(row.state == "pending")
+    #expect(row.syncError?.contains("USD") == true)
+}
+
+@Test @MainActor func localAlertStillAutoApproves() async throws {
+    let container = try store(cardPattern(autoApprove: true))
+    let (defaults, name) = scratchDefaults(planCurrency: "SGD")
+    defer { defaults.removePersistentDomain(forName: name) }
+    _ = try await Ingest.alert(text: "You charged SGD 12.00 at KOPITIAM", source: "sms",
+                         receivedAt: day, container: container, defaults: defaults)
+    let row = try #require(try rows(container).first)
+    #expect(row.state == "approved")
+    #expect(row.syncError == nil)
+}
+
+@Test @MainActor func suppressedShapeIsIgnoredWithInjectedDefaults() async throws {
+    let container = try store(cardPattern(autoApprove: false))
+    let (defaults, name) = scratchDefaults()
+    defer { defaults.removePersistentDomain(forName: name) }
+    let text = "You charged SGD 12.00 at KOPITIAM"
+    Suppression.add(AlertShape.signature(of: text), in: defaults)
+    #expect(try await Ingest.alert(text: text, source: "sms", receivedAt: day,
+                             container: container, defaults: defaults) == "ignored")
+    #expect(try rows(container).isEmpty)
+}
+
+@Test @MainActor func walletRowWithNoCurrencyPairsWithTheBanksSMS() throws {
+    let context = ModelContext(try Store.memory())
+    let sms = makeRow(payee: "HVC - DENTAL & EYE", at: day, rich: true)
+    sms.currency = "SGD"
+    context.insert(sms)
+    let tap = makeRow(at: day)          // Wallet initialiser: currency ""
+    context.insert(tap)
+    Ingest.settleDuplicates(of: tap, in: context)
+    #expect(tap.state == "duplicate")
+    #expect(tap.duplicateOf == sms.id)
+}
+
+@Test @MainActor func differentStatedCurrenciesDoNotDedup() throws {
+    let context = ModelContext(try Store.memory())
+    let usd = makeRow(at: day, rich: true)
+    usd.currency = "USD"
+    context.insert(usd)
+    let sgd = makeRow(at: day)
+    sgd.currency = "SGD"
+    context.insert(sgd)
+    Ingest.settleDuplicates(of: sgd, in: context)
+    #expect(sgd.state == "pending")
+    #expect(usd.state == "pending")
+}
+
+@Test @MainActor func keptRowTakesTheCurrencyOnlyItsParkedPairStated() throws {
+    // review on #319: a JPY Wallet tap parked beside an auto-approved alert
+    // that printed no currency must not let the alert post as the plan's
+    let context = ModelContext(try Store.memory())
+    let tap = makeRow(payee: "LAWSON", cents: 120000, at: day)
+    tap.currency = "JPY"
+    context.insert(tap)
+    let alert = makeRow(payee: "LAWSON", cents: 120000, state: "approved", at: day, rich: true)
+    context.insert(alert)
+    Ingest.settleDuplicates(of: alert, in: context)
+    #expect(tap.state == "duplicate")
+    #expect(alert.currency == "JPY")
+    #expect(alert.checkCurrency(against: "SGD") == false)
+    #expect(alert.state == "pending")
+}
+
+@Test @MainActor func parkedNewRowHandsItsCurrencyToAnUnsentKeeper() throws {
+    let context = ModelContext(try Store.memory())
+    let alert = makeRow(payee: "LAWSON", cents: 120000, at: day, rich: true)
+    context.insert(alert)
+    let tap = makeRow(payee: "LAWSON", cents: 120000, at: day)
+    tap.currency = "JPY"
+    context.insert(tap)
+    Ingest.settleDuplicates(of: tap, in: context)
+    #expect(tap.state == "duplicate")
+    #expect(alert.currency == "JPY")
+}
+
+@Test @MainActor func syncedKeeperKeepsItsCurrency() throws {
+    let context = ModelContext(try Store.memory())
+    let sent = makeRow(payee: "LAWSON", cents: 120000, state: "synced", at: day, rich: true)
+    sent.currency = "SGD"
+    context.insert(sent)
+    let tap = makeRow(payee: "LAWSON", cents: 120000, at: day)
+    context.insert(tap)
+    Ingest.settleDuplicates(of: tap, in: context)
+    #expect(tap.state == "duplicate")
+    #expect(sent.currency == "SGD")
+}
+
+// MARK: - empty Wallet captures (G24, found on the owner's phone)
+
+@Test(arguments: [(0.0, ""), (0.0, "  "), (0.0, "Lawson"), (2.64, "")])
+@MainActor func anEmptyWalletCaptureIsKeptButNeverApprovable(amount: Double, merchant: String) throws {
+    // the trigger handed over amount 0 and no merchant: the row is kept (a
+    // real purchase whose details did not arrive is not lost) but waits for
+    // details instead of joining the approvable queue
+    let container = try Store.memory()
+    let (defaults, name) = scratchDefaults(planCurrency: "SGD")
+    defer { defaults.removePersistentDomain(forName: name) }
+    #expect(try Ingest.wallet(amount: amount, merchant: merchant, card: nil, date: day,
+                              currency: nil, container: container, defaults: defaults)
+            == "needs details")
+    let row = try #require(try rows(container).first)
+    #expect(row.state == "pending")
+    #expect(row.missingDetails != nil)
+}
+
+@Test @MainActor func aRealWalletTapStillQueues() throws {
+    let container = try Store.memory()
+    let (defaults, name) = scratchDefaults(planCurrency: "SGD")
+    defer { defaults.removePersistentDomain(forName: name) }
+    #expect(try Ingest.wallet(amount: 2.64, merchant: "Cheers", card: nil, date: day,
+                              currency: nil, container: container, defaults: defaults) == "queued")
+    #expect(try rows(container).first?.missingDetails == nil)
+}
+
+@Test @MainActor func emptyCapturesNeverPairAsDuplicates() throws {
+    // two empty taps on one day read alike; neither may park the other,
+    // and an empty one may not park a real row of the same day
+    let container = try Store.memory()
+    let (defaults, name) = scratchDefaults(planCurrency: "SGD")
+    defer { defaults.removePersistentDomain(forName: name) }
+    for _ in 0..<2 {
+        _ = try Ingest.wallet(amount: 0, merchant: "", card: nil, date: day,
+                              currency: nil, container: container, defaults: defaults)
+    }
+    _ = try Ingest.wallet(amount: 0, merchant: "SimplyGo", card: nil, date: day,
+                          currency: nil, container: container, defaults: defaults)
+    _ = try Ingest.wallet(amount: 0, merchant: "SimplyGo", card: nil, date: day,
+                          currency: nil, container: container, defaults: defaults)
+    let all = try rows(container)
+    #expect(all.count == 4)
+    #expect(all.allSatisfy { $0.state == "pending" && $0.duplicateOf == nil })
+}
+
+@Test @MainActor func detailsTypedIntoAnEmptyCaptureGetTheDuplicateCheck() throws {
+    // the tap arrived empty, then the bank's alert for the same spend
+    // queued; once the owner types the tap's amount and payee the two are
+    // one spend, and the poorer capture (the tap) parks
+    let context = ModelContext(try Store.memory())
+    let tap = makeRow(payee: "", cents: 0, at: day)
+    context.insert(tap)
+    let alert = makeRow(payee: "HVC - DENTAL & EYE", at: day, rich: true)
+    context.insert(alert)
+    Ingest.settleDuplicates(of: alert, in: context)
+    #expect(alert.state == "pending" && tap.state == "pending")
+
+    // still half typed: nothing to check yet
+    tap.amountCents = 3817
+    #expect(!Ingest.settleTypedDetails(of: tap, in: context))
+    #expect(tap.state == "pending")
+
+    tap.payee = "Hvc - Dental & Eye"
+    #expect(Ingest.settleTypedDetails(of: tap, in: context))
+    #expect(tap.state == "duplicate" && tap.duplicateOf == alert.id)
+    #expect(alert.state == "pending")
+}
+
+@Test @MainActor func typedDetailsOfAnotherSpendStayPending() throws {
+    let context = ModelContext(try Store.memory())
+    let tap = makeRow(payee: "", cents: 0, at: day)
+    context.insert(tap)
+    context.insert(makeRow(payee: "HVC - DENTAL & EYE", at: day, rich: true))
+    tap.amountCents = 450
+    tap.payee = "Kopi Corner"
+    #expect(!Ingest.settleTypedDetails(of: tap, in: context))
+    #expect(tap.state == "pending" && tap.duplicateOf == nil)
+}
+
+@Test @MainActor func walletFallsBackToThePatternThatHasAnAccount() throws {
+    // G24: a pattern's YNAB account is optional, so a higher-priority one
+    // saved without any must not leave Wallet taps with no account
+    var noAccount = cardPattern(autoApprove: false)
+    noAccount.id = UUID()
+    noAccount.accountID = ""
+    noAccount.priority = 10
+    let container = try store(cardPattern(autoApprove: false))
+    let context = ModelContext(container)
+    context.insert(PatternRecord(noAccount))
+    try context.save()
+    let (defaults, name) = scratchDefaults(planCurrency: "SGD")
+    defer { defaults.removePersistentDomain(forName: name) }
+    _ = try Ingest.wallet(amount: 4.53, merchant: "Kopitiam", card: nil, date: day,
+                          currency: nil, container: container, defaults: defaults)
+    #expect(try rows(container).first?.accountID == "a1")
 }

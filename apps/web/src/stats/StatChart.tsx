@@ -20,6 +20,7 @@ import { useWide } from "../components/useWide";
 import { axisSgd } from "../money";
 import { barLink, columnUnit, fmt, label, tickLabel, type Plan, type Row } from "./hint";
 import { CENTS_UNIT } from "./money";
+import { HEAD_ROW, TABLE_BOX, TH } from "../components/tableKit";
 import type { TipExtras } from "./tipExtras";
 
 /** G18: the name column of a horizontal bar chart: 160px on a desktop, 104px on a phone, where a long name is cut to fit. */
@@ -41,13 +42,80 @@ export type TipItem = { dataKey?: string | number; name?: string; value?: unknow
 /** A stacked chart can be drawn as one line per series instead (StatCard's switch); every other chart has one way. */
 export const hasLinesView = (p: ChartPlan) => p.type === "stacked" && p.series.length > 1 && !p.horizontal;
 
+type ChartProps = { p: ChartPlan; view?: ChartView; notes?: Record<string, string>; extras?: (row: Row) => TipExtras };
+
 /**
  * `extras` reads the figures a row carries beyond the plotted series (the
  * hover card lists them under the series); `notes` says what a legend entry means.
+ * Audit: the drawing is for the eye and the pointer; the same figures follow as
+ * a table (FiguresTable), the text a screen reader reads and the keyboard's way
+ * to the rows behind each bar.
  */
-export function StatChart({ p, view = "stacked", notes, extras }: {
-  p: ChartPlan; view?: ChartView; notes?: Record<string, string>; extras?: (row: Row) => TipExtras;
-}) {
+export function StatChart(props: ChartProps) {
+  return (
+    <>
+      <Drawing {...props} />
+      <FiguresTable p={props.p} />
+    </>
+  );
+}
+
+/**
+ * The chart's figures as a table, under a "Figures as a table" disclosure that
+ * shows only to the keyboard (as it takes the focus) and to a screen reader, so
+ * the chart looks as it did to the pointer. Each figure the stat links opens
+ * the same rows its bar or dot opens.
+ */
+export function FiguresTable({ p }: { p: ChartPlan }) {
+  const scatter = p.type === "scatter";
+  const head = scatter ? p.labelKey : p.xKey;
+  const cols = scatter ? [p.xKey, p.series[0]] : p.series;
+  const opens = p.type === "bar" || p.type === "stacked" || p.type === "line";
+  const name = (r: Row) => (scatter ? String(r[p.labelKey] ?? "") : tickLabel(r[p.xKey], true));
+  return (
+    <details className="group mt-1 text-[12px]">
+      <summary className="sr-only cursor-pointer rounded text-ink-3 hover:text-ink focus:not-sr-only group-open:not-sr-only group-open:mb-1.5">
+        Figures as a table
+      </summary>
+      <div className={TABLE_BOX}>
+        <table className="num w-full border-collapse">
+          <thead>
+            <tr className={HEAD_ROW}>
+              <th scope="col" className={`${TH} px-2`}>{label(head)}</th>
+              {cols.map((c) => <th key={c} scope="col" className={`${TH} px-2 text-right`}>{label(c)}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {p.rows.map((r, i) => (
+              <tr key={i} className="border-t border-line">
+                <th scope="row" className="px-2 py-1 text-left font-normal">{name(r)}</th>
+                {cols.map((c) => {
+                  const text = fmt(r[c], unitOfKey(p, c), true);
+                  const to = opens && text ? barLink(p.links, c, r, p.xKey) : null;
+                  return (
+                    <td key={c} className="px-2 py-1 text-right">
+                      {to ? (
+                        <a href={to} aria-label={`${text}, ${label(c)}, ${name(r)}: see its transactions`}
+                          className="text-ink underline-offset-2 hover:underline"
+                          onClick={(e) => {
+                            if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+                            e.preventDefault();
+                            navigate(to);
+                          }}>{text}</a>
+                      ) : text}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  );
+}
+
+function Drawing({ p, view = "stacked", notes, extras }: ChartProps) {
   const { hidden, toggle } = useHidden(p.series);
   const names = useWide() ? NAMES.wide : NAMES.narrow;
   const height = p.horizontal ? Math.max(200, 30 * p.rows.length + 40) : 260;

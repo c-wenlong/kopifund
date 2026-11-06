@@ -1,0 +1,9 @@
+// G24: the team every target signs with. Empty here, so the public repo names
+// no one's team; put yours in Local.xcconfig next to this file (gitignored):
+//
+//     DEVELOPMENT_TEAM = <your 10-character team id>
+//
+// Xcode reads it at build time, so no xcodegen rerun is needed. A missing
+// Local.xcconfig is skipped.
+DEVELOPMENT_TEAM =
+#include? "Local.xcconfig"

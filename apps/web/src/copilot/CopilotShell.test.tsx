@@ -1,17 +1,9 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../App";
+import { stubMatchMedia } from "../test-helpers";
 
 // G22: the panel sits beside the page from 768px, pushing it narrower, and is a bottom sheet under it.
-
-function setWidth(wide: boolean) {
-  window.matchMedia = ((query: string) => ({
-    matches: wide, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {},
-    dispatchEvent: () => false,
-  })) as unknown as typeof window.matchMedia;
-}
-const original = window.matchMedia;
 
 beforeEach(() => {
   window.history.pushState(null, "", "/spending");
@@ -20,14 +12,12 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.restoreAllMocks();
-  window.matchMedia = original;
   window.history.pushState(null, "", "/");
 });
 
 describe("Ask Kopifund in the shell", () => {
   it("opens beside the page and pushes it narrower, rather than over it", () => {
-    setWidth(true);
+    stubMatchMedia(true);
     const { container } = render(<App />);
     const shell = container.querySelector(".safe-area")!;
     expect(shell).not.toHaveAttribute("data-copilot");
@@ -45,7 +35,7 @@ describe("Ask Kopifund in the shell", () => {
   });
 
   it("stays open on the next visit when it was left open, and Escape closes it", () => {
-    setWidth(true);
+    stubMatchMedia(true);
     window.localStorage.setItem("kopifund.copilot", "open");
     render(<App />);
     const panel = screen.getByRole("complementary", { name: "Ask Kopifund" });
@@ -56,7 +46,7 @@ describe("Ask Kopifund in the shell", () => {
   });
 
   it("is a bottom sheet from the top bar under 768px", () => {
-    setWidth(false);
+    stubMatchMedia(false);
     render(<App />);
     expect(screen.queryByRole("complementary", { name: "Ask Kopifund" })).not.toBeInTheDocument();
     fireEvent.click(within(screen.getByRole("banner")).getByRole("button", { name: "Ask Kopifund" }));

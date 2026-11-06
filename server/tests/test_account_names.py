@@ -23,6 +23,7 @@ from finance import account_names as an
 from finance import api as finance_api
 from finance import db, profile
 from finance.model import Folder
+import support
 from test_db import SNAP, block, parsed, row
 
 MAIN_NO, WALLET_NO, BARE_NO = "123-456789-0", "Y-9876543210", "555666777888"
@@ -111,9 +112,9 @@ class Bank(unittest.TestCase):
         import fake_layout
         from finance.parsers import layouts
         layouts.register_bank(layouts.Bank("fakebank", r"\bfakebank\b"))
-        self.addCleanup(layouts.unregister_bank, "fakebank")
+        self.addCleanup(fake_layout.unregister_bank, "fakebank")
         layouts.register(dataclasses.replace(fake_layout.LAYOUT, bank="fakebank", folder_title="Fakebank Saver"))
-        self.addCleanup(layouts.unregister, "fakebank")
+        self.addCleanup(fake_layout.unregister, "fakebank")
         f = Folder("statements/fakebank-savings", "fakebank", "FB-0042")
         self.assertEqual((an.folder_name(f), an.folder_bank(f)), ("Fakebank Saver", "fakebank"))
         self.assertEqual(an.bank("My Fakebank pot"), "fakebank")
@@ -198,7 +199,7 @@ class Scrub(unittest.TestCase):
     def test_the_owners_numbers_come_from_the_record_and_the_config(self):
         cfg = mock.Mock(accounts={BARE_NO: "page"}, folders=[Folder("statements/a", "dbs", WALLET_NO),
                                                              Folder("statements/b", "dbs")])
-        self.assertEqual(an.own_numbers(record(), cfg), {"111-11111-1", WALLET_NO, BARE_NO})
+        self.assertEqual(an.own_numbers(self.enterContext(contextlib.closing(record())), cfg), {"111-11111-1", WALLET_NO, BARE_NO})
         self.assertEqual(an.own_numbers(), set())
 
 
@@ -352,8 +353,7 @@ class TheStats(unittest.TestCase):
 # ---------------------------------------------------------------- the record
 
 def record():
-    conn = db.connect(":memory:")
-    user = {k: [dict(x) for x in v] for k, v in SNAP.items()}
+    user = support.user_tables()
     user["accounts"] += [
         {"name": f"Travel wallet · {WALLET_NO}", "account_no": WALLET_NO, "institution": "YouTrip",
          "class": "Asset", "subclass": "Wallet", "base_currency": "SGD"},
@@ -361,14 +361,12 @@ def record():
          "class": None, "subclass": None, "base_currency": None},
         {"name": "Trust Bank", "account_no": None, "institution": None,
          "class": None, "subclass": None, "base_currency": None}]
-    db.import_user_tables(conn, user)
-    db.load_parsed(conn, parsed([block(), block(period=f"{WALLET_NO} · SGD · 2026-07", account_no=WALLET_NO,
-                                             period_end="2026-07-31",
-                                             source="statements/youtrip-sgd/2026/2026-07.pdf")],
-                                [row("k1", "-12.50"),
-                                 row("k2", "-3.00", date="2026-07-02", account_no=WALLET_NO,
-                                     period=f"{WALLET_NO} · SGD · 2026-07",
-                                     source="statements/youtrip-sgd/2026/2026-07.pdf")]))
+    conn = support.build_record(
+        [row("k1", "-12.50"),
+         row("k2", "-3.00", date="2026-07-02", account_no=WALLET_NO, period=f"{WALLET_NO} · SGD · 2026-07",
+             source="statements/youtrip-sgd/2026/2026-07.pdf")],
+        user=user, blocks=[block(), block(period=f"{WALLET_NO} · SGD · 2026-07", account_no=WALLET_NO,
+                                          period_end="2026-07-31", source="statements/youtrip-sgd/2026/2026-07.pdf")])
     conn.execute("INSERT INTO broker_statement(file, period_from, period_to, base_currency, data) "
                  "VALUES ('2025/1-12.pdf', '2025-01-01', '2025-12-31', 'USD', '{}')")
     return conn
@@ -376,8 +374,8 @@ def record():
 
 class YourProfile(unittest.TestCase):
     def setUp(self):
-        self.accounts = profile.accounts(record(), [Folder("statements/youtrip-sgd", "youtrip", WALLET_NO,
-                                                           wallet="SGD")])
+        self.accounts = profile.accounts(self.enterContext(contextlib.closing(record())),
+                                         [Folder("statements/youtrip-sgd", "youtrip", WALLET_NO, wallet="SGD")])
         self.by_name = {a["name"]: a for a in self.accounts}
 
     def test_no_full_number_and_the_bank_for_each(self):
@@ -397,7 +395,7 @@ class YourProfile(unittest.TestCase):
                    {"path": "statements/youtrip-sek", "name": "youtrip-sek", "parser": "youtrip", "wallet": "SEK", "statements": 2},
                    {"path": "statements/tiger", "name": "tiger", "parser": "tiger", "wallet": "", "statements": 4},
                    {"path": "statements/dbs-debit-cards", "name": "dbs-debit-cards", "parser": "dbs", "wallet": "", "statements": 9}]
-        got = {a["name"]: (a["folder"], a["pdfs"]) for a in profile.accounts(record(), folders, listing)}
+        got = {a["name"]: (a["folder"], a["pdfs"]) for a in profile.accounts(self.enterContext(contextlib.closing(record())), folders, listing)}
         # a wallet's currencies fold into one key; the number ties the folder, the bank ties the brokerage
         self.assertEqual(got["Travel wallet"], ("statements/youtrip", 5))
         self.assertEqual(got["Tiger Brokers Wallet"], ("statements/tiger", 4))
@@ -407,6 +405,7 @@ class YourProfile(unittest.TestCase):
 
     def test_loaded_cpf_statements_get_a_line_even_with_no_account_row(self):
         conn = record()
+        self.addCleanup(conn.close)
         conn.execute("INSERT INTO cpf_statement(year, file, as_of, data) VALUES (2024, 'a.pdf', '2024-12-31', '{}')")
         conn.execute("INSERT INTO cpf_statement(year, file, as_of, data) VALUES (2025, 'b.pdf', '2025-12-31', '{}')")
         listing = [{"path": "statements/cpf", "name": "cpf", "parser": "cpf", "wallet": "", "statements": 2},
@@ -418,7 +417,7 @@ class YourProfile(unittest.TestCase):
         # a folder with nothing loaded from it gets no line of its own: the page lists it as not loaded
         self.assertNotIn("DBS Debit Cards", by_name)
         # no CPF statement loaded, no line
-        self.assertNotIn("CPF", {a["name"] for a in profile.accounts(record(), [], listing)})
+        self.assertNotIn("CPF", {a["name"] for a in profile.accounts(self.enterContext(contextlib.closing(record())), [], listing)})
 
     def test_a_brokerage_counts_its_own_statements(self):
         tiger = self.by_name["Tiger Brokers Wallet"]
@@ -432,13 +431,14 @@ class YourProfile(unittest.TestCase):
     def test_rules_rows_name_the_account_without_its_number(self):
         from finance import rules_app
         with tempfile.TemporaryDirectory() as data, mock.patch.dict(os.environ, {"KOPIFUND_DATA": data}):
-            got = rules_app.group_rows(record(), key="k2")
+            got = rules_app.group_rows(self.enterContext(contextlib.closing(record())), key="k2")
         self.assertEqual(got["rows"][0]["account"], "Travel wallet")
         self.assertNotIn(WALLET_NO, json.dumps(got))
 
     def test_rules_rows_name_a_bare_number_by_its_folder(self):
         from finance import rules_app
         conn = record()
+        self.addCleanup(conn.close)
         conn.execute("UPDATE account SET name = ?, institution = NULL WHERE account_no = ?", (WALLET_NO, WALLET_NO))
         with tempfile.TemporaryDirectory() as data, mock.patch.dict(os.environ, {"KOPIFUND_DATA": data}):
             got = rules_app.group_rows(conn, key="k2", folders=[Folder("statements/youtrip-sgd", "youtrip",
@@ -503,7 +503,7 @@ class TheUploadCheck(unittest.TestCase):
                 mock.patch.object(sync, "check_environment", return_value=[]), \
                 mock.patch.object(sync, "check_statements", return_value=[]), \
                 mock.patch.object(sync, "check_blocks", return_value=[]):
-            _, report = monthly.check(cfg, db.connect(":memory:"))
+            _, report = monthly.check(cfg, self.enterContext(contextlib.closing(db.connect(":memory:"))))
         self.assertEqual(report["problems"], [{
             "code": "block-not-reconciled", "subject": "•• 9024 · SGD · 2026-09",
             "fix": "the balance chain in statements/q-•• 9024/a.pdf does not close on 2026-09-30"}])
@@ -589,15 +589,15 @@ class TheUploadHistory(unittest.TestCase):
             return upload_log.attempt(conn, attempt)
 
     def go(self, path, query=None, body=b""):
-        return self.serve.write(path, {"attempt": str(self.attempt), **(query or {})}, body)
+        return support.write(path, {"attempt": str(self.attempt), **(query or {})}, body)
 
     def test_the_old_entries_carry_the_numbers(self):
         # the checks below would pass on a history that never held one
         self.assertTrue(_leaks(_strings(self.kept(self.old))))
 
     def test_past_uploads_mask_an_entry_kept_before_without_rewriting_it(self):
-        listed = self.serve.answer("/api/uploads", {})
-        detail = self.serve.answer(f"/api/uploads/{self.old}", {})
+        listed = support.answer("/api/uploads", {})
+        detail = support.answer(f"/api/uploads/{self.old}", {})
         self.assertEqual(_leaks(_strings(listed)), [])
         self.assertEqual(_leaks(_strings(detail)), [])
         raw = self.kept(self.old)

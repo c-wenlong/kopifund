@@ -54,6 +54,20 @@ public final class PatternRecord {
         sampleText = p.sampleText
     }
 
+    /// G24: an edited pattern written over its saved record; the id stays,
+    /// so its queued rows still name it.
+    public func update(_ p: AlertPattern) {
+        name = p.name
+        direction = p.direction.rawValue
+        accountID = p.accountID
+        defaultCategoryID = p.defaultCategoryID
+        sourceMatch = p.sourceMatch
+        priority = p.priority
+        autoApprove = p.autoApprove
+        segmentsData = (try? JSONEncoder().encode(p.segments)) ?? Data()
+        sampleText = p.sampleText
+    }
+
     public var pattern: AlertPattern? {
         guard let dir = AlertPattern.Direction(rawValue: direction),
               let segs = try? JSONDecoder().decode([AlertPattern.Segment].self, from: segmentsData)
@@ -71,12 +85,18 @@ public final class TransactionRecord {
     @Attribute(.unique) public var id: UUID
     public var payee: String
     public var amountCents: Int         // money is integer cents, never a float
-    public var currency: String         // "SGD"
+    /// The ISO code the source printed ("SGD", "USD"), or the plan's when
+    /// it printed none and the plan's is known; empty when neither is.
+    public var currency: String
+    /// A calendar day, written as `CalendarDate.storedInstant`. Read and
+    /// write it through `day`, never through a time zone.
     public var date: Date
+    /// True when `date` holds a `CalendarDate.storedInstant`; nil on a row
+    /// an earlier build wrote, whose `date` reads in the phone's zone.
+    public var dateIsDay: Bool?
     public var direction: String
     public var accountID: String
     public var categoryID: String?
-    public var payeeID: String?
     public var memo: String
     public var accountHint: String?
     public var alertText: String
@@ -90,6 +110,7 @@ public final class TransactionRecord {
     public var ynabID: String?
     public var importID: String?
     public var syncError: String?
+    /// Sends started for this row, counted before each POST.
     public var syncAttempts: Int
     /// G25: the row's pending_txn key on the hub once a linked phone tried to
     /// post it (nil until the first attempt): its being set marks only that a
@@ -100,20 +121,23 @@ public final class TransactionRecord {
     public var kopifundID: String?
     public var kopifundSent: String?
     public var kopifundError: String?
+    /// A failed row is not retried automatically before this time; nil means
+    /// no wait. `Date.distantFuture` waits for a manual "Sync now".
+    public var nextSyncAt: Date? = nil
 
-    public init(from t: ParsedTransaction, accountID: String, categoryID: String?) {
+    /// Throws `Cents.OutOfRange` for an amount too large to count, rather
+    /// than storing a wrapped figure.
+    public init(from t: ParsedTransaction, accountID: String, categoryID: String?) throws {
+        guard let cents = Cents.from(t.amount) else { throw Cents.OutOfRange(amount: "\(t.amount)") }
         id = UUID()
         payee = t.payee
-        var cents = Decimal()
-        var scaled = t.amount * 100
-        NSDecimalRound(&cents, &scaled, 0, .plain)
-        amountCents = NSDecimalNumber(decimal: cents).intValue
-        currency = t.currency ?? "SGD"
-        date = t.date
+        amountCents = cents
+        currency = t.currency ?? ""
+        date = t.date.storedInstant
+        dateIsDay = true
         direction = t.direction.rawValue
         self.accountID = accountID
         self.categoryID = categoryID
-        payeeID = nil
         memo = ""
         accountHint = t.accountHint
         alertText = t.alertText
@@ -128,12 +152,17 @@ public final class TransactionRecord {
         kopifundError = nil
     }
 
-    public init(walletAmountCents: Int, merchant: String, card: String?, date: Date, accountID: String) {
+    /// `currency` nil means the Wallet record did not say; the row then
+    /// stores "" rather than guessing one.
+    public init(walletAmountCents: Int, merchant: String, card: String?, date: Date,
+                accountID: String, currency: String? = nil) {
         id = UUID()
         payee = merchant
         amountCents = walletAmountCents
-        currency = "SGD"
-        self.date = date
+        self.currency = currency ?? ""
+        // the tap's day where the phone was when it happened
+        self.date = CalendarDate(date, in: .current).storedInstant
+        dateIsDay = true
         direction = "outflow"
         self.accountID = accountID
         memo = ""
@@ -163,14 +192,28 @@ public final class UnmatchedRecord {
     /// is noise rather than something to teach a pattern for. Optional so
     /// old stores migrate on their own.
     public var inKopifund: Bool?
+    /// The calendar day the alert arrived where the phone was then, as a
+    /// `CalendarDate.storedInstant`: a yearless date it prints reads against
+    /// this day even after the phone has moved zones. Nil on rows an earlier
+    /// build wrote. Read it through `arrivedOn`.
+    public var receivedDay: Date?
 
-    public init(text: String, source: String?, receivedAt: Date, reasons: String) {
+    public init(text: String, source: String?, receivedAt: Date,
+                arrivedOn: CalendarDate? = nil, reasons: String, zone: TimeZone = .current) {
         id = UUID()
         self.text = text
         self.source = source
         self.receivedAt = receivedAt
         self.reasons = reasons
         inKopifund = false
+        receivedDay = (arrivedOn ?? CalendarDate(receivedAt, in: zone)).storedInstant
+    }
+
+    /// The day the alert arrived: the saved one, or for an older row the
+    /// day `receivedAt` falls on in the phone's zone now.
+    public var arrivedOn: CalendarDate {
+        receivedDay.map { CalendarDate(stored: $0, isDay: true) }
+            ?? CalendarDate(receivedAt, in: .current)
     }
 }
 
@@ -192,14 +235,28 @@ public enum Store {
     static let schema = Schema([PatternRecord.self, TransactionRecord.self,
                                 UnmatchedRecord.self, MetadataRecord.self])
 
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var opened: ModelContainer?
+
     /// The shared container both the app and the extension write through.
     /// `group.` URLs land under the App Group, so the intents' writes show up
     /// on the app's next launch or model-context merge. Throws
     /// `StoreError.appGroupUnavailable` when the build has no App Group
     /// entitlement, so the app can say so rather than crash at launch.
+    ///
+    /// One container per process: a second container on the same file has
+    /// its own coordinator, so its saves never merge into the first one's
+    /// contexts. The paste box, the re-ingest and an intent that runs inside
+    /// the app's process all get the app's container, and their rows show up
+    /// in the open views at once.
     public static func container() throws -> ModelContainer {
-        try container(groupDirectory: FileManager.default
+        lock.lock()
+        defer { lock.unlock() }
+        if let opened { return opened }
+        let made = try container(groupDirectory: FileManager.default
             .containerURL(forSecurityApplicationGroupIdentifier: AppGroup.id))
+        opened = made
+        return made
     }
 
     /// `container()` with the App Group lookup passed in, so a test can
@@ -209,11 +266,13 @@ public enum Store {
         return try container(at: groupDirectory.appendingPathComponent("alerts.store"))
     }
 
-    /// The store file at `url`. No versioned schema yet: a field added as an
-    /// optional (as `duplicateOf` was) migrates on its own, which the tests
-    /// pin; a field that is neither optional nor defaulted needs a
-    /// `SchemaMigrationPlan` first.
-    static func container(at url: URL) throws -> ModelContainer {
+    /// The store file at `url`; public for the tests that open two
+    /// containers on one file, the way the app and an intent in another
+    /// process do. No versioned schema yet: a field added as an optional (as
+    /// `duplicateOf` was) migrates on its own, which the tests pin; a field
+    /// that is neither optional nor defaulted needs a `SchemaMigrationPlan`
+    /// first.
+    public static func container(at url: URL) throws -> ModelContainer {
         let config = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
         return try ModelContainer(for: schema, configurations: [config])
     }
@@ -222,5 +281,18 @@ public enum Store {
     public static func memory() throws -> ModelContainer {
         try ModelContainer(for: schema,
                            configurations: [ModelConfiguration(isStoredInMemoryOnly: true)])
+    }
+}
+
+extension TransactionRecord {
+    /// The row's calendar day: the one value the inbox shows, dedup
+    /// compares and the sync posts. Setting it marks the row's `date` as a
+    /// zone-free day.
+    public var day: CalendarDate {
+        get { CalendarDate(stored: date, isDay: dateIsDay == true) }
+        set {
+            date = newValue.storedInstant
+            dateIsDay = true
+        }
     }
 }

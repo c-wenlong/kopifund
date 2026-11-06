@@ -1179,7 +1179,8 @@ class PairedDevice(TypedDict):
 
 type PendingState = Literal[*pending.STATES]
 """G25: where a phone row stands: waiting for its statement row, matched to
-it, or dismissed as no spend."""
+it, dismissed by the owner (the history shows it as "Dismissed, to review"),
+or expired after waiting `expire_days` with no statement row."""
 
 
 class PendingRow(TypedDict):
@@ -1195,11 +1196,20 @@ class PendingRow(TypedDict):
     payee: str
     state: PendingState
     matched_txn_key: str | None
+    state_changed_at: str
+    """When the row last changed state (posted, matched, dismissed, expired or
+    put back), a UTC stamp."""
+    posted_at: str
+    """When the phone first sent it, a UTC stamp."""
+    expires_on: str | None
+    """The day a waiting row expires, YYYY-MM-DD; null for the other states."""
 
 
 class LinkPending(TypedDict):
-    """GET /api/link/pending: every pending row, waiting first."""
+    """GET /api/link/pending (and each pending write): every phone row ever
+    posted, newest first, and how many days a row waits before it expires."""
     rows: list[PendingRow]
+    expire_days: int
 
 
 class LinkPosted(TypedDict):
@@ -1299,6 +1309,10 @@ class WidgetAnswer(TypedDict):
     label_links: NotRequired[list[dict[str, str] | None]]
     series: list[WidgetSeries]
     note: NotRequired[str]
+    partial: NotRequired[list[str]]
+    """A `spending` answer by month: the labels the monthly-cashflow stat
+    calls partial (a bank account has not printed that month yet), so a
+    widget reading "the latest month" can step back to a whole one."""
 
 
 class ScenarioPreview(WidgetAnswer):

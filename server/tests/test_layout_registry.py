@@ -17,7 +17,7 @@ from unittest import mock
 import fake_layout
 from finance import api, model, monthly, setup, sniff, sync
 from finance.parsers import layouts
-from test_app_writes import DataFolder
+from support import DataFolder
 
 ROOT = Path(__file__).resolve().parent.parent
 TESTS = Path(__file__).resolve().parent
@@ -93,7 +93,7 @@ class ANewLayoutIsOneModule(DataFolder):
     def setUp(self):
         super().setUp()
         layouts.register(fake_layout.LAYOUT)
-        self.addCleanup(layouts.unregister, "fakebank")
+        self.addCleanup(fake_layout.unregister, "fakebank")
         # the run starts the parser as `python3 -m fake_layout`, found on this path
         p = mock.patch.dict(os.environ, {"PYTHONPATH": str(TESTS)})
         p.start()

@@ -43,21 +43,59 @@ beforeEach(() => {
   el.releasePointerCapture ??= () => {};
 });
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
-
 describe("Grid", () => {
-  it("settles a drop into the highest free row at once, not after the save", () => {
-    const onArrange = renderGrid([widget("w-a", { x: 0, y: 0, w: 4, h: 2 })]);
+  it("settles a drop into the highest free row at once, and saves nothing when that is where it was", () => {
+    const onArrange = renderGrid([widget("w-a", { x: 0, y: 0, w: 4, h: 2 }), widget("w-b", { x: 4, y: 0, w: 4, h: 2 })]);
     const grip = screen.getByRole("button", { name: /Move Note w-a/ });
     // drag the widget five rows down, then drop it: it settles at the top, the
-    // same cells the layout's own read would give it
+    // same cells the layout's own read would give it, so the board is unchanged
     fireEvent.pointerDown(grip, { pointerId: 1, clientX: 5, clientY: 5 });
     fireEvent.pointerMove(grip, { pointerId: 1, clientX: 5, clientY: 5 + 5 * ROW });
     fireEvent.pointerUp(grip, { pointerId: 1, clientX: 5, clientY: 5 + 5 * ROW });
+    expect(onArrange).not.toHaveBeenCalled();
+    // dropped under the other widget's column it settles at the top beside it, at once
+    fireEvent.pointerDown(grip, { pointerId: 1, clientX: 5, clientY: 5 });
+    fireEvent.pointerMove(grip, { pointerId: 1, clientX: 5 + 8 * COL, clientY: 5 + 5 * ROW });
+    fireEvent.pointerUp(grip, { pointerId: 1, clientX: 5 + 8 * COL, clientY: 5 + 5 * ROW });
     expect(onArrange).toHaveBeenCalledTimes(1);
-    expect(arranged(onArrange, "w-a")).toEqual({ x: 0, y: 0, w: 4, h: 2 });
+    expect(arranged(onArrange, "w-a")).toEqual({ x: 8, y: 0, w: 4, h: 2 });
+  });
+
+  it("saves nothing for an arrow that cannot move the widget", () => {
+    const onArrange = renderGrid([widget("w-a", { x: 0, y: 0, w: 4, h: 2 })]);
+    const grip = screen.getByRole("button", { name: /Move Note w-a/ });
+    fireEvent.keyDown(grip, { key: "ArrowUp" });
+    fireEvent.keyDown(grip, { key: "ArrowLeft" });
+    expect(onArrange).not.toHaveBeenCalled();
+  });
+
+  it("lets go of a drag the pointer cancelled or Escape dropped, leaving the board as it was", () => {
+    const onArrange = renderGrid([widget("w-a", { x: 0, y: 0, w: 4, h: 2 })]);
+    const grip = screen.getByRole("button", { name: /Move Note w-a/ });
+    fireEvent.pointerDown(grip, { pointerId: 1, clientX: 5, clientY: 5 });
+    fireEvent.pointerMove(grip, { pointerId: 1, clientX: 5 + 6 * COL, clientY: 5 });
+    fireEvent.pointerCancel(grip, { pointerId: 1 });
+    fireEvent.pointerUp(grip, { pointerId: 1, clientX: 5 + 6 * COL, clientY: 5 });
+    expect(onArrange).not.toHaveBeenCalled();
+    fireEvent.pointerDown(grip, { pointerId: 2, clientX: 5, clientY: 5 });
+    fireEvent.pointerMove(grip, { pointerId: 2, clientX: 5 + 6 * COL, clientY: 5 });
+    fireEvent.keyDown(window, { key: "Escape" });
+    fireEvent.pointerUp(grip, { pointerId: 2, clientX: 5 + 6 * COL, clientY: 5 });
+    expect(onArrange).not.toHaveBeenCalled();
+  });
+
+  it("drops a widget dragged up onto a top-row widget above it, as the preview showed", () => {
+    // w-a is first in the list, so a repack of the board from before the drag would keep it on top
+    const onArrange = renderGrid([
+      widget("w-a", { x: 0, y: 0, w: 6, h: 2 }),
+      widget("w-b", { x: 0, y: 2, w: 6, h: 2 }),
+    ]);
+    const grip = screen.getByRole("button", { name: /Move Note w-b/ });
+    fireEvent.pointerDown(grip, { pointerId: 1, clientX: 5, clientY: 5 + 2 * ROW });
+    fireEvent.pointerMove(grip, { pointerId: 1, clientX: 5, clientY: 5 });
+    fireEvent.pointerUp(grip, { pointerId: 1, clientX: 5, clientY: 5 });
+    expect(arranged(onArrange, "w-b")).toEqual({ x: 0, y: 0, w: 6, h: 2 });
+    expect(arranged(onArrange, "w-a")).toEqual({ x: 0, y: 2, w: 6, h: 2 });
   });
 
   it("keeps the dropped column while settling upwards", () => {
@@ -103,10 +141,14 @@ describe("Grid", () => {
     expect(arranged(onArrange, "w-a").y).toBe(2);
   });
 
-  it("announces the widget's place in the grips' names and a status line", () => {
-    renderGrid([widget("w-a", { x: 3, y: 1, w: 4, h: 2 })]);
-    expect(screen.getByRole("button", { name: "Move Note w-a: column 4, row 2, 4 by 2" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Resize Note w-a: column 4, row 2, 4 by 2" })).toBeInTheDocument();
-    expect(screen.getByRole("status")).toHaveTextContent("column 4, row 2, 4 by 2");
+  it("names the widget's place on its grips, and says aloud only where a moved widget landed", () => {
+    renderGrid([widget("w-a", { x: 3, y: 0, w: 4, h: 2 }), widget("w-b", { x: 3, y: 2, w: 4, h: 2 })]);
+    expect(screen.getByRole("button", { name: "Move Note w-a: column 4, row 1, 4 by 2" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Resize Note w-a: column 4, row 1, 4 by 2" })).toBeInTheDocument();
+    // one status line for the board, silent until something moves
+    expect(screen.getAllByRole("status")).toHaveLength(1);
+    expect(screen.getByRole("status")).toHaveTextContent("");
+    fireEvent.keyDown(screen.getByRole("button", { name: /Move Note w-b/ }), { key: "ArrowRight" });
+    expect(screen.getByRole("status")).toHaveTextContent("Note w-b: column 5, row 3, 4 by 2");
   });
 });

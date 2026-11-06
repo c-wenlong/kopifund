@@ -6,6 +6,15 @@ import { Rules } from "./Rules";
 import { leadingIcon } from "../test-icons";
 import { Toaster } from "../components/Toast";
 import { choose } from "../test-select";
+import { navigate } from "../router";
+import { useUrlParams } from "../useUrlParams";
+import { expectAsks, expectFree, json, settle, stubMatchMedia } from "../test-helpers";
+
+// another reader of the address, as the copilot panel is: it sends every query parameter as the page's filters
+function AddressProbe() {
+  const [params] = useUrlParams();
+  return <output data-testid="address">{params.toString()}</output>;
+}
 
 // invented rules: one employer pinned row by row, a coffee shop, and a shipped rule
 const pin = (key: string, date: string) => ({ key, date, amount: 250000, currency: "SGD", text: "SALARY PAYMENT" });
@@ -62,7 +71,7 @@ function stubFetch(state: RulesState = STATE, preview: RulePreview = PREVIEW) {
       : url === "/api/rules/undo" ? { undone: STATE.history[0].summary, relinked: { changed: 6, written: 6 } }
       : url === "/api/rules/apply" ? { relinked: { changed: 4, written: 4 } }
       : { removed: true, change: "t1", relinked: { changed: 1, written: 1 } };
-    return new Response(JSON.stringify(body), { status: 200 });
+    return json(body);
   }));
   return calls;
 }
@@ -84,8 +93,8 @@ const pages = () => screen.getByRole("navigation", { name: "Rules pages" });
 const rowsOf = () => screen.getAllByRole("button", { name: /^Show the rules for / }).map((b) => b.getAttribute("aria-label"));
 
 describe("Rules", () => {
-  beforeEach(() => { window.localStorage.clear(); window.history.replaceState(null, "", "/rules"); });
-  afterEach(() => { vi.unstubAllGlobals(); window.history.replaceState(null, "", "/"); });
+  beforeEach(() => { window.history.replaceState(null, "", "/rules"); });
+  afterEach(() => { window.history.replaceState(null, "", "/"); });
 
   it("shows one row per payee, and its pins when opened", async () => {
     stubFetch();
@@ -214,20 +223,15 @@ describe("Rules", () => {
       text, field: "merchant", rows: 2, amount: 900, first: "2026-08-01", last: "2026-08-09", keys: [],
       suggestion: { match_on: "merchant" as const, pattern: `${text}*`, payee: text, kind: "Merchant" as const },
     }));
-    STATE.needs = needs;
-    try {
-      stubFetch();
-      render(<><Rules /><Toaster /></>);
-      const [first, second] = await screen.findAllByRole("button", { name: /^Make a rule/ });
-      fireEvent.click(first);
-      expect(screen.getByRole("textbox", { name: "Pattern for new rule" })).toHaveValue("TOAST BOX*");
-      fireEvent.click(second);
-      expect(screen.getByRole("textbox", { name: "Pattern for new rule" })).toHaveValue("YA KUN*");
-      fireEvent.click(screen.getByRole("button", { name: "Add rule" }));
-      expect(screen.getByRole("textbox", { name: "Pattern for new rule" })).toHaveValue("");
-    } finally {
-      STATE.needs = [];
-    }
+    stubFetch({ ...STATE, needs });
+    render(<><Rules /><Toaster /></>);
+    const [first, second] = await screen.findAllByRole("button", { name: /^Make a rule/ });
+    fireEvent.click(first);
+    expect(screen.getByRole("textbox", { name: "Pattern for new rule" })).toHaveValue("TOAST BOX*");
+    fireEvent.click(second);
+    expect(screen.getByRole("textbox", { name: "Pattern for new rule" })).toHaveValue("YA KUN*");
+    fireEvent.click(screen.getByRole("button", { name: "Add rule" }));
+    expect(screen.getByRole("textbox", { name: "Pattern for new rule" })).toHaveValue("");
   });
 
   it("says a shared rule is saved as your own", async () => {
@@ -381,19 +385,14 @@ describe("Rules", () => {
   });
 
   it("names the buttons of a payee with no rule Set one row and Make a rule", async () => {
-    STATE.needs = [{
+    stubFetch({ ...STATE, needs: [{
       text: "TOAST BOX", field: "merchant", rows: 2, amount: 900, first: "2026-08-01", last: "2026-08-09", keys: [],
       suggestion: { match_on: "merchant", pattern: "TOAST BOX*", payee: "TOAST BOX", kind: "Merchant" },
-    }];
-    try {
-      stubFetch();
-      render(<Rules />);
-      expect(await screen.findByRole("button", { name: "Set one row of TOAST BOX" })).toHaveTextContent("Set one row");
-      expect(screen.getByRole("button", { name: "Make a rule for TOAST BOX" })).toHaveTextContent("Make a rule");
-      expect(screen.queryByText("Name it")).not.toBeInTheDocument();
-    } finally {
-      STATE.needs = [];
-    }
+    }] });
+    render(<Rules />);
+    expect(await screen.findByRole("button", { name: "Set one row of TOAST BOX" })).toHaveTextContent("Set one row");
+    expect(screen.getByRole("button", { name: "Make a rule for TOAST BOX" })).toHaveTextContent("Make a rule");
+    expect(screen.queryByText("Name it")).not.toBeInTheDocument();
   });
 
   it("shows a single-row rule's date and bank text in the editor, never its key", async () => {
@@ -456,6 +455,66 @@ describe("Rules", () => {
     expect(window.location.search).toBe("");
   });
 
+  it("follows a link to the bare page while open, so the list, the box and the address agree", async () => {
+    window.history.replaceState(null, "", "/rules?q=grab&category=Transport&view=order");
+    stubFetch();
+    render(<><Rules /><AddressProbe /></>);
+    const search = await screen.findByRole("searchbox", { name: "Search rules" });
+    expect(search).toHaveValue("grab");
+    expect(screen.getByRole("button", { name: "Category" })).toHaveTextContent("Transport");
+    // the sidebar's Rules link, or Needs your eye's, pushes the bare path under the open page
+    act(() => navigate("/rules"));
+    expect(search).toHaveValue("");
+    expect(screen.getByRole("button", { name: "Category" })).toHaveTextContent("All categories");
+    expect(screen.getByRole("radio", { name: "By payee" })).toBeChecked();
+    expect(rowsOf()).toHaveLength(3);
+    expect(window.location.search).toBe("");
+    // and Back brings the filtered list back
+    act(() => { window.history.back(); });
+    await waitFor(() => expect(search).toHaveValue("grab"));
+    expect(screen.getByRole("radio", { name: "In order" })).toBeChecked();
+  });
+
+  it("opens the page a link names when the link also changes the search", async () => {
+    window.history.replaceState(null, "", "/rules?q=shop&page=2");
+    stubFetch(MANY);
+    render(<Rules />);
+    await waitFor(() => expect(within(pages()).getByText("26 to 50 of 60")).toBeInTheDocument());
+    // another search that also lists every Shop, on the same page number, from a link while the page is open
+    act(() => navigate("/rules?q=s&page=2"));
+    expect(screen.getByRole("searchbox", { name: "Search rules" })).toHaveValue("s");
+    await act(async () => {});
+    expect(within(pages()).getByText("26 to 50 of 60")).toBeInTheDocument();
+    expect(window.location.search).toBe("?q=s&page=2");
+    // a search typed here still starts at page 1
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search rules" }), { target: { value: "sh" } });
+    expect(window.location.search).toBe("?q=sh");
+    expect(within(pages()).getByText("1 to 25 of 60")).toBeInTheDocument();
+  });
+
+  it("stays on its page when the option already chosen is clicked again", async () => {
+    stubFetch(MANY);
+    render(<Rules />);
+    await screen.findByRole("searchbox", { name: "Search rules" });
+    fireEvent.click(within(pages()).getByRole("button", { name: "Page 2" }));
+    expect(window.location.search).toBe("?page=2");
+    for (const name of ["By payee", "All"]) fireEvent.click(screen.getByRole("radio", { name }));
+    choose(screen.getByRole("button", { name: "Category" }), "All categories");
+    expect(window.location.search).toBe("?page=2");
+    expect(within(pages()).getByText("26 to 50 of 60")).toBeInTheDocument();
+  });
+
+  it("tells every other reader of the address when a filter changes", async () => {
+    stubFetch();
+    render(<><Rules /><AddressProbe /></>);
+    fireEvent.change(await screen.findByRole("searchbox", { name: "Search rules" }), { target: { value: "kopi" } });
+    expect(screen.getByTestId("address")).toHaveTextContent("q=kopi");
+    fireEvent.click(screen.getByRole("radio", { name: "In order" }));
+    expect(screen.getByTestId("address")).toHaveTextContent("q=kopi&view=order");
+    choose(screen.getByRole("button", { name: "Category" }), "Eating out");
+    expect(screen.getByTestId("address")).toHaveTextContent("q=kopi&view=order&category=Eating+out");
+  });
+
   it("drops a category from the address that no rule has any more, rather than hide every rule", async () => {
     window.history.replaceState(null, "", "/rules?category=Gone&view=order");
     stubFetch();
@@ -490,35 +549,25 @@ describe("Rules", () => {
 
   it("keeps an unsaved edit when the window crosses 768px and the editor is drawn again", async () => {
     stubFetch();
-    let wide = true;
-    const listeners = new Set<() => void>();
-    vi.stubGlobal("matchMedia", (media: string) => ({
-      get matches() { return wide; }, media,
-      addEventListener: (_: string, l: () => void) => listeners.add(l), removeEventListener: (_: string, l: () => void) => listeners.delete(l),
-    }));
+    const screenWidth = stubMatchMedia(true);
     render(<Rules />);
     fireEvent.click(await screen.findByRole("button", { name: "Show the rules for Kopitiam" }));
     fireEvent.click(screen.getByRole("button", { name: "Edit merchant KOPITIAM*" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Payee for rule KOPITIAM*" }), { target: { value: "Kopi Corner" } });
     expect(screen.getByRole("table")).toBeInTheDocument();
-    act(() => { wide = false; listeners.forEach((l) => l()); });
+    screenWidth.change(false);
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Payee for rule KOPITIAM*" })).toHaveValue("Kopi Corner");
   });
 
   it("shows a save that fails after the window crossed 768px in the editor now on screen", async () => {
-    let wide = true;
-    const listeners = new Set<() => void>();
-    vi.stubGlobal("matchMedia", (media: string) => ({
-      get matches() { return wide; }, media,
-      addEventListener: (_: string, l: () => void) => listeners.add(l), removeEventListener: (_: string, l: () => void) => listeners.delete(l),
-    }));
+    const screenWidth = stubMatchMedia(true);
     let refuse: () => void = () => {};
     const slow = new Promise<void>((r) => { refuse = r; });
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
-      if (url === "/api/rules") return new Response(JSON.stringify(STATE), { status: 200 });
-      if (url.startsWith("/api/rules/preview")) return new Response(JSON.stringify(PREVIEW), { status: 200 });
-      if (url === "/api/rules/save") { await slow; return new Response(JSON.stringify({ error: "Another tab changed that line." }), { status: 409 }); }
+      if (url === "/api/rules") return json(STATE);
+      if (url.startsWith("/api/rules/preview")) return json(PREVIEW);
+      if (url === "/api/rules/save") { await slow; return json({ error: "Another tab changed that line." }, 409); }
       return new Response("{}", { status: 200 });
     }));
     render(<Rules />);
@@ -526,7 +575,7 @@ describe("Rules", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit merchant KOPITIAM*" }));
     fireEvent.click(await screen.findByRole("button", { name: "Save rule" }));
     expect(await screen.findByRole("button", { name: "Saving…" })).toBeDisabled();
-    act(() => { wide = false; listeners.forEach((l) => l()); });
+    screenWidth.change(false);
     // the editor drawn again still says it is saving, and then shows what went wrong
     expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
     refuse();
@@ -534,13 +583,61 @@ describe("Rules", () => {
     expect(screen.getByRole("button", { name: "Save rule" })).toBeEnabled();
   });
 
-  it("does not let a save from a cancelled editor reach the next one opened", async () => {
+  it("asks before leaving a rule with typed changes, and not an editor opened and left as it was", async () => {
+    stubFetch();
+    render(<Rules />);
+    fireEvent.click(await screen.findByRole("button", { name: "Add rule" }));
+    const form = await screen.findByRole("textbox", { name: "Pattern for new rule" });
+    await expectFree();
+    fireEvent.change(form, { target: { value: "KOPI*" } });
+    await expectAsks();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await expectFree();
+    // a rule opened for editing is unsaved only once something in it changes
+    fireEvent.click(screen.getByRole("button", { name: "Show the rules for Kopitiam" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit merchant KOPITIAM*" }));
+    const pattern = await screen.findByRole("textbox", { name: /^Pattern for / });
+    await expectFree();
+    fireEvent.change(pattern, { target: { value: "KOPITIAM 0*" } });
+    await expectAsks();
+  });
+
+  it("asks before leaving while a rule's save is on its way, though nothing in it changed", async () => {
     let refuse: () => void = () => {};
     const slow = new Promise<void>((r) => { refuse = r; });
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
-      if (url === "/api/rules") return new Response(JSON.stringify(STATE), { status: 200 });
-      if (url.startsWith("/api/rules/preview")) return new Response(JSON.stringify(PREVIEW), { status: 200 });
-      if (url === "/api/rules/save") { await slow; return new Response(JSON.stringify({ error: "Another tab changed that line." }), { status: 409 }); }
+      if (url === "/api/rules") return json(STATE);
+      if (url.startsWith("/api/rules/preview")) return json(PREVIEW);
+      if (url === "/api/rules/save") { await slow; return json({ error: "Another tab changed that line." }, 409); }
+      return new Response("{}", { status: 200 });
+    }));
+    render(<Rules />);
+    fireEvent.click(await screen.findByRole("button", { name: "Show the rules for Kopitiam" }));
+    fireEvent.click(screen.getByRole("button", { name: "Edit merchant KOPITIAM*" }));
+    await expectFree();
+    fireEvent.click(await screen.findByRole("button", { name: "Save rule" }));
+    await expectAsks();
+    refuse();
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await expectFree();
+  });
+
+  it("does not let a save from a cancelled editor reach the next one opened", async () => {
+    let refuse: () => void = () => {};
+    const slow = new Promise<void>((r) => { refuse = r; });
+    // settles once the page has read the refusal's body, the last step that waits on anything but the page itself
+    let read: () => void = () => {};
+    const answered = new Promise<void>((r) => { read = r; });
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url === "/api/rules") return json(STATE);
+      if (url.startsWith("/api/rules/preview")) return json(PREVIEW);
+      if (url === "/api/rules/save") {
+        await slow;
+        const refusal = json({ error: "Another tab changed that line." }, 409);
+        const text = refusal.text.bind(refusal);
+        refusal.text = () => text().finally(read);
+        return refusal;
+      }
       return new Response("{}", { status: 200 });
     }));
     render(<Rules />);
@@ -553,30 +650,27 @@ describe("Rules", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit merchant GRAB*" }));
     expect(screen.getByRole("button", { name: "Save as my rule" })).toBeEnabled();
     refuse();
-    await waitFor(() => expect(vi.mocked(fetch)).toHaveBeenCalledWith("/api/rules/save", expect.anything()));
-    await new Promise((r) => setTimeout(r, 20));
+    // the refusal is read; what the page does with it is promises alone, all run before the next task: one
+    // task later the late answer has landed wherever it was going to, on any machine, however slow
+    await act(async () => { await answered; });
+    await settle();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save as my rule" })).toBeEnabled();
   });
 
   it("offers only Set one row for a payee with no text to match", async () => {
-    STATE.needs = [{
+    stubFetch({ ...STATE, needs: [{
       text: "ADVICE 1", field: "key", rows: 1, amount: 900, first: "2026-08-01", last: "2026-08-01", keys: ["k1"],
       suggestion: { match_on: "key", pattern: "k1", payee: "", kind: "Merchant" },
-    }];
-    try {
-      stubFetch();
-      render(<Rules />);
-      expect(await screen.findByRole("button", { name: "Set one row of ADVICE 1" })).toBeInTheDocument();
-      expect(screen.queryByRole("button", { name: /^Make a rule/ })).not.toBeInTheDocument();
-    } finally {
-      STATE.needs = [];
-    }
+    }] });
+    render(<Rules />);
+    expect(await screen.findByRole("button", { name: "Set one row of ADVICE 1" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Make a rule/ })).not.toBeInTheDocument();
   });
 
   describe("on a phone", () => {
     beforeEach(() => {
-      vi.stubGlobal("matchMedia", (media: string) => ({ matches: false, media, addEventListener() {}, removeEventListener() {} }));
+      stubMatchMedia(false);
     });
 
     it("lists each payee as two lines in place of a table, with no column to clip", async () => {

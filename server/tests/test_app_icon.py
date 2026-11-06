@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest import mock
 
 import serve
+import support
 from finance import app_icon, db
 from finance.errors import Refused
 from finance.paths import REPO
@@ -37,17 +38,17 @@ class PickTest(unittest.TestCase):
         self.addCleanup(app_icon.announce_with, None)
 
     def pick(self, name):
-        return serve.write("/api/app-icon", {}, json.dumps({"name": name}).encode())
+        return support.write("/api/app-icon", {}, json.dumps({"name": name}).encode())
 
     def test_before_any_pick_the_default_shows_and_no_record_is_started(self):
-        page = serve.answer("/api/app-icon", {})
+        page = support.answer("/api/app-icon", {})
         self.assertEqual(page, {"sets": REG["sets"], "default": REG["default"], "chosen": REG["default"]})
         self.assertFalse(db.db_path().exists())
         self.assertEqual(serve.picked_icon(), REG["default"])
 
     def test_a_pick_is_kept_in_the_record(self):
         self.assertEqual(self.pick(OTHER)["chosen"], OTHER)
-        self.assertEqual(serve.answer("/api/app-icon", {})["chosen"], OTHER)
+        self.assertEqual(support.answer("/api/app-icon", {})["chosen"], OTHER)
         self.assertEqual(serve.picked_icon(), OTHER)
 
     def test_a_set_sets_json_does_not_list_is_refused(self):
@@ -59,7 +60,7 @@ class PickTest(unittest.TestCase):
         self.pick(OTHER)
         with closing(db.connect()) as conn, conn:
             conn.execute("UPDATE setting SET value = ? WHERE key = ?", (json.dumps("gone"), app_icon.KEY))
-        self.assertEqual(serve.answer("/api/app-icon", {})["chosen"], REG["default"])
+        self.assertEqual(support.answer("/api/app-icon", {})["chosen"], REG["default"])
 
     def test_the_desktop_shell_hears_each_pick(self):
         heard = []

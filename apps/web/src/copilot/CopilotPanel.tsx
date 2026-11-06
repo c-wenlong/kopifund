@@ -8,9 +8,11 @@ import { ArrowUp, History, LoaderCircle, Lock, Plus, Sparkles, Square, Trash2, X
 import { postJSON, refreshViews, revalidate, useApi, type Loaded } from "../api";
 import { Button, buttonClass } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
+import { ErrorBoundary } from "../components/ErrorBoundary";
+import { Problem } from "../components/States";
 import { Sheet } from "../components/Sheet";
-import { showToast } from "../components/Toast";
-import { formatDay } from "../dates";
+import { useAction } from "../components/useAction";
+import { formatStampDay } from "../dates";
 import { onLinkClick } from "../router";
 import type { AiSettings, CopilotPage, CopilotThreads } from "../types.gen";
 import { AnswerChart, AnswerLink, AnswerSteps, AnswerText, ConfirmCard, contextLine, pageContext } from "./parts";
@@ -142,10 +144,35 @@ const ready = (ai: Loaded<AiSettings>) => (ai.data && gate(ai.data) === "ready" 
 
 const labelOf = (ai: AiSettings) => ai.providers.find((p) => p.name === ai.provider)?.label ?? ai.provider ?? "the provider";
 
+type BodyProps = { copilot: Copilot; page: CopilotPage; ai: Loaded<AiSettings>; onFollow?: () => void; extra?: ReactNode };
+
+export const ANSWER_FAILED = "This answer failed to draw.";
+
+export const PANEL_FAILED = "The panel failed to draw.";
+
+/**
+ * Audit: what the panel cannot draw stays in the panel instead of taking the page down. Each answer
+ * has its own boundary (AnswerTurn), so one bad answer leaves the others and later replies drawn;
+ * this one is the last resort for the rest, and keeps the History button (`extra`, the phone's only
+ * way to another thread) beside its message. Another thread or the history list starts it clean.
+ */
+function Body(props: BodyProps) {
+  const { copilot, extra } = props;
+  return (
+    <ErrorBoundary resetKey={`${copilot.thread}:${copilot.history}`}
+      fallback={(reset) => (
+        <div className="flex flex-col gap-2">
+          {extra && <div className="flex justify-end">{extra}</div>}
+          <Problem message={PANEL_FAILED} onRetry={reset} />
+        </div>
+      )}>
+      <Turns {...props} />
+    </ErrorBoundary>
+  );
+}
+
 /** `extra` sits at the right of the first line (the sheet's History button, whose header has no room for it). */
-function Body({ copilot, page, ai, onFollow, extra }: {
-  copilot: Copilot; page: CopilotPage; ai: Loaded<AiSettings>; onFollow?: () => void; extra?: ReactNode;
-}) {
+function Turns({ copilot, page, ai, onFollow, extra }: BodyProps) {
   const end = useRef<HTMLDivElement>(null);
   const last = copilot.turns[copilot.turns.length - 1];
   // follow the answer as it grows
@@ -188,7 +215,12 @@ function Body({ copilot, page, ai, onFollow, extra }: {
       {context}
       {copilot.turns.map((t, i) => t.role === "user"
         ? <UserTurn key={t.id} turn={t} />
-        : <AnswerTurn key={t.id} turn={t} copilot={copilot} page={page} latest={i === copilot.turns.length - 1} onFollow={onFollow} />)}
+        : (
+          <ErrorBoundary key={t.id} resetKey={`${t.status}:${t.charts.length}:${t.cards.length}:${t.links.length}`}
+            fallback={(reset) => <Problem message={ANSWER_FAILED} onRetry={reset} />}>
+            <AnswerTurn turn={t} copilot={copilot} page={page} latest={i === copilot.turns.length - 1} onFollow={onFollow} />
+          </ErrorBoundary>
+        ))}
       <div ref={end} />
     </div>
   );
@@ -260,14 +292,13 @@ function AnswerTurn({ turn: t, copilot, page, latest, onFollow }: {
 
 function Threads({ copilot, extra }: { copilot: Copilot; extra?: ReactNode }) {
   const list = useApi<CopilotThreads>("/api/copilot/threads");
-  const [busy, setBusy] = useState<string | null>(null);
+  const { busy, run } = useAction();
   // G22: a removal changes nothing a view reads (NO_CHANGE), so the list it answers is the one shown,
   // until the list is asked for again and answers anew
   const [after, setAfter] = useState<{ was: CopilotThreads | null; now: CopilotThreads } | null>(null);
   const shownList = after && after.was === list.data ? after.now : list.data;
   async function remove(id: string) {
-    setBusy(id);
-    try {
+    await run(id, async () => {
       const now = await postJSON<CopilotThreads>("/api/copilot/threads/remove", JSON.stringify({ id }));
       if (Array.isArray(now?.threads)) setAfter({ was: list.data, now });
       refreshViews(["/api/copilot/threads"]);
@@ -275,11 +306,7 @@ function Threads({ copilot, extra }: { copilot: Copilot; extra?: ReactNode }) {
       if (copilot.thread === id) copilot.reset();
       // the reset closes the list; reopen it so the removal shows in place
       copilot.setHistory(true);
-    } catch (e) {
-      showToast({ tone: "error", message: (e as Error).message });
-    } finally {
-      setBusy(null);
-    }
+    }, { toast: true });
   }
   const threads = shownList?.threads ?? [];
   return (
@@ -300,7 +327,7 @@ function Threads({ copilot, extra }: { copilot: Copilot; extra?: ReactNode }) {
               <button type="button" onClick={() => void copilot.open(t.id)}
                 className="flex min-w-0 flex-1 flex-col items-start rounded py-0.5 text-left hover:underline">
                 <span className={`w-full truncate ${t.id === copilot.thread ? "font-medium" : ""}`}>{t.title}</span>
-                <span className="num text-[11px] text-ink-3">{formatDay(t.updated_at.slice(0, 10))}</span>
+                <span className="num text-[11px] text-ink-3">{formatStampDay(t.updated_at)}</span>
               </button>
               <Button size="icon" variant="ghost" aria-label={`Remove ${t.title}`} disabled={busy === t.id}
                 onClick={() => void remove(t.id)}>

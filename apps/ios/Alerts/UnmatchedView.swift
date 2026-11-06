@@ -11,9 +11,16 @@ struct UnmatchedView: View {
     @Query(sort: \UnmatchedRecord.receivedAt, order: .reverse) private var rows: [UnmatchedRecord]
     @Environment(\.modelContext) private var context
     @State private var notice = ""
+    @State private var path: [UUID] = []
+    // "always ignore" silences a whole template, so a swipe only asks
+    @State private var confirmIgnore: UnmatchedRecord?
+    // a row the pushed AlertView finished with: deleted once the list is
+    // back on screen, never while a pushed view still shows it
+    @State private var pendingRemoval: UUID?
+    @State private var retrying = false
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 ForEach(rows) { r in
                     NavigationLink(value: r.id) {
@@ -21,15 +28,12 @@ struct UnmatchedView: View {
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button("Not an alert", role: .destructive) {
-                            dismiss(r, andSay: "Alert dismissed")
+                            dismiss(r, andSay: Triage.dismissed)
                         }
                     }
-                    .swipeActions(edge: .leading, allowsFullSwipe: true) {
-                        Button("Always ignore") {
-                            Suppression.add(AlertShape.signature(of: r.text))
-                            dismiss(r, andSay: "Ignored. Alerts like this won't queue")
-                        }
-                        .tint(.gray)
+                    .swipeActions(edge: .leading, allowsFullSwipe: false) {
+                        Button("Always ignore") { confirmIgnore = r }
+                            .tint(.gray)
                     }
                 }
                 if rows.isEmpty {
@@ -42,25 +46,86 @@ struct UnmatchedView: View {
             .task { await LinkDedupe.sweep(context: context) }
             .navigationDestination(for: UUID.self) { id in
                 if let r = rows.first(where: { $0.id == id }) {
-                    AlertView(record: r) { notice = $0 }
+                    AlertView(record: r) { finished(id, andSay: $0, remove: $1) }
                 }
             }
-            .overlay(alignment: .top) {
-                if !notice.isEmpty {
-                    Text(notice)
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 14).padding(.vertical, 9)
-                        .background(.thinMaterial, in: Capsule())
-                        .shadow(radius: 6, y: 2)
-                        .padding(.top, 4)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                        .task(id: notice) {
-                            try? await Task.sleep(for: .seconds(3))
-                            withAnimation { notice = "" }
-                        }
+            .onAppear(perform: removePending)
+            .confirmationDialog("Always ignore alerts like this?",
+                                isPresented: Binding(get: { confirmIgnore != nil },
+                                                     set: { if !$0 { confirmIgnore = nil } }),
+                                titleVisibility: .visible, presenting: confirmIgnore) { r in
+                Button("Always ignore") {
+                    dismiss(r, andSay: Triage.ignoreShape(of: r.text))
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: { _ in
+                Text("Future alerts with the same shape are dropped, from any channel. Patterns lists them to undo.")
+            }
+            .toolbar {
+                // G24: a pattern saved elsewhere, or one that needed an
+                // edit, can take alerts that arrived before it
+                if !rows.isEmpty {
+                    Button(retrying ? "Trying..." : "Try patterns again", action: tryPatterns)
+                        .disabled(retrying)
                 }
             }
-            .animation(.default, value: notice.isEmpty)
+            // an open alert's row left for the Inbox (a pattern saved from
+            // the Patterns tab): its page has nothing left to show
+            .onChange(of: rows.map(\.id)) { _, ids in
+                if let open = path.last, !ids.contains(open), pendingRemoval != open {
+                    path.removeAll()
+                }
+            }
+        }
+        // on the stack, not the list: a list-level overlay never showed
+        // under the iOS 27 navigation bar (seen on the simulator)
+        .toast($notice)
+    }
+
+    /// AlertView is done with its row: pop back to the list first, then
+    /// delete. Deleting the model a pushed view shows blanked that view (its
+    /// destination resolved to nothing) or crashed it on the next render.
+    private func finished(_ id: UUID, andSay toast: String, remove: Bool = true) {
+        notice = toast
+        guard remove else {
+            // still unmatched: back to the list, the row stays
+            path.removeAll()
+            return
+        }
+        pendingRemoval = id
+        if path.contains(id) {
+            // its own page is still open: pop, and onAppear deletes it
+            path.removeAll()
+        } else {
+            // the user already came back (a re-ingest can finish after the
+            // pop) or opened another alert: no page shows this row, so it
+            // goes now and the page they are reading stays
+            removePending()
+        }
+    }
+
+    private func removePending() {
+        guard let id = pendingRemoval else { return }
+        pendingRemoval = nil
+        if let r = rows.first(where: { $0.id == id }) {
+            withAnimation {
+                context.delete(r)
+                try? context.save()
+            }
+        }
+    }
+
+    /// Every saved pattern over every waiting alert, through the ingest
+    /// path; the toast says how many moved to the Inbox.
+    private func tryPatterns() {
+        retrying = true
+        Task {
+            let run = await PatternRematch.run(context: context)
+            retrying = false
+            switch run {
+            case .success(let result): notice = result.message(asked: true)
+            case .failure(let error): notice = PatternRematch.failed(error)
+            }
         }
     }
 
@@ -86,12 +151,15 @@ private struct UnmatchedRow: View {
                 Text(title ?? AlertText.meaningfulLine(in: r.text))
                     .font(.body).lineLimit(2)
                 Spacer()
+                // neutral, like the builder's READS line: an unmatched alert
+                // has no direction yet, and green reads as money coming in
+                // on what is usually a payment
                 if let chip {
                     Text(chip)
                         .font(.caption.weight(.semibold)).monospacedDigit()
                         .padding(.horizontal, 7).padding(.vertical, 3)
-                        .background(Color.green.opacity(0.15))
-                        .foregroundStyle(.green)
+                        .background(Color(.tertiarySystemFill))
+                        .foregroundStyle(.primary)
                         .clipShape(RoundedRectangle(cornerRadius: 6))
                 }
             }
@@ -119,7 +187,7 @@ private struct UnmatchedRow: View {
             .first(where: { $0.confident }),
               let lo = c.tokenIndexes.min(), let hi = c.tokenIndexes.max()
         else { return nil }
-        return text[tokens[lo].range.lowerBound..<tokens[hi].range.upperBound]
-            .trimmingCharacters(in: .whitespaces)
+        // the Inbox's form ("SGD 2.20"), not the alert's spacing ("SGD2.20")
+        return Cents.chipText(printed: String(text[tokens[lo].range.lowerBound..<tokens[hi].range.upperBound]))
     }
 }

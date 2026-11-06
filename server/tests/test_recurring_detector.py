@@ -1,22 +1,21 @@
 """G16: the recurring detector on made-up rows: several series per payee, more
 cadences, a price change continues a series, paused apart from stopped."""
 import isolate  # noqa: F401  first: no test writes the real record or cache
+import random
 import unittest
 from datetime import date, timedelta
 
 from analytics.stats import recurring_detector as rd
 from finance.money import to_cents
+from support import snapshot_txn
 
 # invented payees, amounts and bank text throughout
 
 
 def tx(day, amount, payee="", text=None, category="Subscriptions", account="111-1", bucket="Spend"):
     day = day.isoformat() if isinstance(day, date) else day
-    return {"key": f"{payee or text}-{day}-{amount}", "date": day, "month": day[:7],
-            "amount_minor": to_cents(-amount), "amount_sgd_minor": to_cents(-amount), "currency": "SGD",
-            "flow_class": "External", "synthetic": False, "bucket": bucket, "need_class": "Want",
-            "payee": payee, "category": category, "merchant_raw": text if text is not None else payee.upper(),
-            "counterparty": "", "memo": "", "account_no": account, "bank_txn_type": "POS"}
+    return snapshot_txn(f"{payee or text}-{day}-{amount}", day, to_cents(-amount), payee, text=text,
+                        category=category, account=account, bucket=bucket)
 
 
 def snap(rows, flagged=(), periods=()):
@@ -182,6 +181,20 @@ class Cadences(unittest.TestCase):
         [s] = of(detect(rows), "Landlord")
         self.assertEqual((s["cadence"], s["status"], s["occurrences"], s["median_amount_minor"]),
                          ("twice-monthly", "active", 40, 2500))
+
+    def test_the_two_usual_days_are_the_pair_nearest_every_payment(self):
+        # Audit: usual_pair counts each day of the month once; it must pick the pair the plain
+        # sum over every payment picks, ties to the earlier pair, whatever the days
+        from finance.cadence import _apart, usual_pair
+
+        def plain(days):
+            costs = {(x, y): sum(min(_apart(d, x, 31), _apart(d, y, 31)) for d in days)
+                     for x in range(1, 32) for y in range(x + 1, 32)}
+            return min(costs, key=lambda p: (costs[p], p))
+        rnd = random.Random(16)
+        for _ in range(300):
+            days = [rnd.randint(1, 31) for _ in range(rnd.randint(1, 40))]
+            self.assertEqual(usual_pair(days), plain(days), days)
 
     def test_on_schedule_answers_for_every_cadence(self):
         d = date.fromisoformat

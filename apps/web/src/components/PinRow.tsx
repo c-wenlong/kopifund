@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { postJSON, rowsChanged, useApi, type GroupRow, type GroupRows, type PinSet, type Relinked, type RuleUndone } from "../api";
 import { formatAmount } from "../money";
 import { formatDay } from "../dates";
+import { useUnsavedGuard } from "../router";
 import { BankMark } from "./BankMark";
 import { Button } from "./Button";
 import { Combobox } from "./Combobox";
 import { Select } from "./Select";
+import { TextInput } from "./TextInput";
 import { Loading } from "./States";
 import { showToast } from "./Toast";
 
@@ -14,7 +16,13 @@ import { showToast } from "./Toast";
 // filed without a pattern rule that would also catch the next transfer to the
 // same person. G13: the row is filed in the record at once, and the toast's
 // Undo takes the rule and the row's category back together.
-export type PinDraft = { category: string; payee: string; kind: string; note: string };
+export type PinFields = { category: string; payee: string; kind: string; note: string };
+// what was typed, and (`base`) what it is measured against: what the form opened on, or what its last save sent
+export type PinDraft = PinFields & { base?: PinFields };
+
+/** Typed and not saved, against `base`; a kind counts only with a payee. */
+export const pinDirty = (d: PinFields, base: PinFields) => d.category !== base.category
+  || d.payee.trim() !== base.payee.trim() || d.note.trim() !== base.note.trim() || (!!d.payee.trim() && d.kind !== base.kind);
 
 type Pinned = { change?: string | null; relinked?: Relinked; unchanged?: boolean; pinned?: PinSet };
 
@@ -41,24 +49,51 @@ export async function savePin(body: { key: string; category: string; payee?: str
 }
 
 // `draft` and `onDraft` let a page keep what was typed above the form, so the
-// form can be mounted again (a layout change) without losing it
-export function PinForm({ row, categories, kinds, onPinned, draft, onDraft }: {
+// form can be mounted again (a layout change, Less then More) without losing it.
+// A page that keeps drafts also guards them (`onDirty`): the typed work outlives
+// the form, so the question about leaving must too. Such a page keeps the form
+// mounted while its save is on its way (`onSaving`), hidden if closed meanwhile,
+// so the form that sent a save is the one that settles it.
+export function PinForm({ row, categories, kinds, onPinned, draft, onDraft, onDirty, onSaving }: {
   row: GroupRow;
   categories: string[];
   kinds: string[];
   onPinned?: () => void;
   draft?: PinDraft;
   onDraft?: (d: PinDraft) => void;
+  onDirty?: (dirty: boolean) => void;
+  onSaving?: (on: boolean) => void;
 }) {
   // G13: opens on what the row already has: its category, and the kind the
   // rules page would suggest for the text it printed (a person only for a
   // counterparty, as `suggest` in finance/rules_app.py), not "Person" for all
   // but a merchant's own line
-  const [category, setCategory] = useState(draft?.category ?? row.category);
-  const [payee, setPayee] = useState(draft?.payee ?? row.payee);
-  const [kind, setKind] = useState(draft?.kind ?? row.similar?.kind ?? (row.field === "counterparty" ? "Person" : "Merchant"));
-  const [note, setNote] = useState(draft?.note ?? "");
-  useEffect(() => { onDraft?.({ category, payee, kind, note }); }, [category, payee, kind, note]);
+  const [base, setBase] = useState<PinFields>(() => draft?.base ?? {
+    category: row.category, payee: row.payee, kind: row.similar?.kind ?? (row.field === "counterparty" ? "Person" : "Merchant"), note: "",
+  });
+  const [category, setCategory] = useState(draft?.category ?? base.category);
+  const [payee, setPayee] = useState(draft?.payee ?? base.payee);
+  const [kind, setKind] = useState(draft?.kind ?? base.kind);
+  const [note, setNote] = useState(draft?.note ?? base.note);
+  const typed = { category, payee, kind, note };
+  const latest = useRef(typed);
+  latest.current = typed;
+  useEffect(() => { onDraft?.({ category, payee, kind, note, base }); }, [category, payee, kind, note, base]);
+  // a save on its way: what is typed meanwhile is measured against what it sent, and a failure puts `base` back
+  const [sending, setSending] = useState<PinFields | null>(null);
+  // G18: something typed and not saved (a draft kept from before a change of layout included) asks before the
+  // page is left
+  const dirty = pinDirty(typed, sending ?? base);
+  // and a save on its way holds the page too, until it lands: one that fails leaves the edit unsaved
+  const holding = dirty || !!sending;
+  useUnsavedGuard(!onDirty && holding);
+  useEffect(() => { onDirty?.(holding); }, [holding]);
+  // a form replaced while its save ran (the layout crossing 768px) leaves the row to the form that replaced it
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const what = `the ${formatDay(row.date)} row`;
@@ -66,13 +101,31 @@ export function PinForm({ row, categories, kinds, onPinned, draft, onDraft }: {
   async function save() {
     setSaving(true);
     setError(null);
+    const sent = { category, payee: payee.trim(), kind, note: note.trim() };
+    setSending(sent);
+    onSaving?.(true);
     try {
-      await savePin({ key: row.key, category, payee: payee.trim(), kind, note: note.trim() });
-      onPinned?.();
+      await savePin({ key: row.key, ...sent });
+      // what was typed while the save was on its way was not sent: the form stays open on it, measured
+      // against what was saved, and only a form with nothing left unsaved is done
+      // said to the page straight away as well: a form hidden meanwhile is unmounted as the save ends, before
+      // its effects would say it
+      if (!mounted.current) return;
+      if (pinDirty(latest.current, sent)) {
+        setBase(sent);
+        onDraft?.({ ...latest.current, base: sent });
+        onDirty?.(true);
+      } else {
+        onPinned?.();
+      }
     } catch (e) {
+      if (!mounted.current) return;
+      onDirty?.(pinDirty(latest.current, base));
       setError((e as Error).message);
     } finally {
+      setSending(null);
       setSaving(false);
+      onSaving?.(false);
     }
   }
 
@@ -81,14 +134,14 @@ export function PinForm({ row, categories, kinds, onPinned, draft, onDraft }: {
       <div className="flex flex-wrap items-center gap-2 text-[13px]">
         <Combobox label={`Category for ${what}`} value={category} options={categories}
           placeholder="Choose a category" className="w-48" onChange={setCategory} />
-        <input value={payee} placeholder="Payee (optional)" aria-label={`Payee for ${what}`}
-          onChange={(e) => setPayee(e.target.value)} className="h-8 w-40 rounded-md border border-line bg-panel px-2" />
+        <TextInput value={payee} placeholder="Payee (optional)" aria-label={`Payee for ${what}`}
+          onChange={(e) => setPayee(e.target.value)} className="w-40" />
         {payee.trim() && (
           <Select label={`Kind for ${what}`} placeholder="Kind" value={kind} onChange={setKind} className="w-32"
             options={kinds.map((k) => ({ value: k, label: k }))} />
         )}
-        <input value={note} placeholder="Why (optional), e.g. a wedding gift" aria-label={`Note for ${what}`}
-          onChange={(e) => setNote(e.target.value)} className="h-8 min-w-0 flex-1 basis-48 rounded-md border border-line bg-panel px-2" />
+        <TextInput value={note} placeholder="Why (optional), e.g. a wedding gift" aria-label={`Note for ${what}`}
+          onChange={(e) => setNote(e.target.value)} className="min-w-0 flex-1 basis-48" />
         <Button variant="primary" disabled={saving || !category} onClick={() => void save()}>
           {saving ? "Saving…" : "Save for this row"}
         </Button>

@@ -8,18 +8,20 @@ import { SuggestChip } from "../components/SuggestChip";
 import { chipKind, chipText, dollarsText, typedValue } from "../suggest";
 import { centsText, formatSgd, parseCents, type Cents } from "../money";
 import { formatDay, formatMonth, formatRange, isoMonth, shiftMonth } from "../dates";
-import { Button } from "../components/Button";
+import { Button, IconButton } from "../components/Button";
 import { useCopilotContext } from "../copilot/pageFilters";
 import { Card } from "../components/Card";
 import { CollapsibleRows, COLLAPSED_ROWS } from "../components/CollapsibleRows";
 import { DateField } from "../components/DateField";
 import { EmptyState } from "../components/EmptyState";
+import { Field } from "../components/Field";
 import { MoneyInput } from "../components/MoneyInput";
 import { MonthField } from "../components/MonthField";
 import { SaveBar } from "../components/SaveBar";
 import { Select } from "../components/Select";
+import { TextInput } from "../components/TextInput";
 import { Loading, Problem } from "../components/States";
-import { HEAD_ROW, ROW, TH } from "../components/tableKit";
+import { CARD_CELL, CARD_ROW, HEAD_ROW, ROW, TH } from "../components/tableKit";
 import { Tile, TileGrid } from "../components/Tile";
 import { showToast } from "../components/Toast";
 import { ForwardViewCard } from "./ForwardView";
@@ -33,7 +35,6 @@ const startMonth = (asOf: string | null) => {
   const last = asOf?.slice(0, 7);
   return last && last < thisMonth() ? last : thisMonth();
 };
-const input = "h-8 rounded-md border border-line bg-panel px-2";
 
 // asOf is the record's last transaction date; undefined while it is still loading.
 export function Plan({ asOf }: { asOf?: string | null }) {
@@ -59,8 +60,9 @@ type RowNote = { saved?: boolean; error?: string };
 function BudgetEditor({ asOf }: { asOf?: string | null }) {
   const [picked, setMonth] = useState<string | null>(null);
   const month = picked ?? (asOf === undefined ? null : startMonth(asOf));
-  const [version, setVersion] = useState(0);
-  const { data, error, loading } = useApi<Budgets>(month && `/api/budgets?month=${month}&v=${version}`);
+  // a write empties the kept answers and has every view on screen ask again (api.ts), so a save needs no
+  // version in the address to be read back
+  const { data, error, loading } = useApi<Budgets>(month && `/api/budgets?month=${month}`);
   // G22: "this month" in a question here is the budget month on screen
   useCopilotContext({ month });
   const [only, setOnly] = useState(false);
@@ -89,7 +91,6 @@ function BudgetEditor({ asOf }: { asOf?: string | null }) {
     try {
       await postJSON("/api/budgets", JSON.stringify({ category_id: id, category, month, planned: v }));
       note(category, { saved: true });
-      setVersion((x) => x + 1);
     } catch (e) {
       note(category, { error: (e as Error).message });
     }
@@ -99,7 +100,6 @@ function BudgetEditor({ asOf }: { asOf?: string | null }) {
     try {
       await postJSON("/api/budgets/copy", JSON.stringify({ from: src, to: month }));
       setNotes({});
-      setVersion((x) => x + 1);
     } catch (e) {
       showToast({ tone: "error", message: (e as Error).message });
     }
@@ -380,6 +380,9 @@ function PlanEditor() {
   const latest = useRef(plan);
   latest.current = plan;
   useEffect(() => { if (data && !unsaved.current) { setPlan(data.plan); setStored(data.plan); } }, [data]);
+  // the first answer fills the form in this render, not after it: an empty form in between would show
+  // "No plan yet" (an alert) for a frame on every visit
+  if (data && !plan && !stored) { setPlan(data.plan); setStored(data.plan); }
   if (loading && !data) return <Loading what="Loading your plan" />;
   if (error || !data || !plan) return <Problem message={error ?? "No plan yet"} retry />;
 
@@ -432,28 +435,28 @@ function PlanEditor() {
   return (
     <Card title="Plan" pinned actions={<SaveBar dirty={dirty} saving={saving} onSave={save} onDiscard={discard} saveLabel="Save plan" />}>
       <div key={epoch} className="grid grid-cols-1 gap-x-4 gap-y-3 text-[13px] sm:grid-cols-2 lg:grid-cols-4">
-        <Field label="Project until">
+        <Field small={false} label="Project until">
           {(id) => (
             <MonthField id={id} value={plan.to ?? ""} onChange={(v) => set("to", v || undefined)}
               label="Project until (month)" clearable />
           )}
         </Field>
         {MONEY_FIELDS.map((f) => (
-          <Field key={f.key} label={f.label} chip={f.key === "insurance_minor" ? monthly("insurance") : f.key === "repayments_minor" ? monthly("repayments") : undefined}>
+          <Field small={false} key={f.key} label={f.label} chip={f.key === "insurance_minor" ? monthly("insurance") : f.key === "repayments_minor" ? monthly("repayments") : undefined}>
             {(id) => (
               <AmountInput id={id} label={`${f.label} (S$ a month)`} value={plan[f.key]} after="a month" placeholder="0"
                 onChange={(v) => set(f.key, v ?? undefined)} />
             )}
           </Field>
         ))}
-        <Field label="Employer CPF" chip={rateOff && ageRate != null ? (
+        <Field small={false} label="Employer CPF" chip={rateOff && ageRate != null ? (
           <SuggestChip onUse={() => set("cpf_employer_rate", ageRate)}>Rate for your age is {fractionToPercent(ageRate)}%, use</SuggestChip>
         ) : undefined}>
           {(id) => (
             <PercentInput id={id} label="Employer CPF (%)" value={plan.cpf_employer_rate} onChange={(v) => set("cpf_employer_rate", v)} />
           )}
         </Field>
-        <Field label="Spending rate" wide>
+        <Field small={false} label="Spending rate" className="sm:col-span-2">
           {(id) => (
             <Select id={id} label="Spending rate" placeholder="Spending rate" value={rate} onChange={(v) => set("spend_rate", v)} className="w-full"
               options={rates.map((r) => ({ value: r, label: rateLabel(r) }))} />
@@ -526,22 +529,6 @@ export function PayAndInvesting({ plan }: { plan: Pick<PlanT, "income" | "invest
   );
 }
 
-/** A labelled field: the name, then the input (given the id to tie them). Anything it needs said is in its label, unit or placeholder. */
-function Field({ label, wide = false, chip, children }: {
-  label: string; wide?: boolean; children: (id: string) => React.ReactNode;
-  /** G13: a figure the record knows for this box, under it; nothing is filled until it is tapped. */
-  chip?: React.ReactNode;
-}) {
-  const id = useId();
-  return (
-    <div className={`flex flex-col gap-1 ${wide ? "sm:col-span-2" : ""}`}>
-      <label htmlFor={id} className="font-medium text-ink-2">{label}</label>
-      {children(id)}
-      {chip && <div>{chip}</div>}
-    </div>
-  );
-}
-
 const NOT_A_NUMBER = "Use digits, like 1,200.50";
 
 /**
@@ -611,8 +598,6 @@ const WIDTH: Record<Kind, string> = { date: "w-36", month: "w-36", money: "w-36"
 // Under 1280px a row is a small card (the five columns of a trip do not fit
 // beside a sidebar), each field under its own name: the name and the note take
 // the whole width, the rest sit two to a line.
-const CARD_ROW = "max-xl:relative max-xl:grid max-md:grid-cols-2 md:max-xl:grid-cols-4 max-xl:gap-2 max-xl:rounded-lg max-xl:border max-xl:border-line max-xl:p-3";
-const CARD_CELL = "max-xl:flex max-xl:min-w-0 max-xl:flex-col max-xl:gap-1 max-xl:p-0 max-xl:before:text-[12px] max-xl:before:font-medium max-xl:before:text-ink-2 max-xl:before:content-[attr(data-label)]";
 
 function ListEditor<T extends Record<string, unknown>>({ title, add, rows, onChange, blank, cols, empty }: {
   title: string; add: string; rows: T[]; onChange: (rows: T[]) => void; blank: T; cols: Col[]; empty: string;
@@ -655,8 +640,8 @@ function ListEditor<T extends Record<string, unknown>>({ title, add, rows, onCha
                   </td>
                 ))}
                 <td className="py-0.5 text-right max-xl:absolute max-xl:right-1.5 max-xl:top-1.5 max-xl:p-0">
-                  <button type="button" aria-label={`Remove ${title.toLowerCase()} row ${i + 1}`} onClick={() => onChange(rows.filter((_, j) => j !== i))}
-                    className="rounded-md p-1 text-ink-3 hover:bg-hover hover:text-ink"><Trash2 size={13} /></button>
+                  <IconButton label={`Remove ${title.toLowerCase()} row ${i + 1}`} onClick={() => onChange(rows.filter((_, j) => j !== i))}>
+                    <Trash2 size={13} /></IconButton>
                 </td>
               </tr>
             ))}
@@ -693,10 +678,10 @@ function NoteInput({ label, value, placeholder, onChange }: {
   const long = value.length > 20;
   return (
     <div>
-      <input aria-label={label} placeholder={placeholder} value={value} title={long ? value : undefined}
+      <TextInput aria-label={label} placeholder={placeholder} value={value} title={long ? value : undefined}
         aria-describedby={long && focused ? tip : undefined}
         onChange={(e) => onChange(e.target.value)} onFocus={() => setFocused(true)} onBlur={() => setFocused(false)}
-        className={`${input} w-full truncate`} />
+        className="w-full truncate" />
       {long && focused && (
         <div id={tip} role="tooltip"
           className="mt-1 whitespace-normal break-words rounded-md border border-line bg-tile px-2 py-1.5 text-[12px] text-ink-2">

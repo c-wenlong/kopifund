@@ -10,11 +10,23 @@ struct AlertsApp: App {
     @State private var pendingPair: String?
 
     init() {
+        // a default account chosen before the Settings fix never reached the
+        // Wallet intent's copy; mirror it at launch, not only when Settings opens
+        SettingsView.shareDefaultAccount(UserDefaults.standard.string(forKey: "defaultAccountID") ?? "")
         do {
             // a local: self is not fully initialized inside init yet
             let c = try Store.container()
             container = c
             storeError = nil
+            // G24: builds before the missing-details check queued empty
+            // Wallet captures (amount 0, no payee) as approvable rows; clear
+            // them once. Only rows never sent anywhere go, and the count is
+            // logged (EmptyWalletCleanup)
+            _ = try? EmptyWalletCleanup.runOnce(in: ModelContext(c), defaults: .standard)
+            #if DEBUG
+            // Audit: every launch-argument hook below is a UI test's seed and
+            // lives in Debug builds only (the test scheme builds Debug), so a
+            // release build never reads an argument that writes or wipes rows
             // G25: a UI test seeds one pending row with `-seedSpend
             // cents|currency|payee|YYYY-MM-DD` so an approve can reach the
             // hub's pending post without a saved pattern or YNAB setup
@@ -35,6 +47,34 @@ struct AlertsApp: App {
                     try? ctx.save()
                 }
             }
+            // `-seedNoCategories` empties the cached YNAB category lists, so a
+            // UI test sees the Review page as it is before any YNAB fetch
+            if ProcessInfo.processInfo.arguments.contains("-seedNoCategories") {
+                let ctx = ModelContext(c)
+                for m in (try? ctx.fetch(FetchDescriptor<MetadataRecord>())) ?? []
+                where m.key.hasPrefix("categories|") { ctx.delete(m) }
+                try? ctx.save()
+            }
+            // G24: a UI test parks alerts in Unmatched with one
+            // `-seedUnmatched <text>` per alert, as if each arrived before
+            // any pattern could read it
+            let args = ProcessInfo.processInfo.arguments
+            let seeds = args.indices.filter { args[$0] == "-seedUnmatched" && $0 + 1 < args.count }
+            if !seeds.isEmpty {
+                let ctx = ModelContext(c)
+                // each seeded run starts from an empty store, so one test's
+                // patterns and rows never meet the next one's
+                try? ctx.delete(model: UnmatchedRecord.self)
+                try? ctx.delete(model: TransactionRecord.self)
+                try? ctx.delete(model: PatternRecord.self)
+                for (k, i) in seeds.enumerated() {
+                    ctx.insert(UnmatchedRecord(text: args[i + 1], source: "uitest",
+                                               receivedAt: Date().addingTimeInterval(Double(k) * 60),
+                                               reasons: ""))
+                }
+                try? ctx.save()
+            }
+            #endif
         } catch {
             // never fall back to an in-memory store: rows saved there would
             // vanish on the next launch with no warning
@@ -48,11 +88,9 @@ struct AlertsApp: App {
             if let container {
                 RootView()
                     .modelContainer(container)
-                    .task {
-                        if let ctx = try? ModelContext(container) {
-                            await SyncService.flush(context: ctx)
-                        }
-                    }
+                    // the run belongs to SyncService, so this task ending
+                    // never cancels a send
+                    .task { await SyncService.flush(context: container.mainContext) }
                     .onOpenURL { url in
                         // G25: a kopifund://pair URL reaches us from the Camera's
                         // scan banner, the Files pasteboard, anywhere a link can
@@ -89,11 +127,33 @@ struct AlertsApp: App {
 }
 
 struct RootView: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.modelContext) private var context
+
     var body: some View {
+        tabs
+            // back from a Wallet tap, a share or a Shortcut run: the other
+            // process wrote the file while this one was in the background
+            .onChange(of: scenePhase) { _, phase in
+                guard phase == .active else {
+                    SyncService.noteBackground(context)
+                    return
+                }
+                SyncService.refresh(context)
+                DestinationState.shared.reload()
+                Task { await SyncService.flush(context: context) }
+            }
+    }
+
+    private var tabs: some View {
         TabView {
+            // a new identity re-runs the list's query after another
+            // process wrote the store (SyncService.refresh)
             InboxView()
+                .id(SyncService.shared.storeGeneration)
                 .tabItem { Label("Inbox", systemImage: "tray") }
             UnmatchedView()
+                .id(SyncService.shared.storeGeneration)
                 .tabItem { Label("Unmatched", systemImage: "questionmark.folder") }
             KopifundView()
                 .tabItem { Label("Kopifund", systemImage: "link") }

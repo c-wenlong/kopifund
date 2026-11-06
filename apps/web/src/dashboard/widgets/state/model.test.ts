@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { REST_COLOUR } from "../../../components/chartKit";
 import type { WidgetAnswer } from "../../../types.gen";
-import { fmtValue, shareText, signedValue, sliceColour, slicesFor, totalOf, txnLink } from "./model";
+import { fmtValue, shareText, signedValue, sliceColour, slicesFor, slicesLeftOut, totalOf, txnLink } from "./model";
 
 // invented figures only
 const BY_BUCKET: WidgetAnswer = {
@@ -37,6 +37,13 @@ describe("slicesFor", () => {
     expect(slices.map((s) => s.name)).toEqual(["Food", "Transport", "Everything else"]);
     expect(slices.map((s) => s.value)).toEqual([175_000, 60_000, 15_000]);
     expect(slices[0].link).toEqual(BY_BUCKET.label_links?.[0]);
+  });
+
+  it("leaves out a slice at or below zero, so the total and the shares are of what is drawn", () => {
+    const refunded: WidgetAnswer = { ...BY_BUCKET, series: [{ name: "spend", values_minor: [175_000, -5_000, 0] }] };
+    expect(slicesFor([refunded]).map((s) => s.name)).toEqual(["Food"]);
+    expect(totalOf(slicesFor([refunded]))).toBe(175_000);
+    expect(slicesLeftOut([refunded]).map((s) => [s.name, s.value])).toEqual([["Transport", -5_000], ["Everything else", 0]]);
   });
 
   it("reads several series as one slice each, at the latest point", () => {
@@ -110,6 +117,7 @@ describe("slicesFor", () => {
 describe("figures and links", () => {
   it("writes cents as money and other units in their own way", () => {
     expect(fmtValue(175_000, "sgd_minor")).toBe("S$1,750");
+    expect(fmtValue(175_049.6, "sgd_minor")).toBe("S$1,751");      // an average's fraction of a cent rounds to 175,050 cents, then half up to S$1,751
     expect(fmtValue(0.3, "fraction")).toBe("30%");
     expect(fmtValue(18.7, "percent")).toBe("18.7%");
     expect(fmtValue(6.6, "months")).toBe("6.6 mo");
@@ -118,6 +126,13 @@ describe("figures and links", () => {
   it("writes a change with its sign", () => {
     expect(signedValue(12_345, "sgd_minor")).toBe("+S$123");
     expect(signedValue(-12_345, "sgd_minor")).toBe("−S$123");
+    // money rounds once, half away from zero, and what rounds to nothing has no sign
+    expect(signedValue(-150, "sgd_minor")).toBe("−S$2");
+    expect(signedValue(-40, "sgd_minor")).toBe("S$0");
+    expect(signedValue(12_345.5, "sgd_minor")).toBe("+S$123");
+    // a worked-out half cent rounds away from zero, as fmtValue rounds it
+    expect(signedValue(-149.5, "sgd_minor")).toBe("−S$2");
+    expect(fmtValue(-149.5, "sgd_minor")).toBe("−S$2");
     expect(signedValue(0.05, "fraction")).toBe("+5%");
     expect(signedValue(-2.3, "percent")).toBe("−2.3%");
     expect(signedValue(0.4, "months")).toBe("+0.4 mo");

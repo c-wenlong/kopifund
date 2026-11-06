@@ -15,7 +15,6 @@ import os
 import tempfile
 import typing
 import unittest
-import warnings
 from contextlib import closing
 from datetime import date
 from pathlib import Path
@@ -26,6 +25,7 @@ from finance import (ai, copilot, dashboard, db, gen_types, home, keys, pending,
                      scam_checks, setup, upload_log)
 from finance import types as wire
 from test_db import block, parsed, row
+import support
 
 # ---------------------------------------------------------------- the checker
 
@@ -152,12 +152,15 @@ class GeneratedTest(unittest.TestCase):
         text = gen_types.OUT.read_text(encoding="utf-8")
         self.assertEqual(text.count("  /** @deprecated the same value as `cost_type`"), 2)
 
-    def test_a_view_asked_again_after_a_no_change_write_is_a_cached_get(self):
+    def test_a_view_asked_again_after_a_write_is_a_cached_get(self):
         # G18: a write that reloads everything needs no entry; a GET asked afresh every time needs none either
         import serve
-        self.assertLessEqual(set(serve.REREAD_AFTER), set(serve.NO_CHANGE))
+        self.assertLessEqual(set(serve.REREAD_AFTER), set(serve.POST_ROUTES))
         self.assertLessEqual({p for paths in serve.REREAD_AFTER.values() for p in paths}, set(serve.CACHED))
         self.assertIn('"/api/run/check": ["/api/overview"]', gen_types.render())
+        # G26: a layout save asks again for the layouts alone, and still moves the server's version
+        self.assertEqual(serve.REREAD_AFTER["/api/dashboard/layouts/<id>"], ("/api/dashboard/layouts",))
+        self.assertNotIn("/api/dashboard/layouts/<id>", serve.NO_CHANGE)
 
     def test_the_scam_settings_are_the_ones_the_checks_keep(self):
         self.assertEqual(list(typing.get_type_hints(wire.ScamSettings)), list(scam_checks.DEFAULTS))
@@ -229,6 +232,9 @@ RESULTS = {"recurring-detector": {"generated_at": "2026-09-20T08:00:00", "data":
     "flag_mismatches": {"flagged_not_detected": ["Club"], "detected_not_flagged": []}}}}
 
 
+TODAY = date(2026, 10, 30)
+
+
 class December(date):
     """G18: a day when the record's account is late (finance.home reads `date.today`)."""
     @classmethod
@@ -247,12 +253,15 @@ class EndpointTest(unittest.TestCase):
                                                "KOPIFUND_ENV_FILE": str(root / "keys.env"),
                                                "KOPIFUND_DEVICES": str(root / "devices.json")})
         cls.env.start()
-        cls.results = mock.patch("finance.results_cache.results", lambda req=None: RESULTS)
+        cls.results = mock.patch("finance.results_cache._shared", lambda req=None: RESULTS)
         cls.results.start()
         # G25: the tailnet URL is this machine's, so fake it rather than ask tailscale;
         # one paired phone so LinkDevice is checked too, not just the empty list
         cls.tailnet = mock.patch("finance.link.tailnet_url", return_value="https://kopifund-mac.tailnet-name.ts.net")
         cls.tailnet.start()
+        # the record runs to September 2026 and Coming up is read against today:
+        # a fixed day after it, so every shape below has a row whatever the real clock says
+        cls.enterClassContext(support.today_is(TODAY))
         (root / "devices.json").write_text(json.dumps({"pair_tokens": [], "devices": [
             {"id": "dev_1", "name": "Test iPhone", "token_hash": "x", "paired_at": "2026-10-30T08:00:00",
              "revoked": False}]}), encoding="utf-8")
@@ -307,7 +316,7 @@ class EndpointTest(unittest.TestCase):
             dashboard.save_goal(conn, RESULTS, {
                 "name": "A year aside", "target_minor": 6_000_000, "month": "2027-06",
                 "note": "invented", "milestones": [{"month": "2026-12", "target_minor": 1_500_000}],
-                "source": "spending", "metric": "spend", "dimension": "month"})
+                "source": "net-worth", "metric": "total", "dimension": "month"})
             bucket = conn.execute("SELECT name FROM category_group WHERE kind = 'spend' "
                                   "ORDER BY name LIMIT 1").fetchone()[0]
             dashboard.save_allocation(conn, {"buckets": [{"bucket": bucket, "planned_minor": 50_000}]})
@@ -357,17 +366,15 @@ class EndpointTest(unittest.TestCase):
 
     def test_every_endpoint_answers_in_its_generated_shape(self):
         # several handlers leave their connection to the garbage collector; that is not this test's subject
-        self.enterContext(warnings.catch_warnings())
-        warnings.simplefilter("ignore", ResourceWarning)
         met = set()
         for path, query, tp in self.answers():
             with self.subTest(path=path, query=query):
-                self.assertEqual(problems(serve.answer(path, query), tp, path, met), [])
+                self.assertEqual(problems(support.answer(path, query), tp, path, met), [])
         # G17: the plan's write answers in the same shape, and so do the Net worth page's inputs
         with mock.patch("finance.stats_rebuild.refresh_stats"):
-            saved = serve.write("/api/plan", {}, json.dumps(serve.answer("/api/plan", {})["plan"]).encode())
+            saved = support.write("/api/plan", {}, json.dumps(support.answer("/api/plan", {})["plan"]).encode())
         self.assertEqual(problems(saved, wire.Plan, "POST /api/plan", met), [])
-        self.assertEqual(problems(serve.answer("/api/growth", {})["inputs"], wire.GrowthInputs,
+        self.assertEqual(problems(support.answer("/api/growth", {})["inputs"], wire.GrowthInputs,
                                   "/api/growth.inputs", met), [])
         expected = set().union(*(reachable(tp) for tp in (*wire.ENDPOINTS.values(), wire.GrowthInputs)))
         self.assertEqual({t.__name__ for t in expected - met}, set(),
@@ -377,17 +384,15 @@ class EndpointTest(unittest.TestCase):
         # G18: the rest of GET /api/overview is not generated yet. Today is December 2026, so the account is
         # late, and a one-off falls in Coming up's month (the record's last, September): every part of the
         # card has something to check
-        self.enterContext(warnings.catch_warnings())
-        warnings.simplefilter("ignore", ResourceWarning)
         self.enterContext(mock.patch.object(home, "date", December))
         offs = {"one-offs": {"data": {"one_offs": [{"date": "2026-09-15", "month": "2026-09", "payee": "Club",
                                                     "category": "Health", "amount_minor": 45_000,
                                                     "multiple": 6.1}]}}}
         self.enterContext(mock.patch("finance.results_cache.results", lambda req=None: {**RESULTS, **offs}))
-        eye, met = serve.answer("/api/overview", {})["needs_your_eye"], set()
+        eye, met = support.answer("/api/overview", {})["needs_your_eye"], set()
         self.assertEqual(problems(eye, wire.NeedsYourEye, "/api/overview.needs_your_eye", met), [])
         # the Rules page's total and the sidebar's count are one number
-        self.assertEqual(serve.answer("/api/rules", {})["needs_total"], eye["needs_rule"])
+        self.assertEqual(support.answer("/api/rules", {})["needs_total"], eye["needs_rule"])
         self.assertEqual({t.__name__ for t in reachable(wire.NeedsYourEye) - met}, set(),
                          "the fixture never filled these, so they went unchecked")
         self.assertEqual([line["kind"] for line in eye["lines"]],
@@ -396,22 +401,18 @@ class EndpointTest(unittest.TestCase):
 
     def test_the_rules_answer_groups_the_rows_no_rule_names_once(self):
         # G18: the list and its total come from one pass over the record
-        self.enterContext(warnings.catch_warnings())
-        warnings.simplefilter("ignore", ResourceWarning)
         spy = self.enterContext(mock.patch.object(rules_app, "_needs_groups", wraps=rules_app._needs_groups))
-        rules = serve.answer("/api/rules", {})
+        rules = support.answer("/api/rules", {})
         self.assertEqual(spy.call_count, 1)
         self.assertEqual(rules["needs_total"], len(rules["needs"]))
 
     def test_coming_up_holds_an_extra_row_so_its_shape_is_checked(self):
-        rows = serve.answer("/api/recurring", {})["coming_up"]["rows"]
+        rows = support.answer("/api/recurring", {})["coming_up"]["rows"]
         self.assertIn(("Gym", "extra"), {(r["payee"], r["status"]) for r in rows})
 
     def test_cost_type_and_its_deprecated_alias_agree(self):
-        self.enterContext(warnings.catch_warnings())
-        warnings.simplefilter("ignore", ResourceWarning)
-        cats = [c for g in serve.answer("/api/categories", {})["groups"] for c in g["categories"]]
-        cats += serve.answer("/api/plan", {})["categories"]
+        cats = [c for g in support.answer("/api/categories", {})["groups"] for c in g["categories"]]
+        cats += support.answer("/api/plan", {})["categories"]
         self.assertTrue(cats)
         self.assertEqual([c["group"] for c in cats], [c["cost_type"] for c in cats])
 

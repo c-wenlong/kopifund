@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { UploadPage } from "./Upload";
 import { leadingIcon } from "../test-icons";
 import type { CheckReport, LoadResult } from "../api";
+import { expectAsks, expectFree, json } from "../test-helpers";
 
 const status = {
   folders: [
@@ -26,10 +27,6 @@ const unbalanced = {
   code: "block-not-reconciled", subject: "•• 1111 · SGD · 2026-02",
   fix: "the balance chain in statements/dbs-multiplier/2026/2026-02.pdf does not close",
 };
-
-function reply(body: unknown, code = 200) {
-  return new Response(JSON.stringify(body), { status: code, headers: { "Content-Type": "application/json" } });
-}
 
 type Routes = {
   status?: unknown; latest?: unknown; history?: unknown;
@@ -58,28 +55,28 @@ const TWO = "This is a YouTrip SEK statement, and more than one of your accounts
 function serve(routes: Routes = {}) {
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
-    if (url === "/api/run/status") return reply(routes.status ?? status);
-    if (url === "/api/uploads/start") return reply({ attempt: 7 });
-    if (url.startsWith("/api/uploads?")) return reply(routes.latest ?? { attempts: [], total: 0, next: null });
-    if (url.startsWith("/api/uploads/")) return reply(typeof routes.history === "function" ? (routes.history as (u: string) => unknown)(url) : routes.history ?? {});
-    if (url.startsWith("/api/run/check")) return reply(await (routes.check?.() ?? report()));
-    if (url.startsWith("/api/run/load")) return reply(await (routes.load?.() ?? { loaded: true, report: report(), counts: { inserted: 0, updated: 0, archived: 0 } }));
-    if (url.startsWith("/api/run/mirror")) return reply(routes.mirror ?? { code: 0, output: "synced" });
+    if (url === "/api/run/status") return json(routes.status ?? status);
+    if (url === "/api/uploads/start") return json({ attempt: 7 });
+    if (url.startsWith("/api/uploads?")) return json(routes.latest ?? { attempts: [], total: 0, next: null });
+    if (url.startsWith("/api/uploads/")) return json(typeof routes.history === "function" ? (routes.history as (u: string) => unknown)(url) : routes.history ?? {});
+    if (url.startsWith("/api/run/check")) return json(await (routes.check?.() ?? report()));
+    if (url.startsWith("/api/run/load")) return json(await (routes.load?.() ?? { loaded: true, report: report(), counts: { inserted: 0, updated: 0, archived: 0 } }));
+    if (url.startsWith("/api/run/mirror")) return json(routes.mirror ?? { code: 0, output: "synced" });
     const q = new URL(url, "http://x").searchParams;
     const name = q.get("name");
-    if (name === "bad.txt") return reply({ error: "that file is not a PDF" }, 400);
+    if (name === "bad.txt") return json({ error: "that file is not a PDF" }, 400);
     if (url.startsWith("/api/statements/auto")) {
-      if (name === "dup.pdf") return reply({ status: "already-there", message: "You already have this statement", account_folder: "statements/dbs-multiplier" });
-      if (name === "odd.pdf") return reply({ status: "needs-account", message: UNTOLD, kind: "", currency: "", candidates: [] });
-      if (name === "acme.pdf" || name === "acme-2.pdf") return reply({ status: "not-supported", message: UNSUPPORTED, attempt: 7, ...BANKS });
-      if (name === "two.pdf") return reply({ status: "needs-account", message: TWO, kind: "a YouTrip SEK statement", currency: "SEK", candidates: ["statements/youtrip-sgd", "statements/youtrip-sek"] });
-      return reply({ status: "added", message: "Saved as statements/dbs-multiplier/2026/2026-09.pdf", account_folder: "statements/dbs-multiplier" });
+      if (name === "dup.pdf") return json({ status: "already-there", message: "You already have this statement", account_folder: "statements/dbs-multiplier" });
+      if (name === "odd.pdf") return json({ status: "needs-account", message: UNTOLD, kind: "", currency: "", candidates: [] });
+      if (name === "acme.pdf" || name === "acme-2.pdf") return json({ status: "not-supported", message: UNSUPPORTED, attempt: 7, ...BANKS });
+      if (name === "two.pdf") return json({ status: "needs-account", message: TWO, kind: "a YouTrip SEK statement", currency: "SEK", candidates: ["statements/youtrip-sgd", "statements/youtrip-sek"] });
+      return json({ status: "added", message: "Saved as statements/dbs-multiplier/2026/2026-09.pdf", account_folder: "statements/dbs-multiplier" });
     }
     if (url.startsWith("/api/statements?")) {
-      if (name === "odd.pdf") return reply({ error: "This PDF is not a statement this account can read" }, 400);
-      return reply({ status: "added", message: `Saved as ${q.get("folder")}/2026/2026-09.pdf`, account_folder: q.get("folder") });
+      if (name === "odd.pdf") return json({ error: "This PDF is not a statement this account can read" }, 400);
+      return json({ status: "added", message: `Saved as ${q.get("folder")}/2026/2026-09.pdf`, account_folder: q.get("folder") });
     }
-    return reply({ error: "none" }, 404);
+    return json({ error: "none" }, 404);
   });
 }
 
@@ -101,8 +98,7 @@ async function add(...names: string[]) {
 }
 
 describe("Upload page", () => {
-  beforeEach(() => { window.localStorage.clear(); window.history.replaceState(null, "", "/upload"); });
-  afterEach(() => vi.restoreAllMocks());
+  beforeEach(() => { window.history.replaceState(null, "", "/upload"); });
 
   it("takes PDFs at once with no account chosen: each goes where its own text says, and the check runs by itself", async () => {
     const fetchSpy = serve({ check: () => report({ to_add_count: 3, to_add: [row("a")] }) });
@@ -212,7 +208,7 @@ describe("Upload page", () => {
       expect(items[2]).toHaveTextContent(/YouTrip$/);
       expect(within(screen.getByRole("list", { name: "Banks coming soon" })).getByText(/Trust Bank/)).toBeInTheDocument();
       expect(screen.getAllByRole("list", { name: "Banks Kopifund reads" })).toHaveLength(1);
-      expect(screen.getByText("python3 finance.py sample")).toBeInTheDocument();
+      expect(screen.getByText(/To help add a bank, share a scrubbed text copy/)).toBeInTheDocument();
       // the card and the stepper agree: nothing was kept
       expect(screen.getAllByText("Not supported").length).toBeGreaterThan(2);
       expect(stateOf("add")).toBe("blocked");
@@ -224,7 +220,7 @@ describe("Upload page", () => {
       await add("new.pdf", "odd.pdf");
       await screen.findByText(/Saved as/);
       expect(screen.queryByRole("list", { name: "Banks Kopifund reads" })).not.toBeInTheDocument();
-      expect(screen.queryByText("python3 finance.py sample")).not.toBeInTheDocument();
+      expect(screen.queryByText(/To help add a bank/)).not.toBeInTheDocument();
     });
   });
 
@@ -257,6 +253,22 @@ describe("Upload page", () => {
       // kept, so the check runs by itself
       await waitFor(() => expect(sent(fetchSpy, "/api/run/check")).toHaveLength(1));
       expect(await screen.findByRole("button", { name: "Load 2 new rows" })).toBeEnabled();
+    });
+
+    it("asks before leaving while a file waits for its account, and not once it is placed", async () => {
+      serve({ check: () => report({ to_add_count: 2 }) });
+      render(<UploadPage />);
+      expect(await screen.findByLabelText("Choose PDFs", { selector: "input" })).toBeEnabled();
+      await expectFree();
+      await add("two.pdf");
+      const waiting = within(await screen.findByRole("list", { name: "Files that need an account" }));
+      // the PDF is held in this page only: leaving would drop it with nothing saved
+      await expectAsks();
+      fireEvent.click(waiting.getByRole("button", { name: "Account" }));
+      fireEvent.mouseDown(screen.getByRole("option", { name: /YouTrip/ }));
+      fireEvent.click(waiting.getByRole("button", { name: "Save here" }));
+      await screen.findByText(/Saved as statements\/youtrip-sek/);
+      await expectFree();
     });
 
     it("stays waiting with the reason in the danger colour when the account chosen refuses it", async () => {
@@ -387,6 +399,15 @@ describe("Upload page", () => {
       // Load stays on: it also records a statement with no transactions
       expect(screen.getByRole("button", { name: "Load" })).toBeEnabled();
       expect(stateOf("load")).toBe("done");
+    });
+
+    it("counts rows the load will re-key as work still to load", async () => {
+      serve({ check: () => report({ rekeyed_count: 2 }) });
+      render(<UploadPage />);
+      fireEvent.click(await screen.findByRole("button", { name: "Check statements" }));
+      expect(await screen.findByRole("button", { name: "Load" })).toBeEnabled();
+      expect(screen.queryByText(/^Nothing new to load\./)).not.toBeInTheDocument();
+      expect(stateOf("load")).not.toBe("done");
     });
   });
 
@@ -519,7 +540,7 @@ describe("Upload page", () => {
       });
       const real = globalThis.fetch;
       vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) =>
-        String(input).endsWith("/api/uploads/8") ? reply({ error: "gone" }, 500) : real(input, init));
+        String(input).endsWith("/api/uploads/8") ? json({ error: "gone" }, 500) : real(input, init));
       render(<UploadPage />);
       expect(await screen.findByText("Two files for the same month")).toBeInTheDocument();
       expect(stateOf("check")).toBe("blocked");
@@ -586,17 +607,17 @@ describe("Upload page", () => {
   it("explains the data quality chart in plain words, and what Synthetic means on its legend entry", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = String(input);
-      if (url === "/api/run/status") return reply(status);
-      if (url.startsWith("/api/uploads")) return reply({ attempts: [], total: 0, next: null });
+      if (url === "/api/run/status") return json(status);
+      if (url.startsWith("/api/uploads")) return json({ attempts: [], total: 0, next: null });
       if (url === "/api/results/data-quality") {
-        return reply({ id: "data-quality", title: "Data quality", chart: { type: "bar", x: "month", series: ["uncategorised", "synthetic"], source: "by_month", unit: "count" },
+        return json({ id: "data-quality", title: "Data quality", chart: { type: "bar", x: "month", series: ["uncategorised", "synthetic"], source: "by_month", unit: "count" },
           data: {
             // G20: a data-quality result in cents holds its money under `_minor`, here the money with no category
             counts: { rows: 200, uncategorised: 5, uncategorised_out_minor: 12000, synthetic: 1, unconverted: 0, partial_months: 0 },
             by_month: [{ month: "2026-08", uncategorised: 3, synthetic: 1 }, { month: "2026-09", uncategorised: 2, synthetic: 0 }],
           } });
       }
-      return reply({ error: "none" }, 404);
+      return json({ error: "none" }, 404);
     });
     render(<UploadPage />);
     expect(await screen.findByText(/stand-in rows that fill a gap in a YouTrip export/)).toBeInTheDocument();

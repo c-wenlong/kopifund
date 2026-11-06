@@ -6,7 +6,7 @@ import {
 } from "../api";
 import { formatAmount, formatSgd } from "../money";
 import { formatDateTime, formatDay } from "../dates";
-import { Button } from "../components/Button";
+import { Button, IconButton } from "../components/Button";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { StatusChip } from "../components/StatusChip";
@@ -16,17 +16,22 @@ import { NEW_DRAFT, RuleEditor, draftOf, type Draft, type SaveStatus } from "../
 import { Segmented } from "../components/Segmented";
 import { Select } from "../components/Select";
 import { HEAD_ROW, ROW, TABLE_BOX, TH } from "../components/tableKit";
-import { Loading, Problem } from "../components/States";
+import { LOAD_FIRST, Loading, Problem } from "../components/States";
 import { showToast, type ToastAction } from "../components/Toast";
 import { useWide } from "../components/useWide";
+import { useAction } from "../components/useAction";
+import { useUnsavedGuard } from "../router";
 import { tierLabel } from "../ruleWords";
 import { KindLabel, PAYEE_KIND_ICON, STEP_STATUS_ICON } from "../icons";
+import { pageParam, useUrlPage, useUrlParams } from "../useUrlParams";
+import { plural } from "../words";
 
 type Show = "all" | "pins" | "problems";
-// `n` tells two drafts apart, so choosing another one remounts the form with it
-type Editing = { rule: Rule | null; draft: Draft; n: number; status?: SaveStatus };
+// `n` tells two drafts apart, so choosing another one remounts the form with it; `start` is what it opened on
+type Editing = { rule: Rule | null; draft: Draft; start: Draft; n: number; status?: SaveStatus };
 
-const count = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-SG")} ${n === 1 ? one : many}`;
+const sameDraft = (a: Draft, b: Draft) => (Object.keys(a) as (keyof Draft)[]).every((k) => a[k] === b[k]);
+
 const label = (g: RuleGroup) => g.payee || g.category;
 
 // a single-row rule is named by a row's key, which means nothing on screen: say which row it is
@@ -34,7 +39,7 @@ const nameOf = (r: Rule) => (r.tier !== "key" ? r.pattern : r.pins[0] ? `the ${f
 
 // G13: "10 text matches, 11 single rows", the two kinds of rule a payee has
 const kindsOf = (g: RuleGroup) =>
-  [g.patterns && count(g.patterns, "text match", "text matches"), g.pins && count(g.pins, "single row")].filter(Boolean).join(", ");
+  [g.patterns && plural(g.patterns, "text match", "text matches"), g.pins && plural(g.pins, "single row")].filter(Boolean).join(", ");
 
 // G7: every rule, grouped by payee, editable. Rules live in CSV files: the
 // shared ones in the repo (read only here) and yours in the data folder,
@@ -42,18 +47,30 @@ const kindsOf = (g: RuleGroup) =>
 export function Rules() {
   const state = useApi<RulesState>("/api/rules");
   const wide = useWide();
-  const address = () => new URLSearchParams(window.location.search);
-  const [view, setView] = useState<"payee" | "order">(() => (address().get("view") === "order" ? "order" : "payee"));
-  // the Recurring page links here with ?q=<payee> to open that payee's rules
-  const [q, setQ] = useState(() => new URLSearchParams(window.location.search).get("q") ?? "");
-  const [show, setShow] = useState<Show>(() => { const v = address().get("show"); return v === "pins" || v === "problems" ? v : "all"; });
-  const [category, setCategory] = useState(() => address().get("category") ?? "");
+  // G13: what defines the list and the page of it live in the address (?q=, ?view=order, ?show=, ?category=,
+  // ?page=), read from it on every render, so a reload, Back, or a link to the bare page while it is open
+  // shows the list the address says, and every reader of the address (the copilot's page filters) hears a change
+  const [params, patch] = useUrlParams();
+  const view = params.get("view") === "order" ? "order" : "payee";
+  const q = params.get("q") ?? "";
+  const showParam = params.get("show");
+  const show: Show = showParam === "pins" || showParam === "problems" ? showParam : "all";
+  const category = params.get("category") ?? "";
+  // a filter changed here starts the list at page 1, and the page leaves the address in the same write;
+  // the option already chosen, clicked again, changes nothing and keeps the page
+  const setView = (v: "payee" | "order") => { if (v !== view) patch({ view: v === "order" ? v : null, page: null }); };
+  const setQ = (text: string) => { if (text !== q) patch({ q: text, page: null }); };
+  const setShow = (v: Show) => { if (v !== show) patch({ show: v === "all" ? null : v, page: null }); };
+  const setCategory = (c: string) => { if (c !== category) patch({ category: c, page: null }); };
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<Editing | null>(null);
   const edits = useRef(0);   // a number for each editor opened, never reused, so a save from a closed one cannot reach a new one
-  const [busy, setBusy] = useState(false);
+  const { running: busy, run } = useAction();
   const [history, setHistory] = useState(false);
   const [needsOpen, setNeedsOpen] = useState<string | null>(null);   // the needs-rule group whose rows are listed
+  // G18: leaving with a rule typed into and not saved asks first, as every other form does
+  // (and a save on its way holds the page until it lands: one that fails leaves the rule unsaved)
+  useUnsavedGuard(!!editing && (!!editing.status?.saving || !sameDraft(editing.draft, editing.start)));
 
   const s = state.data;
   const byId = useMemo(() => new Map((s?.rules ?? []).map((r) => [r.id, r])), [s]);
@@ -69,51 +86,33 @@ export function Rules() {
     ruleHits(r) && (show !== "pins" || r.tier === "key") && (show !== "problems" || r.problems.length > 0));
 
   const shown = view === "payee" ? groups.length : flat.length;
-  // G13: pages of groups (by payee) or of rules (in order); a new search, filter or view starts at page 1
-  // What defines the list and the page of it live in the address (?q=, ?view=order, ?show=, ?category=, ?page=), so a
-  // reload or Back lands where you were. The total is unknown until the rules load, so the page read from the
-  // address is not clamped to 1 meanwhile.
-  const [startPage] = useState(() => Number(address().get("page")) || 1);
-  const pager = usePager("rules", s ? shown : undefined, [view, q, show, category].join("\n"), startPage);
+  // G13: pages of groups (by payee) or of rules (in order); a new search, filter or view starts at page 1.
+  // The total is unknown until the rules load, so the page read from the address is not clamped to 1 meanwhile.
+  const urlPage = pageParam(params);
+  const filters = [view, q, show, category].join("\n");
+  const pager = usePager("rules", s ? shown : undefined, filters, urlPage);
+  // A filter changed here drops the page from the address as it writes (above), so new filters with the page
+  // unchanged come from a link, and the list opens on the page it names.
+  useUrlPage(pager, urlPage, patch, { filters, ready: !!s });
   // G18 (U4): the payees awaiting a rule page like every other long list
   const needsPager = usePager("rules-needs", s?.needs.length ?? 0);
   // a link to a category that has since been renamed or deleted would filter out every rule behind a dropdown that says "All"
   useEffect(() => {
-    if (s && category && !s.rules.some((r) => r.category === category)) setCategory("");
-  }, [s, category]);
-  useEffect(() => {
-    if (!s) return;
-    const url = new URL(window.location.href);
-    const put = (key: string, value: string | null) => { if (value) url.searchParams.set(key, value); else url.searchParams.delete(key); };
-    put("q", q.trim() ? q : null);
-    put("view", view === "order" ? "order" : null);
-    put("show", show === "all" ? null : show);
-    put("category", category || null);
-    put("page", pager.page > 1 ? String(pager.page) : null);
-    if (url.href !== window.location.href) window.history.replaceState(window.history.state, "", url);
-  }, [s, q, view, show, category, pager.page]);
+    if (s && category && !s.rules.some((r) => r.category === category)) patch({ category: null });
+  }, [s, category, patch]);
 
   // an edit open on this page keeps the page where it is, so its unsaved changes are not dropped
   const here = view === "payee" ? pager.slice(groups).filter((g) => open.has(g.id)).flatMap((g) => g.rules) : pager.slice(flat).map((r) => r.id);
   const editingHere = !!editing?.rule && here.includes(editing.rule.id);
 
   if (state.loading && !s) return <Loading what="Loading your rules" />;
-  if (state.error || !s) return <Problem message={state.error ?? "No rules"} hint="Load your statements first, from the Upload page." retry />;
+  if (state.error || !s) return <Problem message={state.error ?? "No rules"} hint={LOAD_FIRST} retry />;
 
   // what a write says goes to a toast, where the click was; a delete offers Undo there
-  async function act(run: () => Promise<string | { message: string; action?: ToastAction }>): Promise<boolean> {
-    setBusy(true);
-    try {
-      const done = await run();
-      showToast(typeof done === "string" ? { message: done } : done);
-      return true;
-    } catch (e) {
-      showToast({ tone: "error", message: (e as Error).message });
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }
+  const act = (write: () => Promise<string | { message: string; action?: ToastAction }>) => run("act", async () => {
+    const done = await write();
+    showToast(typeof done === "string" ? { message: done } : done);
+  }, { toast: true });
   // G13: a save reaches the transactions at once, so Apply rules is only for rows the record holds
   // differently for another reason (a rules file changed by hand); it relinks them and reads no statement
   const apply = () => act(async () => {
@@ -132,7 +131,7 @@ export function Rules() {
       JSON.stringify({ file: r.file, line: r.line, pattern: r.pattern, revision: r.revision }));
     return { message: `Deleted ${nameOf(r)}, ${rowsChanged(done.relinked)}.`, action: undoAction(done.change) };
   });
-  const edit = (rule: Rule | null, draft: Draft) => setEditing({ rule, draft, n: ++edits.current });
+  const edit = (rule: Rule | null, draft: Draft) => setEditing({ rule, draft, start: draft, n: ++edits.current });
   const saved = (text: string, r: RuleSavedEdit) => {
     setEditing(null);
     showToast({ message: r.unchanged ? text : `${text}.`, action: r.unchanged ? undefined : undoAction(r.change) });
@@ -160,7 +159,7 @@ export function Rules() {
     if (on) document.getElementById("rules-list")?.scrollIntoView?.({ block: "start" });
   };
   // one count with its unit: the payees and rules there are, whatever the view or filter shows
-  const total = `${count(s.groups.length, "payee")}, ${count(s.rules.length, "rule")}`;
+  const total = `${plural(s.groups.length, "payee")}, ${plural(s.rules.length, "rule")}`;
   const viewTotal = view === "payee" ? s.groups.length : s.rules.length;
 
   return (
@@ -168,11 +167,11 @@ export function Rules() {
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-panel px-4 py-2.5 text-[13px]">
         <span className="flex basis-full flex-wrap items-center gap-2 sm:basis-auto sm:flex-1">
           {s.pending > 0 && (
-            <StatusChip tone="info" title={`${count(s.pending, "transaction")} change when you apply rules`}>{s.pending.toLocaleString("en-SG")} to apply</StatusChip>
+            <StatusChip tone="info" title={`${plural(s.pending, "transaction")} change when you apply rules`}>{s.pending.toLocaleString("en-SG")} to apply</StatusChip>
           )}
           {problems > 0
             ? <StatusChip tone="danger" onClick={showProblems} pressed={show === "problems"} icon={STEP_STATUS_ICON.problems}
-                title={show === "problems" ? "Show every rule again" : "Show only the rules with problems"}>{count(problems, "problem")}</StatusChip>
+                title={show === "problems" ? "Show every rule again" : "Show only the rules with problems"}>{plural(problems, "problem")}</StatusChip>
             : <StatusChip tone="good">No problems</StatusChip>}
         </span>
         {last && (
@@ -247,10 +246,10 @@ export function Rules() {
         ) : (
           <>
             <p className="num m-0 mb-2 text-[13px] text-ink-2">
-              {total}{shown !== viewTotal && ` · ${count(shown, view === "payee" ? "payee" : "rule")} shown`}
+              {total}{shown !== viewTotal && ` · ${plural(shown, view === "payee" ? "payee" : "rule")} shown`}
             </p>
             <div className="mb-2 flex flex-wrap items-center gap-2 text-[13px]">
-              <input type="search" value={q} onChange={(e) => { setQ(e.target.value); }}
+              <input type="search" value={q} onChange={(e) => setQ(e.target.value)}
                 placeholder="Search payee, text, category" aria-label="Search rules"
                 className="h-8 min-w-48 flex-1 rounded-md border border-line bg-panel px-2.5" />
               <Segmented label="Show" value={show} onChange={setShow}
@@ -293,7 +292,7 @@ type GroupProps = RowActions & { groups: RuleGroup[]; byId: Map<string, Rule>; o
 function Problems({ g }: { g: RuleGroup }) {
   return g.problems > 0 ? (
     <span className="inline-flex items-center gap-1 text-warn">
-      <TriangleAlert size={12} aria-hidden /> {count(g.problems, "problem")}
+      <TriangleAlert size={12} aria-hidden /> {plural(g.problems, "problem")}
     </span>
   ) : null;
 }
@@ -385,7 +384,7 @@ function GroupList({ groups, byId, open, toggle, ...actions }: GroupProps) {
           <li key={g.id} className="border-t border-line px-3 py-2 first:border-t-0">
             <div className="flex items-start justify-between gap-3">
               <PayeeButton g={g} isOpen={isOpen} toggle={() => toggle(g.id)} />
-              <span className="num shrink-0 text-right">{count(g.rows, "row")}</span>
+              <span className="num shrink-0 text-right">{plural(g.rows, "row")}</span>
             </div>
             <p className="m-0 pl-5 text-[12px] text-ink-2">
               {[(g.payee || g.categories.length > 1) && g.category + (g.categories.length > 1 ? ` +${g.categories.length - 1}` : ""), kindsOf(g),
@@ -420,7 +419,7 @@ function RuleLine({ rule: r, group, edit, remove, busy }: RowActions & { rule: R
           <span className="text-ink-2">{[r.payee !== group.payee && r.payee, r.category].filter(Boolean).join(", ")}</span>
         )}
         <span className="num text-ink-3">
-          {r.tier === "key" ? "" : r.matched > r.wins ? `matches first on ${r.wins} of ${count(r.matched, "row")} · ` : `${count(r.wins, "row")} · `}
+          {r.tier === "key" ? "" : r.matched > r.wins ? `matches first on ${r.wins} of ${plural(r.matched, "row")} · ` : `${plural(r.wins, "row")} · `}
           {r.shared ? `shared, ${r.file}` : r.file}
         </span>
         <Actions rule={r} edit={edit} remove={remove} busy={busy} />
@@ -437,15 +436,14 @@ function RuleLine({ rule: r, group, edit, remove, busy }: RowActions & { rule: R
 function Actions({ rule: r, edit, remove, busy }: Pick<RowActions, "edit" | "remove" | "busy"> & { rule: Rule }) {
   return (
     <span className="ml-auto inline-flex gap-1">
-      <button type="button" aria-label={`Edit ${r.tier} ${r.pattern}`} title={r.shared ? "Edit: saved as your own rule" : "Edit"}
-        onClick={() => edit(r, draftOf(r))} className="rounded-md p-1 text-ink-3 hover:bg-hover hover:text-ink">
+      <IconButton label={`Edit ${r.tier} ${r.pattern}`} title={r.shared ? "Edit: saved as your own rule" : "Edit"}
+        onClick={() => edit(r, draftOf(r))}>
         <Pencil size={14} aria-hidden />
-      </button>
+      </IconButton>
       {!r.shared && (
-        <button type="button" aria-label={`Delete ${r.tier} ${r.pattern}`} title="Delete" disabled={busy}
-          onClick={() => remove(r)} className="rounded-md p-1 text-ink-3 hover:bg-hover hover:text-ink disabled:opacity-40">
+        <IconButton label={`Delete ${r.tier} ${r.pattern}`} title="Delete" disabled={busy} onClick={() => remove(r)}>
           <Trash2 size={14} aria-hidden />
-        </button>
+        </IconButton>
       )}
     </span>
   );
@@ -512,7 +510,7 @@ function FlatList({ rules, editing, edit, remove, editor, busy }: RowActions & {
         <li key={r.id} className="border-t border-line px-3 py-2 first:border-t-0">
           <div className="flex items-start justify-between gap-3">
             <span className="min-w-0"><span className="num mr-2 text-ink-3">{r.order}</span><Matches rule={r} /></span>
-            <span className="num shrink-0 text-right">{count(r.wins, "row")}</span>
+            <span className="num shrink-0 text-right">{plural(r.wins, "row")}</span>
           </div>
           <p className="m-0 text-[12px] text-ink-2">
             {[tierLabel(r.tier), [r.payee, r.category].filter(Boolean).join(", ")].filter(Boolean).join(" · ")}

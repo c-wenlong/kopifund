@@ -39,12 +39,19 @@ export const defaultKpiConfig: KpiStateConfig = {
 // the dimensions a KPI reads as a series over time, in catalogue order
 const TIME_DIMS = new Set(["month", "year", "period"]);
 
-/** What the tile shows for an answer: the figure, the point before it, and the run of figures. */
+/**
+ * What the tile shows for an answer: the figure, the point before it, and the
+ * run of figures. Reading the latest point, a month the answer calls partial
+ * (a bank has not printed it yet) is stepped over, as Home's tiles do: half a
+ * month's spending set against a whole one would read as a fall.
+ */
 export function kpiOf(answer: WidgetAnswer, seriesName?: string, aggregate: Aggregate = "latest") {
   // a named series that is gone shows nothing rather than another series' figure
   const series = seriesName === undefined ? answer.series[0] : answer.series.find((s) => s.name === seriesName);
-  const raw = series ? (series.values_minor ?? series.values ?? []) : [];
   const timed = TIME_DIMS.has(answer.dimension);
+  const partial = new Set(timed && aggregate === "latest" ? answer.partial ?? [] : []);
+  const raw = (series ? (series.values_minor ?? series.values ?? []) : [])
+    .map((v, i) => (partial.has(answer.labels[i] ?? "") ? null : v));
   let value: number | null = null;
   let prior: number | null = null;
   let atLabel: string | null = null;
@@ -69,7 +76,12 @@ export function kpiOf(answer: WidgetAnswer, seriesName?: string, aggregate: Aggr
     run: timed ? raw.filter((v): v is number => v != null) : [] };
 }
 
-export function KpiState({ config = defaultKpiConfig }: { config?: KpiStateConfig }) {
+/**
+ * `bare` draws for a dashboard card, which already has the box and the
+ * heading: the figure without a tile of its own, scrolling rather than
+ * clipping in a cell too short for it.
+ */
+export function KpiState({ config = defaultKpiConfig, bare = false }: { config?: KpiStateConfig; bare?: boolean }) {
   const { data: answer, error, loading } = useWidgetData(config.query);
   const kpi = useMemo(() => (answer ? kpiOf(answer, config.series, config.aggregate) : null),
     [answer, config.series, config.aggregate]);
@@ -84,7 +96,7 @@ export function KpiState({ config = defaultKpiConfig }: { config?: KpiStateConfi
     );
   }
   if (!answer || !kpi || kpi.value == null) {
-    return <Tile label={config.title} value="No data" note="The widget's query answered with no figures." />;
+    return <Tile label={config.title} value="No data" note="The widget's query answered with no figures." bare={bare} />;
   }
   const unit = answer.unit;
   const delta = kpi.prior != null ? kpi.value - kpi.prior : 0;
@@ -98,8 +110,8 @@ export function KpiState({ config = defaultKpiConfig }: { config?: KpiStateConfi
     ? <Sparkline values={kpi.run} label={`${config.title}, ${fmtValue(kpi.run[0], unit)} to ${fmtValue(kpi.run[kpi.run.length - 1], unit)}`} />
     : undefined;
   return (
-    <div>
-      <Tile label={name} value={fmtValue(kpi.value, unit)} note={note} noteTone={tone} visual={visual} />
+    <div className={bare ? "h-full min-h-0 overflow-y-auto" : undefined}>
+      <Tile label={name} value={fmtValue(kpi.value, unit)} note={note} noteTone={tone} visual={visual} bare={bare} />
       {answer.note && (
         <p className="m-0 mt-1 text-[11px] text-ink-3">{answer.note.charAt(0).toUpperCase() + answer.note.slice(1)}.</p>
       )}

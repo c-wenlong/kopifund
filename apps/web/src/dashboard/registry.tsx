@@ -60,26 +60,19 @@ export const WIDGETS: readonly WidgetDef[] = [
     type: "waterfall", title: "A bridge between balances",
     blurb: "How a balance got from its first figure to its last, one step a flow.",
     size: { w: 8, h: 3 },
-    make: () => {
-      // one shared range for the balance and its flows: left unset, the
-      // savings-runway balance answers its whole history while spending's
-      // flows answer only the last twelve months, and the bridge would span
-      // two different spans
-      const to = new Date();
-      const from = new Date(to.getFullYear(), to.getMonth() - 11, 1);
-      const ym = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      return { options: {
-        range: { from: ym(from), to: ym(to) },
-        balance: DEFAULT_WATERFALL_CONFIG.balance,
-        flows: DEFAULT_WATERFALL_CONFIG.flows,
-      } };
-    },
+    // no range of its own: the flows answer the record's last twelve months
+    // and Waterfall.tsx opens the balance on the month before them, so the
+    // bridge's two ends and its steps always cover the same months, and keep
+    // following the record rather than the year the widget was added
+    make: () => ({ options: { balance: DEFAULT_WATERFALL_CONFIG.balance, flows: DEFAULT_WATERFALL_CONFIG.flows } }),
     component: BoundWaterfall,
   },
   {
     type: "pie", title: "A split",
     blurb: "Where a figure sits, spread over buckets, categories or payees.",
-    size: { w: 4, h: 3 },
+    // four rows: the legend wraps to several lines at a third of the board,
+    // and three would leave the ring too small for the total inside it
+    size: { w: 4, h: 4 },
     make: () => ({
       query: { source: "spending", metric: "spend", dimension: "bucket" },
       options: { donut: false },
@@ -89,7 +82,7 @@ export const WIDGETS: readonly WidgetDef[] = [
   {
     type: "donut", title: "A ring",
     blurb: "A split with the whole's figure in the middle.",
-    size: { w: 4, h: 3 },
+    size: { w: 4, h: 4 },
     make: () => ({
       query: { source: "spending", metric: "spend", dimension: "bucket" },
       options: { donut: true, showTotal: true },
@@ -109,7 +102,9 @@ export const WIDGETS: readonly WidgetDef[] = [
   {
     type: "flow", title: "Money flow",
     blurb: "Income into buckets and categories for the range, as a Sankey.",
-    size: { w: 12, h: 4 },
+    // the Sankey's own height grows with its categories; six rows hold the
+    // default seven a bucket without scrolling
+    size: { w: 12, h: 6 },
     make: () => ({
       options: {
         middle: defaultFlowConfig.middle,

@@ -41,7 +41,7 @@ How the pipeline works, in depth:
 
 Needs Python 3.14 or later, Node 22, and `pdftotext` (`brew install poppler`).
 The desktop app (`make desktop`, G23) also needs Rust (`rustup`) and Xcode's
-command line tools; off a Mac or without Rust, `make check` skips only the shell's `cargo check`.
+command line tools; off a Mac or without Rust, `make check` skips only the shell's `cargo test`.
 
 | Command | What it does |
 | --- | --- |
@@ -54,20 +54,31 @@ command line tools; off a Mac or without Rust, `make check` skips only the shell
 | `make analyse` | Run the 15 stats into the data folder's cache, read from `kopifund.db` when it exists |
 | `make serve` | Build the app, then serve it and the API on http://127.0.0.1:8770 |
 | `make link` | The phone link's checklist (G25): tailscale serve must proxy 443 to 127.0.0.1:8770 and the API must be up; prints the fix for anything missing |
-| `./build_macos.sh [ref]` | One click: copy one version (`origin/main` unless a branch, tag or commit is named) into `~/Library/Application Support/Kopifund/builds`, build `Kopifund.app` from that copy and install it in `/Applications`, quitting the open one first. The app then keeps serving that version whatever this checkout switches to |
-| `make desktop` | Build `Kopifund.app` (G23), a Mac window that starts `serve.py --app` on http://127.0.0.1:8771 and stops it on quit, and put it in `~/Applications`. It runs from this checkout, on the same data folder as `make serve` |
+| `./build_macos.sh [ref]` | One click: copy one version (`origin/main` unless a branch, tag or commit is named) into `~/Library/Application Support/Kopifund/builds`, build `Kopifund.app` from that copy and install it in `/Applications`, quitting the open one first. The app then keeps serving that version whatever this checkout switches to. The build and the install are `apps/desktop/install.sh`, the one installer `make desktop` runs too |
+| `make desktop` | Build `Kopifund.app` (G23), a Mac window that starts `serve.py --app` on http://127.0.0.1:8771 and stops it on quit, and put it in `~/Applications` (`DESKTOP_APPS=<folder>` installs elsewhere), through `apps/desktop/install.sh`, the installer `build_macos.sh` calls. It runs from this checkout, on the same data folder as `make serve` |
 | `make app-icon [SET=<set>]` | Write the icon sets in `app-icons/` into the web, iOS and desktop apps from `app-icons/sets.json`, for each app's default icon and Settings' picker; `SET=iso` makes iso the default first |
-| `make dev` | Development on http://localhost:5173: Vite reloads the page on a web change and forwards `/api` to `serve.py --reload`, which restarts on a Python change and sends any page asked of port 8770 to 5173, so an old `apps/web/dist` build never shows. Ctrl-C stops both |
+| `make dev` | Development on http://localhost:5173: Vite reloads the page on a web change and forwards `/api` to `serve.py --reload`, which restarts on a Python change and sends any page asked of port 8770 to 5173, so an old `apps/web/dist` build never shows. If the API cannot take its port because another server holds it, or either one stops, both stop, so `/api` never reaches another checkout's server. Ctrl-C stops both |
 | `make test` | Python tests (`python3 -m unittest discover tests` in `server/`) and web tests (`npm test` in `apps/web/`) |
-| `make check` | The tests, the rules lint, the runbook table check, the record schema check (docs/schema.md), the layouts table check (docs/parsing.md), the TypeScript typecheck and `cargo check` on the desktop shell. Run it before every push |
+| `make check` | The tests, the rules lint, the runbook table check, the record schema check (docs/schema.md), the layouts table check (docs/parsing.md), the TypeScript typecheck and `cargo test --locked` on the desktop shell, which compiles it and runs its Rust tests. Run it before every push |
 | `make types` | Write `apps/web/src/types.gen.ts` from `server/finance/types.py`: run it after changing what an endpoint sends |
 
+Every test run works on a throwaway data folder: `server/tests/isolate.py`
+points `KOPIFUND_DATA`, `KOPIFUND_DB`, `KOPIFUND_CACHE`, the `.env`, the
+copilot's threads and the device registry at a scratch folder for the whole
+run, whatever the shell had set, so no test can touch the real data folder,
+record or cache, even one that forgets its own fixture.
+
 Tests that need real statements (`test_monthly_run`, `test_analytics_snapshot`,
-`test_analytics_review`) run only where a data folder exists and skip
-everywhere else, CI included. They read the data folder and never write it:
-`server/tests/__init__.py` points `KOPIFUND_DB` and `KOPIFUND_CACHE` at a throwaway
-folder for the whole run, so no test can touch the real record or cache. Parser tests run on the scrubbed fixtures in
-`server/tests/fixtures/statements`.
+`test_analytics_review`) skip unless the run asks for the real folder by name.
+The owner runs them with
+
+    KOPIFUND_TEST_REAL_DATA=1 make test
+
+(`1` reads the folder `KOPIFUND_DATA` or `~/.kopifund` names;
+`KOPIFUND_TEST_REAL_DATA=<folder>` reads that folder instead, such as a copy).
+Even then only those three modules see it, only while their own tests run,
+and they read it and never write it. An agent never sets it to `~/.kopifund`.
+Parser tests run on the scrubbed fixtures in `server/tests/fixtures/statements`.
 
 ### A feature is done when its make commands have run clean
 

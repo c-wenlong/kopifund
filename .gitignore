@@ -53,4 +53,18 @@ notes/
 *.db-wal
 *.db-shm
 apps/ios/Alerts.xcodeproj/
+# the owner's signing team (apps/ios/README.md, "Build")
+apps/ios/Local.xcconfig
 **/.build/
+
+# Ad hoc screenshots at the repo root (they can show real figures). Images
+# under apps/ are tracked on purpose and are not matched.
+/*.png
+/*.jpg
+/*.jpeg
+
+# Xcode and SwiftPM write these inside each package
+**/.swiftpm/
+
+# Per-machine Claude Code settings
+.claude/settings.local.json

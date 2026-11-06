@@ -40,8 +40,8 @@ export const PRESETS: readonly Preset[] = [
         { source: "spending", metric: "spend", dimension: "month" },
         // spend falling reads well; the type's default ("up") is for balances
         { goodWhen: "down" }),
-      spawn("line", { x: 0, y: 2, w: 8, h: 3 }, "Monthly spend"),
-      spawn("pie", { x: 8, y: 2, w: 4, h: 3 }, "Spend by bucket"),
+      spawn("line", { x: 0, y: 2, w: 8, h: 4 }, "Monthly spend"),
+      spawn("pie", { x: 8, y: 2, w: 4, h: 4 }, "Spend by bucket"),
     ]),
   },
   {

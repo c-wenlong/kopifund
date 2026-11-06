@@ -74,14 +74,15 @@ import argparse
 import calendar
 import csv
 import re
-import shutil
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from finance.pdftext import pdf_to_text, require as require_pdftotext
+from .common import period_name, plain
 from .parse_statements import (statement_folders, BAL_COLS, MONTHS, TXN_COLS, add_keys,
                               balance_summary, collect_pdfs, direction, money,
-                              pdf_to_text, report_duplicate_periods, warn)
+                              report_duplicate_periods, warn)
 from . import places  # (the city table and country split every feed shares)
 from .wallet_months import every_month, month_end, split_months
 from .layouts import CHECKED, Bank, Layout, Seen, by_download_day, register, register_bank
@@ -148,10 +149,6 @@ def money_re(ccy):
 def iso(d):
     dd, mon, yr = d.replace(".", "").split()
     return f"{int(yr):04d}-{MONTH_NO[mon]:02d}-{int(dd):02d}"
-
-
-def plain(num):
-    return num.replace(",", "")
 
 
 def fee_amount(text, wallet):
@@ -341,10 +338,6 @@ def enrich_all(rows, stmts):
 
 # ---------------------------------------------------------------- blocks
 
-def period_name(b):
-    return f"{b['account_no']} · {b['currency']} · {b['period_end'][:7]}"
-
-
 def sgd_points(rows):
     """(date, ccy, sgd per unit) from every row that shows both sides."""
     pts = []
@@ -473,6 +466,7 @@ def run(sources):
     for b in blocks:
         rs = [r for r in rows if r["source"] == b["source"] and r.get("block") == b["month"]]
         run_, tin, tout = b["opening"], 0.0, 0.0
+        drifts = len(bad)
         for r in rs:
             run_ += r["amount"]
             tin += max(r["amount"], 0)
@@ -484,7 +478,9 @@ def run(sources):
         b.update(computed_closing=round(run_, 2), computed_in=round(tin, 2),
                  computed_out=round(tout, 2), total_in=round(tin, 2), total_out=round(tout, 2),
                  n_txns=len(rs), n_synth=0, balance_state="checked",
-                 ok=abs(run_ - b["closing"]) < 0.005)
+                 # a drift resynced onto the printed balance still fails the
+                 # block, so its CSV's `reconciled` stops a reuse (sync.check_blocks)
+                 ok=abs(run_ - b["closing"]) < 0.005 and len(bad) == drifts)
     for s in stmts:
         for p in check_summary(s, rows):
             warn(s["source"], p)
@@ -508,8 +504,7 @@ def main():
                     help="do not save the .txt dump beside each PDF")
     args = ap.parse_args()
 
-    if not shutil.which("pdftotext"):
-        sys.exit("pdftotext not found (brew install poppler)")
+    require_pdftotext()
     pdfs = collect_pdfs(args.paths or statement_folders("revolut"))
     if not pdfs:
         sys.exit("no PDFs found")

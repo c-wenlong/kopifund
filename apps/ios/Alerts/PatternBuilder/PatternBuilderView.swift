@@ -1,0 +1,377 @@
+import SwiftUI
+import SwiftData
+import Storage
+import Matching
+import os
+
+/// "Open builder" in Instruments' os_signpost track: from the first
+/// tokenize to the first laid-out document, so a slow open on a long alert
+/// is a number, not a feeling.
+private let signposter = OSSignposter(subsystem: "com.kopifund.alerts", category: "PatternBuilder")
+
+/// G24: the key screen, rebuilt around confirmation. The alert stays a
+/// readable document; detected fields arrive pre-tagged, weaker guesses stay
+/// dashed; a field chip arms the next tap, and a live "what it reads" card
+/// shows the extraction before the pattern saves. The tagging itself is
+/// `TagDraft` (Matching); the document, the dock and the form are their own
+/// views in this folder.
+struct PatternBuilderView: View {
+    let sampleText: String
+    let source: String?
+    /// The day a saved alert arrived, so the preview reads its yearless
+    /// date as intake will on save; nil for a new sample (read as today).
+    var arrivedOn: CalendarDate? = nil
+    /// G24: a saved pattern to change instead of a new one: its tags come
+    /// back on its own sample, and Save writes over it.
+    var editing: AlertPattern? = nil
+    /// The alert the live test starts with (the one an edit is for), and
+    /// the day it arrived, so its yearless date reads as rematching will.
+    var initialTestText = ""
+    var initialTestArrivedOn: CalendarDate? = nil
+    var onSaved: (() -> Void)? = nil
+
+    @Environment(\.modelContext) private var context
+    @Environment(\.dismiss) private var dismiss
+    @AppStorage("planID") private var planID = ""
+    @State private var draft = TagDraft()
+    @State private var selected: PatternBuilder.Field = .amount
+    @State private var dimmed: Set<Int> = []
+    @State private var name = ""
+    @State private var nameTouched = false
+    // the last name the payee span wrote: an edit only counts as the user's
+    // when the text leaves it, so the name keeps following a re-tag
+    @State private var autoName = ""
+    @State private var direction: AlertPattern.Direction = .outflow
+    @State private var accountID = ""
+    @State private var defaultCategoryID = ""
+    @State private var sourceMatch = ""
+    @State private var priority = 0
+    @State private var autoApprove = false
+    @State private var testText = ""
+    @State private var buildError = ""
+    @State private var testResult = ""
+    @State private var matched: ParsedTransaction?
+    @State private var accountOptions: [(String, String)] = []
+    @State private var categoryOptions: [(String, String)] = []
+    /// G24: the owner's changes to a field's before or after text, applied
+    /// on top of what the tags build; a re-tag starts them over.
+    @State private var anchorEdits: [PatternAnchors.Edit] = []
+    // keeps a store refresh from re-keying the tab under this draft
+    @State private var draftHold = SyncService.DraftHold()
+    // an edited pattern's borders, kept through the re-tag its restored
+    // tags trigger (a re-tag otherwise starts the edits over)
+    @State private var restoringEdits: [PatternAnchors.Edit]?
+    // the pattern being edited as it came back; its saved segments stay
+    // the pattern while its tags are untouched (`RestoredPattern.base`)
+    @State private var restoredPattern: RestoredPattern?
+
+    // tokenized once per alert text, not per access: as a computed property
+    // every render re-tokenized the alert once per word, so a 4 KB email
+    // froze for many seconds on open and on every tap
+    @State private var tokens: [Token] = []
+    @State private var preparedText: String?
+    @State private var openInterval: OSSignpostIntervalState?
+    private var spans: [PatternBuilder.Span] { draft.spans(tokens: tokens) }
+    private var built: AlertPattern? { try? builtPattern() }
+
+    /// The work that depends only on the alert text runs once per text.
+    /// `onAppear` fires again on every return to the tab, and re-running
+    /// detection there would restore pre-tags the user had removed.
+    private func prepare() {
+        guard preparedText != sampleText else { return }
+        preparedText = sampleText
+        openInterval = signposter.beginInterval("Open builder", id: signposter.makeSignpostID(),
+                                                "\(sampleText.count) chars")
+        tokens = Tokenizer.tokenize(sampleText)
+        // on open the confident guesses land as tags and the rest stay dashed
+        draft = TagDraft.detected(in: sampleText, tokens: tokens)
+        if let p = editing { restore(p) }
+        selected = TagDraft.nextMissing(in: spans) ?? .amount
+        dimmed = AlertText.boilerplateTokenIndexes(in: sampleText, tokens: tokens)
+        // nothing tappable lays out no atom, so no frame would end the
+        // interval: a blank paste ends it here
+        if !tokens.contains(where: \.isTappable) { endOpenInterval(atoms: 0) }
+    }
+
+    /// The pattern being edited, back in the builder: its tags, its
+    /// borders and every setting. The detector's guesses stay as dashed
+    /// suggestions beside the restored tags. A pattern its tags cannot
+    /// rebuild (an ignored stretch, or borders edited past its own sample)
+    /// keeps its saved segments until the owner re-tags.
+    private func restore(_ p: AlertPattern) {
+        let r = TagDraft.restoring(p, tokens: tokens)
+        restoredPattern = r
+        draft = r.draft
+        anchorEdits = r.edits
+        restoringEdits = r.edits
+        name = p.name
+        autoName = p.name
+        nameTouched = true
+        direction = p.direction
+        accountID = p.accountID
+        defaultCategoryID = p.defaultCategoryID ?? ""
+        sourceMatch = p.sourceMatch ?? ""
+        priority = p.priority
+        autoApprove = p.autoApprove
+        testText = initialTestText
+    }
+
+    private func endOpenInterval(atoms: Int) {
+        guard let open = openInterval else { return }
+        signposter.endInterval("Open builder", open, "\(atoms) atoms")
+        openInterval = nil
+    }
+
+    private func spanText(for indexes: [Int]) -> String {
+        guard let lo = indexes.min(), let hi = indexes.max() else { return "" }
+        return String(sampleText[tokens[lo].range.lowerBound..<tokens[hi].range.upperBound])
+    }
+
+    private var foundCount: Int {
+        let have = Set(spans.map(\.field))
+        return TagDraft.required.filter { have.contains($0) }.count
+    }
+
+    // MARK: - body
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 14) {
+                TokenDocument(text: sampleText, tokens: tokens, dimmed: dimmed, armed: selected,
+                              draft: $draft) { endOpenInterval(atoms: $0) }
+                captureCard
+                PatternMetaForm(name: $name, direction: $direction, accountID: $accountID,
+                                defaultCategoryID: $defaultCategoryID, sourceMatch: $sourceMatch,
+                                priority: $priority, autoApprove: $autoApprove,
+                                accountOptions: accountOptions, categoryOptions: categoryOptions,
+                                showAccount: DestinationState.shared.hasToken,
+                                anchors: anchorList, onEditAnchor: editAnchor) {
+                    if name != autoName { nameTouched = true }
+                }
+                testSection
+            }
+            .padding()
+        }
+        .navigationTitle(editing == nil ? "New pattern" : "Edit pattern")
+        .toolbar { progressBadge }
+        // the floating tab bar stacked under the dock and the Save button
+        // and together they hid a quarter of the screen; the builder is a
+        // task with its own way out, so the tabs step aside
+        .toolbar(.hidden, for: .tabBar)
+        .safeAreaInset(edge: .bottom) {
+            BuilderDock(spans: spans, armed: $selected, blocking: canSave ? nil : blockingText,
+                        destination: DestinationState.shared.summary, onSave: save)
+        }
+        .onChange(of: draft.tags) {
+            anchorEdits = restoringEdits ?? []
+            restoringEdits = nil
+            // a re-tagged payee renames the pattern too, until the name
+            // field itself has been edited
+            if !nameTouched, let s = spans.first(where: { $0.field == .payee }) {
+                autoName = spanText(for: s.tokenIndexes)
+                name = autoName
+            }
+            runTest()
+        }
+        .onChange(of: testText) { runTest() }
+        .onChange(of: anchorEdits) { runTest() }
+        .onChange(of: sampleText) { prepare() }
+        .onAppear {
+            prepare()
+            loadAccounts()
+            loadCategories()
+            if editing == nil, sourceMatch.isEmpty, let s = source { sourceMatch = s }
+        }
+    }
+
+    private var progressBadge: some ToolbarContent {
+        ToolbarItem(placement: .topBarTrailing) {
+            Text("\(foundCount) of 3 found")
+                .font(.caption.bold()).monospacedDigit()
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(foundCount == 3 ? Color.green.opacity(0.16) : Color.orange.opacity(0.16))
+                .foregroundStyle(foundCount == 3 ? .green : .orange)
+                .clipShape(Capsule())
+        }
+    }
+
+    // MARK: capture card ("this pattern reads")
+
+    /// One card, only when there is something to say: the matched summary,
+    /// the reason it cannot read the alert, and the live test's verdict.
+    /// A good sample does not hide what the pasted alert did.
+    @ViewBuilder
+    private var captureCard: some View {
+        if matched != nil || !buildError.isEmpty || !testResult.isEmpty {
+            VStack(alignment: .leading, spacing: 4) {
+                if let m = matched {
+                    Text("READS").font(.caption2.bold()).foregroundStyle(.green)
+                    Text(readsSummary(m)).font(.callout)
+                }
+                if !buildError.isEmpty {
+                    Text(buildError).font(.caption).foregroundStyle(.orange)
+                }
+                if !testResult.isEmpty {
+                    Text(testResult).font(.caption)
+                        .foregroundStyle(testResult.contains("no match") || testResult.contains("does not read")
+                                         ? Color.red : Color.secondary)
+                }
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+        }
+    }
+
+    /// The card reads from the real match, not the tagged text: trimming,
+    /// currency fallback and date parsing are exactly what intake produces.
+    private func readsSummary(_ m: ParsedTransaction) -> String {
+        var parts = [m.payee]
+        parts.append(figure(m))
+        parts.append(m.date.formatted(date: .abbreviated, time: .omitted))
+        if let h = m.accountHint { parts.append("card \(h)") }
+        // G24: the YNAB account only says something when YNAB is in play
+        if let name = accountOptions.first(where: { $0.0 == accountID })?.1 { parts.append("→ \(name)") }
+        return parts.joined(separator: " · ")
+    }
+
+    /// A read amount as the lists print it, "SGD 6.40" (`Cents.figure`):
+    /// a match keeps cents, as Matcher refuses a third decimal.
+    private func figure(_ m: ParsedTransaction) -> String {
+        Cents.figure(m.amount, currency: m.currency) ?? "\(m.amount)"
+    }
+
+    private var testSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Live test").font(.caption).foregroundStyle(.secondary)
+            TextField("Paste another alert to try the pattern on it", text: $testText, axis: .vertical)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(.callout)
+                .padding(12)
+                .background(Color(.secondarySystemGroupedBackground))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+        }
+    }
+
+    // MARK: - mechanics
+
+    /// G24: a pattern saves with no YNAB plan or account. Its rows land in
+    /// the Inbox either way and go where `Destination` says on approval; a
+    /// YNAB send with no account on the pattern takes Settings' default.
+    private var canSave: Bool { built != nil && !name.isEmpty }
+
+    private var blockingText: String {
+        if built == nil {
+            return buildError.isEmpty ? "tag an amount and a payee to save" : buildError
+        }
+        if name.isEmpty { return "name it to save" }
+        return ""
+    }
+
+    /// The fields' before and after texts with every edit shown, a refused
+    /// one too: the row keeps what the owner typed while the card above
+    /// says why it cannot save, so the value to fix stays in view.
+    private var anchorList: [PatternAnchors.Anchor] {
+        guard let segs = try? baseSegments(),
+              let shown = try? PatternAnchors.applying(anchorEdits, to: segs, check: false)
+        else { return [] }
+        return PatternAnchors.anchors(in: shown)
+    }
+
+    private func editAnchor(_ e: PatternAnchors.Edit) {
+        anchorEdits.removeAll { $0.field == e.field && $0.side == e.side }
+        anchorEdits.append(e)
+    }
+
+    /// What the anchor edits apply to: the tags' build, or an edited
+    /// pattern's saved segments while its tags are as restored.
+    private func baseSegments() throws -> [AlertPattern.Segment] {
+        if let r = restoredPattern {
+            return try r.base(for: draft.tags, text: sampleText, tokens: tokens)
+        }
+        return try PatternBuilder.segments(in: sampleText, tokens: tokens, spans: spans)
+    }
+
+    private func builtPattern() throws -> AlertPattern {
+        // the builder refuses a field tagged twice and an unreadable date
+        // span with a BuildError, shown below
+        let segs = try PatternAnchors.applying(anchorEdits, to: baseSegments())
+        return AlertPattern(id: editing?.id ?? UUID(),
+                            name: name.isEmpty ? "Untitled" : name, direction: direction,
+                            accountID: accountID,
+                            defaultCategoryID: defaultCategoryID.isEmpty ? nil : defaultCategoryID,
+                            sourceMatch: sourceMatch.isEmpty ? nil : sourceMatch,
+                            priority: priority, autoApprove: autoApprove,
+                            segments: segs, sampleText: sampleText)
+    }
+
+    /// What the builder says when the tags cannot become a pattern.
+    private static func refusal(_ error: Error) -> String {
+        (error as? PatternBuilder.BuildError)?.message ?? "tag at least an amount and a payee"
+    }
+
+    private func runTest() {
+        do {
+            let p = try builtPattern()
+            matched = nil
+            testResult = ""
+            // index, not content, says which alert is the live one: the
+            // sample pasted verbatim into Live test must still report there
+            for (i, text) in ([sampleText] + (testText.isEmpty ? [] : [testText])).enumerated() {
+                let live = i > 0
+                // the alert an edit is for reads on the day it arrived
+                let day = live ? (text == initialTestText ? initialTestArrivedOn : nil) : arrivedOn
+                switch Matcher.test(p, text: text, arrivedOn: day) {
+                case .success(let t):
+                    if live {
+                        testResult = "test alert reads \(t.payee) · \(figure(t)) · \(t.date.formatted(date: .abbreviated, time: .omitted))"
+                    } else {
+                        matched = t
+                    }
+                case .failure(let e):
+                    // G24: the field the live alert stops at, not a bare
+                    // "text does not match"
+                    testResult = live ? "test alert: no match, \(Matcher.whyNot(p, text: text, arrivedOn: day) ?? e.reason)"
+                                      : "the pattern does not read this alert, \(e.reason)"
+                }
+            }
+            buildError = ""
+        } catch {
+            buildError = Self.refusal(error)
+            matched = nil
+            testResult = ""
+        }
+    }
+
+    private func loadAccounts() {
+        accountOptions = YNABCache.accounts(in: context, planID: planID).map { ($0.id, $0.name) }
+        if accountID.isEmpty, editing == nil {
+            accountID = UserDefaults.standard.string(forKey: "defaultAccountID") ?? ""
+        }
+    }
+
+    private func loadCategories() {
+        categoryOptions = YNABCache.categories(in: context, planID: planID)
+            .map { ($0.id, "\($0.group) · \($0.name)") }
+    }
+
+    private func save() {
+        do {
+            let p = try builtPattern()
+            let id = p.id
+            if editing != nil, let saved = try context.fetch(FetchDescriptor<PatternRecord>(
+                predicate: #Predicate { $0.id == id })).first {
+                saved.update(p)
+            } else {
+                context.insert(PatternRecord(p))
+            }
+            try context.save()
+            onSaved?()
+            dismiss()
+        } catch {
+            buildError = Self.refusal(error)
+        }
+    }
+}

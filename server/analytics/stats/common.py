@@ -18,20 +18,25 @@ module:
   * synthetic rows (the YouTrip balance-jump fillers) are excluded from spend
     and income and are listed by the data-quality stat instead;
   * a month whose statements do not cover every bank account that was open
-    is flagged partial, so an average never quietly includes a half month;
-    wallets never count, they only hold money the bank statements already
-    show leaving;
+    (or that no bank statement covers at all) is flagged partial, so an
+    average never quietly includes a half month; `coverage` is the one rule
+    and `full_months` and `average_months` are how a stat reads it. Wallets
+    never count, they only hold money the bank statements already show
+    leaving;
   * a share of spending states its base. `spend_base` hands back the number
     and the words for it, because 23 per cent of the covered months and 23
     per cent of every month can be thousands apart and read the same;
   * an account is named through `account_labels`, never by its record name
     or number: a statement's account number is never printed in full (G13).
 """
+import calendar
 import re
 from datetime import date, datetime, timedelta, timezone
 
 # G13: dates in findings read as the app shows them ("3 Oct 2026", "Oct 2026")
 from finance.dates import date_label, day_label, month_label, months_label, range_label  # noqa: F401
+# the month arithmetic is finance's, one copy for the whole server
+from finance.dates import add_months, months_apart, months_between  # noqa: F401
 # G19: the [analytics] reader is finance's, which the app shares (finance never
 # imports analytics); the stats read it through these names as before
 from finance.settings import setting, settings, text_setting  # noqa: F401
@@ -190,37 +195,8 @@ def balance_month_range(snapshot):
     return months_between(min(months), max(months))
 
 
-def months_between(first, last):
-    out, y, m = [], int(first[:4]), int(first[5:7])
-    while f"{y:04d}-{m:02d}" <= last:
-        out.append(f"{y:04d}-{m:02d}")
-        y, m = (y + 1, 1) if m == 12 else (y, m + 1)
-    return out
-
-
-def add_months(month, n):
-    y, m = int(month[:4]), int(month[5:7]) + n
-    return f"{y + (m - 1) // 12:04d}-{(m - 1) % 12 + 1:02d}"
-
-
-def month_count(first, last):
-    return len(months_between(first, last))
-
-
 def in_phase(month, phase):
     return phase["from"] <= month and (phase["to"] is None or month <= phase["to"])
-
-
-def phase_of(month):
-    for p in phases():
-        if in_phase(month, p):
-            return p["name"]
-    first = phases()[0]["from"]
-    return f"Before {month_label(first)}"
-
-
-def phase_months(snapshot, phase):
-    return [m for m in month_range(snapshot) if in_phase(m, phase)]
 
 
 def last_month(snapshot):
@@ -232,14 +208,6 @@ def last_month(snapshot):
 def last_date(snapshot):
     days = [r["date"] for r in snapshot["transactions"] if r["date"]]
     return max(days) if days else None
-
-
-def trailing(snapshot, n, end=None):
-    """The n months ending at `end` (the snapshot's last month by default)."""
-    end = end or last_month(snapshot)
-    if not end:
-        return []
-    return [m for m in month_range(snapshot) if add_months(end, -(n - 1)) <= m <= end]
 
 
 # ---------------------------------------------------------------- coverage
@@ -302,51 +270,171 @@ def account_labels(snapshot):
     return Labels(snapshot.get("accounts"))
 
 
+# A Singapore bank prints an account that had no activity half-yearly rather
+# than monthly, so six months is the longest it goes between two statements.
+LONGEST_STATEMENT_GAP = 6
+# A statement often carries a row or two the bank posted in the last days of
+# the month before (a transfer on the 31st that lands on the 1st). Rows that
+# close to the statement's own month do not show it covers the month before.
+POSTING_LAG_DAYS = 3
+
+
+def _opens_where_it_closed(blocks, held):
+    """True when a month's statements open at the balances the account's last
+    statements closed on ({currency: cents}; a currency not held yet opens at
+    0)."""
+    opened = [b for b in blocks if b.get("opening_minor") is not None]
+    return bool(opened) and all(b["opening_minor"] == held.get(b["currency"], 0) for b in opened)
+
+
+def _statement_reach(snapshot, blocks):
+    """({block name: the earliest month its rows show it covers}, {block names
+    with any row}). A statement covers every month from the earliest of its
+    own rows to its own month; a row in the last POSTING_LAG_DAYS days of the
+    month just before is the bank's posting lag and shows nothing."""
+    month_of = {b["name"]: period_month(b) for b in blocks}
+    reach, with_rows = {}, set()
+    for r in snapshot["transactions"]:
+        name, day = r.get("period"), r.get("date") or ""
+        if name not in month_of or not day:
+            continue
+        with_rows.add(name)
+        own, m = month_of[name], day[:7]
+        if m >= own:
+            continue
+        if m == add_months(own, -1):
+            y, mm = int(m[:4]), int(m[5:7])
+            if int(day[8:10]) > calendar.monthrange(y, mm)[1] - POSTING_LAG_DAYS:
+                continue
+        reach[name] = min(reach.get(name, own), m)
+    return reach, with_rows
+
+
+def statement_spans(snapshot):
+    """{account_no: {from, to, covered}} for every bank account: each account
+    that prints deposit statements and is not a wallet.
+
+    `covered` is the set of months the account's statements account for. A
+    statement covers its own month and every month back to the earliest of
+    its own rows (a first statement, or a half-yearly one, often reaches back
+    several months). A statement with no rows at all that opens at the
+    balances the one before it closed on covers every month since that one:
+    a bank prints a month that had any activity, so an empty statement is an
+    idle account's half-yearly one. A gap no statement shows it covers is a
+    hole: a statement that merely opens where the last one closed may follow
+    a missing month whose money in and out were equal. After an empty
+    statement that spanned several months, the months before the next one is
+    due (at most LONGEST_STATEMENT_GAP after it) are covered too: the account
+    was idle, and nothing can be missing from it until then.
+
+    `from` is the first month covered. `to` is the last statement's month when
+    that statement leaves nothing in the account (every currency it has held
+    closes at 0): the account closed, so no later month expects it. Otherwise
+    `to` is None and the account is expected in every month from `from` on,
+    and a month it does not cover is a hole. The record keeps no closed flag
+    on an account, so the zero balance is the closing signal.
+    """
+    wallets = wallet_accounts(snapshot)
+    by_account, blocks = {}, []
+    for b in snapshot["periods"]:
+        # a block with no month says nothing about which months are covered
+        if is_card_block(b) or b["account_no"] in wallets or not _MONTH.match(period_month(b)):
+            continue
+        blocks.append(b)
+        by_account.setdefault(b["account_no"], {}).setdefault(period_month(b), []).append(b)
+    reach, with_rows = _statement_reach(snapshot, blocks)
+    out = {}
+    for account, by_month in by_account.items():
+        printed = sorted(by_month)
+        covered, held, idle = set(), {}, None
+        for before, month in zip([None] + printed, printed):
+            here = by_month[month]
+            start = min(reach.get(b["name"], month) for b in here)
+            if idle:
+                # the idle statement before this one covers the months before its
+                # next one was due, however this one turned out
+                due = (add_months(before, n) for n in range(1, min(idle, LONGEST_STATEMENT_GAP)))
+                covered.update(m for m in due if m < month)
+            idle = None
+            if before:
+                start = max(start, add_months(before, 1))
+                if (not any(b["name"] in with_rows for b in here)
+                        and _opens_where_it_closed(here, held)):
+                    start, idle = add_months(before, 1), months_apart(before, month)
+            covered.update(months_between(start, month))
+            for b in here:
+                if b.get("has_balances") and b.get("closing_minor") is not None:
+                    held[b["currency"]] = b["closing_minor"]
+        last = printed[-1]
+        closed = bool(held) and not any(held.values())
+        if idle and not closed:
+            covered.update(add_months(last, n) for n in range(1, min(idle, LONGEST_STATEMENT_GAP)))
+        out[account] = {"from": min(covered), "to": last if closed else None, "covered": covered}
+    return out
+
+
 def coverage(snapshot):
     """{month: {accounts, expected, missing, card_only, before_phases, partial}}.
 
-    A bank account is expected in every month from its first deposit block
-    onward, so a month where one of them printed no statement is a hole rather
-    than a zero. Wallets (Accounts subclass Wallet: PayLah, YouTrip, Revolut,
-    Wise) are never expected: money reaches them only from the bank accounts,
-    so the bank statements already carry every dollar that left, and a wallet
-    that printed nothing in a month is a wallet that was not used. Months before
-    the first configured phase are partial too: a user starts their first phase
-    where the deposit-account statements start, and everything earlier is card
-    and wallet rows with no income beside them. With no phase configured no
-    month is before one.
+    The one rule for which months are full: a month is full when every open
+    bank account covers it and at least one does (`statement_spans` says
+    which months each account covers and when it closed). Every average in
+    the stats, and the spending a month the projection uses
+    (server/finance/spending.py, `monthly_average`), leaves the other months out.
+
+    `accounts` lists every account that printed a deposit statement in the
+    month, wallets included. A bank account is `expected` from its first
+    statement until it closes, and an expected account that does not cover the
+    month is `missing`, a hole rather than a zero. Wallets (Accounts subclass
+    Wallet: PayLah, YouTrip, Revolut, Wise) are never expected: money reaches
+    them only from the bank accounts, so the bank statements already carry
+    every dollar that left, and a wallet that printed nothing in a month is a
+    wallet that was not used. For the same reason a month only wallets or
+    card statements cover is partial: no bank statement shows the income or
+    the top-ups behind it. `card_only` marks the months with a card statement
+    and nothing else. Months before the first configured phase are partial
+    too: a user starts their first phase where the deposit-account statements
+    start. With no phase configured no month is before one.
     """
-    deposit = [b for b in snapshot["periods"] if not is_card_block(b)]
-    wallets = wallet_accounts(snapshot)
-    first, present = {}, {}
-    for b in deposit:
-        m = period_month(b)
-        present.setdefault(m, set()).add(b["account_no"])
-        if b["account_no"] in wallets:
-            continue
-        first[b["account_no"]] = min(first.get(b["account_no"], m), m)
-    any_block = {}
+    spans = statement_spans(snapshot)
+    present, any_block = {}, {}
     for b in snapshot["periods"]:
-        any_block.setdefault(period_month(b), set()).add(b["account_no"])
+        m = period_month(b)
+        any_block.setdefault(m, set()).add(b["account_no"])
+        if not is_card_block(b):
+            present.setdefault(m, set()).add(b["account_no"])
+    first_phase = phases()[0]["from"]
     out = {}
     # every month a balance reaches, so savings-runway can ask about each of
     # its months; the flow stats only ever ask about month_range's
     for m in balance_month_range(snapshot):
         have = present.get(m, set())
-        expect = {a for a, start in first.items() if start <= m}
-        card_only = bool(any_block.get(m)) and not have
-        before = m < phases()[0]["from"]
+        expect = {a for a, s in spans.items() if s["from"] <= m and (s["to"] is None or m <= s["to"])}
+        banks = {a for a in expect if m in spans[a]["covered"]}
+        before = m < first_phase
         out[m] = {"accounts": sorted(have), "expected": sorted(expect),
-                  "missing": sorted(expect - have), "card_only": card_only,
+                  "missing": sorted(expect - banks),
+                  "card_only": bool(any_block.get(m)) and not have and not banks,
                   "before_phases": before,
-                  "partial": before or card_only or bool(expect - have) or not have}
+                  "partial": before or bool(expect - banks) or not banks}
     return out
 
 
 def full_months(snapshot):
-    """The months an average may safely be taken over."""
+    """The months money moved in that an average may safely be taken over:
+    the ones `coverage` does not call partial, oldest first."""
     cov = coverage(snapshot)
     return [m for m in month_range(snapshot) if not cov[m]["partial"]]
+
+
+def average_months(months, full):
+    """The months of `months` a per-month average divides by: the full ones
+    (`full`, from `full_months`), or every one of them when none is full, so a
+    stretch with no statement coverage still has a figure rather than none.
+    A partial month's rows are real money but only part of a month, so it is
+    left out of the sum and the count alike."""
+    full = set(full)
+    return [m for m in months if m in full] or list(months)
 
 
 # ---------------------------------------------------------------- maths

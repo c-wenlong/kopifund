@@ -29,7 +29,7 @@ from analytics import run as analytics_run                      # noqa: E402
 from finance import snapshot as snap                          # noqa: E402
 from analytics.stats import common, savings_runway             # noqa: E402
 from analytics.stats import cpf as cpf_stat                     # noqa: E402
-from finance import db, sync                                    # noqa: E402
+from finance import atomic, db, sync                            # noqa: E402
 
 REPO = HERE.parent
 POSB, WISE, PAYLAH = "222-22222-2", "666-66666-6", "3333333333333333"
@@ -204,6 +204,22 @@ class ReusedCsvsPassTheBlockChecks(unittest.TestCase):
         with private_data_folder():
             built = snap.build_from_csv(CFG, self.csv)
         self.assertEqual([t["key"] for t in built["transactions"]], ["k-bank-1"])
+
+    def test_a_foreign_row_with_no_rate_has_no_sgd_value_in_a_csv_snapshot(self):
+        """As the record's v_txn: a NOK row whose block printed no FX rate is
+        unknown in SGD, never NOK counted one to one (audit, snapshot.py)."""
+        nok = wallet_block("2026-01", period=f"{WISE} · NOK · 2026-01", currency="NOK",
+                           opening="1500.00", closing="0.00", total_out="1500.00", n_txns="1",
+                           closing_sgd="", note="")
+        spent = bank_row(txn_key="k-nok-1", account="Wise wallet", account_no=WISE, currency="NOK",
+                         amount="-1500.00", balance_after="0.00", source=nok["source"])
+        write_csvs(self.csv, [bank_block(), nok], [bank_row(), spent])
+        with private_data_folder():
+            built = snap.build_from_csv(CFG, self.csv)
+        sgd = {t["key"]: t["amount_sgd_minor"] for t in built["transactions"]}
+        self.assertEqual(sgd, {"k-bank-1": -1230, "k-nok-1": None})
+        self.assertTrue(any("1 rows sit in a block with no FX rate" in n for n in built["meta"]["notes"]),
+                        built["meta"]["notes"])
 
     def test_todays_csv_snapshot_is_never_reused_in_place_of_the_folder_given(self):
         """A CSV snapshot already on disk for today used to be reused before
@@ -497,9 +513,9 @@ class CacheFilesAreReplacedWhole(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "latest.json"
             path.write_text('{"old": true}\n')
-            with mock.patch.object(snap.os, "fsync", side_effect=OSError("disk full")):
+            with mock.patch.object(atomic.os, "fsync", side_effect=OSError("disk full")):
                 with self.assertRaises(OSError):
-                    snap.write_atomic(path, '{"new": true}\n')
+                    atomic.write_private(path, '{"new": true}\n')
             self.assertEqual(path.read_text(), '{"old": true}\n')
             self.assertEqual([p.name for p in Path(tmp).iterdir()], ["latest.json"])
 
@@ -513,7 +529,7 @@ class CacheFilesAreReplacedWhole(unittest.TestCase):
             replaced.append(Path(dst).name)
             real(src, dst)
         with tempfile.TemporaryDirectory() as tmp, fx.settings(), \
-                mock.patch.object(snap.os, "replace", side_effect=spy):
+                mock.patch.object(atomic.os, "replace", side_effect=spy):
             snap.save(fx.snapshot(), tmp, day="2026-01-02")
             analytics_run.run_stats(fx.snapshot(), tmp, only=("travel",),
                                     benchmarks=fx.BENCHMARKS, day="2026-01-02",

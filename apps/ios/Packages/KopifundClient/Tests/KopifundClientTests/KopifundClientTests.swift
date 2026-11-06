@@ -1,5 +1,6 @@
 import XCTest
 @testable import KopifundClient
+import TestSupport
 
 /// G25: pairing spends a kfp_ token once; after it, every read carries the
 /// kfd_ bearer the hub now expects.
@@ -79,6 +80,7 @@ final class KopifundClientTests: XCTestCase {
         let sent = try JSONSerialization.jsonObject(with: body(of: req)) as? [String: String]
         XCTAssertEqual(sent?["token"], "kfp_once")
         XCTAssertEqual(sent?["name"], "Test iPhone")
+        XCTAssertEqual(sent?["nonce"]?.count, 36)
     }
 
     func testSpentPairTokenIsAConflict() async {
@@ -98,6 +100,28 @@ final class KopifundClientTests: XCTestCase {
         let ok = try await client(bearer: nil).health()
         XCTAssertTrue(ok)
         XCTAssertNil(MockProtocol.requests.first?.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    func testCheckSendsTheBearerToTheLinkCheck() async throws {
+        MockProtocol.handler = { [respond] _ in respond(200, #"{"ok":true}"#) }
+        let ok = try await client().check()
+        XCTAssertTrue(ok)
+        let req = MockProtocol.requests.first
+        XCTAssertEqual(req?.url?.path, "/api/link/check")
+        XCTAssertEqual(req?.httpMethod, "GET")
+        XCTAssertNotNil(req?.value(forHTTPHeaderField: "Authorization"))
+    }
+
+    /// A revoked phone: the hub is up (health would say ok) but the link
+    /// check refuses the bearer, so Test must not read as reachable.
+    func testCheckOnARevokedDeviceIsUnpaired() async {
+        MockProtocol.handler = { [respond] _ in respond(401, #"{"error":"unpaired"}"#) }
+        do {
+            _ = try await client().check()
+            XCTFail("a revoked bearer must throw")
+        } catch let e as KopifundError {
+            XCTAssertEqual(e.kind, .unpaired)
+        } catch { XCTFail("wrong error: \(error)") }
     }
 
     func testProfileDecodesAccountsAndSendsTheBearer() async throws {

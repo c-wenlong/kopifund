@@ -21,17 +21,29 @@ describe("joinFrames", () => {
     const frame = joinFrames(
       [{ query: { source: "net-worth", metric: "cash" } }, { query: { source: "net-worth", metric: "cpf" } }],
       [
-        answer({ labels: ["2026-09", "2026-08"], series: [{ name: "cash", values_minor: [300, 200] }] }),
-        answer({ labels: ["2026-09", "2026-10"], series: [{ name: "cpf", values_minor: [40, 50] }] }),
+        answer({ metric: "cash", labels: ["2026-09", "2026-08"], series: [{ name: "cash", values_minor: [300, 200] }] }),
+        answer({ metric: "cpf", labels: ["2026-09", "2026-10"], series: [{ name: "cpf", values_minor: [40, 50] }] }),
       ],
     );
     expect(frame.labels).toEqual(["2026-08", "2026-09", "2026-10"]);
-    expect(frame.series.map((s) => s.name)).toEqual(["cash", "cpf"]);
+    expect(frame.series.map((s) => s.name)).toEqual(["Cash", "CPF"]);
     expect(frame.series[0].values).toEqual([200, 300, null]);
     expect(frame.series[1].values).toEqual([null, 40, 50]);
     expect(frame.unit).toBe("sgd_minor");
     expect(frame.series[0].colour).toBe("var(--c1)");
     expect(frame.series[1].colour).toBe("var(--c2)");
+  });
+
+  it("writes an unlabelled series named after its metric in words, never the raw key", () => {
+    const frame = joinFrames(
+      [{ query: { source: "savings-runway", metric: "runway_months" } }, { query: { source: "spending", metric: "net", split: "bucket" } }],
+      [
+        answer({ source: "savings-runway", metric: "runway_months", unit: "months", series: [{ name: "runway_months", values: [3] }] }),
+        // a split's series are the record's own names (a bucket here), kept as written
+        answer({ source: "spending", metric: "net", series: [{ name: "home_and_bills", values_minor: [-100] }] }),
+      ],
+    );
+    expect(frame.series.map((s) => s.name)).toEqual(["Runway", "home_and_bills"]);
   });
 
   it("names a series after its spec's label when the spec gives one", () => {

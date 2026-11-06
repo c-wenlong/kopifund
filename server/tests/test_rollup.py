@@ -203,7 +203,7 @@ class TripRuleTest(unittest.TestCase):
                           "Countries": ["THA"], "Notes": "",
                           "Extra keys": "1a2b3c4d5e6f, deadbeef0000\nc0ffee000000"},
                          TRIP_TYPES), TRIP_TYPES))
-        (trip,) = sync.read_trips(CFG, client)
+        (trip,) = sync.trips_from_pages(client.query_all(CFG.ds("trips")))
         self.assertEqual(trip.keys, {"1a2b3c4d5e6f", "deadbeef0000", "c0ffee000000"})
         self.assertEqual(sync.extra_keys(None), frozenset())
 
@@ -213,7 +213,8 @@ class TripRuleTest(unittest.TestCase):
         client.create(CFG.ds("trips"), notion.to_api(
             canonicalise({"Name": "Draft", "Dates": None, "Countries": [],
                           "Notes": ""}, TRIP_TYPES), TRIP_TYPES))
-        self.assertEqual([t.name for t in sync.read_trips(CFG, client)], ["Somewhere"])
+        self.assertEqual([t.name for t in sync.trips_from_pages(client.query_all(CFG.ds("trips")))],
+                         ["Somewhere"])
 
 
 class TripPlanDatesTest(unittest.TestCase):
@@ -485,6 +486,38 @@ class BudgetTest(unittest.TestCase):
         self.assertEqual(notion.plain(self.budgets()["Eating out · 2026-01"], "Actual"),
                          10.0)
 
+    def test_a_foreign_block_with_no_rate_adds_nothing_and_says_so(self):
+        """SPEC: a block with no FX rate has no SGD value. NOK 1,500 counted one
+        to one would be S$1,500 of spending (audit, sync.budget_actuals)."""
+        blocks = [block(period=f"{POSB} · NOK · 2026-01", currency="NOK", fx_to_sgd="", n_txns="1"),
+                  block(period=f"{POSB} · SGD · 2026-01", fx_to_sgd="", n_txns="1")]
+        rows = [row(txn_key="eeee5555", date="2026-01-05", amount="-1500.00", currency="NOK",
+                    category="Eating out", period=blocks[0]["period"]),
+                row(txn_key="ffff6666", date="2026-01-06", amount="-12.30", currency="SGD",
+                    category="Eating out", period=blocks[1]["period"])]
+        parsed = parsed_of(rows, blocks)
+        self.assertEqual(sync.budget_actuals(parsed, set()), {("Eating out", "2026-01"): 12.3})
+        self.assertEqual([r["txn_key"] for r in sync.unpriced_rows(parsed)], ["eeee5555"])
+        counts = sync.rollup_budgets(CFG, self.client, parsed, self.state(), echo=False)
+        self.assertEqual(counts["no SGD value"], 1)
+        self.assertEqual(notion.plain(self.budgets()["Eating out · 2026-01"], "Actual"), 12.3)
+
+    def test_an_actual_counted_one_to_one_before_is_corrected(self):
+        """A month with only unpriced rows keeps its key at zero, so a budget an
+        older run filled with NOK 1,500 as S$1,500 is set right (review)."""
+        blocks = [block(period=f"{POSB} · NOK · 2026-01", currency="NOK", fx_to_sgd="", n_txns="1")]
+        rows = [row(txn_key="eeee5555", date="2026-01-05", amount="-1500.00", currency="NOK",
+                    category="Eating out", period=blocks[0]["period"])]
+        parsed = parsed_of(rows, blocks)
+        self.assertEqual(sync.budget_actuals(parsed, set()), {("Eating out", "2026-01"): 0})
+        state = self.state()
+        self.client.create(CFG.ds("budgets"), notion.to_api(canonicalise(
+            {"Name": "Eating out · 2026-01", "Category": [state.categories["Eating out"]], "Month": "2026-01",
+             "Need class": "Want", "Actual": 1500.0}, BUDGET_TYPES), BUDGET_TYPES))
+        counts = sync.rollup_budgets(CFG, self.client, parsed, self.state(), echo=False)
+        self.assertEqual(counts["updated"], 1)
+        self.assertEqual(notion.plain(self.budgets()["Eating out · 2026-01"], "Actual"), 0)
+
     def test_a_second_run_writes_nothing(self):
         self.run_rollup()
         before = self.client.writes
@@ -729,9 +762,6 @@ class BudgetSeedTest(unittest.TestCase):
         return {notion.plain(p, "Name").rsplit(" · ", 1)[0]: p
                 for p in self.client.query_all(CFG.ds("budgets"))
                 if notion.plain(p, "Month") == month}
-
-    def test_months_before(self):
-        self.assertEqual(sync.months_before("2026-02", 3), ["2025-11", "2025-12", "2026-01"])
 
     def test_creates_need_and_want_rows_with_the_median(self):
         counts, _ = sync.seed_budgets(CFG, self.client, "2026-10", echo=False)

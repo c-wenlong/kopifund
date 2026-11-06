@@ -1223,9 +1223,10 @@ export type PairedDevice = {
 
 /**
  * G25: where a phone row stands: waiting for its statement row, matched to
- * it, or dismissed as no spend.
+ * it, dismissed by the owner (the history shows it as "Dismissed, to review"),
+ * or expired after waiting `expire_days` with no statement row.
  */
-export type PendingState = "waiting" | "matched" | "dismissed";
+export type PendingState = "waiting" | "matched" | "dismissed" | "expired";
 
 /**
  * G25: one spend the phone told the record about (server/finance/pending.py).
@@ -1242,11 +1243,21 @@ export type PendingRow = {
   payee: string;
   state: PendingState;
   matched_txn_key: string | null;
+  /** When the row last changed state (posted, matched, dismissed, expired or put back), a UTC stamp. */
+  state_changed_at: string;
+  /** When the phone first sent it, a UTC stamp. */
+  posted_at: string;
+  /** The day a waiting row expires, YYYY-MM-DD; null for the other states. */
+  expires_on: string | null;
 };
 
-/** GET /api/link/pending: every pending row, waiting first. */
+/**
+ * GET /api/link/pending (and each pending write): every phone row ever
+ * posted, newest first, and how many days a row waits before it expires.
+ */
 export type LinkPending = {
   rows: PendingRow[];
+  expire_days: number;
 };
 
 /**
@@ -1361,6 +1372,8 @@ export type WidgetAnswer = {
   label_links?: (Record<string, string> | null)[];
   series: WidgetSeries[];
   note?: string;
+  /** A `spending` answer by month: the labels the monthly-cashflow stat calls partial (a bank account has not printed that month yet), so a widget reading "the latest month" can step back to a whole one. */
+  partial?: string[];
 };
 
 /**
@@ -1535,7 +1548,13 @@ export const NO_CHANGE_PATHS: readonly string[] = [
   "/api/uploads/start",
 ];
 
-/** serve.py, REREAD_AFTER (G18): the GETs a view asks for again after one of those writes. */
+/** serve.py, REREAD_AFTER (G18): after one of these writes, the GETs a view asks for again; nothing else kept is forgotten. */
 export const REREAD_AFTER: Readonly<Record<string, readonly string[]>> = {
+  "/api/dashboard/allocation": ["/api/dashboard/allocation"],
+  "/api/dashboard/game-pot": ["/api/dashboard/game-pot"],
+  "/api/dashboard/goals": ["/api/dashboard/goals"],
+  "/api/dashboard/goals/remove": ["/api/dashboard/goals"],
+  "/api/dashboard/layouts": ["/api/dashboard/layouts"],
+  "/api/dashboard/layouts/<id>": ["/api/dashboard/layouts"],
   "/api/run/check": ["/api/overview"],
 };

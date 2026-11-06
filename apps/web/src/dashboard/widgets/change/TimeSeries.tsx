@@ -6,7 +6,6 @@ import {
   CartesianGrid,
   Line,
   LineChart,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -15,7 +14,10 @@ import { MaybeCard } from "../../../components/Card";
 import { EmptyState } from "../../../components/EmptyState";
 import { Loading, Problem } from "../../../components/States";
 import {
+  ChartBox,
+  fillClass,
   GRID,
+  type ChartHeight,
   SeriesLegend,
   TipBox,
   TipRow,
@@ -40,8 +42,8 @@ export type TimeSeriesConfig = {
   series: SeriesSpec[];
   /** the range a query without its own inherits, e.g. a dashboard-level filter */
   range?: WidgetRange;
-  /** the chart's height; the widget's cell decides it on a dashboard, the viewport otherwise */
-  height?: number;
+  /** the chart's height: "fill" on a dashboard (its cell decides), the viewport's otherwise */
+  height?: ChartHeight;
 };
 
 /** An example binding: a year's income, spend and net off the monthly cashflow stat. */
@@ -76,7 +78,7 @@ function TimeSeriesLoad({ config, bare }: { config: TimeSeriesConfig; bare: bool
   );
 }
 
-export function TimeSeriesChart({ frame, height }: { frame: Frame; height?: number }) {
+export function TimeSeriesChart({ frame, height }: { frame: Frame; height?: ChartHeight }) {
   const autoHeight = useChartHeight();
   height ??= autoHeight;
   const { hidden, toggle } = useHidden(frame.series.map((s) => s.id));
@@ -87,12 +89,12 @@ export function TimeSeriesChart({ frame, height }: { frame: Frame; height?: numb
   const dots = useDotClick();
   const multi = frame.series.length > 1;
   return (
-    <div role="img" aria-label={frameSummary(frame)}>
+    <div role="img" aria-label={frameSummary(frame)} className={fillClass(height)}>
       {multi && (
         <SeriesLegend hidden={hidden} onToggle={toggle}
           items={frame.series.map((s) => ({ key: s.id, label: s.name, colour: s.colour, line: true }))} />
       )}
-      <ResponsiveContainer width="100%" height={height}>
+      <ChartBox height={height}>
         <LineChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
           onClick={clickable ? (st: { activeLabel?: string | number }) => {
             const key = dots.take();
@@ -113,7 +115,7 @@ export function TimeSeriesChart({ frame, height }: { frame: Frame; height?: numb
               connectNulls isAnimationActive={false} />
           ))}
         </LineChart>
-      </ResponsiveContainer>
+      </ChartBox>
       {frame.note && <p className="m-0 mt-2 text-[12px] text-ink-3">{frame.note}</p>}
     </div>
   );

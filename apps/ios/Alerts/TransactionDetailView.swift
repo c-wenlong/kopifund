@@ -1,6 +1,8 @@
 import SwiftUI
 import SwiftData
+import Matching
 import Storage
+import Intents
 
 struct TransactionDetailView: View {
     @Bindable var row: TransactionRecord
@@ -8,32 +10,61 @@ struct TransactionDetailView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("planID") private var planID = ""
     @State private var categoryOptions: [(id: String, label: String)] = []
+    /// The plan-currency figure the owner types for a held foreign spend.
+    @State private var converted: Double?
+    // a typed conversion is a draft: a store refresh waits to re-key the
+    // Inbox (and drop this screen) until the screen is gone
+    @State private var draftHold = SyncService.DraftHold()
+    // set by Delete: the row goes once this view is off screen, so no
+    // render ever reads a deleted model
+    @State private var deleteOnExit = false
+    /// The Amount field's text, "5.80" for 580 cents; cents stay the truth.
+    @State private var amountDraft = ""
+    @FocusState private var amountFocused: Bool
+    /// Audit: the row waited under "Needs details" when this screen opened,
+    /// so the duplicate check it skipped on arrival runs once it is complete
+    /// (`Ingest.settleTypedDetails`), on Approve or on the way out.
+    @State private var openedMissingDetails = false
 
     var body: some View {
         Form {
             Section("Transaction") {
-                if row.state == "synced" { EmptyView() }
                 TextField("Payee", text: $row.payee)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                 HStack {
                     Text("Amount")
                     Spacer()
-                    TextField("Amount", value: centsBinding, format: .number)
+                    // two decimals like every other figure; the row keeps
+                    // integer cents, the field a text draft of them
+                    TextField("Amount", text: $amountDraft)
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
+                        .focused($amountFocused)
+                        .accessibilityIdentifier("amountField")
+                        .onChange(of: amountDraft) {
+                            if let cents = Cents.parse(amountDraft), cents != row.amountCents {
+                                row.amountCents = cents
+                            }
+                        }
+                        .onChange(of: amountFocused) {
+                            if !amountFocused { amountDraft = Cents.text(row.amountCents) }
+                        }
                 }
-                DatePicker("Date", selection: $row.date, displayedComponents: .date)
+                // the picker edits the calendar day in the phone's own
+                // calendar; the row keeps it as a zone-free day
+                DatePicker("Date", selection: Binding(
+                    get: { row.day.date(in: .current) },
+                    set: { row.day = CalendarDate($0, in: .current) }),
+                           displayedComponents: .date)
                 Picker("Direction", selection: $row.direction) {
                     Text("Outflow").tag("outflow")
                     Text("Inflow").tag("inflow")
                 }
                 // nobody holds a YNAB category id in their head: pick from the
-                // cached list, fall back to a raw field until Settings fetches
-                if categoryOptions.isEmpty {
-                    TextField("Category ID", text: Binding(
-                        get: { row.categoryID ?? "" }, set: { row.categoryID = $0.isEmpty ? nil : $0 }))
-                } else {
+                // cached list. With no list there is no control at all (YNAB
+                // is optional); a saved id stays untouched on the row
+                if !categoryOptions.isEmpty {
                     Picker("Category", selection: Binding(
                         get: { row.categoryID ?? "" }, set: { row.categoryID = $0.isEmpty ? nil : $0 })) {
                         Text("None").tag("")
@@ -61,7 +92,8 @@ struct TransactionDetailView: View {
                 LabeledContent("Source", value: row.source ?? "unknown")
                 LabeledContent("Received",
                                value: row.receivedAt.formatted(date: .abbreviated, time: .shortened))
-                LabeledContent("Currency", value: row.currency)
+                LabeledContent("Currency",
+                               value: row.currency.isEmpty ? "Not stated" : row.currency)
                 if let hint = row.accountHint, !hint.isEmpty {
                     LabeledContent("Card", value: hint)
                 }
@@ -74,7 +106,7 @@ struct TransactionDetailView: View {
                 // says it is a real charge
                 Section("Possible duplicate") {
                     if let sib = sibling {
-                        Text("Matches \(sib.payee) · \(money(sib)) · via \(sib.source ?? "unknown")")
+                        Text("Matches \(sib.payee) · \(sib.amountText) · via \(sib.source ?? "unknown")")
                             .font(.caption).foregroundStyle(.secondary)
                     } else {
                         Text("Matches another queued transaction")
@@ -99,20 +131,88 @@ struct TransactionDetailView: View {
                     }
                 }
             }
-            if let err = row.syncError {
+            if row.state == "pending", row.missingDetails == nil, heldFor == nil {
+                // G24: Approve says where the row goes, the words Save uses
+                Section {
+                    Text(DestinationState.shared.summary).font(.caption).foregroundStyle(.secondary)
+                } header: {
+                    Text("On approve")
+                }
+            }
+            if let note = Destination.note(state: row.state, linked: LinkState.shared.isLinked,
+                                           ynab: DestinationState.shared.ynab,
+                                           sentToKopifund: row.kopifundSent != nil) {
+                Section("Where it is") { Text(note).font(.caption).foregroundStyle(.secondary) }
+            }
+            if row.state == "pending", let missing = row.missingDetails {
+                // G24: no amount or payee came through; nothing approves or
+                // posts it until both are typed
+                Section("Needs details") {
+                    Text(missing).font(.caption).foregroundStyle(.orange)
+                }
+            }
+            if let plan = heldFor {
+                // G24 audit: a foreign spend never posts as the plan's
+                // currency on its own; the owner types the converted figure
+                Section {
+                    HStack {
+                        Text("Amount in \(plan)")
+                        Spacer()
+                        TextField("Required", value: $converted, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    Button("Post in \(plan)") {
+                        guard let cents = convertedCents else { return }
+                        // the check runs on the spend as captured, before the
+                        // conversion changes its amount, currency and state
+                        if checkTypedDetails() { return }
+                        row.postInPlanCurrency(plan, amountCents: cents)
+                        try? context.save()
+                        Task { await SyncService.flush(context: context) }
+                        dismiss()
+                    }
+                    // a blank payee never posts (G24), so the button waits for one too
+                    .disabled(convertedCents == nil
+                              || row.payee.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                } header: {
+                    Text("Different currency")
+                } footer: {
+                    Text("This spend is in \(row.currency) and the YNAB plan keeps \(plan). "
+                       + "Type what it cost in \(plan), then post it.")
+                }
+            } else if let err = row.syncError {
                 Section("Sync error") { Text(err).foregroundStyle(.red) }
+            }
+            if let err = row.kopifundError {
+                // a refused or held send to the linked Kopifund record
+                Section("Kopifund") { Text(err).foregroundStyle(.red) }
+            }
+        }
+        // an edit to what the hub was sent (payee, amount, day, direction,
+        // currency) owes it a repost: clearing the accepted copy puts the
+        // row back in the sync's hub pass
+        .onChange(of: "\(row.payee)|\(row.amountCents)|\(row.day.iso)|\(row.direction)|\(row.currency)") {
+            if row.kopifundID != nil, row.kopifundSent != nil {
+                row.kopifundSent = nil
+                try? context.save()
             }
         }
         .navigationTitle(row.state == "pending" ? "Review"
                          : row.state == "kopifund" ? "in kopifund" : row.state)
         .task {
+            amountDraft = Cents.text(row.amountCents)
+            if row.missingDetails != nil { openedMissingDetails = true }
             loadSibling()
             categoryOptions = YNABCache.categories(in: context, planID: planID)
                 .map { ($0.id, "\($0.group) · \($0.name)") }
         }
         .toolbar {
-            if row.state == "pending" {
+            if row.state == "pending" && heldFor == nil && row.missingDetails == nil {
                 Button("Approve") {
+                    // a row completed here gets the duplicate check first; a
+                    // parked one stays parked rather than posting the spend twice
+                    if checkTypedDetails() { return }
                     row.state = "approved"
                     try? context.save()
                     Task { await SyncService.flush(context: context) }
@@ -120,14 +220,50 @@ struct TransactionDetailView: View {
                 }
             }
             Button("Delete", role: .destructive) {
-                context.delete(row)
-                try? context.save()
+                deleteOnExit = true
                 dismiss()
             }
+            // a row in flight is still being written by the sync; deleting
+            // it under that write traps
+            .disabled(row.state == "syncing")
+        }
+        .onDisappear {
+            if !deleteOnExit { checkTypedDetails() }
+            guard deleteOnExit else { return }
+            // a sync that picked the row up meanwhile re-reads it before each
+            // write and leaves a deleted row alone (Sync.run, HubLane), so
+            // the delete need not wait, and the row never lingers in the
+            // list to be reopened
+            context.delete(row)
+            try? context.save()
         }
     }
 
     @State private var sibling: TransactionRecord?
+
+    /// The plan's currency when this pending row is in another one, so it
+    /// waits for the owner instead of offering a plain Approve.
+    private var heldFor: String? {
+        guard row.state == "pending", let plan = PlanCurrency.saved(planID: planID),
+              Currency.holdReason(currency: row.currency, planCurrency: plan) != nil
+        else { return nil }
+        return plan
+    }
+
+    /// The duplicate check a row that opened missing details skipped on
+    /// arrival, run once it is complete. It runs once per opening: the flag
+    /// clears as soon as it has run, so a later "Not a duplicate" stands.
+    /// True when the row was parked; the page then shows what it matches.
+    @discardableResult
+    private func checkTypedDetails() -> Bool {
+        guard openedMissingDetails, row.state == "pending", row.missingDetails == nil else { return false }
+        openedMissingDetails = false
+        // saved either way: the check may park the sibling instead
+        let parked = Ingest.settleTypedDetails(of: row, in: context)
+        try? context.save()
+        if parked { loadSibling() }
+        return parked
+    }
 
     private func loadSibling() {
         guard let id = row.duplicateOf else { return }
@@ -135,13 +271,10 @@ struct TransactionDetailView: View {
             predicate: #Predicate { $0.id == id })).first
     }
 
-    private func money(_ r: TransactionRecord) -> String {
-        let sign = r.direction == "outflow" ? "-" : "+"
-        return "\(sign)\(r.currency) \(String(format: "%.2f", Double(r.amountCents) / 100))"
-    }
-
-    private var centsBinding: Binding<Double> {
-        Binding(get: { Double(row.amountCents) / 100 },
-                set: { row.amountCents = Int(($0 * 100).rounded()) })
+    /// The typed plan-currency figure as cents, nil until a positive one
+    /// is entered; the post button stays off until then.
+    private var convertedCents: Int? {
+        guard let c = converted, c > 0, let cents = Cents.from(c), cents > 0 else { return nil }
+        return cents
     }
 }

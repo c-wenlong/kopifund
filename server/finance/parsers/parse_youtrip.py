@@ -59,15 +59,16 @@ closing_sgd = closing x fx_to_sgd.
 import argparse
 import csv
 import re
-import shutil
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from finance.pdftext import pdf_to_text, require as require_pdftotext
+from .common import period_name, plain
 from .parse_statements import (statement_folders, BAL_COLS, BALANCE_STATES, MONTHS,
                               TXN_COLS, add_keys, balance_summary,
                               collect_pdfs, direction, duplicate_periods, money,
-                              pdf_to_text, report_duplicate_periods, validate, warn)
+                              report_duplicate_periods, validate, warn)
 # the city and country tables live in places.py, which the Revolut and Wise
 # parsers import too; re-exported here so places.split_country is still reachable
 # as parse_youtrip.split_country
@@ -161,11 +162,6 @@ def desc_part(s):
 def iso(d):
     dd, mon, yr = d.split()
     return f"{int(yr):04d}-{MONTHS[mon]:02d}-{int(dd):02d}"
-
-
-def plain(num):
-    """'1,234.56' -> '1234.56'; leaves the printed precision alone."""
-    return num.replace(",", "")
 
 
 # ---------------------------------------------------------------- extraction
@@ -347,13 +343,34 @@ def classify_synthetic(s, prev_date, next_date, topups, exchanges):
         s["reference"] = "known top-up size"
 
 
+def read_in_the_wrong_column(run, r):
+    """True when the row's own amount, with its sign turned over, is what
+    takes the running balance to the printed one: the amount was read into
+    Money In for Money Out or the other way round (split_amounts picks the
+    nearest column edge). That gap is the parser's own misread, twice the
+    row's amount, and never a row the export left out."""
+    return bool(r["amount"]) and abs(run - r["amount"] - r["balance_after"]) <= 0.005
+
+
 def synthesise(b, rs, topups, exchanges):
-    """Replay one statement; return (rows with synthetic ones inserted, gaps)."""
+    """Replay one statement; return (rows with synthetic ones inserted, gaps).
+
+    A gap that a row read in the wrong column explains is not filled: the
+    row is listed in b["misreads"] and left to fail the balance check
+    (validate), so the run stops rather than loading the misread beside a
+    synthetic row that hides it."""
     out, gaps = [], []
+    b["misreads"] = []
     run = b["opening"] if b["opening"] is not None else 0.0
     prev_date = b["period_start"]
     for r in rs:
         if r["balance_after"] is not None and abs(run + r["amount"] - r["balance_after"]) > 0.005:
+            if read_in_the_wrong_column(run, r):
+                b["misreads"].append(r)
+                run = r["balance_after"]
+                out.append(r)
+                prev_date = r["date"]
+                continue
             jump = r["balance_after"] - (run + r["amount"])
             s = synth_row(b, jump, r["date"], prev_date, r["date"], run + jump)
             classify_synthetic(s, prev_date, r["date"], topups, exchanges)
@@ -443,10 +460,6 @@ def synthesise_all(rows, blocks):
 
 # ---------------------------------------------------------------- entry point
 
-def period_name(b):
-    return f"{b['account_no']} · {b['currency']} · {b['period_end'][:7]}"
-
-
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -460,8 +473,7 @@ def main():
                     help="do not save the .txt dump beside each PDF")
     args = ap.parse_args()
 
-    if not shutil.which("pdftotext"):
-        sys.exit("pdftotext not found (brew install poppler)")
+    require_pdftotext()
     pdfs = collect_pdfs(args.paths or statement_folders("youtrip-"))
     if args.wallet:
         want = WALLETS.get(args.wallet.lower(), args.wallet.upper())
@@ -537,6 +549,11 @@ def main():
     for src, why in unparsed:
         print(f"  FAIL {src}: {why}")
 
+    for b in blocks:
+        for r in b.get("misreads", ()):
+            warn(b["source"], f"{r['date']} {r['currency']} {r['amount']:+,.2f} ({' '.join(r['lines'])[:40]}) "
+                              "balances only with its sign turned over: the amount was read in the wrong "
+                              "column, so no row is synthesised for it")
     for x in bad:
         warn(x[0], f"mid-chain balance mismatch left after synthesis: {x[1]} {x[2]} "
                    f"{x[3]} computed {x[4]:,.2f} against printed {x[5]:,.2f}")

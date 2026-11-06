@@ -5,7 +5,6 @@ import { Bar, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveConta
 import { useApi, type BucketStyle } from "../api";
 import { formatSgd, type Cents } from "../money";
 import { navigate, onLinkClick } from "../router";
-import { buttonClass } from "../components/Button";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { Segmented } from "../components/Segmented";
@@ -15,9 +14,10 @@ import {
 } from "../components/chartKit";
 import { CollapsibleRows, COLLAPSED_ROWS } from "../components/CollapsibleRows";
 import { bucketLook, BucketMark } from "../components/BucketMark";
-import { CardSkeleton, Problem } from "../components/States";
+import { CardSkeleton, NoStatementsYet, Problem } from "../components/States";
 import { useChartView, ViewSwitch, viewsOf, type ChartView } from "../components/ViewSwitch";
-import { formatDate, formatDay } from "../dates";
+import { formatDate, formatDay, shiftMonth } from "../dates";
+import { useUrlParams } from "../useUrlParams";
 
 // G13: `link` is the Transactions filters that list the rows behind a figure (finance/spending.py): the
 // answer's own carries the range and scope, and each series, category and payee adds what narrows it
@@ -75,27 +75,41 @@ export function iconFor(
   return style ? bucketLook(style, 0).icon : undefined;
 }
 
-function shift(month: string, n: number) {
-  const [y, m] = month.split("-").map(Number);
-  const i = y * 12 + (m - 1) + n;
-  return `${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, "0")}`;
-}
+type Scope = Spending["scope"];
+type Split = Spending["by"];
+
+/** An answer that is what the controls on screen ask for: same split, scope and months. */
+const answers = (d: Spending | null | undefined, by: Split, scope: Scope, from: string, to: string) =>
+  d && d.by === by && d.scope === scope && d.months[0] === from && d.months.at(-1) === to ? d : null;
 
 /**
  * Where the money went: a range, Singapore only or with overseas, split by
  * bucket, category or payee. Every bar and row opens the transactions behind it.
  */
 export function SpendingExplorer() {
-  const [range, setRange] = useState<number>(12);
-  const [scope, setScope] = useState<"sg" | "all">("sg");
-  const [by, setBy] = useState<"bucket" | "category" | "payee">("bucket");
+  // the controls live in the address (`range`, `scope`, `by`, the defaults left out), so
+  // Back from the transactions a bar opened lands on the view as it was left
+  const [params, patch] = useUrlParams();
+  const rangeText = params.get("range");
+  const range = rangeText === "all" ? 0 : RANGES.find((r) => r.value && String(r.value) === rangeText)?.value ?? 12;
+  const scope: Scope = SCOPES.find((o) => o.value === params.get("scope"))?.value ?? "sg";
+  const by: Split = SPLITS.find((o) => o.value === params.get("by"))?.value ?? "bucket";
+  const setRange = (r: number) => patch({ range: r === 12 ? null : r ? String(r) : "all" });
+  const setScope = (v: Scope) => patch({ scope: v === "sg" ? null : v });
+  const setBy = (v: Split) => patch({ by: v === "bucket" ? null : v });
   const [view, setView] = useChartView<ChartView>("spending-explorer", SPEND_KEYS, "stacked");
+  // the bare request answers the default view (Singapore only, by bucket, the last 12 months
+  // the record holds) and says which months the record holds
   const probe = useApi<Spending>("/api/spending");
   const last = probe.data?.available?.to;
   const first = probe.data?.available?.from;
-  const from = last ? (range ? shift(last, -(range - 1)) : first) : undefined;
-  const url = useMemo(() => (last && from ? `/api/spending?${new URLSearchParams({ scope, by, to: last, from })}` : null),
-    [last, from, scope, by]);
+  // never before the record's first month: a range longer than the record would add empty
+  // months and divide "a month" by them, unlike Home and the projection's hint (spending.py)
+  const back = last && range ? shiftMonth(last, -(range - 1)) : null;
+  const from = last && first ? (back && back > first ? back : first) : undefined;
+  const fromProbe = last && from ? answers(probe.data, by, scope, from, last) : null;
+  const url = useMemo(() => (last && from && !fromProbe ? `/api/spending?${new URLSearchParams({ scope, by, to: last, from })}` : null),
+    [last, from, scope, by, fromProbe]);
   const { data, error, loading } = useApi<Spending>(url);
   // G22: the copilot asks about what is on screen, in its spending tool's own names
   useCopilotContext({ from, to: last, scope, by });
@@ -103,16 +117,11 @@ export function SpendingExplorer() {
   if (probe.loading) return <CardSkeleton height={300} what="Loading your spending" />;
   if (probe.error) return <Problem message={probe.error} retry />;
   if (!probe.data?.available || !last || !from) {
-    return (
-      <EmptyState title="No spending in the record yet"
-        action={<a href="/upload" onClick={onLinkClick("/upload")} className={buttonClass("secondary")}>Load your statements</a>}>
-        Spending comes with your first statements.
-      </EmptyState>
-    );
+    return <NoStatementsYet title="No spending in the record yet">Spending comes with your first statements.</NoStatementsYet>;
   }
   // only figures that answer the controls on screen: a pending or failed
   // request must not leave the last answer showing under new labels
-  const d = data && data.by === by && data.scope === scope && data.months[0] === from && data.months.at(-1) === last ? data : null;
+  const d = fromProbe ?? answers(data, by, scope, from, last);
 
   return (
     <section aria-label="Spending explorer" className="flex flex-col gap-3">
@@ -139,7 +148,7 @@ export function SpendingExplorer() {
         <WhereItWent d={d} />
         <div className="flex flex-col gap-3">
           <List title="Biggest payments" rows={d.biggest.map((b) => ({
-            key: `${b.date}-${b.payee}-${b.amount}`, left: b.payee, sub: `${formatDay(b.date)} · ${b.category}`,
+            key: b.key, left: b.payee, sub: `${formatDay(b.date)} · ${b.category}`,
             right: formatSgd(b.amount), to: `/transactions?${new URLSearchParams({ key: b.key })}`,
           }))} />
           <List title="Top payees" rows={d.payees.map((p) => ({

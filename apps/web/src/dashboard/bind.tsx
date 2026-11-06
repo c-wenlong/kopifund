@@ -6,8 +6,8 @@
 // by a newer one, still draws. The row's `query` fills in for a config's
 // missing binding: a layout saved while the placeholders held the type ids
 // keeps the question it asked, now answered by the real chart.
-import type { DashboardWidget, WidgetQuery, WidgetRange } from "../api";
-import { cellOf, GAP_PX, ROW_PX } from "./layout";
+import type { WidgetQuery, WidgetRange } from "../api";
+import type { ChartHeight } from "../components/chartKit";
 import type { WidgetProps } from "./registry";
 import {
   defaultKpiConfig, defaultPieConfig, defaultTreemapConfig,
@@ -69,15 +69,11 @@ function stringRecord(v: unknown): Record<string, string> | undefined {
 }
 
 /**
- * The chart's height inside the widget's saved cell: the rows' pixels less the
- * card's own chrome (header, padding and the hint lines), so a taller cell
- * draws a taller chart and a resized one redraws to fit. A saved
- * `options.height` wins over this.
+ * A chart's height: a saved `options.height` in px, else "fill", the room the
+ * widget's cell leaves under its legend and notes (chartKit's ChartBox), so the
+ * chart fits the cell and follows a resize.
  */
-function cellHeight(widget: DashboardWidget): number {
-  const h = cellOf(widget).h;
-  return Math.max(120, h * ROW_PX + (h - 1) * GAP_PX - 76);
-}
+const heightOf = (v: unknown): ChartHeight => numOf(v) ?? "fill";
 
 /** `kpi`: one figure with its change against the prior point (state/KpiState). */
 export function BoundKpi({ widget }: WidgetProps) {
@@ -91,7 +87,7 @@ export function BoundKpi({ widget }: WidgetProps) {
     sparkline: boolOf(o.sparkline, defaultKpiConfig.sparkline ?? true),
     goodWhen: o.goodWhen === "up" || o.goodWhen === "down" ? o.goodWhen : undefined,
   };
-  return <KpiState config={config} />;
+  return <KpiState config={config} bare />;
 }
 
 /** `pie` and `donut`: a share of a whole; the `donut` type rings it with the total inside (state/PieState). */
@@ -104,7 +100,7 @@ export function BoundPie({ widget }: WidgetProps) {
     donut,
     showTotal: boolOf(o.showTotal, donut),
     aggregate: aggregateOf(o.aggregate),
-    height: numOf(o.height) ?? cellHeight(widget),
+    height: heightOf(o.height),
   };
   return <PieState config={config} bare />;
 }
@@ -117,7 +113,7 @@ export function BoundTreemap({ widget }: WidgetProps) {
     query: widget.query ?? defaultTreemapConfig.query,
     groupBy: o.groupBy === "none" ? "none" : "bucket",
     aggregate: aggregateOf(o.aggregate),
-    height: numOf(o.height) ?? cellHeight(widget),
+    height: heightOf(o.height),
   };
   return <TreemapState config={config} bare />;
 }
@@ -130,7 +126,7 @@ export function BoundSeries({ widget }: WidgetProps) {
     title: widget.title,
     series: specList(o.series) ?? (widget.query ? [{ query: widget.query }] : DEFAULT_TIME_SERIES_CONFIG.series),
     range: rangeOf(o.range),
-    height: numOf(o.height) ?? cellHeight(widget),
+    height: heightOf(o.height),
   };
   return <TimeSeriesWidget config={config} bare />;
 }
@@ -143,7 +139,7 @@ export function BoundArea({ widget }: WidgetProps) {
     title: widget.title,
     series: specList(o.series) ?? (widget.query ? [{ query: widget.query }] : DEFAULT_STACKED_AREA_CONFIG.series),
     range: rangeOf(o.range),
-    height: numOf(o.height) ?? cellHeight(widget),
+    height: heightOf(o.height),
   };
   return <StackedAreaWidget config={config} bare />;
 }
@@ -157,7 +153,7 @@ export function BoundWaterfall({ widget }: WidgetProps) {
     balance: specOf(o.balance) ?? (widget.query ? { query: widget.query } : DEFAULT_WATERFALL_CONFIG.balance),
     flows: specList(o.flows) ?? DEFAULT_WATERFALL_CONFIG.flows,
     range: rangeOf(o.range),
-    height: numOf(o.height) ?? cellHeight(widget),
+    height: heightOf(o.height),
   };
   return <WaterfallWidget config={config} bare />;
 }

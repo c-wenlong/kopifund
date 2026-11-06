@@ -17,8 +17,12 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
+    // Audit: the CSP in index.html is for the built app; Vite's dev server injects inline scripts and styles it would block
+    { name: "kopifund-csp-build-only", apply: "serve", transformIndexHtml: (html: string) => html.replace(/\s*<meta http-equiv="Content-Security-Policy"[^>]*>/, "") },
     VitePWA({
       registerType: "autoUpdate",
+      // src/serviceWorker.ts registers it, and skips it inside the desktop window
+      injectRegister: false,
       manifest: {
         name: "Kopifund",
         short_name: "Kopifund",
@@ -35,12 +39,32 @@ export default defineConfig({
         ],
       },
       workbox: {
+        // A page is always asked of the server, so the first open after a new
+        // build (`make serve`, build_macos.sh) runs that build, and a page asked of
+        // 8770 during `make dev` reaches serve.py's redirect to 5173. No page is kept
+        // at runtime: when the server does not answer, any page, /settings included,
+        // gets this build's precached index.html, whose scripts are precached with it
+        // (a page saved by an older build could name scripts the new worker dropped).
+        // No precache route answers a page itself (no navigation fallback, no "/" to
+        // index.html mapping).
         globPatterns: ["**/*.{js,css,html,svg,png,ico,woff2}"],
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallback: null,
+        directoryIndex: null,
+        runtimeCaching: [{
+          urlPattern: ({ request, url }) => request.mode === "navigate" && !url.pathname.startsWith("/api/"),
+          handler: "NetworkOnly",
+          options: { precacheFallback: { fallbackURL: "index.html" } },
+        }],
+        // set by the plugin only when it injects the register script itself:
+        // a new worker takes over at once instead of waiting for every tab to close
+        skipWaiting: true,
+        clientsClaim: true,
       },
     }),
   ],
   // `make dev` passes the API's port; 8770 is serve.py's own default
   server: { proxy: { "/api": `http://127.0.0.1:${process.env.KOPIFUND_API_PORT ?? 8770}` } },
-  test: { environment: "jsdom", globals: true, setupFiles: ["src/test-setup.ts"] },
+  // restoreMocks, unstubGlobals and unstubEnvs: a spy, a stubbed global or a stubbed env var
+  // never outlives its test, so no file cleans up after itself
+  test: { environment: "jsdom", globals: true, setupFiles: ["src/test-setup.ts"], restoreMocks: true, unstubGlobals: true, unstubEnvs: true },
 });

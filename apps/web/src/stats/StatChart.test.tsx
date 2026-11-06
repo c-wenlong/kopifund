@@ -1,20 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StatChart, Tip } from "./StatChart";
 import { plan, type StatResult } from "./hint";
+import { navigate, stubMatchMedia, useSizedCharts } from "../test-helpers";
 
-const navigate = vi.fn();
-vi.mock("../router", () => ({ navigate: (to: string) => navigate(to) }));
-
-// Give ResponsiveContainer a real size: jsdom has no layout, and a chart of
-// width 0 draws nothing, which would let the collapsed-bar bug pass unseen.
-class SizedObserver {
-  constructor(private cb: ResizeObserverCallback) {}
-  observe(el: Element) {
-    this.cb([{ target: el, contentRect: { width: 800, height: 400 } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
-  }
-  unobserve() {}
-  disconnect() {}
-}
+vi.mock("../router", async (actual) => (await import("../test-helpers")).withNavigate(await actual()));
 
 function chartFor(result: StatResult, view?: "stacked" | "lines") {
   const p = plan(result);
@@ -23,12 +12,7 @@ function chartFor(result: StatResult, view?: "stacked" | "lines") {
 }
 
 describe("StatChart", () => {
-  const real = globalThis.ResizeObserver;
-  beforeEach(() => {
-    globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver;
-    navigate.mockReset();
-  });
-  afterEach(() => { globalThis.ResizeObserver = real; });
+  useSizedCharts();
 
   const categories: StatResult = {
     id: "category-breakdown", title: "Spend by category",
@@ -210,10 +194,7 @@ describe("StatChart", () => {
       ] },
     };
     const names = (c: HTMLElement) => [...c.querySelectorAll(".recharts-yAxis .recharts-cartesian-axis-tick-value")];
-    const phone = (on: boolean) => vi.stubGlobal("matchMedia", (q: string) => ({
-      matches: !on, media: q, addEventListener: () => {}, removeEventListener: () => {},
-    }));
-    afterEach(() => vi.unstubAllGlobals());
+    const phone = (on: boolean) => stubMatchMedia(!on);
 
     it("is 160px wide on a desktop and cuts a name that will not fit, with an ellipsis", () => {
       phone(false);
@@ -244,9 +225,7 @@ describe("StatChart", () => {
 
 // G18: every stat chart takes its colours from the chart kit's twelve
 describe("StatChart's series colours", () => {
-  const real = globalThis.ResizeObserver;
-  beforeEach(() => { globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver; });
-  afterEach(() => { globalThis.ResizeObserver = real; });
+  useSizedCharts();
 
   it("gives nine series nine different colours, in the legend and on the bars", () => {
     const series = Array.from({ length: 9 }, (_, i) => `part_${i}_minor`);
@@ -347,5 +326,27 @@ describe("Tip's click line", () => {
   it("names the series that link when others do not, so no average promises a click", () => {
     const { container } = render(<Tip active x="Trip A" items={items} p={p} total={false} clickable only={["spend_minor"]} />);
     expect(container).toHaveTextContent("Click the Spend bar to see its transactions");
+  });
+});
+
+// Audit: a chart's figures were mouse-only; the same figures follow as a table, each linked figure a link
+describe("the figures as a table", () => {
+  const flow: StatResult = {
+    id: "cash-flow", title: "Monthly cash flow",
+    chart: { type: "bar", x: "month", series: ["income_minor", "spend_minor"], unit: "sgd_minor",
+      links: { spend_minor: { month: "{x}", spend: "1" } } },
+    data: { months: [{ month: "2026-09", income_minor: 500_000, spend_minor: 210_050 }] },
+  };
+
+  it("gives every figure as text, and a link where its bar opens rows", async () => {
+    const { container } = chartFor(flow);
+    const table = container.querySelector("details table") as HTMLTableElement;
+    expect(table).not.toBeNull();
+    expect(table.textContent).toContain("S$5,000.00");
+    const link = screen.getByRole("link", { name: /S\$2,100\.50.*see its transactions/ });
+    expect(link).toHaveAttribute("href", "/transactions?month=2026-09&spend=1");
+    fireEvent.click(link);
+    expect(navigate).toHaveBeenCalledWith("/transactions?month=2026-09&spend=1");
+    expect(screen.queryByRole("link", { name: /S\$5,000\.00/ })).not.toBeInTheDocument();
   });
 });

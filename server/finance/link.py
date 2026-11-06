@@ -23,6 +23,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from . import paths
+from .atomic import write_private
 from .errors import NotFound, Refused
 
 PAIR_LIFE = 600          # a pair token lives ten minutes
@@ -80,24 +81,13 @@ def _read():
 def _update(fn):
     """Read-modify-write the registry under an exclusive flock: `fn` gets
     the parsed dict, mutates it, and its return is this call's. The write
-    lands through a temp file and os.replace, so a crash mid-write cannot
+    lands through write_private, so a crash mid-write cannot
     leave a truncated registry for _parse to treat as a new one."""
     path = devices_path()
     with _locked(exclusive=True):
         data = _parse(path.read_text(encoding="utf-8")) if path.is_file() else _parse("")
         out = fn(data)
-        tmp = path.with_name(path.name + ".tmp")
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            f.write(json.dumps(data, indent=2) + "\n")
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, path)
-        dirfd = os.open(path.parent, os.O_RDONLY)
-        try:
-            os.fsync(dirfd)
-        finally:
-            os.close(dirfd)
+        write_private(path, json.dumps(data, indent=2) + "\n")
         return out
 
 
@@ -109,40 +99,59 @@ def _iso(ts):
 
 def mint_pair_token():
     """A single-use pair token with a ten-minute life, saved hashed; the
-    plaintext goes into the QR and is never written down. Stale or spent
-    tokens are swept as each new one is minted."""
+    plaintext goes into the QR and is never written down. Stale tokens are
+    swept as each new one is minted; a spent one stays until its life ends,
+    so the phone that spent it can still retry (redeem's nonce)."""
     token = PAIR_PREFIX + secrets.token_hex(16)
     expires = time.time() + PAIR_LIFE
 
     def add(data):
-        data["pair_tokens"] = [t for t in data["pair_tokens"]
-                               if not t.get("used") and t["expires"] > time.time()]
+        data["pair_tokens"] = [t for t in data["pair_tokens"] if t["expires"] > time.time()]
         data["pair_tokens"].append({"hash": _hash(token), "expires": expires, "used": False})
     _update(add)
     return token, expires
 
 
-def redeem(token, name=""):
+def redeem(token, name="", nonce=""):
     """Spend a pair token for a device bearer. Refused when the token is
     unknown, spent or stale; the consumption and the device row's write are
-    one critical section so a token spends exactly once."""
+    one critical section so a token spends exactly once.
+
+    `nonce` is a random the phone makes once per pairing and sends again on
+    a retry. With one, the bearer is derived from the token and the nonce,
+    so a retry after a lost reply (the token already spent, still in its
+    life, the same nonce) answers the very bearer of the device the first
+    try made, whichever of the two requests lands first: a lost reply
+    leaves no second, orphan device, and no late request can change a
+    bearer the phone already saved. A token seen in a QR is still no use
+    to anyone else once spent: they would need the phone's nonce too."""
     if not token:
         raise Refused("A pair token is needed")
+    if nonce and not 16 <= len(nonce) <= 200:
+        raise ValueError("nonce is 16 to 200 characters")
     now = time.time()
     holder = {}
 
     def spend(data):
         for t in data["pair_tokens"]:
-            if t.get("used") or t.get("expires", 0) <= now:
+            if t.get("expires", 0) <= now or not hmac.compare_digest(t.get("hash", ""), _hash(token)):
                 continue
-            if hmac.compare_digest(t.get("hash", ""), _hash(token)):
+            bearer = DEVICE_PREFIX + (hashlib.sha256(f"{token}:{nonce}".encode()).hexdigest()[:48]
+                                      if nonce else secrets.token_hex(24))
+            if not t.get("used"):
                 t["used"] = True
-                bearer = DEVICE_PREFIX + secrets.token_hex(24)
                 device = {"id": "dev_" + secrets.token_hex(8), "name": name or "iPhone",
                           "token_hash": _hash(bearer), "paired_at": _iso(now), "revoked": False}
                 data["devices"].append(device)
+                if nonce:
+                    t.update(nonce_hash=_hash(nonce), device_id=device["id"])
                 holder.update(bearer=bearer, device=device)
                 return
+            if nonce and t.get("nonce_hash") and hmac.compare_digest(t["nonce_hash"], _hash(nonce)):
+                for device in data["devices"]:
+                    if device["id"] == t.get("device_id") and not device.get("revoked"):
+                        holder.update(bearer=bearer, device=device)
+                        return
         raise Refused("That pair token is spent or stale: mint a new one on the Mac")
     _update(spend)
     return holder["bearer"], holder["device"]

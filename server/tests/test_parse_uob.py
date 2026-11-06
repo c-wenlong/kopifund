@@ -23,7 +23,6 @@ from unittest import mock
 
 from finance import monthly, sniff, sync
 from finance.parsers import layouts
-from finance.parsers import parse_statements as ps
 from finance.parsers import parse_uob as pu
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "statements"
@@ -59,7 +58,6 @@ class Recognised(unittest.TestCase):
         one, savings = layouts.get("uob-one"), layouts.get("uob-savings")
         for lay in (one, savings):
             self.assertEqual((lay.parser, lay.kind, lay.bank, lay.csv), ("uob", "bank account", "uob", "uob"))
-            self.assertTrue(lay.public_sample)
             self.assertEqual(lay.status, layouts.SAMPLE)
             self.assertNotIn("unverified", lay.setup + lay.detected_by)
         self.assertEqual((one.folder, savings.folder), ("uob-one", "uob-savings"))
@@ -246,8 +244,8 @@ class TheRun(unittest.TestCase):
                 (folder / f"{n}.pdf").write_bytes(b"%PDF-1.4\n")
             texts = {f"{n}.pdf": fixture(n) for n in names}
             argv = ["parse_uob", str(folder.parent), "--out", str(out), "--no-text"]
-            with mock.patch.object(sys, "argv", argv), mock.patch.object(pu.shutil, "which", return_value="x"), \
-                    mock.patch.object(ps, "pdf_to_text", side_effect=lambda pdf, write=True: texts[Path(pdf).name]):
+            with mock.patch.object(sys, "argv", argv), mock.patch("shutil.which", return_value="x"), \
+                    mock.patch.object(pu, "pdf_to_text", side_effect=lambda pdf, write=True: texts[Path(pdf).name]):
                 try:
                     with contextlib.redirect_stdout(io.StringIO()):
                         pu.main()

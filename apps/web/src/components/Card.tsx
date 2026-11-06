@@ -12,6 +12,9 @@ export const useCardTitle = () => useContext(CardTitle);
  * (dashboard/Grid.tsx) already supply a border and a heading, so a widget
  * bound there draws bare, while the CardTitle context still names the
  * controls inside. `actions` sit right-aligned above the body in bare mode.
+ * Bare, it fills the card's body as a column, so a chart drawn at "fill"
+ * (chartKit's ChartBox) takes the room left, and scrolls whatever still
+ * does not fit (the flow's Sankey, which grows with its categories).
  */
 export function MaybeCard({ title, bare = false, actions, children }: {
   title: string; bare?: boolean; actions?: React.ReactNode; children: React.ReactNode;
@@ -19,7 +22,7 @@ export function MaybeCard({ title, bare = false, actions, children }: {
   if (!bare) return <Card title={title} actions={actions}>{children}</Card>;
   return (
     <CardTitle.Provider value={title}>
-      <div className="h-full min-h-0 overflow-y-auto">
+      <div className="flex h-full min-h-0 flex-col overflow-y-auto">
         {actions && <div className="mb-2 flex justify-end">{actions}</div>}
         {children}
       </div>

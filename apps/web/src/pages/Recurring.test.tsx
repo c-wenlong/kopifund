@@ -1,9 +1,12 @@
 import "@testing-library/jest-dom/vitest";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { choose } from "../test-select";
+import { notifyChanged } from "../api";
 import type { ActiveSeries, ComingUpRow, RecurringPage, SeriesView } from "../api";
-import { ComingUpItem, DotStrip, mergeSeries, Recurring, stepOn } from "./Recurring";
+import { ComingUpItem, DotStrip, mergeSeries, Recurring, stepOn, URGENCY } from "./Recurring";
 import { leadingIcon } from "../test-icons";
+import { expectAsks, expectFree, json, settle, stubMatchMedia } from "../test-helpers";
 
 // invented payees and amounts
 // G16: a row's series id and name follow its payee unless the test says otherwise
@@ -64,28 +67,19 @@ function stubFetch(page: RecurringPage = PAGE) {
   const urls: string[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
     urls.push(url);
-    return new Response(JSON.stringify(page), { status: 200 });
+    return json(page);
   }));
   return urls;
 }
 
 const section = (name: string) => screen.getByRole("region", { name });
 
-const REAL_MEDIA = window.matchMedia;
-function setWide(wide: boolean) {
-  window.matchMedia = ((query: string) => ({
-    matches: wide, media: query, onchange: null, addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })) as unknown as typeof window.matchMedia;
-}
 const href = (el: HTMLElement) => el.closest("a")?.getAttribute("href");
 
 const rowsOf = (name = "Active") => within(section(name)).getAllByRole("listitem");
 const nameOf = (li: HTMLElement) => within(li).getAllByRole("link")[0].textContent;
 
 describe("Recurring", () => {
-  afterEach(() => { vi.unstubAllGlobals(); window.matchMedia = REAL_MEDIA; });
-
   it("lists each payee once, soonest next payment first, with this month's status", async () => {
     stubFetch();
     render(<Recurring />);
@@ -164,7 +158,7 @@ describe("Recurring", () => {
   });
 
   it("names an extra charge with its amount on the chip, which opens that charge, G16", async () => {
-    setWide(true);
+    stubMatchMedia(true);
     const extra = up({ expected: "2026-09-20", estimated: false, status: "extra", paid_on: "2026-09-20", paid_amount: 2100,
       link: { key: "k-extra", hide_transfers: "0" } });
     const merged = mergeSeries([PAGE.active[0]], [up({}), extra])[0];
@@ -179,17 +173,17 @@ describe("Recurring", () => {
     // G18: the chip leads with the extra charge's own icon
     expect(leadingIcon(within(chip).getByText("Extra S$21.00"))).toBe("circle-plus");
     // and so does Home's Coming up row, as an icon alone on a phone
-    setWide(false);
+    stubMatchMedia(false);
     const { unmount } = render(<ul><ComingUpItem r={extra} /></ul>);
     expect(screen.getByRole("img", { name: "Extra" }).querySelector("svg")?.getAttribute("class")).toContain("lucide-circle-plus");
     unmount();
-    setWide(true);
+    stubMatchMedia(true);
     // the month's bills leave it out: 2 of 4 paid, not 3 of 5
     expect(screen.getByText(/of S\$1,385 committed, 2 of 4 payments/)).toBeInTheDocument();
   });
 
   it("shows an extra charge on Home's Coming up as its own row, G16", () => {
-    setWide(true);
+    stubMatchMedia(true);
     render(<ul><ComingUpItem r={up({ expected: "2026-09-20", estimated: false, status: "extra", paid_on: "2026-09-20", paid_amount: 2100 })} /></ul>);
     expect(screen.getByText("Extra")).toBeInTheDocument();
     expect(screen.getByText("S$21.00")).toBeInTheDocument();
@@ -358,8 +352,6 @@ const MORE: RecurringPage = {
 };
 
 describe("Recurring, friendlier than lists of text", () => {
-  afterEach(() => { vi.unstubAllGlobals(); window.matchMedia = REAL_MEDIA; });
-
   it("draws each irregular payee as a strip of dots, one per payment, with the dates in tooltips", async () => {
     stubFetch(MORE);
     render(<Recurring />);
@@ -421,7 +413,7 @@ describe("Recurring, friendlier than lists of text", () => {
   });
 
   describe("on a phone", () => {
-    beforeEach(() => setWide(false));
+    beforeEach(() => stubMatchMedia(false));
 
     it("turns Stopped into stacked rows, no table to scroll; Active is rows on every width", async () => {
       stubFetch();
@@ -455,7 +447,7 @@ describe("Recurring, friendlier than lists of text", () => {
 
   describe("Coming up links, G13", () => {
     it("opens the one payment a paid row shows, and a due or late row its series (G16)", () => {
-      setWide(true);
+      stubMatchMedia(true);
       render(<ul>
         <ComingUpItem r={up({})} />
         <ComingUpItem r={up({ payee: "Phone", status: "due", paid_on: null, paid_amount: null, link: null })} />
@@ -483,7 +475,7 @@ describe("Recurring, friendlier than lists of text", () => {
     });
 
     it("renders the paid chip as a link to this month's payment on the Recurring list", async () => {
-      setWide(true);
+      stubMatchMedia(true);
       stubFetch();
       render(<Recurring />);
       const chip = await screen.findByRole("link", { name: /^Paid: this month's payment to Gym$/ });
@@ -492,14 +484,14 @@ describe("Recurring, friendlier than lists of text", () => {
   });
 
   it("keeps the year and the status word on a wide screen", () => {
-    setWide(true);
+    stubMatchMedia(true);
     render(<ul><ComingUpItem r={up({ status: "late", paid_on: null, paid_amount: null })} /></ul>);
     expect(screen.getByText("Late")).toBeInTheDocument();
     expect(screen.getByText("~5 Sep 2026")).toBeInTheDocument();
   });
 
   it("leads each status, cadence and Investing tag with its icon, the word beside it (G18)", async () => {
-    setWide(true);
+    stubMatchMedia(true);
     stubFetch();
     render(<Recurring />);
     await screen.findByText("Paid in Sep 2026");
@@ -515,7 +507,7 @@ describe("Recurring, friendlier than lists of text", () => {
   });
 
   it("shows a phone's Coming up status as its icon in place of a dot, named by its word (G18)", () => {
-    setWide(false);
+    stubMatchMedia(false);
     render(<ul><ComingUpItem r={up({ status: "different", paid_amount: 8000 })} /></ul>);
     const mark = screen.getByRole("img", { name: "Different amount" });
     expect(mark.querySelector("svg")?.getAttribute("class")).toContain("lucide-equal-not");
@@ -548,20 +540,20 @@ function stubSeries(view: SeriesView | null = VIEW, page: RecurringPage = PAGE) 
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === "POST") {
       posts.push({ url, body: JSON.parse(String(init.body)) });
-      return new Response(JSON.stringify(view), { status: 200 });
+      return json(view);
     }
     if (url.startsWith("/api/recurring/series")) {
-      return view ? new Response(JSON.stringify(view), { status: 200 })
-        : new Response(JSON.stringify({ error: "No series has that id now" }), { status: 404 });
+      return view ? json(view)
+        : json({ error: "No series has that id now" }, 404);
     }
-    return new Response(JSON.stringify(page), { status: 200 });
+    return json(page);
   }));
   return posts;
 }
 
 describe("A series' own view, G16", () => {
   beforeEach(() => window.history.replaceState(null, "", `/recurring?series=${encodeURIComponent(VIEW.id)}`));
-  afterEach(() => { vi.unstubAllGlobals(); window.history.replaceState(null, "", "/"); });
+  afterEach(() => { window.history.replaceState(null, "", "/"); });
 
   it("opens on Recurring itself, with the form at the top and its schedule and payments under it", async () => {
     stubSeries();
@@ -595,6 +587,21 @@ describe("A series' own view, G16", () => {
       body: { id: VIEW.id, amount: 5500, cadence: null, day: null, ended_on: null } });
   });
 
+  it("lists a charge taken twice on one day as two payments and two extras, with no clashing row keys", async () => {
+    const twice = { date: "2026-09-04", amount: 5000, regular: true };
+    const extra = { expected: "2026-09-04", status: "extra" as const, paid_on: "2026-09-04", paid_amount: 5000 };
+    stubSeries({ ...VIEW,
+      schedule: [{ ...extra, link: { key: "k1", hide_transfers: "0" } }, { ...extra, link: { key: "k2", hide_transfers: "0" } }],
+      payments: [{ ...twice, link: { key: "k1", hide_transfers: "0" } }, { ...twice, link: { key: "k2", hide_transfers: "0" } }] });
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    render(<Recurring />);
+    await screen.findByRole("region", { name: "Gym" });
+    expect(within(section("Payments")).getAllByRole("link", { name: "S$50.00" }).map((a) => a.getAttribute("href")))
+      .toEqual(["/transactions?key=k1&hide_transfers=0", "/transactions?key=k2&hide_transfers=0"]);
+    expect(within(section("Schedule")).getAllByRole("listitem")).toHaveLength(2);
+    expect(warn.mock.calls.flat().join(" ")).not.toMatch(/same key/);
+  });
+
   it("marks a payment against the owner's amount, not the detected one", async () => {
     stubSeries({ ...VIEW, amount: 10000, usual_low: 7500, usual_high: 12500, edit: { ...VIEW.edit, amount: 10000 } });
     render(<Recurring />);
@@ -613,6 +620,198 @@ describe("A series' own view, G16", () => {
     // the record keeps the amount as detected, so the box reads the detected one again
     expect(await within(screen.getByRole("region", { name: "Gym" })).findByText("Saved")).toBeInTheDocument();
     expect(within(screen.getByRole("region", { name: "Gym" })).getByLabelText("Usual amount")).toHaveValue("50");
+  });
+
+  it("keeps what is typed while a save is on its way, and shows what the save covered as saved", async () => {
+    let release: () => void = () => {};
+    let now = VIEW;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        return new Promise<Response>((done) => {
+          release = () => {
+            now = { ...VIEW, amount: body.amount ?? VIEW.amount, edit: { ...VIEW.edit, amount: body.amount } };
+            done(json(now));
+          };
+        });
+      }
+      return json(url.startsWith("/api/recurring/series") ? now : PAGE);
+    }));
+    render(<Recurring />);
+    const head = await screen.findByRole("region", { name: "Gym" });
+    fireEvent.change(within(head).getByLabelText("Usual amount"), { target: { value: "55" } });
+    fireEvent.click(within(head).getByRole("button", { name: "Save" }));
+    // typed while the save is on its way
+    choose(within(head).getByRole("button", { name: "How often" }), "Quarterly");
+    await act(async () => release());
+    await waitFor(() => expect(now.amount).toBe(5500));
+    const region = screen.getByRole("region", { name: "Gym" });
+    await waitFor(() => expect(within(region).getByLabelText("Usual amount")).toHaveValue("55"));
+    expect(within(region).getByRole("button", { name: "How often" })).toHaveTextContent("Quarterly");
+    expect(within(region).getByText("Unsaved changes")).toBeInTheDocument();
+  });
+
+  it("keeps a box typed back to its old value during a save, through the refresh after it", async () => {
+    let release: () => void = () => {};
+    let now = VIEW;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        return new Promise<Response>((done) => {
+          release = () => {
+            now = { ...VIEW, amount: body.amount ?? VIEW.amount, edit: { ...VIEW.edit, amount: body.amount } };
+            done(json(now));
+          };
+        });
+      }
+      return json(url.startsWith("/api/recurring/series") ? now : PAGE);
+    }));
+    render(<Recurring />);
+    const head = await screen.findByRole("region", { name: "Gym" });
+    const amount = within(head).getByLabelText("Usual amount");
+    const before = (amount as HTMLInputElement).value;
+    fireEvent.change(amount, { target: { value: "55" } });
+    fireEvent.click(within(head).getByRole("button", { name: "Save" }));
+    // set back to the old amount while the save of 55 is on its way: an edit
+    fireEvent.change(amount, { target: { value: before } });
+    expect(within(head).getByText("Unsaved changes")).toBeInTheDocument();
+    await act(async () => release());
+    await waitFor(() => expect(now.amount).toBe(5500));
+    // the series read again after the save does not put 55 over it
+    await settle();
+    const region = screen.getByRole("region", { name: "Gym" });
+    expect(within(region).getByLabelText("Usual amount")).toHaveValue(before);
+    expect(within(region).getByText("Unsaved changes")).toBeInTheDocument();
+  });
+
+  it("keeps a box typed during a second save when the first save's read comes back meanwhile", async () => {
+    const posts: (() => void)[] = [];
+    const reads: (() => void)[] = [];
+    let now = VIEW;
+    let hold = false;
+    const answer = () => json(now);
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        return new Promise<Response>((done) => posts.push(() => {
+          now = { ...VIEW, amount: body.amount ?? VIEW.amount, edit: { ...VIEW.edit, amount: body.amount } };
+          done(answer());
+        }));
+      }
+      if (!url.startsWith("/api/recurring/series")) return json(PAGE);
+      // once held, a read of the series waits, and answers with the series as it is when let go
+      return hold ? new Promise<Response>((done) => reads.push(() => done(answer()))) : answer();
+    }));
+    render(<Recurring />);
+    const amount = () => within(screen.getByRole("region", { name: "Gym" })).getByLabelText("Usual amount");
+    await screen.findByRole("region", { name: "Gym" });
+    fireEvent.change(amount(), { target: { value: "55" } });
+    fireEvent.click(within(screen.getByRole("region", { name: "Gym" })).getByRole("button", { name: "Save" }));
+    hold = true;
+    await act(async () => posts.shift()!());
+    await waitFor(() => expect(reads.length).toBeGreaterThan(0));
+    // a second save before the first one's read is back
+    fireEvent.change(amount(), { target: { value: "60" } });
+    fireEvent.click(within(screen.getByRole("region", { name: "Gym" })).getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(posts.length).toBe(1));
+    // the first save's read (55) lands while the second is on its way; then 55 is typed again, an edit against 60
+    await act(async () => { while (reads.length) reads.shift()!(); });
+    fireEvent.change(amount(), { target: { value: "55" } });
+    await act(async () => posts.shift()!());
+    await waitFor(() => expect(reads.length).toBeGreaterThan(0));
+    await act(async () => { while (reads.length) reads.shift()!(); });
+    await settle();
+    expect(now.amount).toBe(6000);
+    expect(amount()).toHaveValue("55");
+    expect(within(screen.getByRole("region", { name: "Gym" })).getByText("Unsaved changes")).toBeInTheDocument();
+  });
+
+  it("discards back to what a save just saved, before the series is read again", async () => {
+    let release: (() => void) | null = null;
+    const reads: (() => void)[] = [];
+    let now = VIEW;
+    let hold = false;
+    const answer = () => json(now);
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        const body = JSON.parse(String(init.body));
+        return new Promise<Response>((done) => { release = () => {
+          now = { ...VIEW, amount: body.amount ?? VIEW.amount, edit: { ...VIEW.edit, amount: body.amount } };
+          done(answer());
+        }; });
+      }
+      if (!url.startsWith("/api/recurring/series")) return json(PAGE);
+      return hold ? new Promise<Response>((done) => reads.push(() => done(answer()))) : answer();
+    }));
+    render(<Recurring />);
+    const region = () => screen.getByRole("region", { name: "Gym" });
+    await screen.findByRole("region", { name: "Gym" });
+    fireEvent.change(within(region()).getByLabelText("Usual amount"), { target: { value: "55" } });
+    fireEvent.click(within(region()).getByRole("button", { name: "Save" }));
+    // a save on its way may still fail: leaving asks until it lands
+    await expectAsks();
+    fireEvent.change(within(region()).getByLabelText("Usual amount"), { target: { value: "60" } });
+    hold = true;
+    await waitFor(() => expect(release).not.toBeNull());
+    await act(async () => release!());
+    // saved, and the series not read back yet: Discard goes back to 55, what is saved now
+    await waitFor(() => expect(within(region()).getByRole("button", { name: "Discard" })).toBeEnabled());
+    fireEvent.click(within(region()).getByRole("button", { name: "Discard" }));
+    expect(within(region()).getByLabelText("Usual amount")).toHaveValue("55");
+    await expectFree();
+    expect(within(region()).queryByText("Unsaved changes")).not.toBeInTheDocument();
+    await act(async () => { while (reads.length) reads.shift()!(); });
+    expect(within(region()).getByLabelText("Usual amount")).toHaveValue("55");
+    expect(within(region()).queryByText("Unsaved changes")).not.toBeInTheDocument();
+  });
+
+  it("keeps a typed day with its cadence when another tab saves a cadence of the other kind", async () => {
+    let now = VIEW;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) =>
+      json(url.startsWith("/api/recurring/series") ? now : PAGE)));
+    render(<Recurring />);
+    const head = await screen.findByRole("region", { name: "Gym" });
+    // the 20th of the month, typed
+    choose(within(head).getByRole("button", { name: "Day" }), "20");
+    // another tab makes it weekly, on Tuesdays
+    now = { ...VIEW, cadence: "weekly", day: 2, edit: { ...VIEW.edit, cadence: "weekly", day: 2 } };
+    await act(async () => notifyChanged());
+    await settle();
+    const region = screen.getByRole("region", { name: "Gym" });
+    // the day typed is a day of the month: it stays with the monthly cadence it was typed under
+    expect(within(region).getByRole("button", { name: "How often" })).toHaveTextContent("Monthly");
+    expect(within(region).getByRole("button", { name: "Day" })).toHaveTextContent("20");
+    expect(within(region).getByText("Unsaved changes")).toBeInTheDocument();
+  });
+
+  it("moves a day and cadence left alone together when another tab saves both", async () => {
+    let now = { ...VIEW, day: 2, edit: { ...VIEW.edit, day: 2 } };
+    vi.stubGlobal("fetch", vi.fn(async (url: string) =>
+      json(url.startsWith("/api/recurring/series") ? now : PAGE)));
+    render(<Recurring />);
+    await screen.findByRole("region", { name: "Gym" });
+    // another tab makes the 2nd of the month a weekly Tuesday: the same "2" in the day box
+    now = { ...VIEW, cadence: "weekly", day: 2, edit: { ...VIEW.edit, cadence: "weekly", day: 2 } };
+    await act(async () => notifyChanged());
+    const region = screen.getByRole("region", { name: "Gym" });
+    await waitFor(() => expect(within(region).getByRole("button", { name: "How often" })).toHaveTextContent("Weekly"));
+    expect(within(region).queryByText("Unsaved changes")).not.toBeInTheDocument();
+  });
+
+  it("moves an amount typed as the saved one in other words along with another tab's save", async () => {
+    let now = VIEW;
+    vi.stubGlobal("fetch", vi.fn(async (url: string) =>
+      json(url.startsWith("/api/recurring/series") ? now : PAGE)));
+    render(<Recurring />);
+    const head = await screen.findByRole("region", { name: "Gym" });
+    fireEvent.change(within(head).getByLabelText("Usual amount"), { target: { value: "50.00" } });
+    expect(within(head).queryByText("Unsaved changes")).not.toBeInTheDocument();
+    // another tab saves 60
+    now = { ...VIEW, amount: 6000, edit: { ...VIEW.edit, amount: 6000 } };
+    await act(async () => notifyChanged());
+    const region = screen.getByRole("region", { name: "Gym" });
+    await waitFor(() => expect(within(region).getByLabelText("Usual amount")).toHaveValue("60"));
+    expect(within(region).queryByText("Unsaved changes")).not.toBeInTheDocument();
   });
 
   it("refuses an amount that is not dollars and cents before it sends anything", async () => {
@@ -637,7 +836,7 @@ describe("A series' own view, G16", () => {
     let n = 0;
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
       if (init?.method === "POST") n = 1;
-      return new Response(JSON.stringify(answers[n]), { status: 200 });
+      return json(answers[n]);
     }));
     render(<Recurring />);
     const head = await screen.findByRole("region", { name: "Gym" });
@@ -672,8 +871,6 @@ describe("A series' own view, G16", () => {
 });
 
 describe("Not recurring on Recurring, G16", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("marks an irregular payee not recurring, lists what is not recurring, and Undo takes each back", async () => {
     const page: RecurringPage = { ...PAGE, not_recurring: [
       { id: null, name: "Club", payee: "Club", cadence: "", category: "", amount: null, last_seen: null },
@@ -695,5 +892,13 @@ describe("Not recurring on Recurring, G16", () => {
       { url: "/api/recurring/payee", body: { payee: "Club", recurring: null } },
       { url: "/api/recurring/series", body: { id: "payee:Pool:3000", recurring: null } },
     ]);
+  });
+});
+
+// Audit: one order of urgency, Home's Coming up and a series' month both read it
+describe("URGENCY", () => {
+  it("puts what wants a look first", () => {
+    const order = (Object.keys(URGENCY) as (keyof typeof URGENCY)[]).sort((a, b) => URGENCY[a] - URGENCY[b]);
+    expect(order).toEqual(["late", "different", "extra", "due", "paid"]);
   });
 });

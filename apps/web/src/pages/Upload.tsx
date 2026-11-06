@@ -7,7 +7,7 @@ import {
 import type { Bank } from "../accounts";
 import { formatDateTime } from "../dates";
 import { accounts, findAccount, flag, type Account } from "../accounts";
-import { onLinkClick } from "../router";
+import { onLinkClick, useUnsavedGuard } from "../router";
 import { seedFrom, stepStates } from "../uploadState";
 import { BankMark } from "../components/BankMark";
 import { Button, buttonClass } from "../components/Button";
@@ -25,6 +25,7 @@ import { UploadStepper } from "../components/UploadStepper";
 import { Loading, Problem } from "../components/States";
 import { StatsPage } from "./StatsPage";
 import { NEEDS_ACCOUNT_ICON, NOT_SUPPORTED_ICON, RUNNING_ICON, STEP_STATUS_ICON } from "../icons";
+import { plural } from "../words";
 
 // G13: a dropped PDF goes to the account its own text names (serve.py,
 // /api/statements/auto). One the server cannot place comes back as
@@ -56,7 +57,6 @@ type Reply = {
 type Busy = "" | "upload" | "check" | "load" | "mirror";
 
 const num = (n: number) => n.toLocaleString("en-SG");
-const plural = (n: number, one: string, many = `${one}s`) => `${num(n)} ${n === 1 ? one : many}`;
 
 /** The account a folder belongs to, by the name the picker shows, and its currency for a wallet. */
 function accountOf(list: Account[], folder: string) {
@@ -131,6 +131,10 @@ export function UploadPage() {
       });
     }
   }
+
+  // G18: a PDF waiting for its account is held in this page only, and an upload in progress stops with it:
+  // leaving asks first
+  useUnsavedGuard(busy === "upload" || uploads.some((u) => u.status === "needs-account"));
 
   if (status.loading) return <Loading what="Loading your statement folders" />;
   if (status.error || !status.data) return <Problem message={status.error ?? "No status"} retry />;
@@ -239,7 +243,7 @@ export function UploadPage() {
   });
 
   const blocking = report?.problems.filter((p) => p.code !== "pdftotext-missing") ?? [];
-  const todo = report ? report.to_add_count + report.recategorised_count + report.to_archive_count : 0;
+  const todo = report ? report.to_add_count + report.recategorised_count + report.to_archive_count + (report.rekeyed_count ?? 0) : 0;
   const nothingNew = !!report && todo === 0;
   const loadedOk = !!loaded?.loaded;
   // the record holds everything the statements say: just loaded, or a clean check with nothing to add
@@ -274,7 +278,7 @@ export function UploadPage() {
         { key: "load", step: "load", label: "Load", state: steps.load, note: loadedOk ? `${num(loaded?.counts?.inserted ?? 0)} added` : nothingNew && !blocking.length ? "Nothing new" : undefined },
         ...(s.notion_enabled ? [{ key: "mirror", step: "mirror" as const, label: "Mirror", state: steps.mirror, note: mirror ? (mirror.code === 0 ? "Mirrored" : "Failed") : undefined }] : []),
       ]} />
-      {!s.pdftotext && <Problem message="pdftotext is not installed." hint="brew install poppler, then reload this page." />}
+      {!s.pdftotext && <Problem message="pdftotext is not installed." hint="Kopifund reads PDFs with it. Install Poppler, which brings it, then reload this page." />}
 
       <Card title="1. Add this month's statements" actions={
         busy === "upload" ? <StatusChip tone="info" icon={RUNNING_ICON} spin>Saving</StatusChip>
@@ -481,7 +485,7 @@ function SupportedBanks({ banks }: { banks: Banks }) {
           </ul>
         </div>
       )}
-      <p className="m-0">To help add a bank, run <span className="font-medium text-ink">python3 finance.py sample</span> on its PDF.</p>
+      <p className="m-0">To help add a bank, share a scrubbed text copy of one of its statements: <span className="font-medium text-ink">docs/runbook.md</span> in Kopifund's repository says how to make one.</p>
     </div>
   );
 }

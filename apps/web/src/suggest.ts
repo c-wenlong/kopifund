@@ -4,7 +4,7 @@
 // only when it is clearly off the record's figure; one that is close gets none.
 import type { IncomeSuggestion } from "./api";
 import { MONTHS } from "./dates";
-import { formatSgd, parseCents, type Cents } from "./money";
+import { formatSgd, parseCents, wholeDollars, type Cents } from "./money";
 
 /** How far a typed figure may sit from the record's before the record "clearly disagrees". */
 export const CLOSE = 0.15;
@@ -30,7 +30,7 @@ export function chipKind(typed: Cents | null, suggested: Cents | null | undefine
 }
 
 /** Cents as the whole dollars a box takes, as a chip says them: 262745 as "2627". Cents on a plan figure are noise. */
-export const dollarsText = (cents: Cents): string => String(Math.round(cents / 100));
+export const dollarsText = (cents: Cents): string => String(wholeDollars(cents));
 
 /** "Seen S$210 a month, use" or "Record shows S$210 a month, use". `what` goes after the amount ("gross"). */
 export function chipText(kind: ChipKind, cents: Cents, what = ""): string {
@@ -76,12 +76,6 @@ export function claims(rows: Row[], list: IncomeSuggestion[]): (IncomeSuggestion
 
 /** Whether the row covers the day the pay last arrived: a later row is a plan, and the record says nothing of it yet. */
 export const coversLast = (row: Row, s: IncomeSuggestion): boolean => row.from <= s.last && (!row.to || row.to >= s.last);
-
-/** The detected pay no row stands for yet. */
-export const unclaimed = (rows: Row[], list: IncomeSuggestion[]): IncomeSuggestion[] => {
-  const held = claims(rows, list);
-  return list.filter((s) => !held.includes(s));
-};
 
 /** A detected pay as the words on its chip. */
 export function incomeText(s: IncomeSuggestion, month: string): string {

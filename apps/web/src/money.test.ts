@@ -1,4 +1,7 @@
-import { axisSgd, centsText, formatAmount, formatPlain, formatSgd, parseCents } from "./money";
+import { axisSgd, centsText, formatAmount, formatSgd, isAmountText, parseCents, unformatMoney, wholeDollars } from "./money";
+import { fmt } from "./stats/hint";
+import { CENTS_UNIT } from "./stats/money";
+import { isMoneyText } from "./components/MoneyInput";
 
 describe("formatSgd", () => {
   it("formats whole dollars from cents", () => {
@@ -16,8 +19,16 @@ describe("formatSgd", () => {
     // U+2212 is a prefix character for line breaking, a hyphen is not
     expect(formatSgd(-1_200, { decimals: true })).toMatch(/^−S\$12\.00$/);
   });
-  it("refuses a float", () => {
-    expect(() => formatSgd(12.5)).toThrow(/integer cents/);
+  // Audit: a throw while a page draws blanked the app, so a bad value is said in the console and drawn as best it can be
+  it("rounds a float to whole cents and reports it, rather than throwing", () => {
+    const error = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(formatSgd(1_234.6, { decimals: true })).toBe("S$12.35");
+    expect(error).toHaveBeenCalledWith(expect.stringMatching(/integer cents, got 1234.6/));
+  });
+  it("shows a question mark for what is not a number at all", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(formatSgd(NaN)).toBe("S$?");
+    expect(formatSgd(undefined as unknown as number)).toBe("S$?");
   });
 });
 
@@ -34,8 +45,10 @@ describe("formatAmount", () => {
   it("signs a negative foreign amount with the minus before the code", () => {
     expect(formatAmount(-1_200, "SEK")).toBe("−SEK 12.00");
   });
-  it("refuses a float", () => {
-    expect(() => formatAmount(12.5, "SEK")).toThrow(/integer cents/);
+  it("rounds a float to whole cents rather than throwing", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(formatAmount(12.5, "SEK")).toBe("SEK\u00a00.13");
+    expect(formatAmount(Infinity, "SEK")).toBe("SEK\u00a0?");
   });
 });
 
@@ -46,11 +59,39 @@ describe("axisSgd", () => {
     expect(axisSgd(-200_000)).toBe("−S$2k");
     expect(axisSgd(-20)).toBe("S$0");
   });
+  it("moves to millions once a tick rounds to a thousand k", () => {
+    expect(axisSgd(99_996_000)).toBe("S$1M");
+    expect(axisSgd(-99_996_000)).toBe("−S$1M");
+    expect(axisSgd(99_940_000)).toBe("S$999.4k");
+    expect(axisSgd(99_960)).toBe("S$1k");
+  });
 });
 
-describe("formatPlain", () => {
-  it("drops the currency for compact lists", () => {
-    expect(formatPlain(1_355_100)).toBe("13,551");
+// Audit: one rounding rule for whole dollars, finance/money.py's: half up on the size, away from zero,
+// and no minus on what rounds to nothing. Every money figure the app draws goes through formatSgd.
+describe("one rounding rule", () => {
+  it("rounds a half away from zero on both sides", () => {
+    expect(wholeDollars(150)).toBe(2);
+    expect(wholeDollars(-150)).toBe(-2);
+    expect(wholeDollars(250)).toBe(3);
+    expect(wholeDollars(-250)).toBe(-3);
+    expect(wholeDollars(149)).toBe(1);
+    expect(wholeDollars(-149)).toBe(-1);
+    expect(Object.is(wholeDollars(-40), 0)).toBe(true);
+  });
+  it("writes a refund the same in a tile and in a chart", () => {
+    expect(formatSgd(-150)).toBe("−S$2");
+    expect(formatSgd(-250)).toBe("−S$3");
+    expect(formatSgd(250)).toBe("S$3");
+    for (const c of [-150, -250, -40, -50, 0, 49, 50, 123_456, -123_456, 99_950]) {
+      expect(fmt(c, CENTS_UNIT), String(c)).toBe(formatSgd(c));
+      expect(fmt(c, CENTS_UNIT, true), String(c)).toBe(formatSgd(c, { decimals: true }));
+    }
+  });
+  it("puts no minus on what rounds to nothing", () => {
+    expect(formatSgd(-40)).toBe("S$0");
+    expect(fmt(-40, CENTS_UNIT)).toBe("S$0");
+    expect(formatSgd(-50)).toBe("−S$1");
   });
 });
 
@@ -78,6 +119,31 @@ describe("parseCents (G17)", () => {
   });
 });
 
+// Audit: the money box and parseCents read one grammar, so a box that passes isMoneyText is one parseCents reads
+describe("one money-text grammar", () => {
+  it("strips commas and spaces the same way", () => {
+    expect(unformatMoney(" 6,000.50 ")).toBe("6000.50");
+  });
+  it("agrees with parseCents on what is a number", () => {
+    const texts = ["12", "12.", "12.5", ".5", "1,234.56", " 2 500 ", "12.345", "12.340", "", " ", ".", "1.2.3", "-5", "1e3", "abc", "S$5", "1k5"];
+    for (const t of texts) {
+      const c = parseCents(t);
+      const finer = /\.\d{2}\d*[1-9]/.test(unformatMoney(t));
+      expect(isMoneyText(t), t).toBe(c !== null && (!Number.isNaN(c) || finer));
+    }
+  });
+});
+
+// Audit: the one rule a money box that must hold an amount checks (Settings' thresholds)
+describe("isAmountText", () => {
+  it("takes what parseCents reads as cents, .5 and 12. included", () => {
+    for (const t of ["12", "12.", ".5", "1,234.56", "0", "1.500"]) expect(isAmountText(t), t).toBe(true);
+  });
+  it("refuses empty, finer than a cent, and what is not dollars and cents", () => {
+    for (const t of ["", " ", ".", "12.345", "-5", "abc", "1.2.3"]) expect(isAmountText(t), t).toBe(false);
+  });
+});
+
 describe("centsText (G17)", () => {
   it("writes whole dollars bare and cents with two decimals", () => {
     expect(centsText(250_000)).toBe("2500");
@@ -86,7 +152,9 @@ describe("centsText (G17)", () => {
     expect(centsText(0)).toBe("0");
     expect(centsText(-1_205)).toBe("-12.05");
   });
-  it("refuses a float", () => {
-    expect(() => centsText(12.5)).toThrow(/integer cents/);
+  it("rounds a float to whole cents and leaves the box empty for what is not a number", () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(centsText(12.5)).toBe("0.13");
+    expect(centsText(NaN)).toBe("");
   });
 });

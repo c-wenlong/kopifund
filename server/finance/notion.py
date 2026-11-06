@@ -14,6 +14,7 @@ into the API's typed objects, and `plain` reads one back out of a page. They are
 a pair: `plain(create(to_api(props)), name)` returns what went in.
 """
 import json
+import socket
 import subprocess
 import sys
 import threading
@@ -27,6 +28,13 @@ from . import dotenv
 
 class NotionError(RuntimeError):
     """An API call failed after every retry, or the token could not be found."""
+
+
+def never_sent(e):
+    """True for a network error that stops a request before Notion can see
+    it: the name did not resolve or the connection was refused."""
+    reason = getattr(e, "reason", None) if isinstance(e, urllib.error.URLError) else e
+    return isinstance(reason, (socket.gaierror, ConnectionRefusedError))
 
 
 class NotionClient:
@@ -94,18 +102,34 @@ class NotionClient:
 
     def call(self, method, path, body=None):
         """One request. Raises NotionError rather than exiting, so the caller
-        can decide the exit code."""
+        can decide the exit code.
+
+        A request is retried on a rate limit, a 5xx and a network error, with
+        one exception: creating a page (POST /pages) is not idempotent, so a
+        create whose answer was lost (a timeout, a 5xx a gateway sent after
+        Notion may have written it) is never sent again; a second send could
+        make a second page with the same key. It is retried only where Notion
+        cannot have seen it: a 429, or a connection that never opened. The
+        run stops on the error and the next run's diff creates the page if
+        it is still missing."""
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(self.API + path, data=data, method=method, headers={
             "Authorization": f"Bearer {self.token}", "Notion-Version": self.version,
             "Content-Type": "application/json"})
+        creates = method == "POST" and path == "/pages"
         for attempt in range(self.tries):
             self._slot()
             try:
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                     return json.load(resp)
             except urllib.error.HTTPError as e:
-                msg = e.read().decode(errors="replace")
+                with e:  # Notion's reply: close it, not leave it for the collector
+                    msg = e.read().decode(errors="replace")
+                if creates and e.code >= 500:
+                    # a 4xx is Notion refusing the page, so nothing was made; it
+                    # is not retried either, and falls through to the plain error
+                    raise NotionError(f"Notion API {e.code} on {method} {path}, not retried: the page "
+                                      f"may have been created; the next run creates it if not: {msg[:600]}")
                 if e.code in (429, 500, 502, 503, 504) and attempt < self.tries - 1:
                     delay = float(e.headers.get("Retry-After") or 2 ** attempt)
                     print(f"    {e.code} on {method} {path}, retry in {delay:.0f}s",
@@ -117,6 +141,9 @@ class NotionClient:
                 # URLError covers DNS and connection failures; a socket that
                 # times out mid-read raises TimeoutError instead, and both are
                 # the same transient thing to a retry loop
+                if creates and not never_sent(e):
+                    raise NotionError(f"network error on {method} {path}, not retried: the page may "
+                                      f"have been created; the next run creates it if not: {e}")
                 if attempt < self.tries - 1:
                     print(f"    {type(e).__name__} on {method} {path}, retry in "
                           f"{2 ** attempt}s", file=sys.stderr)

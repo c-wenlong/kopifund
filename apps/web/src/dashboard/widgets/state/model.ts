@@ -9,7 +9,7 @@ import { useMemo } from "react";
 import { useApi, type Loaded } from "../../../api";
 import { bucketLook } from "../../../components/BucketMark";
 import { REST_COLOUR, seriesColour } from "../../../components/chartKit";
-import { formatSgd, MINUS, type Cents } from "../../../money";
+import { formatSgd, MINUS, wholeDollars, type Cents } from "../../../money";
 import { fmt, label, tickLabel } from "../../../stats/hint";
 import type { BucketStyle, CategoriesState, WidgetAnswer, WidgetQuery, WidgetSeries, WidgetUnit } from "../../../types.gen";
 import { useWidgetData } from "../../../widgets";
@@ -86,16 +86,29 @@ function labelSlices(answer: WidgetAnswer): Slice[] {
   }).filter((s) => !s.missing).map(({ missing: _, ...s }) => s);
 }
 
-/**
- * The slices a set of answers draws. Several answers, or one answer with
- * several series, read as one slice per series (`aggregate` says how); one
- * answer with one series reads as one slice per label.
- */
-export function slicesFor(answers: readonly WidgetAnswer[], aggregate: Aggregate = "latest"): Slice[] {
+/** Every slice the answers hold, the ones at or below zero included. */
+function allSlices(answers: readonly WidgetAnswer[], aggregate: Aggregate): Slice[] {
   const list = answers.filter(Boolean);
   if (list.length === 0) return [];
   if (list.length > 1 || list[0].series.length > 1) return seriesSlices(list, aggregate);
   return labelSlices(list[0]);
+}
+
+/**
+ * The slices a set of answers draws. Several answers, or one answer with
+ * several series, read as one slice per series (`aggregate` says how); one
+ * answer with one series reads as one slice per label. A share of a whole
+ * has no room for a part at or below zero (a bucket whose refunds passed its
+ * spending): it would draw overlapping sectors or a tile of negative area and
+ * net into the total, so it is left out here and listed by `slicesLeftOut`.
+ */
+export function slicesFor(answers: readonly WidgetAnswer[], aggregate: Aggregate = "latest"): Slice[] {
+  return allSlices(answers, aggregate).filter((s) => s.value > 0);
+}
+
+/** The slices `slicesFor` leaves out, at or below zero, for a note under the chart. */
+export function slicesLeftOut(answers: readonly WidgetAnswer[], aggregate: Aggregate = "latest"): Slice[] {
+  return allSlices(answers, aggregate).filter((s) => s.value <= 0);
 }
 
 /** Every answer's figure added up: what "the whole" is for the slices drawn. */
@@ -113,14 +126,19 @@ export const unitOf = (answers: readonly WidgetAnswer[]): WidgetUnit => answers[
 
 /** A figure in the answer's unit: cents written as money, everything else in its own unit. */
 export function fmtValue(v: number, unit: WidgetUnit | string): string {
-  return unit === "sgd_minor" ? formatSgd(v as Cents) : fmt(v, unit, true);
+  // Audit: through the stat cards' fmt, which rounds a worked-out figure (an average) to whole cents first
+  return unit === "sgd_minor" ? fmt(v, unit) : fmt(v, unit, true);
 }
 
 /** A change with its sign: "+S$12", "−S$12", "+5.0%", "+0.4 mo". */
 export function signedValue(delta: number, unit: WidgetUnit | string): string {
-  const sign = delta >= 0 ? "+" : MINUS;
   const a = Math.abs(delta);
-  if (unit === "sgd_minor") return `${sign}${formatSgd(a as Cents)}`;
+  if (unit === "sgd_minor") {
+    // Audit: the sign of the whole dollars shown (money.ts's rule), so a change of 40 cents reads "S$0", never "−S$0"
+    const dollars = wholeDollars(delta < 0 ? -Math.round(-delta) : Math.round(delta));
+    return `${dollars > 0 ? "+" : dollars < 0 ? MINUS : ""}${formatSgd(Math.abs(dollars) * 100 as Cents)}`;
+  }
+  const sign = delta >= 0 ? "+" : MINUS;
   if (unit === "fraction") return `${sign}${oneDec.format(a * 100)}%`;
   if (unit === "percent") return `${sign}${oneDec.format(a)}%`;
   if (unit === "months") return `${sign}${oneDec.format(a)} mo`;

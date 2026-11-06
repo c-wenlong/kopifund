@@ -81,6 +81,137 @@ final class BuilderTests: XCTestCase {
     }
 }
 
+/// Audit: the builder's edges and its safety.
+final class BuilderEdgeTests: XCTestCase {
+    private func segments(_ text: String,
+                          _ tag: (Token) -> PatternBuilder.Field?) throws -> [AlertPattern.Segment] {
+        let tokens = Tokenizer.tokenize(text)
+        var tags: [Int: PatternBuilder.Field] = [:]
+        for (i, t) in tokens.enumerated() { if let f = tag(t) { tags[i] = f } }
+        return try PatternBuilder.segments(in: text, tokens: tokens,
+                                           spans: PatternBuilder.spans(from: tags, tokens: tokens))
+    }
+
+    /// Cutting the greeting by character count kept "ct" of "Oct" as a fixed
+    /// word: the October alert matched and November's did not.
+    func test_a_shed_edge_never_keeps_part_of_a_word() throws {
+        let sample = "Dear customer, on 27 Oct 2026 we had now seen SGD 4.80 at KOPITIAM"
+        let segs = try segments(sample) { t in
+            switch t.text {
+            case "SGD", "4.80": return .amount
+            case "KOPITIAM": return .payee
+            default: return nil
+            }
+        }
+        XCTAssertEqual(segs.first, .ignore)
+        guard case .literal(let kept) = segs[1] else { return XCTFail("\(segs)") }
+        XCTAssertEqual(kept, "now seen ")
+        let p = AlertPattern(name: "p", direction: .outflow, accountID: "a",
+                             segments: segs, sampleText: sample)
+        let november = "Dear customer, on 3 Nov 2026 we had now seen SGD 9.00 at TOAST BOX"
+        guard case .success(let t) = Matcher.test(p, text: november) else {
+            return XCTFail("a November alert of the same template should read")
+        }
+        XCTAssertEqual(t.payee, "TOAST BOX")
+    }
+
+    /// Review on #48: a bank that prints its months in capitals ("27 OCT")
+    /// must not leave "OCT" fixed at the cut either.
+    func test_a_shed_edge_drops_an_uppercase_month() throws {
+        let sample = "Dear customer, on 27 OCT we have just seen SGD 4.80 at KOPITIAM"
+        let segs = try segments(sample) { t in
+            switch t.text {
+            case "SGD", "4.80": return .amount
+            case "KOPITIAM": return .payee
+            default: return nil
+            }
+        }
+        guard case .literal(let kept) = segs[1] else { return XCTFail("\(segs)") }
+        XCTAssertFalse(kept.contains("OCT"), kept)
+        let p = AlertPattern(name: "p", direction: .outflow, accountID: "a",
+                             segments: segs, sampleText: sample)
+        let november = "Dear customer, on 3 NOV we have just seen SGD 9.00 at TOAST BOX"
+        guard case .success(let t) = Matcher.test(p, text: november) else {
+            return XCTFail("a November alert of the same template should read")
+        }
+        XCTAssertEqual(t.payee, "TOAST BOX")
+    }
+
+    /// G24: an anchor is the stable words right beside a field: whole
+    /// words, two that do not change at most, never past the end of an
+    /// earlier clause or the field's own line, and never a lone month.
+    func test_anchors_are_the_nearest_stable_words() {
+        XCTAssertEqual(PatternBuilder.anchorBefore("Dear customer, on 27 Oct 2026 we had now seen "),
+                       "now seen ")
+        XCTAssertEqual(PatternBuilder.anchorBefore("This is your alert dated Oct for spend at "),
+                       "spend at ")
+        XCTAssertEqual(PatternBuilder.anchorBefore("Dear Customer, you charged "), "you charged ")
+        XCTAssertEqual(PatternBuilder.anchorBefore(" from MERLION/HBR card ending "), "card ending ")
+        XCTAssertEqual(PatternBuilder.anchorBefore(" card ending 3141 to "), "ending 3141 to ",
+                       "digits fold, so they do not count")
+        XCTAssertEqual(PatternBuilder.anchorBefore("Your Scan & Pay Transfer dated "), "Transfer dated ")
+        XCTAssertEqual(PatternBuilder.anchorBefore("completed.\nDate & Time:\n"), "Date & Time:\n",
+                       "a field that starts its line anchors on the label above")
+        XCTAssertEqual(PatternBuilder.anchorBefore("Transfer ran Oct for 4 days at "), "days at ")
+        XCTAssertEqual(PatternBuilder.anchorBefore("ran on 27 Oct "), "ran on 27 Oct ",
+                       "folded words ride along until two stable ones or the edge")
+        XCTAssertEqual(PatternBuilder.anchorBefore("https://bank.example/alerts/0123456789 "),
+                       "https://bank.example/alerts/0123456789 ", "a word longer than the edge is kept whole")
+
+        XCTAssertEqual(PatternBuilder.anchorAfter(" on 27 Oct 2026. Thank you for banking with us."),
+                       " on 27 Oct 2026.")
+        XCTAssertEqual(PatternBuilder.anchorAfter(" was charged in Oct 2026 by the merchant here"),
+                       " was charged")
+        XCTAssertEqual(PatternBuilder.anchorAfter(" ref TXN-77"), " ref TXN-77")
+        XCTAssertEqual(PatternBuilder.anchorAfter(". Thank you"), ". Thank you",
+                       "a mark alone may sit inside a name, so the words after it stay")
+        XCTAssertEqual(PatternBuilder.anchorAfter(" ok. Thank you"), " ok.")
+        XCTAssertEqual(PatternBuilder.anchorAfter("\nThank you for using us."), "\n",
+                       "a field that ends its line keeps only the break")
+        XCTAssertEqual(PatternBuilder.anchorAfter("\n\nThank you."), "\n\n")
+    }
+
+    /// The public builder used to crash the process on a date span it could
+    /// not read; its checks lived only in the app.
+    func test_an_unreadable_date_span_throws() {
+        XCTAssertThrowsError(try segments("Paid SGD 4.80 at KOPITIAM on Tuesday") { t in
+            switch t.text {
+            case "SGD", "4.80": return .amount
+            case "KOPITIAM": return .payee
+            case "Tuesday": return .date
+            default: return nil
+            }
+        }) { XCTAssertEqual($0 as? PatternBuilder.BuildError, .unreadableDate("Tuesday")) }
+    }
+
+    func test_a_field_tagged_twice_throws() {
+        XCTAssertThrowsError(try segments("Paid SGD 4.80 fee SGD 0.50 at KOPITIAM") { t in
+            switch t.text {
+            case "SGD", "4.80", "0.50": return .amount
+            case "KOPITIAM": return .payee
+            default: return nil
+            }
+        }) { XCTAssertEqual($0 as? PatternBuilder.BuildError, .duplicateField("amount")) }
+        XCTAssertThrowsError(try segments("Paid SGD 4.80 card 1234 at KOPITIAM card 5678 ok") { t in
+            switch t.text {
+            case "SGD", "4.80": return .amount
+            case "1234", "5678": return .account
+            case "KOPITIAM": return .payee
+            default: return nil
+            }
+        }) { XCTAssertEqual($0 as? PatternBuilder.BuildError, .duplicateField("card")) }
+        // ignore may repeat
+        XCTAssertNoThrow(try segments("Paid SGD 4.80 ref A1 at KOPITIAM on day B2 ok") { t in
+            switch t.text {
+            case "SGD", "4.80": return .amount
+            case "A1", "B2": return .ignore
+            case "KOPITIAM": return .payee
+            default: return nil
+            }
+        })
+    }
+}
+
 final class MatcherTests: XCTestCase {
     /// An invented alert in the shape bank SMS messages take. Real DBS, OCBC
     /// and UOB samples replace this fixture when the owner pastes them. The
@@ -127,7 +258,7 @@ final class MatcherTests: XCTestCase {
         case .matched(let t):
             XCTAssertEqual(t.payee, "NTUC FAIRPRICE")
             XCTAssertEqual(t.amount, Decimal(string: "1234.50"))
-            XCTAssertEqual(Calendar.current.component(.day, from: t.date), 3)
+            XCTAssertEqual(t.date, CalendarDate(year: 2027, month: 1, day: 3))
         case .unmatched(let r): XCTFail("unmatched: \(r)")
         }
     }
@@ -168,7 +299,7 @@ final class MatcherTests: XCTestCase {
                              segments: segs, sampleText: sample)
         let when = Date(timeIntervalSince1970: 1_700_000_000)
         switch Matcher.match(text: sample, source: nil, receivedAt: when, patterns: [p]) {
-        case .matched(let t): XCTAssertEqual(t.date, when)
+        case .matched(let t): XCTAssertEqual(t.date, CalendarDate(when, in: .current))
         case .unmatched(let r): XCTFail("unmatched: \(r)")
         }
     }
@@ -185,15 +316,15 @@ final class MatcherTests: XCTestCase {
     /// verbatim (all caps kept), the currency read off the amount, and the
     /// tagged card digits land in the hint.
     func test_a_dbs_style_alert_keeps_case_currency_and_card() throws {
-        let sample = "A card txn of SGD44.53 from DBS/POSB card ending 6529 to SGH - DIGESTIVE & LIVE on 26 Oct 11:24 (SGT) was completed."
+        let sample = "A card txn of SGD38.17 from DBS/POSB card ending 3141 to HVC - DENTAL & EYE on 26 Oct 11:24 (SGT) was completed."
         let tokens = Tokenizer.tokenize(sample)
         var tags: [Int: PatternBuilder.Field] = [:]
         for (i, t) in tokens.enumerated() {
             switch t.text {
-            case "SGD44", "53": tags[i] = .amount
-            case "." where i > 0 && tokens[i - 1].text == "SGD44": tags[i] = .amount
-            case "6529": tags[i] = .account
-            case "SGH", "-", "DIGESTIVE", "&", "LIVE": tags[i] = .payee
+            case "SGD38", "17": tags[i] = .amount
+            case "." where i > 0 && tokens[i - 1].text == "SGD38": tags[i] = .amount
+            case "3141": tags[i] = .account
+            case "HVC", "-", "DENTAL", "&", "EYE": tags[i] = .payee
             case "26", "Oct": tags[i] = .date
             case "11", ":", "24": tags[i] = .ignore
             default: break
@@ -203,16 +334,17 @@ final class MatcherTests: XCTestCase {
                                                spans: PatternBuilder.spans(from: tags, tokens: tokens))
         let p = AlertPattern(name: "DBS card", direction: .outflow, accountID: "a",
                              segments: segs, sampleText: sample)
-        let next = "A card txn of SGD10.00 from DBS/POSB card ending 6529 to NTUC FAIRPRICE on 27 Oct 09:01 (SGT) was completed."
+        let next = "A card txn of SGD10.00 from DBS/POSB card ending 3141 to NTUC FAIRPRICE on 27 Oct 09:01 (SGT) was completed."
         switch Matcher.match(text: next, source: "sms", receivedAt: Date(), patterns: [p]) {
         case .matched(let t):
             XCTAssertEqual(t.payee, "NTUC FAIRPRICE")
             XCTAssertEqual(t.amount, Decimal(string: "10.00"))
             XCTAssertEqual(t.currency, "SGD")
-            XCTAssertEqual(t.accountHint, "6529")
+            XCTAssertEqual(t.accountHint, "3141")
             XCTAssertEqual(t.alertText, next)
             XCTAssertEqual(t.source, "sms")
-            XCTAssertEqual(Calendar.current.component(.day, from: t.date), 27)
+            XCTAssertEqual(t.date.day, 27)
+            XCTAssertEqual(t.date.month, 10)
         case .unmatched(let r): XCTFail("unmatched: \(r)")
         }
     }
@@ -220,64 +352,66 @@ final class MatcherTests: XCTestCase {
 
 final class DedupTests: XCTestCase {
     func test_normalised_payee_drops_case_and_punctuation() {
-        XCTAssertEqual(Dedup.normalizedPayee("SGH - DIGESTIVE & LIVE"), "sghdigestivelive")
-        XCTAssertEqual(Dedup.normalizedPayee("Sgh - Digestive & Live"), "sghdigestivelive")
+        XCTAssertEqual(Dedup.normalizedPayee("HVC - DENTAL & EYE"), "hvcdentaleye")
+        XCTAssertEqual(Dedup.normalizedPayee("Hvc - Dental & Eye"), "hvcdentaleye")
     }
 
     func test_payee_similarity() {
-        XCTAssertTrue(Dedup.similarPayee("Sgh - Digestive & Live", "SGH - DIGESTIVE & LIVE"))
+        XCTAssertTrue(Dedup.similarPayee("Hvc - Dental & Eye", "HVC - DENTAL & EYE"))
         XCTAssertTrue(Dedup.similarPayee("AMAZON SG", "Amazon.sg Marketplace"))
-        XCTAssertFalse(Dedup.similarPayee("SGH", "Grab"))
+        XCTAssertFalse(Dedup.similarPayee("HVC", "Grab"))
         XCTAssertFalse(Dedup.similarPayee("7-Eleven", "Shell"))
     }
 
     func test_two_channels_of_one_spend_match() {
-        // a Wallet row's timestamp and an alert's day-precision date share a
-        // calendar day wherever the phone's zone puts midnight
-        var cal = Calendar(identifier: .gregorian); cal.timeZone = .current
-        let late = cal.date(from: DateComponents(year: 2026, month: 10, day: 26, hour: 23))!
-        let early = cal.date(from: DateComponents(year: 2026, month: 10, day: 26, hour: 0))!
+        // a Wallet tap's day and an alert's printed day are both calendar
+        // days, so a tap late at night and the alert's date agree
+        let zone = TimeZone(identifier: "Asia/Singapore")!
+        var cal = Calendar(identifier: .gregorian); cal.timeZone = zone
+        let lateTap = cal.date(from: DateComponents(year: 2026, month: 10, day: 26, hour: 23))!
         XCTAssertTrue(Dedup.likelyDuplicate(
-            amountCents: 4453, currency: "SGD", date: late, payee: "Sgh - Digestive & Live",
-            otherAmountCents: 4453, otherCurrency: "SGD",
-            otherDate: early, otherPayee: "SGH - DIGESTIVE & LIVE"))
+            amountCents: 3817, currency: "SGD", date: CalendarDate(lateTap, in: zone),
+            payee: "Hvc - Dental & Eye",
+            otherAmountCents: 3817, otherCurrency: "SGD",
+            otherDate: CalendarDate(year: 2026, month: 10, day: 26)!,
+            otherPayee: "HVC - DENTAL & EYE"))
     }
 
     func test_same_day_same_amount_different_payee_is_not_a_dupe() {
-        let day = Date(timeIntervalSince1970: 1_777_000_000)
+        let day = CalendarDate(year: 2026, month: 10, day: 26)!
         XCTAssertFalse(Dedup.likelyDuplicate(
             amountCents: 650, currency: "SGD", date: day, payee: "NTUC",
             otherAmountCents: 650, otherCurrency: "SGD", otherDate: day, otherPayee: "Grab"))
     }
 
     func test_different_day_or_amount_is_not_a_dupe() {
-        let day = Date(timeIntervalSince1970: 1_777_000_000)
-        let next = day.addingTimeInterval(2 * 86_400)
+        let day = CalendarDate(year: 2026, month: 10, day: 26)!
+        let next = day.adding(days: 2)
         XCTAssertFalse(Dedup.likelyDuplicate(
-            amountCents: 4453, currency: "SGD", date: day, payee: "SGH",
-            otherAmountCents: 4453, otherCurrency: "SGD", otherDate: next, otherPayee: "SGH"))
+            amountCents: 3817, currency: "SGD", date: day, payee: "HVC",
+            otherAmountCents: 3817, otherCurrency: "SGD", otherDate: next, otherPayee: "HVC"))
         XCTAssertFalse(Dedup.likelyDuplicate(
-            amountCents: 4453, currency: "SGD", date: day, payee: "SGH",
-            otherAmountCents: 4454, otherCurrency: "SGD", otherDate: day, otherPayee: "SGH"))
+            amountCents: 3817, currency: "SGD", date: day, payee: "HVC",
+            otherAmountCents: 3818, otherCurrency: "SGD", otherDate: day, otherPayee: "HVC"))
     }
 }
 
 /// G25: an alert is covered when a loaded statement row agrees on amount,
 /// currency, day and payee — and a record row covers at most one alert.
 final class RecordCoverTests: XCTestCase {
-    private let day = Date(timeIntervalSince1970: 1_777_000_000)
+    private let day = CalendarDate(year: 2026, month: 4, day: 24)!
 
-    private func spend(_ amount: Int = -4453, _ currency: String = "SGD",
+    private func spend(_ amount: Int = -3817, _ currency: String = "SGD",
                        payee: String = "", raw: String = "") -> Dedup.RecordSpend {
         Dedup.RecordSpend(amountCents: amount, currency: currency, date: day,
                           payee: payee, raw: raw)
     }
 
     func test_cover_matches_on_payee_or_raw() {
-        let record = [spend(payee: "SGH - Digestive & Live"),
+        let record = [spend(payee: "HVC - Dental & Eye"),
                       spend(-999, payee: "else", raw: "GRAB *RIDE 12.34 SINGAPORE")]
-        XCTAssertEqual(Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
-                                       date: day, payee: "Sgh Digestive Live",
+        XCTAssertEqual(Dedup.coveredBy(amountCents: 3817, currency: "SGD", direction: "outflow",
+                                       date: day, payee: "Hvc Dental Eye",
                                        in: record, taken: []), 0)
         // the row's payee may be empty when the alert still reads its raw merchant
         XCTAssertEqual(Dedup.coveredBy(amountCents: 999, currency: "SGD", direction: "outflow",
@@ -286,58 +420,89 @@ final class RecordCoverTests: XCTestCase {
     }
 
     func test_sign_amount_currency_and_day_all_have_to_agree() {
-        let record = [spend(payee: "SGH")]
+        let record = [spend(payee: "HVC")]
         // an outflow alert never takes an inflow row at the same amount
-        XCTAssertNil(Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
-                                     date: day, payee: "SGH",
-                                     in: [spend(4453, payee: "SGH")], taken: []))
-        XCTAssertNil(Dedup.coveredBy(amountCents: 4453, currency: "USD", direction: "outflow",
-                                     date: day, payee: "SGH", in: record, taken: []))
-        XCTAssertNil(Dedup.coveredBy(amountCents: 4454, currency: "SGD", direction: "outflow",
-                                     date: day, payee: "SGH", in: record, taken: []))
-        XCTAssertNil(Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
-                                     date: day.addingTimeInterval(86_400), payee: "SGH",
+        XCTAssertNil(Dedup.coveredBy(amountCents: 3817, currency: "SGD", direction: "outflow",
+                                     date: day, payee: "HVC",
+                                     in: [spend(3817, payee: "HVC")], taken: []))
+        XCTAssertNil(Dedup.coveredBy(amountCents: 3817, currency: "USD", direction: "outflow",
+                                     date: day, payee: "HVC", in: record, taken: []))
+        XCTAssertNil(Dedup.coveredBy(amountCents: 3818, currency: "SGD", direction: "outflow",
+                                     date: day, payee: "HVC", in: record, taken: []))
+        XCTAssertNil(Dedup.coveredBy(amountCents: 3817, currency: "SGD", direction: "outflow",
+                                     date: day.adding(days: 1), payee: "HVC",
                                      in: record, taken: []))
         // two real purchases at one amount on one day: the payee still has to agree
-        XCTAssertNil(Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
+        XCTAssertNil(Dedup.coveredBy(amountCents: 3817, currency: "SGD", direction: "outflow",
                                      date: day, payee: "NTUC", in: record, taken: []))
     }
 
     func test_one_record_spend_covers_one_alert() {
-        let record = [spend(payee: "SGH"), spend(payee: "SGH")]
-        let first = Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
-                                    date: day, payee: "SGH", in: record, taken: [])
+        let record = [spend(payee: "HVC"), spend(payee: "HVC")]
+        let first = Dedup.coveredBy(amountCents: 3817, currency: "SGD", direction: "outflow",
+                                    date: day, payee: "HVC", in: record, taken: [])
         XCTAssertEqual(first, 0)
-        let second = Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
-                                     date: day, payee: "SGH", in: record, taken: [0])
+        let second = Dedup.coveredBy(amountCents: 3817, currency: "SGD", direction: "outflow",
+                                     date: day, payee: "HVC", in: record, taken: [0])
         XCTAssertEqual(second, 1, "the second alert takes the next row, not the taken one")
-        XCTAssertNil(Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
-                                     date: day, payee: "SGH", in: record, taken: [0, 1]))
+        XCTAssertNil(Dedup.coveredBy(amountCents: 3817, currency: "SGD", direction: "outflow",
+                                     date: day, payee: "HVC", in: record, taken: [0, 1]))
     }
 
     func test_empty_payee_never_covers() {
-        XCTAssertNil(Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
+        XCTAssertNil(Dedup.coveredBy(amountCents: 3817, currency: "SGD", direction: "outflow",
                                      date: day, payee: "",
-                                     in: [spend(payee: "SGH")], taken: []))
+                                     in: [spend(payee: "HVC")], taken: []))
     }
 }
 
 final class AmountAndDateTests: XCTestCase {
     func test_amount_shapes() {
-        XCTAssertEqual(Amounts.parse("S$4.50"), Decimal(string: "4.50"))
-        XCTAssertEqual(Amounts.parse("SGD 1,234.50"), Decimal(string: "1234.50"))
-        XCTAssertEqual(Amounts.parse("-$9"), Decimal(string: "-9"))
-        XCTAssertNil(Amounts.parse("free"))
+        XCTAssertEqual(Amounts.read("S$4.50")?.magnitude, Decimal(string: "4.50"))
+        XCTAssertEqual(Amounts.read("SGD 1,234.50")?.magnitude, Decimal(string: "1234.50"))
+        XCTAssertEqual(Amounts.read("1234.50")?.magnitude, Decimal(string: "1234.50"))
+        XCTAssertEqual(Amounts.read("JPY 1,200")?.magnitude, 1200)
+        XCTAssertEqual(Amounts.read("JPY 1,200")?.decimals, 0)
+        XCTAssertNil(Amounts.read("free"))
+        XCTAssertNil(Amounts.read("4.50 SGD"), "a trailing code is anchor text, not part of the capture")
+        XCTAssertNil(Amounts.read("1,2,3"))
     }
 
     func test_amount_currencies() {
-        XCTAssertEqual(Amounts.split("SGD44.53")?.currency, "SGD")
-        XCTAssertEqual(Amounts.split("S$4.50")?.currency, "SGD")
-        XCTAssertEqual(Amounts.split("$4.50")?.currency, "SGD")
-        XCTAssertEqual(Amounts.split("US$9.00")?.currency, "USD")
-        XCTAssertEqual(Amounts.split("4.50")?.currency, nil)
-        XCTAssertEqual(Amounts.split("US$\n9.00")?.currency, "USD")
-        XCTAssertEqual(Amounts.split("-SGD4.50")?.amount, Decimal(string: "-4.50"))
+        XCTAssertEqual(Amounts.read("SGD38.17")?.currency, "SGD")
+        XCTAssertEqual(Amounts.read("S$4.50")?.currency, "SGD")
+        XCTAssertEqual(Amounts.read("$4.50")?.currency, "SGD")
+        XCTAssertEqual(Amounts.read("US$9.00")?.currency, "USD")
+        XCTAssertEqual(Amounts.read("USD 9.00")?.currency, "USD")
+        XCTAssertEqual(Amounts.read("RM 45.20")?.currency, "MYR")
+        XCTAssertEqual(Amounts.read("4.50")?.currency, nil)
+        XCTAssertEqual(Amounts.read("US$\n9.00")?.currency, "USD")
+    }
+
+    /// Audit: a printed minus is notation, never a second sign. The amount is
+    /// the size; the pattern's direction signs it at post time.
+    func test_a_printed_minus_keeps_the_size_and_says_so() {
+        let a = Amounts.read("-SGD4.50")
+        XCTAssertEqual(a?.magnitude, Decimal(string: "4.50"))
+        XCTAssertEqual(a?.printedNegative, true)
+        XCTAssertEqual(Amounts.read("-$9")?.magnitude, 9)
+    }
+
+    /// Audit: twelve digits before the point at most; a longer figure is a
+    /// misread that would overflow cents or milliunits downstream.
+    func test_a_huge_figure_is_not_an_amount() {
+        XCTAssertEqual(Amounts.read("999,999,999,999.99")?.magnitude, Decimal(string: "999999999999.99"))
+        XCTAssertNotNil(Amounts.read("123456789012"))
+        XCTAssertNil(Amounts.read("1234567890123"))
+        XCTAssertNil(Amounts.read("99999999999999999999"))
+        XCTAssertNil(Amounts.read("1,234,567,890,123"))
+    }
+
+    func test_three_decimals_read_exactly() {
+        let a = Amounts.read("KWD 1.255")
+        XCTAssertEqual(a?.magnitude, Decimal(string: "1.255"))
+        XCTAssertEqual(a?.decimals, 3)
+        XCTAssertNil(Amounts.read("KWD 1.2555"))
     }
 
     func test_date_formats() {
@@ -349,11 +514,49 @@ final class AmountAndDateTests: XCTestCase {
         }
     }
 
-    func test_partial_dates_take_the_fallback_year() {
-        let fallback = DateFormatter()
-        fallback.dateFormat = "yyyy-MM-dd"
-        let when = fallback.date(from: "2026-03-01")!
-        let d = Dates.parse("12 Oct", as: .ddMmm, fallback: when)
-        XCTAssertEqual(Calendar.current.component(.year, from: d!), 2026)
+    /// A yearless date takes the latest year that keeps it no later than
+    /// the day after the alert arrived. Mid-year the arrival's year is the
+    /// latest; across New Year the year rolls back.
+    func test_partial_dates_take_the_latest_year_not_after_arrival() {
+        func on(_ y: Int, _ m: Int, _ d: Int) -> CalendarDate { CalendarDate(year: y, month: m, day: d)! }
+        XCTAssertEqual(Dates.parse("12 Oct", as: .ddMmm, receivedOn: on(2026, 10, 27)), on(2026, 10, 12))
+        XCTAssertEqual(Dates.parse("12 Oct", as: .ddMmm, receivedOn: on(2027, 3, 1)), on(2026, 10, 12))
+        // "31 Dec" arriving just after midnight on New Year's Day is last year's
+        XCTAssertEqual(Dates.parse("31 Dec", as: .ddMmm, receivedOn: on(2027, 1, 1)), on(2026, 12, 31))
+        XCTAssertEqual(Dates.parse("31/12", as: .dmSlash, receivedOn: on(2027, 1, 1)), on(2026, 12, 31))
+        XCTAssertEqual(Dates.parse("28 Dec", as: .ddMmm, receivedOn: on(2027, 1, 2)), on(2026, 12, 28))
+        // a bank a zone ahead prints tomorrow: still this year's tomorrow
+        XCTAssertEqual(Dates.parse("1 Jan", as: .ddMmm, receivedOn: on(2026, 12, 31)), on(2027, 1, 1))
+        XCTAssertEqual(Dates.parse("30 Oct", as: .ddMmm, receivedOn: on(2026, 10, 29)), on(2026, 10, 30))
+        // two days ahead cannot be this year's
+        XCTAssertEqual(Dates.parse("31 Oct", as: .ddMmm, receivedOn: on(2026, 10, 29)), on(2025, 10, 31))
+    }
+
+    /// A day the year does not have is a misread, never rolled into the
+    /// next month.
+    func test_a_day_that_does_not_exist_is_refused() {
+        func on(_ y: Int, _ m: Int, _ d: Int) -> CalendarDate { CalendarDate(year: y, month: m, day: d)! }
+        XCTAssertNil(Dates.parse("29 Feb", as: .ddMmm, receivedOn: on(2027, 3, 1)))
+        XCTAssertEqual(Dates.parse("29 Feb", as: .ddMmm, receivedOn: on(2028, 3, 1)), on(2028, 2, 29))
+        XCTAssertNil(Dates.parse("31/02/2026", as: .dmy4Slash))
+        XCTAssertNil(Dates.parse("31 Apr 2026", as: .ddMmmYyyy))
+        XCTAssertNil(Dates.parse("2026-13-01", as: .ymdDash))
+        XCTAssertEqual(Dates.detectFormat("29 Feb"), .ddMmm, "a yearless leap day is still a date shape")
+    }
+
+    /// Every format reads to the same day, month names in any case, "Sept"
+    /// included.
+    func test_every_format_reads_its_day() {
+        let want = CalendarDate(year: 2026, month: 9, day: 7)!
+        let ref = CalendarDate(year: 2026, month: 10, day: 1)!
+        for (text, f) in [("7/9/2026", AlertPattern.DateFormat.dmy4Slash), ("07/09/26", .dmy2Slash),
+                          ("7 Sep 2026", .ddMmmYyyy), ("7 SEPTEMBER 2026", .ddMmmYyyy),
+                          ("7 Sept 2026", .ddMmmYyyy), ("7 sep 26", .ddMmmYy), ("7 Sep", .ddMmm),
+                          ("Sep 7, 2026", .mmmDdYyyy), ("September 7 2026", .mmmDdYyyy),
+                          ("7-9-2026", .dmy4Dash), ("07-09-26", .dmy2Dash), ("2026-09-07", .ymdDash),
+                          ("7/9", .dmSlash)] as [(String, AlertPattern.DateFormat)] {
+            XCTAssertEqual(Dates.parse(text, as: f, receivedOn: ref), want, text)
+        }
+        XCTAssertNil(Dates.parse("7 Septem 2026", as: .ddMmmYyyy))
     }
 }

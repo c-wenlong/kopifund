@@ -10,16 +10,32 @@ counts as spending nowhere: the real row does the counting once it lands.
 
 A waiting row is dismissed from the web app's Settings card; a wrong match is
 restored to waiting, which also records the pair on the row's `rejected` list
-so it is never offered again.
+so it is never offered again. A row left waiting `expire_days` (60 unless the
+record's settings say otherwise) becomes expired (`expire`): at each load and
+each time the card reads the rows, never on a timer. Every change of state
+stamps `state_changed_at`, so the history says when a row last moved. An
+expired row still matches a statement that lands late, and Put back gives a
+dismissed or expired row another full wait.
 """
 import json
 import re
-from datetime import date
+from datetime import date, datetime, timedelta
 
 from . import db
 from .errors import NotFound, Refused
 
-STATES = ("waiting", "matched", "dismissed")
+# G25: the schema's CHECK on pending_txn.state is built from this list
+# (db.enums), so a state added here needs a SCHEMA_VERSION of its own
+STATES = ("waiting", "matched", "dismissed", "expired")
+# the states confirm() still pairs with a statement row: an expired row was
+# never refused by the owner, so a statement that lands late still covers it
+MATCHABLE = ("waiting", "expired")
+# how many days a row waits for its statement before it expires; the
+# record's `setting` row EXPIRE_KEY changes it (a whole number of days in
+# EXPIRE_LIMITS), as the scam checks' thresholds are kept
+EXPIRE_DAYS = 60
+EXPIRE_KEY = "link.expire_days"
+EXPIRE_LIMITS = (1, 3650)
 # how much of a post's detail the table keeps out of the API answer
 MAX_IMPORT_ID = 200
 
@@ -37,9 +53,14 @@ def _row(d):
     try:
         # store the parsed form: "20261015" or a week date would slip past
         # fromisoformat, then SQLite's date() never sees them as that day
-        when = date.fromisoformat(when).isoformat()
+        day = date.fromisoformat(when)
     except ValueError:
         raise ValueError("date is YYYY-MM-DD")
+    # a day so late that its wait would run past the calendar is no spend
+    # (_expires_on could not add the wait to it)
+    if day > date.max - timedelta(days=EXPIRE_LIMITS[1]):
+        raise ValueError("date is too far ahead")
+    when = day.isoformat()
     amount = d.get("amount_minor")
     if not isinstance(amount, int) or isinstance(amount, bool):
         raise ValueError("amount_minor is integer cents")
@@ -56,8 +77,10 @@ def _row(d):
 def post_rows(conn, device_id, rows):
     """Upsert the phone's rows and answer {"accepted": n}: how many were new or
     corrected. A row that arrives again keeps its one record row (`import_id`
-    is unique); a retry of a row still waiting updates its fields, a row
-    already matched or dismissed is left alone. New rows confirm against the
+    is unique); a retry of a row still waiting updates its fields, and so
+    does one that corrects an expired row, which goes back to waiting with
+    a full wait (an unchanged retry leaves it expired); a row already
+    matched or dismissed is left alone. New rows confirm against the
     record as it stands, so one whose statement loaded first matches at once."""
     if not isinstance(rows, list):
         raise ValueError("rows is a list")
@@ -67,16 +90,23 @@ def post_rows(conn, device_id, rows):
         with db.transaction(conn):
             cur = conn.execute(
                 """INSERT INTO pending_txn(import_id, device_id, txn_date, amount_minor, currency,
-                                         payee, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)
+                                         payee, created_at, state_changed_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(import_id) DO UPDATE SET
                        txn_date = excluded.txn_date, amount_minor = excluded.amount_minor,
-                       currency = excluded.currency, payee = excluded.payee
-                   WHERE pending_txn.state = 'waiting'""",
+                       currency = excluded.currency, payee = excluded.payee,
+                       state_changed_at = CASE pending_txn.state WHEN 'expired'
+                           THEN excluded.state_changed_at ELSE pending_txn.state_changed_at END,
+                       state = 'waiting'
+                   WHERE pending_txn.state = 'waiting'
+                      OR (pending_txn.state = 'expired' AND
+                          (pending_txn.txn_date, pending_txn.amount_minor, pending_txn.currency, pending_txn.payee)
+                          IS NOT (excluded.txn_date, excluded.amount_minor, excluded.currency, excluded.payee))""",
                 (r["import_id"], device_id, r["date"], r["amount_minor"], r["currency"], r["payee"],
-                 db.now()))
+                 *(db.now(),) * 2))
             accepted += cur.rowcount > 0
     matched = confirm(conn)
+    expire(conn)
     return {"accepted": accepted, "matched": matched}
 
 
@@ -114,13 +144,13 @@ def _current_keys(conn, key):
 
 
 def confirm(conn):
-    """Pair every waiting row with the record row that is the same spend.
-    Returns the count newly matched.
+    """Pair every waiting or expired row with the record row that is the
+    same spend. Returns the count newly matched.
 
     A candidate must agree on amount, currency and date exactly and read like
-    the payee or the name its statement line carries — the raw merchant, and
+    the payee or the name its statement line carries (the raw merchant, and
     for rows that name only their recipient (a PayNow To:) the counterparty,
-    memo or bank line behind it — after normalising; two real purchases on
+    memo or bank line behind it) after normalising; two real purchases on
     one day at one amount exist, so money alone is not enough. One record row
     takes at most one pending row (claimed), a pair the owner refused is never
     offered again (rejected), and a made-up row is no spend (is_synthetic).
@@ -131,7 +161,7 @@ def confirm(conn):
     matched = 0
     with db.transaction(conn):
         waiting = conn.execute(
-            "SELECT * FROM pending_txn WHERE state = 'waiting' ORDER BY id").fetchall()
+            f"SELECT * FROM pending_txn WHERE state IN ({_listed(MATCHABLE)}) ORDER BY id").fetchall()
         if not waiting:
             return 0
         claimed = set()
@@ -156,8 +186,8 @@ def confirm(conn):
                         _similar(p["payee"], printed)):
                     continue
                 cur = conn.execute(
-                    "UPDATE pending_txn SET state = 'matched', matched_txn_key = ? "
-                    "WHERE id = ? AND state = 'waiting'", (c["txn_key"], p["id"]))
+                    "UPDATE pending_txn SET state = 'matched', matched_txn_key = ?, state_changed_at = ? "
+                    f"WHERE id = ? AND state IN ({_listed(MATCHABLE)})", (c["txn_key"], db.now(), p["id"]))
                 if cur.rowcount:
                     claimed.update(_current_keys(conn, c["txn_key"]))
                     matched += 1
@@ -165,27 +195,106 @@ def confirm(conn):
     return matched
 
 
+# ---------------------------------------------------------------- expiry
+
+def _listed(states):
+    return ", ".join(f"'{s}'" for s in states)
+
+
+def expire_days(conn):
+    """How many days a row waits before it expires: the record's EXPIRE_KEY
+    setting when it is a whole number in EXPIRE_LIMITS, else EXPIRE_DAYS."""
+    row = conn.execute("SELECT value FROM setting WHERE key = ?", (EXPIRE_KEY,)).fetchone()
+    try:
+        value = json.loads(row[0]) if row else None
+    except ValueError:
+        value = None
+    low, high = EXPIRE_LIMITS
+    if isinstance(value, bool) or not isinstance(value, int) or not low <= value <= high:
+        return EXPIRE_DAYS
+    return value
+
+
+def _local_day(stamp):
+    """The local calendar day of a stored UTC stamp, or None."""
+    try:
+        return datetime.fromisoformat(stamp).astimezone().date()
+    except (TypeError, ValueError):
+        return None
+
+
+def _expires_on(r, days):
+    """The day a waiting row expires: `days` after its date, or after it
+    last became waiting (a late post, a Put back) when that is later, so a
+    row put back gets a full wait of its own."""
+    since = date.fromisoformat(r["txn_date"])
+    became = _local_day(r["state_changed_at"])
+    if became and became > since:
+        since = became
+    try:
+        return since + timedelta(days=days)
+    except OverflowError:
+        return date.max           # a row stored before _row refused such a day never expires
+
+
+def _due(r, today, days):
+    return today >= _expires_on(r, days)
+
+
+def expire(conn, today=None):
+    """Every waiting row whose wait is over becomes expired; the number
+    expired. Run at each load and as the rows are read for the card, never
+    on a timer. Reads first and writes only when a row is due, so a read
+    with nothing to expire takes no write lock."""
+    today = today or date.today()
+
+    def due():
+        days = expire_days(conn)
+        return [r["id"] for r in conn.execute(
+            "SELECT id, txn_date, state_changed_at FROM pending_txn WHERE state = 'waiting'")
+            if _due(r, today, days)]
+    if not due():
+        return 0
+    # decided again under the write lock: a correction or a Put back that
+    # landed since the first look gave its row a new wait
+    with db.transaction(conn):
+        stamp = db.now()
+        return sum(conn.execute(
+            "UPDATE pending_txn SET state = 'expired', state_changed_at = ? WHERE id = ? AND state = 'waiting'",
+            (stamp, i)).rowcount for i in due())
+
+
 # ---------------------------------------------------------------- reads
 
-def waiting_count(conn):
-    return conn.execute("SELECT COUNT(*) FROM pending_txn WHERE state = 'waiting'").fetchone()[0]
+def waiting_count(conn, today=None):
+    """The rows still waiting, as Home's Needs your eye counts them. A pure
+    read (the copilot reads Home on a read-only connection): a row whose
+    wait is over but that no load or read has expired yet is not counted,
+    so Home never counts a row the history already shows as expired."""
+    today = today or date.today()
+    days = expire_days(conn)
+    return sum(1 for r in conn.execute(
+        "SELECT txn_date, state_changed_at FROM pending_txn WHERE state = 'waiting'")
+        if not _due(r, today, days))
 
 
 def rows(conn, device_names=None):
-    """Every pending row as the API sends it, waiting first then matched then
-    dismissed, newest of each first. `device` names the paired phone the row
-    came from, "" when its registry row is gone."""
+    """Every phone row ever posted as the API sends it, newest first (by
+    its date, then the latest posted). `device` names the paired phone the
+    row came from, "" when its registry row is gone; `state_changed_at` is
+    when it last changed state (posted, matched, dismissed, expired or put
+    back), `posted_at` when the phone first sent it, and `expires_on` the
+    day a waiting row expires (None for the other states)."""
     names = device_names if device_names is not None else {}
-    out = []
-    order = {"waiting": 0, "matched": 1, "dismissed": 2}
-    found = conn.execute("SELECT * FROM pending_txn").fetchall()
-    found.sort(key=lambda r: (order.get(r["state"], 3), -r["id"]))
-    for r in found:
-        out.append({"import_id": r["import_id"], "device_id": r["device_id"],
-                    "device": names.get(r["device_id"], ""), "date": r["txn_date"],
-                    "amount_minor": r["amount_minor"], "currency": r["currency"], "payee": r["payee"],
-                    "state": r["state"], "matched_txn_key": r["matched_txn_key"]})
-    return out
+    days = expire_days(conn)
+    found = conn.execute("SELECT * FROM pending_txn ORDER BY txn_date DESC, id DESC").fetchall()
+    return [{"import_id": r["import_id"], "device_id": r["device_id"],
+             "device": names.get(r["device_id"], ""), "date": r["txn_date"],
+             "amount_minor": r["amount_minor"], "currency": r["currency"], "payee": r["payee"],
+             "state": r["state"], "matched_txn_key": r["matched_txn_key"],
+             "state_changed_at": r["state_changed_at"] or r["created_at"], "posted_at": r["created_at"],
+             "expires_on": _expires_on(r, days).isoformat() if r["state"] == "waiting" else None}
+            for r in found]
 
 
 # ---------------------------------------------------------------- the owner's calls
@@ -199,14 +308,24 @@ def dismiss(conn, import_id):
             raise NotFound(f"no pending row {import_id}")
         if row["state"] != "waiting":
             raise Refused("Only a waiting row can be dismissed")
-        conn.execute("UPDATE pending_txn SET state = 'dismissed' "
-                     "WHERE import_id = ? AND state = 'waiting'", (import_id,))
+        conn.execute("UPDATE pending_txn SET state = 'dismissed', state_changed_at = ? "
+                     "WHERE import_id = ? AND state = 'waiting'", (db.now(), import_id))
+
+
+def dismiss_all(conn):
+    """Dismiss every waiting row; the number dismissed. A row expires on its
+    own only after `expire_days`, so the owner clears sooner the ones no
+    statement will confirm here, and Put back undoes any one of them."""
+    with db.transaction(conn):
+        return conn.execute("UPDATE pending_txn SET state = 'dismissed', state_changed_at = ? "
+                            "WHERE state = 'waiting'", (db.now(),)).rowcount
 
 
 def restore(conn, import_id):
-    """Put a matched or dismissed row back to waiting. A row that was matched
-    is also given the row it matched on its `rejected` list: the owner said it
-    was the wrong row, so the pair is never offered again."""
+    """Put a matched, dismissed or expired row back to waiting, with a full
+    wait from today (`_due`). A row that was matched is also given the row it
+    matched on its `rejected` list: the owner said it was the wrong row, so
+    the pair is never offered again."""
     with db.transaction(conn):
         row = conn.execute("SELECT state, matched_txn_key, rejected FROM pending_txn "
                            "WHERE import_id = ?", (import_id,)).fetchone()
@@ -217,6 +336,7 @@ def restore(conn, import_id):
         rejected = json.loads(row["rejected"] or "[]")
         if row["state"] == "matched" and row["matched_txn_key"]:
             rejected = sorted({*rejected, row["matched_txn_key"]})
-        conn.execute("""UPDATE pending_txn SET state = 'waiting', matched_txn_key = NULL, rejected = ?
+        conn.execute("""UPDATE pending_txn SET state = 'waiting', matched_txn_key = NULL, rejected = ?,
+                               state_changed_at = ?
                         WHERE import_id = ? AND state != 'waiting'""",
-                     (json.dumps(rejected), import_id))
+                     (json.dumps(rejected), db.now(), import_id))

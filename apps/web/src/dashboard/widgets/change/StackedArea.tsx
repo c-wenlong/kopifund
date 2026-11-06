@@ -6,7 +6,6 @@ import {
   CartesianGrid,
   ComposedChart,
   Line,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
@@ -15,7 +14,7 @@ import { MaybeCard } from "../../../components/Card";
 import { EmptyState } from "../../../components/EmptyState";
 import { Loading, Problem } from "../../../components/States";
 import {
-  activeDot, GRID, KeyItem, SeriesLegend, Swatch, TipBox, TipRow, useDotClick, useHidden, X_AXIS, Y_AXIS,
+  activeDot, ChartBox, fillClass, GRID, KeyItem, type ChartHeight, SeriesLegend, Swatch, TipBox, TipRow, useDotClick, useHidden, X_AXIS, Y_AXIS,
 } from "../../../components/chartKit";
 import { useChartView, ViewSwitch, viewsOf, type ChartView } from "../../../components/ViewSwitch";
 import { tickLabel } from "../../../stats/hint";
@@ -38,8 +37,8 @@ export type StackedAreaConfig = {
   series: SeriesSpec[];
   /** the range a query without its own inherits, e.g. a dashboard-level filter */
   range?: WidgetRange;
-  /** the chart's height; the widget's cell decides it on a dashboard, the viewport otherwise */
-  height?: number;
+  /** the chart's height: "fill" on a dashboard (its cell decides), the viewport's otherwise */
+  height?: ChartHeight;
 };
 
 /** An example binding: net worth's parts by month, the Net worth page as a widget. */
@@ -80,7 +79,7 @@ function StackedAreaLoad({ config, bare }: { config: StackedAreaConfig; bare: bo
 type Row = Record<string, number | string | null>;
 
 /** Stacked: the series piled up. Lines: each on its own scale. Total: the one line. */
-export function StackedAreaChart({ frame, view, height }: { frame: Frame; view: ChartView; height?: number }) {
+export function StackedAreaChart({ frame, view, height }: { frame: Frame; view: ChartView; height?: ChartHeight }) {
   const autoHeight = useChartHeight();
   height ??= autoHeight;
   const { hidden, toggle } = useHidden(frame.series.map((s) => s.id));
@@ -106,12 +105,12 @@ export function StackedAreaChart({ frame, view, height }: { frame: Frame; view: 
   const clickable = !total && linked.length > 0;
   const dots = useDotClick();
   return (
-    <div role="img" aria-label={frameSummary(frame)}>
+    <div role="img" aria-label={frameSummary(frame)} className={fillClass(height)}>
       {total
         ? <SeriesLegend items={[]} hidden={hidden} onToggle={() => {}} extra={<KeyItem><Swatch colour={TOTAL_INK} line />Total</KeyItem>} />
         : <SeriesLegend hidden={hidden} onToggle={toggle}
           items={frame.series.map((s) => ({ key: s.id, label: s.name, colour: s.colour, line: view === "lines" }))} />}
-      <ResponsiveContainer width="100%" height={height}>
+      <ChartBox height={height}>
         <ComposedChart data={rows} stackOffset="sign" margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
           onClick={clickable ? (st: { activeLabel?: string | number }) => {
             const key = dots.take();
@@ -142,7 +141,7 @@ export function StackedAreaChart({ frame, view, height }: { frame: Frame; view: 
               activeDot={activeDot(TOTAL_INK)} connectNulls isAnimationActive={false} />
           )}
         </ComposedChart>
-      </ResponsiveContainer>
+      </ChartBox>
       {frame.note && <p className="m-0 mt-2 text-[12px] text-ink-3">{frame.note}</p>}
     </div>
   );

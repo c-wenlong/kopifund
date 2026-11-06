@@ -10,22 +10,22 @@ final class PatternBuilderUITests: XCTestCase {
         Transaction Alerts
         Problems viewing this email? Select "always display images".
 
-        Transaction Ref: PLPE4630012254527153
+        Transaction Ref: PLPE8203910475561239
         Dear Sir / Madam,
-        We refer to your PayLah! Scan & Pay Transfer dated 27 Oct. We are pleased to confirm that the transaction was completed.
+        We refer to your PayLah! Scan & Pay Transfer dated 12 Oct. We are pleased to confirm that the transaction was completed.
 
         Date & Time:
-        27 Oct 14:55 (SGT)
+        12 Oct 09:40 (SGT)
         Amount:
-        SGD7.30
+        SGD6.40
         From:
-        PayLah! Wallet (Mobile ending 0869)
+        PayLah! Wallet (Mobile ending 2468)
         To:
-        CHINESE COOKED FOOD
+        GOLDEN WOK KITCHEN
         """
 
     private func openBuilder(_ app: XCUIApplication) {
-        app.tabBars.buttons["Patterns"].tap()
+        openTab("Patterns", in: app)
         app.buttons["plus"].waitForExistence(timeout: 5)
         app.buttons["plus"].tap()
         let editor = app.textViews.firstMatch
@@ -37,14 +37,14 @@ final class PatternBuilderUITests: XCTestCase {
     }
 
     /// The confident guesses arrive already tagged: amount, payee and date
-    /// out of the box on a real PayLah-shaped alert.
+    /// out of the box on an invented PayLah-shaped alert.
     func testDetectorPreTagsAllThreeFields() throws {
         let app = XCUIApplication()
         app.launch()
         openBuilder(app)
         XCTAssertTrue(app.staticTexts["3 of 3 found"].exists)
-        XCTAssertTrue(app.staticTexts["CHINESE COOKED FOOD"].exists)
-        XCTAssertTrue(app.staticTexts["SGD7.30"].exists)
+        XCTAssertTrue(app.staticTexts["GOLDEN WOK KITCHEN"].exists)
+        XCTAssertTrue(app.staticTexts["SGD6.40"].exists)
     }
 
     /// A horizontal drag over words tags the whole run with the armed field:

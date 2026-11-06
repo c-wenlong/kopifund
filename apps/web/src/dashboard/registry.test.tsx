@@ -3,16 +3,17 @@ import { revalidate, type DashboardLayout, type DashboardLayouts, type Dashboard
 import { Toaster } from "../components/Toast";
 import type { CategoriesState, WidgetAnswer, WidgetQuery } from "../types.gen";
 import { Dashboard } from "./Dashboard";
-import { Grid } from "./Grid";
+import { Grid, WIDGET_FAILED } from "./Grid";
+import { DEFAULT_PRESET } from "./presets";
 import { WIDGETS, type WidgetDef } from "./registry";
-import { SizedObserver } from "./widgets/change/testkit";
+import { json, useSizedCharts } from "../test-helpers";
+import { canonicalJson } from "../widgets";
+import { H_SMALL } from "../components/chartKit";
 
 // G26: the registry wired end to end: every `type` the picker offers draws its
 // real widget through bind.tsx against a stand-in server, a saved layout
 // reloads into the same widgets, and a layout saved while the placeholders
 // held the ids keeps the question it asked. All figures and names invented.
-
-const ok = (data: unknown) => new Response(JSON.stringify(data), { status: 200 });
 
 /** The record's buckets/categories, invented, for the bucket-coloured widgets. */
 const CATS: CategoriesState = {
@@ -75,9 +76,9 @@ function stubServer(saved: { layouts: DashboardLayout[]; active: string | null }
         posts.push({ url, body });
         saved.layouts = body.layouts.map((d: DashboardLayout) => doc(d.id, d.name, d.widgets));
         saved.active = body.active ?? saved.active;
-        return ok({ layouts: saved.layouts, active: saved.active });
+        return json({ layouts: saved.layouts, active: saved.active });
       }
-      return ok({ layouts: saved.layouts, active: saved.active } satisfies DashboardLayouts);
+      return json({ layouts: saved.layouts, active: saved.active } satisfies DashboardLayouts);
     }
     const one = url.match(/^\/api\/dashboard\/layouts\/([a-z0-9_-]+)$/);
     if (one && init?.method === "POST") {
@@ -86,15 +87,15 @@ function stubServer(saved: { layouts: DashboardLayout[]; active: string | null }
       const d = doc(one[1], body.name, body.widgets ?? []);
       saved.layouts = [...saved.layouts.filter((x) => x.id !== d.id), d];
       if (body.active) saved.active = d.id;
-      return ok(d);
+      return json(d);
     }
     if (url.startsWith("/api/dashboard/query")) {
       asked.push(url);
       const q = JSON.parse(decodeURIComponent(new URL(url, "http://t").searchParams.get("q") ?? ""));
-      return ok(answerFor(q));
+      return json(answerFor(q));
     }
-    if (url.startsWith("/api/categories")) return ok(CATS);
-    return new Response(JSON.stringify({ error: "not here" }), { status: 404 });
+    if (url.startsWith("/api/categories")) return json(CATS);
+    return json({ error: "not here" }, 404);
   });
   return { posts, asked };
 }
@@ -117,14 +118,8 @@ function stubSize(width = 800, height = 400) {
     { width, height, top: 0, left: 0, right: width, bottom: height, x: 0, y: 0, toJSON: () => ({}) } as DOMRect);
 }
 
-beforeEach(() => {
-  globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver;
-  stubSize();
-});
-
-afterEach(() => {
-  vi.restoreAllMocks();
-});
+useSizedCharts();
+beforeEach(() => stubSize());
 
 describe("registry", () => {
   it("draws every registered kind's real widget on the grid, from its own defaults", async () => {
@@ -189,11 +184,8 @@ describe("registry", () => {
   it("asks each widget's own query, the one its registry defaults bound", async () => {
     const { asked } = stubServer({ layouts: [], active: null });
     render(<Grid widgets={WIDGETS.map(spawn)} interactive={false} onArrange={vi.fn()} onRemove={vi.fn()} />);
-    // key order differs between a saved row and a built query; compare the fields, not the JSON
-    const canon = (q: WidgetQuery) => JSON.stringify({
-      source: q.source, metric: q.metric, dimension: q.dimension,
-      range: q.range, split: q.split, filters: q.filters,
-    });
+    // key order differs between a saved row and a built query; compare canonically
+    const canon = (q: WidgetQuery) => canonicalJson(q);
     await waitFor(() => {
       const queries = asked.map((u) => canon(JSON.parse(decodeURIComponent(new URL(u, "http://t").searchParams.get("q") ?? ""))));
       const askedFor = (q: WidgetQuery) => queries.includes(canon(q));
@@ -201,19 +193,94 @@ describe("registry", () => {
       for (const def of WIDGETS) {
         const made = def.make?.();
         if (made?.query) expect(askedFor(made.query)).toBe(true);
-        const opts = (made?.options ?? {}) as { series?: { query?: WidgetQuery }[]; flows?: { query?: WidgetQuery }[]; balance?: { query?: WidgetQuery }; range?: WidgetQuery["range"] };
-        // the widgets fill in for a query without its own range, the way shared.tsx's queryWithRange does
-        const inherit = (q: WidgetQuery) => (opts.range && !q.range ? { ...q, range: opts.range } : q);
+        const opts = (made?.options ?? {}) as { series?: { query?: WidgetQuery }[]; flows?: { query?: WidgetQuery }[]; balance?: { query?: WidgetQuery } };
         for (const spec of [...(opts.series ?? []), ...(opts.flows ?? [])]) {
-          if (spec.query) expect(askedFor(inherit(spec.query))).toBe(true);
+          if (spec.query) expect(askedFor(spec.query)).toBe(true);
         }
-        if (opts.balance?.query) expect(askedFor(inherit(opts.balance.query))).toBe(true);
+        if (opts.balance?.query) expect(askedFor(opts.balance.query)).toBe(true);
       }
       // the flow widget asks its own income / spend / transfers trio
       expect(askedFor({ source: "spending", metric: "income", dimension: "month" })).toBe(true);
       expect(askedFor({ source: "spending", metric: "spend", dimension: "bucket" })).toBe(true);
       expect(askedFor({ source: "spending", metric: "transfers", dimension: "bucket" })).toBe(true);
     }, { timeout: 3000 });
+  });
+});
+
+describe("registry defaults", () => {
+  it("binds a new waterfall to no fixed months, so the bridge keeps following the record", () => {
+    // a range written when the widget is added would freeze it on that year;
+    // left unset, Waterfall.tsx asks the balance from the month before the
+    // flows' own first month, so both ends always match the flows
+    const made = WIDGETS.find((d) => d.type === "waterfall")!.make!();
+    expect(made.options).not.toHaveProperty("range");
+  });
+
+  it("reads a fall in the default board's spend as good, a rise as a warning", () => {
+    const tiles = DEFAULT_PRESET.widgets().filter((w) => w.type === "kpi");
+    const spend = tiles.find((w) => w.query?.source === "spending")!;
+    expect(spend.options?.goodWhen).toBe("down");
+    // net worth and runway read a rise as good
+    for (const w of tiles.filter((t) => t !== spend)) expect(w.options?.goodWhen).toBe("up");
+  });
+});
+
+describe("a widget fits its cell", () => {
+  // jsdom lays nothing out, so this checks the wiring that does the fitting:
+  // every chart takes the room its card leaves ("fill") rather than a fixed
+  // height that spills past a short cell or ignores a resize
+  it("draws each chart at the card's remaining height, the figure without a box of its own", async () => {
+    stubServer({ layouts: [], active: null });
+    const widgets = WIDGETS.filter((d) => d.type !== "flow" && d.type !== "note").map(spawn);
+    const { container } = render(<Grid widgets={widgets} interactive onArrange={vi.fn()} onRemove={vi.fn()} />);
+    const charts = ["A line over months 1", "A composition over time 2", "A bridge between balances 3",
+      "A split 4", "A ring 5", "A nested split 6"];
+    for (const name of charts) {
+      const card = screen.getByRole("article", { name });
+      await waitFor(() => expect(card.querySelector(".recharts-responsive-container")).not.toBeNull());
+      const box = card.querySelector<HTMLElement>(".recharts-responsive-container")!;
+      expect(box.style.height, name).toBe("100%");
+      expect(box.parentElement!.className, name).toContain("flex-1");
+    }
+    // the figure: the grid's card is its box, so no tile inside it
+    const kpi = screen.getByRole("article", { name: "A figure 0" });
+    await within(kpi).findByText(/vs Aug 26/);
+    expect(kpi.querySelector(".bg-tile")).toBeNull();
+    expect(container).not.toHaveTextContent(WIDGET_FAILED);
+  });
+
+  it("draws a stacked card's chart at a phone's height, the card growing to hold it", async () => {
+    stubServer({ layouts: [], active: null });
+    const w: DashboardWidget = { id: "w-1", type: "line", title: "Spend", layout: { x: 0, y: 0, w: 8, h: 3 } };
+    render(<Grid widgets={[w]} interactive={false} onArrange={vi.fn()} onRemove={vi.fn()} />);
+    const card = screen.getByRole("article", { name: "Spend" });
+    // a stacked card has no fixed height to fill: "fill" there would collapse the chart
+    await waitFor(() => expect(card.querySelector(".recharts-responsive-container")).not.toBeNull());
+    expect(card.querySelector<HTMLElement>(".recharts-responsive-container")!.style.height).toBe(`${H_SMALL}px`);
+    expect(card.style.height).toBe("");
+  });
+});
+
+describe("a widget whose binding changes its series count", () => {
+  // useAnswers asks one hook per series: drawn outside the grid's boundary, a
+  // widget kept mounted across the change would throw on the new hook count
+  const month = (metric: string) => ({ query: { source: "spending", metric, dimension: "month" } as WidgetQuery });
+  const cash = { query: { source: "savings-runway", metric: "cash", dimension: "month" } as WidgetQuery };
+  const cases: [string, Record<string, unknown>, Record<string, unknown>][] = [
+    ["line", { series: [month("spend")] }, { series: [month("spend"), month("income")] }],
+    ["area", { series: [month("spend")] }, { series: [month("spend"), month("income"), month("net")] }],
+    ["waterfall", { balance: cash, flows: [month("net")] }, { balance: cash, flows: [month("income"), month("spend")] }],
+  ];
+  it.each(cases)("%s redraws with the new count instead of throwing", async (type, before, after) => {
+    stubServer({ layouts: [], active: null });
+    const Body = WIDGETS.find((d) => d.type === type)!.component;
+    const row = (options: Record<string, unknown>): DashboardWidget =>
+      ({ id: "w-1", type, title: "Bound", layout: { x: 0, y: 0, w: 8, h: 3 }, options });
+    const { container, rerender } = render(<Body widget={row(before)} />);
+    await waitFor(() => expect(container.querySelector("[role=img]")).not.toBeNull());
+    rerender(<Body widget={row(after)} />);
+    await waitFor(() => expect(container.querySelector("[role=img]")).not.toBeNull());
+    expect(container).not.toHaveTextContent(WIDGET_FAILED);
   });
 });
 

@@ -401,7 +401,7 @@ class Files(unittest.TestCase):
             (folder / "2024").mkdir()
             pdf = folder / "2024" / "2024.pdf"
             pdf.write_bytes(b"%PDF-1.4")
-            with mock.patch.object(pc.subprocess, "run") as run:
+            with mock.patch("subprocess.run") as run:
                 run.return_value = mock.Mock(stdout=raw("yearly-2024"))
                 s = pc.parse_pdf(pdf, folder)
             self.assertEqual(run.call_args[0][0][:2], ["pdftotext", "-layout"])
@@ -415,7 +415,7 @@ class Files(unittest.TestCase):
             folder = Path(tmp)
             pdf = folder / "2024.pdf"
             pdf.write_bytes(b"%PDF-1.4")
-            with mock.patch.object(pc.subprocess, "run") as run:
+            with mock.patch("subprocess.run") as run:
                 run.return_value = mock.Mock(stdout=raw("yearly-2024"))
                 pc.parse_pdf(pdf, folder, write_text=False)
             self.assertFalse((folder / "2024.txt").exists())
@@ -429,7 +429,7 @@ class Files(unittest.TestCase):
                 (folder / str(year)).mkdir()
                 (folder / str(year) / f"{year}.pdf").write_bytes(b"%PDF-1.4")
                 dumps[str(folder / str(year) / f"{year}.pdf")] = raw(name)
-            with mock.patch.object(pc.subprocess, "run") as run:
+            with mock.patch("subprocess.run") as run:
                 run.side_effect = lambda cmd, **kw: mock.Mock(stdout=dumps[cmd[2]])
                 out = pc.parse_folder(folder, write_text=False)
             self.assertEqual([s["year"] for s in out], [2016, 2020, 2024])
@@ -449,7 +449,7 @@ class Files(unittest.TestCase):
                 (folder / str(year) / f"{year}.pdf").write_bytes(b"%PDF-1.4")
                 dumps[str(folder / str(year) / f"{year}.pdf")] = body
             rejected = []
-            with mock.patch.object(pc.subprocess, "run") as run:
+            with mock.patch("subprocess.run") as run:
                 run.side_effect = lambda cmd, **kw: mock.Mock(stdout=dumps[cmd[2]])
                 out = pc.parse_folder(folder, write_text=False, rejected=rejected)
             self.assertEqual([s["year"] for s in out], [2020])

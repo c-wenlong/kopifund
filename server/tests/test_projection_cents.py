@@ -32,6 +32,7 @@ from analytics.stats import forward_view as fv
 from analytics_fixture import settings
 from finance import cpf_rules as rules
 from finance.money import from_cents, to_cents
+import support
 
 FIXTURE_CONFIG = Path(__file__).resolve().parent / "fixtures" / "config.toml"
 BIRTH = date(1990, 5, 20)
@@ -282,7 +283,10 @@ class TheSamePlanInBoth(unittest.TestCase):
         self.rng = random.Random(29)
 
     def test_gross_and_investing_agree_month_by_month(self):
-        today = date.today()
+        # a fixed today, for the random plans drawn around it and for both projections
+        # (analytics/income.py reads the clock), so every run checks the same plans
+        today = date(2026, 10, 12)
+        self.enterContext(support.today_is(today))
         this = today.strftime("%Y-%m")
         for _ in range(60):
             rows = []

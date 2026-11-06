@@ -6,6 +6,7 @@ No test calls the network: the provider is a fake transport that replays
 scripted replies. No test touches the Keychain or the real data folder."""
 import isolate  # noqa: F401  first: no test writes the real record, cache, Keychain or .env
 import http.client
+import io
 import json
 import os
 import sqlite3
@@ -13,7 +14,6 @@ import stat
 import tempfile
 import threading
 import unittest
-import warnings
 from contextlib import closing
 from datetime import date
 from pathlib import Path
@@ -21,6 +21,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 import serve
+import support
 from finance import ai, api, copilot, db, keys, setup
 from finance import copilot_tools as tools
 from finance import types as wire
@@ -85,15 +86,12 @@ class Record(unittest.TestCase):
         cls.env.stop()
         cls.tmp.cleanup()
 
-    def setUp(self):
-        # serve.answer and serve.write called directly leave the record open to their caller
-        self.enterContext(warnings.catch_warnings())
-        warnings.simplefilter("ignore", ResourceWarning)
-
     def context(self):
         conn = tools.open_readonly(self.path)
         self.addCleanup(conn.close)
-        return tools.Context(conn, self.path, {}, (), None, date(2026, 10, 23))
+        ctx = tools.Context(conn, self.path, {}, (), None, date(2026, 10, 23))
+        self.addCleanup(ctx.close)  # the query tool's in-memory copy
+        return ctx
 
     def call(self, ctx, tool, **args):
         text, failed = tools.run(ctx, tool, args)
@@ -448,6 +446,18 @@ class ToolsTest(Record):
         self.assertTrue(failed)
         self.assertIn("Results there are", text)
 
+    def test_a_month_that_does_not_exist_is_refused_back_to_the_model(self):
+        """A bad month is the model's argument to correct, never the end of the answer."""
+        ctx = self.context()
+        for tool, args in (("transactions", {"month": "2026-13"}), ("transactions", {"from": "0000-05"}),
+                           ("spending", {"from": "0000-05"}), ("spending", {"to": "2026-00"}),
+                           ("suggest_change", {"kind": "budget", "category": "Groceries", "month": "0000-01",
+                                               "planned_minor": 100})):
+            with self.subTest(tool=tool, args=args):
+                text, failed = tools.run(ctx, tool, args)
+                self.assertTrue(failed, text)
+                self.assertRegex(text, "month")
+
     def test_a_result_that_counts_rows_links_to_exactly_those_rows(self):
         ctx = self.context()
         t = self.call(ctx, "transactions", category="Groceries")
@@ -662,6 +672,36 @@ class ToolsTest(Record):
             with self.subTest(args=args):
                 self.assertTrue(tools.run(ctx, "suggest_change", args)[1])
 
+    def test_a_wrongly_typed_argument_is_a_tool_error_the_model_can_fix(self):
+        # Audit: a list or a number where a tool wants a string came back as an
+        # exception, which ended the whole answer; now the model reads what was wrong
+        ctx = self.context()
+        for name, args in (("stat_result", {"id": ["x"]}),
+                           ("suggest_change", {"kind": "rule", "pattern": 5, "category": "Groceries"}),
+                           ("suggest_change", {"kind": ["rule"]}),
+                           ("suggest_change", {"kind": "category", "key": 5, "category": "Groceries"}),
+                           ("transactions", {"limit": "5"}),
+                           ("spending", ["not", "an", "object"])):
+            with self.subTest(tool=name, args=args):
+                text, failed = tools.run(ctx, name, args)
+                self.assertTrue(failed)
+                self.assertIsInstance(text, str)
+                self.assertTrue(text)
+
+    def test_a_card_shows_every_field_it_would_save(self):
+        # Audit: a category card's payee and a trip card's notes were saved on
+        # Confirm without the card ever showing them
+        ctx = self.context()
+        self.call(ctx, "suggest_change", kind="category", key="x1", category="Person to person", payee="Jane")
+        card = ctx.cards[-1]
+        self.assertEqual(card["request"]["body"]["payee"], "Jane")
+        self.assertIn("payee Jane", card["summary"])
+        self.call(ctx, "suggest_change", kind="trip", name="Osaka", start="2026-09-01", end="2026-09-07",
+                  countries=["JPN"], why="the September visit")
+        card = ctx.cards[-1]
+        self.assertEqual(card["request"]["body"]["notes"], "the September visit")
+        self.assertTrue(any("the September visit" in line for line in card["preview"]), card["preview"])
+
     def test_a_card_the_owner_confirms_saves_through_the_endpoint_it_names(self):
         ctx = self.context()
         self.call(ctx, "suggest_change", kind="budget", category="Groceries", month="2026-09", planned_minor=45_000)
@@ -669,12 +709,12 @@ class ToolsTest(Record):
         # G22: no undo captured when the card was made: the amount may change before Confirm
         self.assertIsNone(card["undo"])
         with mock.patch("finance.stats_rebuild.refresh_stats"):
-            serve.write(card["request"]["path"], {}, json.dumps(card["request"]["body"]).encode())
+            support.write(card["request"]["path"], {}, json.dumps(card["request"]["body"]).encode())
             with closing(db.connect()) as conn:
                 self.assertEqual(conn.execute("SELECT planned_minor FROM budget WHERE month = '2026-09'").fetchone()[0],
                                  45_000)
             # what the page's Undo sends: the amount it read at Confirm, to the same endpoint
-            serve.write(card["request"]["path"], {}, json.dumps({**card["request"]["body"], "planned": 30_000}).encode())
+            support.write(card["request"]["path"], {}, json.dumps({**card["request"]["body"], "planned": 30_000}).encode())
         with closing(db.connect()) as conn:
             self.assertEqual(conn.execute("SELECT planned_minor FROM budget WHERE month = '2026-09'").fetchone()[0],
                              30_000)
@@ -716,7 +756,7 @@ class StreamTest(Record):
             self.assertEqual(problems(e, wire.CopilotEvent), [])
         # the thread is saved with its page, the folder 700 and the file 600
         tid = events[0]["thread"]["id"]
-        thread = serve.answer(f"/api/copilot/threads/{tid}", {})
+        thread = support.answer(f"/api/copilot/threads/{tid}", {})
         self.assertEqual(problems(thread, wire.CopilotThread), [])
         self.assertEqual(thread["messages"][0]["page"], {"path": "/trips", "title": "Trips", "filters": {}})
         self.assertEqual(stat.S_IMODE(copilot.threads_dir().stat().st_mode), 0o700)
@@ -750,28 +790,28 @@ class StreamTest(Record):
     def test_threads_round_trip(self):
         events = ask("First question here", Script(answer("First answer.")))
         tid = events[0]["thread"]["id"]
-        listed = serve.answer("/api/copilot/threads", {})
+        listed = support.answer("/api/copilot/threads", {})
         self.assertEqual(problems(listed, wire.CopilotThreads), [])
         mine = next(t for t in listed["threads"] if t["id"] == tid)
         self.assertEqual((mine["title"], mine["turns"]), ("First question here", 1))
-        out = serve.write("/api/copilot/threads/remove", {}, json.dumps({"id": tid}).encode())
+        out = support.write("/api/copilot/threads/remove", {}, json.dumps({"id": tid}).encode())
         self.assertNotIn(tid, {t["id"] for t in out["threads"]})
         for bad in ("../../etc/passwd", tid):
             with self.assertRaises(serve.NotFound):
-                serve.answer(f"/api/copilot/threads/{bad}", {})
+                support.answer(f"/api/copilot/threads/{bad}", {})
 
     def test_the_ai_endpoints_answer_in_their_shapes(self):
-        self.assertEqual(problems(serve.answer("/api/ai", {}), wire.AiSettings), [])
+        self.assertEqual(problems(support.answer("/api/ai", {}), wire.AiSettings), [])
         with mock.patch.object(ai, "_get", lambda url, headers: {"data": [], "has_more": False}):
-            self.assertEqual(problems(serve.answer("/api/ai/models", {"q": "opus"}), wire.AiModels), [])
-        self.assertEqual(problems(serve.write("/api/ai/settings", {}, b'{"model": "claude-haiku-5-5"}'),
+            self.assertEqual(problems(support.answer("/api/ai/models", {"q": "opus"}), wire.AiModels), [])
+        self.assertEqual(problems(support.write("/api/ai/settings", {}, b'{"model": "claude-haiku-5-5"}'),
                                   wire.AiSettings), [])
         with mock.patch.object(ai, "_post", lambda *a, **k: {"type": "message", "content": []}):
-            self.assertEqual(problems(serve.write("/api/ai/test", {}, b"{}"), wire.AiTest), [])
+            self.assertEqual(problems(support.write("/api/ai/test", {}, b"{}"), wire.AiTest), [])
         with self.assertRaises(serve.Refused):
-            serve.write("/api/ai/settings", {}, b'{"provider": "skynet"}')
+            support.write("/api/ai/settings", {}, b'{"provider": "skynet"}')
         with self.assertRaises(serve.Refused):
-            serve.write("/api/ai/key", {}, b'{"provider": "anthropic", "key": "  "}')
+            support.write("/api/ai/key", {}, b'{"provider": "anthropic", "key": "  "}')
 
 
 class ThreadSaveTest(Record):
@@ -810,6 +850,20 @@ class ThreadSaveTest(Record):
         sent = after.requests[0][2]["messages"]
         self.assertEqual([m["role"] for m in sent], ["user", "assistant", "user"])
         self.assertEqual(self.texts(tid)[2:], [("user", "And eating out?"), ("assistant", "S$12.40.")])
+
+    def test_a_failure_outside_the_model_loop_still_ends_with_error_then_done(self):
+        # Audit: a turn that could not be saved (a full disk) or a record that
+        # would not open raised out of the stream, which then closed with
+        # neither an error nor a done line
+        quiet = self.enterContext(mock.patch("sys.stderr", new=io.StringIO()))
+        with mock.patch.object(copilot, "save", side_effect=OSError(28, "No space left on device")):
+            events = ask("How much on groceries?", Script(answer("S$100.00.")))
+        self.assertEqual([e["type"] for e in events], ["thread", "error", "done"])
+        self.assertNotIn("space", events[1]["message"])
+        with mock.patch.object(tools, "open_readonly", side_effect=sqlite3.OperationalError("unable to open")):
+            events = ask("How much on groceries?", Script(answer("S$100.00.")))
+        self.assertEqual([e["type"] for e in events], ["thread", "error", "done"])
+        self.assertIn("No space left", quiet.getvalue())     # the server log keeps the trace
 
     def test_a_question_overtaken_by_a_newer_one_does_not_overwrite_it(self):
         tid = ask("First", Script(answer("One.")))[0]["thread"]["id"]
@@ -884,8 +938,8 @@ class LinksTest(Record):
         text = self.call(ctx, "query", sql="SELECT SUM(amount_sgd_minor) AS total FROM v_txn")
         self.assertNotIn("link", text)
         self.assertEqual(ctx.links, [])
-        keys = [r[0] for r in tools.open_readonly(self.path).execute(
-            "SELECT txn_key FROM v_txn ORDER BY txn_key LIMIT 3")]
+        with closing(tools.open_readonly(self.path)) as conn:
+            keys = [r[0] for r in conn.execute("SELECT txn_key FROM v_txn ORDER BY txn_key LIMIT 3")]
         text = self.call(ctx, "query", sql="SELECT txn_key, amount_sgd_minor FROM v_txn ORDER BY txn_key LIMIT 3")
         want = tools.href({"key": ",".join(keys)})
         self.assertEqual(text["link"], want)

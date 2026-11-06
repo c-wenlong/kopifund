@@ -28,12 +28,11 @@ done
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUPPORT="$HOME/Library/Application Support/Kopifund"
 BUILDS="$SUPPORT/builds"
-# one Rust build cache for every version, so a rebuild takes minutes, not a fresh compile
-CARGO_TARGET_DIR="${CARGO_TARGET_DIR:-$HOME/Library/Caches/Kopifund/cargo-target}"
-case "$CARGO_TARGET_DIR" in /*) ;; *) CARGO_TARGET_DIR="$PWD/$CARGO_TARGET_DIR" ;; esac
-export CARGO_TARGET_DIR
-APP_ID="com.kopifund.desktop"
 APPS="/Applications"
+# the one installer, shared with `make desktop`: it builds the shell in one Rust
+# cache for every version (so a rebuild takes minutes, not a fresh compile) and
+# swaps the new app in
+INSTALL="$REPO/apps/desktop/install.sh"
 
 say() { printf '\n==> %s\n' "$*"; }
 fail() { printf '\nbuild_macos.sh: %s\n' "$*" >&2; exit 1; }
@@ -44,27 +43,27 @@ say "Checking what the build needs"
 for tool in git python3 node npm cargo pdftotext; do
   command -v "$tool" >/dev/null || fail "$tool is missing (AGENTS.md lists what Kopifund needs; Rust comes from rustup.rs)"
 done
-python3 -c 'import sys; sys.exit(sys.version_info < (3, 14))' \
-  || fail "Kopifund needs Python 3.14 or later; python3 is $(python3 -V 2>&1)"
+
+# one build at a time, this script or `make desktop`: they share the Rust output
+# and its bundle folder, and would delete or install each other's app; this
+# script also deletes older build folders. The lock is the one the installer
+# takes (apps/desktop/install.sh), held here for the whole run and passed down.
+mkdir -p "$SUPPORT"
+exec 9>"$SUPPORT/build.lock.file"
+python3 -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)' 2>/dev/null \
+  || fail "another build (build_macos.sh or make desktop) is running; wait for it to finish"
+# the app runs python3 and pdftotext from the owner's login shell (SPEC.md, "Desktop
+# app (G23)"), whose PATH can differ from this one (pyenv or conda in .zshrc), so
+# they are checked the way the app finds them
+APP_SHELL="${SHELL:-/bin/zsh}"
+in_app_shell() { "$APP_SHELL" -l -i -c "$1" </dev/null 2>/dev/null; }
+in_app_shell 'python3 -c "import sys; sys.exit(sys.version_info < (3, 14))"' \
+  || fail "Kopifund needs Python 3.14 or later where the app finds it; $APP_SHELL -l -i has $(in_app_shell 'python3 -V' | tail -1 | grep . || echo 'no python3')"
+in_app_shell 'command -v pdftotext >/dev/null' \
+  || fail "the app's login shell ($APP_SHELL -l -i) finds no pdftotext (brew install poppler)"
 [ "$(node -p 'process.versions.node.split(".")[0]')" -ge 22 ] \
   || fail "Kopifund needs Node 22 or later; node is $(node -v)"
 [ -w "$APPS" ] || { APPS="$HOME/Applications"; mkdir -p "$APPS"; echo "/Applications is not writable here, so the app goes in ~/Applications"; }
-
-# one build at a time: two would share the Rust output and delete each other's folders
-mkdir -p "$SUPPORT"
-LOCK="$SUPPORT/build.lock"
-if ! mkdir "$LOCK" 2>/dev/null; then
-  sleep 1   # a run that has just taken the lock may not have written its pid yet
-  holder="$(cat "$LOCK/pid" 2>/dev/null || true)"
-  # the pid counts only while it is still this script: after a crash or restart
-  # the number may belong to some other process, and the lock is stale
-  if [ -n "$holder" ] && ps -p "$holder" -o command= 2>/dev/null | grep -q "build_macos.sh"; then
-    fail "another build is running (process $holder); wait for it to finish"
-  fi
-  rm -rf "$LOCK"; mkdir "$LOCK" || fail "could not take the build lock at $LOCK"
-fi
-echo $$ > "$LOCK/pid"
-trap 'rm -rf "$LOCK"' EXIT
 
 say "Finding the version to build ($REF)"
 case "$REF" in
@@ -88,27 +87,10 @@ DT="$DIR/apps/desktop"; [ -d "$DT" ] || DT="$DIR/desktop"
 say "Building the web app"
 (cd "$WEB" && npm ci --no-audit --no-fund --loglevel=error && npm run build)
 
-say "Building Kopifund.app (the first build compiles Rust for a few minutes)"
-(cd "$DT" && npm ci --no-audit --no-fund --loglevel=error && npm run tauri -- build --bundles app)
-BUILT="$CARGO_TARGET_DIR/release/bundle/macos/Kopifund.app"
-[ -d "$BUILT" ] || fail "the build finished but $BUILT is not there"
+# the installer builds the shell, quits the open app (its server still reads the
+# old build folder) and swaps the new app in, keeping the old one until then
+KOPIFUND_BUILD_LOCK_HELD=1 "$INSTALL" --quit-open "$DT" "$APPS"
 trap - ERR
-
-if [ "$(osascript -e "application id \"$APP_ID\" is running" 2>/dev/null)" = true ]; then
-  say "Quitting the Kopifund that is open"
-  osascript -e "tell application id \"$APP_ID\" to quit" >/dev/null 2>&1 || true
-  for _ in $(seq 1 20); do
-    [ "$(osascript -e "application id \"$APP_ID\" is running" 2>/dev/null)" = true ] || break
-    sleep 0.5
-  done
-  # its server still reads the old build folder: replace nothing while it runs
-  [ "$(osascript -e "application id \"$APP_ID\" is running" 2>/dev/null)" != true ] \
-    || fail "Kopifund did not quit; quit it yourself and run this again (the new build is ready in $DIR)"
-fi
-
-say "Installing in $APPS"
-rm -rf "$APPS/Kopifund.app"
-ditto "$BUILT" "$APPS/Kopifund.app"
 
 # the installed app needs only this build's code and the web app's dist: drop the
 # npm packages, and every older build (no app runs from them any more)

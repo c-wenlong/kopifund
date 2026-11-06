@@ -6,9 +6,11 @@ path asks about. The gate tests run a real server on an ephemeral port and
 send X-Forwarded-For by hand, which is exactly what `tailscale serve` does
 when it forwards the tailnet's HTTPS to loopback.
 """
+import isolate  # noqa: F401  first: no test writes the real record or cache
 import http.client
 import json
 import os
+import re
 import stat
 import tempfile
 import threading
@@ -80,6 +82,47 @@ class RegistryTest(unittest.TestCase):
         self.assertEqual(len(winners), 1)
         self.assertEqual(len(errors), 3)
 
+    def test_a_retry_with_the_same_nonce_leaves_no_orphan_device(self):
+        """A lost reply: the phone retries the spent token with its nonce and
+        gets the same bearer for the same device row, so whichever request
+        lands last, the bearer the phone saved keeps working."""
+        token, _ = link.mint_pair_token()
+        n1 = "n1-0123456789abcdef"
+        first, device = link.redeem(token, "Test iPhone", n1)
+        second, again = link.redeem(token, "Test iPhone", n1)
+        self.assertEqual((again["id"], second), (device["id"], first))
+        self.assertEqual(len(link.list_devices()), 1)
+        self.assertEqual(link.device_for(first)["id"], device["id"])
+        # a spent token is no use without the phone's nonce, or with none
+        for nonce in ("n2-0123456789abcdef", ""):
+            with self.assertRaises(Refused):
+                link.redeem(token, "Other", nonce)
+        with self.assertRaises(ValueError):
+            link.redeem(token, "Other", "short")
+        # a new code minted meanwhile does not sweep the spent one away
+        link.mint_pair_token()
+        self.assertEqual(link.redeem(token, "Test iPhone", n1)[0], first)
+        # nor once the device is revoked, nor once the token's life is over
+        link.revoke(device["id"])
+        with self.assertRaises(Refused):
+            link.redeem(token, "Test iPhone", n1)
+        token, _ = link.mint_pair_token()
+        n3 = "n3-0123456789abcdef"
+        link.redeem(token, "x", n3)
+        with mock.patch("time.time", return_value=time.time() + link.PAIR_LIFE + 1):
+            with self.assertRaises(Refused):
+                link.redeem(token, "x", n3)
+        self.assertEqual(len(link.list_devices()), 2)
+
+    def test_the_retry_landing_first_leaves_the_bearer_working(self):
+        """The retry finishes before the delayed original: both answer the
+        same bearer, so the one the phone kept works either way."""
+        token, _ = link.mint_pair_token()
+        nonce = "n-0123456789abcdef"
+        answers = [link.redeem(token, "Test iPhone", nonce)[0] for _ in range(2)]
+        self.assertEqual(answers[0], answers[1])
+        self.assertIsNotNone(link.device_for(answers[0]))
+
     def test_revoking_flags_the_row_and_stops_the_bearer(self):
         token, _ = link.mint_pair_token()
         bearer, device = link.redeem(token)
@@ -123,6 +166,8 @@ class GateTest(unittest.TestCase):
         tailnet = mock.patch("finance.link.tailnet_url", return_value="https://mac.tail-abc.ts.net")
         tailnet.start()
         self.addCleanup(tailnet.stop)
+        # a record to read, so a bearer read answers whatever order the tests run in
+        db.connect().close()
         self.server = serve.make_server(0, serve.DIST)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.shutdown)
@@ -154,23 +199,52 @@ class GateTest(unittest.TestCase):
         self.assertEqual(r.status, 200)
 
     def test_a_link_get_needs_a_paired_devices_bearer(self):
-        r, _ = self.call("GET", "/api/countries", headers=self.XFF)
+        r, _ = self.call("GET", "/api/categories", headers=self.XFF)
         self.assertEqual(r.status, 401)
         self.assertEqual(r.getheader("WWW-Authenticate"), 'Bearer realm="kopifund"')
-        r, _ = self.call("GET", "/api/countries", headers={**self.XFF, "Authorization": "Bearer kfd_wrong"})
+        r, _ = self.call("GET", "/api/categories", headers={**self.XFF, "Authorization": "Bearer kfd_wrong"})
         self.assertEqual(r.status, 401)
 
     def test_pair_and_read_end_to_end(self):
         bearer = self.pair()
-        r, raw = self.call("GET", "/api/countries", headers={**self.XFF, "Authorization": f"Bearer {bearer}"})
+        r, raw = self.call("GET", "/api/categories", headers={**self.XFF, "Authorization": f"Bearer {bearer}"})
         self.assertEqual(r.status, 200)
-        self.assertIn("countries", json.loads(raw))
+        self.assertIn("groups", json.loads(raw))
         # the registry is an admin view: loopback only, bearer or not
         r, _ = self.call("GET", "/api/link/devices", headers={**self.XFF, "Authorization": f"Bearer {bearer}"})
         self.assertEqual(r.status, 403)
         r, raw = self.call("GET", "/api/link/devices")
         self.assertEqual(r.status, 200)
         self.assertEqual([d["name"] for d in json.loads(raw)["devices"]], ["Test iPhone"])
+
+    def test_a_bearer_reads_only_the_link_reads(self):
+        """The link path is an allowlist: the phone's four reads answer, and
+        every other GET route is refused even to a paired bearer, so a lost
+        phone cannot pull exports, uploads, AI threads or the key's tail."""
+        bearer = self.pair()
+        auth = {**self.XFF, "Authorization": f"Bearer {bearer}"}
+        for path in sorted(serve.LINK_READS):
+            r, _ = self.call("GET", path, headers=auth)
+            self.assertNotIn(r.status, (401, 403), path)
+            # the same read needs the bearer
+            r, _ = self.call("GET", path, headers=self.XFF)
+            self.assertEqual(r.status, 401, path)
+        refused = [route for route in serve.GET_ROUTES
+                   if route not in serve.LINK_READS and route != "/api/health"]
+        self.assertIn("/api/exports/<stamp>/<file>", refused)
+        for route in refused:
+            path = re.sub(r"<[a-z_]+>", "x", route)
+            r, raw = self.call("GET", path, headers=auth)
+            self.assertEqual(r.status, 403, path)
+            self.assertEqual(json.loads(raw), {"error": "This route is not served on the link"}, path)
+        # a real export file name, and a stat result, are refused just the same
+        for path in ("/api/exports/2026-08-01T000000/transactions.csv", "/api/results/monthly-cashflow",
+                     "/api/ai", "/api/copilot/threads", "/api/server", "/api/run/status"):
+            r, _ = self.call("GET", path, headers=auth)
+            self.assertEqual(r.status, 403, path)
+        # loopback still answers what the link refuses
+        r, _ = self.call("GET", "/api/countries")
+        self.assertEqual(r.status, 200)
 
     def test_pages_are_never_served_on_the_link_path(self):
         bearer = self.pair()
@@ -208,7 +282,7 @@ class GateTest(unittest.TestCase):
         device_id = json.loads(raw)["devices"][0]["id"]
         r, _ = self.call("POST", "/api/link/devices/revoke", {"id": device_id}, {"X-Kopifund": "1"})
         self.assertEqual(r.status, 200)
-        r, _ = self.call("GET", "/api/countries", headers={**self.XFF, "Authorization": f"Bearer {bearer}"})
+        r, _ = self.call("GET", "/api/categories", headers={**self.XFF, "Authorization": f"Bearer {bearer}"})
         self.assertEqual(r.status, 401)
 
     def test_a_phone_row_posts_over_the_link_and_lists_on_loopback(self):
@@ -240,6 +314,62 @@ class GateTest(unittest.TestCase):
         self.assertEqual(json.loads(raw)["rows"][0]["state"], "dismissed")
         r, raw = self.call("POST", "/api/link/pending/restore", {"import_id": "imp_e2e"}, {"X-Kopifund": "1"})
         self.assertEqual(json.loads(raw)["rows"][0]["state"], "waiting")
+
+    def test_a_code_without_the_macs_address_is_refused(self):
+        with mock.patch("finance.link.tailnet_url", return_value=""):
+            r, raw = self.call("POST", "/api/link/pair-token", {}, {"X-Kopifund": "1"})
+        self.assertEqual(r.status, 422)
+        self.assertIn("Tailscale cannot name this Mac", json.loads(raw)["error"])
+        self.assertEqual(link._read()["pair_tokens"], [])     # nothing minted
+
+    def test_check_answers_only_a_paired_unrevoked_bearer(self):
+        bearer = self.pair()
+        auth = {**self.XFF, "Authorization": f"Bearer {bearer}"}
+        r, raw = self.call("GET", "/api/link/check", headers=auth)
+        self.assertEqual((r.status, json.loads(raw)), (200, {"ok": True}))
+        r, _ = self.call("GET", "/api/link/check", headers=self.XFF)
+        self.assertEqual(r.status, 401)
+        device_id = link.list_devices()[0]["id"]
+        link.revoke(device_id)
+        r, _ = self.call("GET", "/api/link/check", headers=auth)
+        self.assertEqual(r.status, 401)
+        # health, by contrast, answers a revoked phone too
+        r, _ = self.call("GET", "/api/health", headers=auth)
+        self.assertEqual(r.status, 200)
+
+    def test_a_redeem_retried_over_http_keeps_one_device(self):
+        r, raw = self.call("POST", "/api/link/pair-token", {}, {"X-Kopifund": "1"})
+        token = parse_qs(urlsplit(json.loads(raw)["payload"]).query)["token"][0]
+        body = {"token": token, "name": "Test iPhone", "nonce": "n-http-0123456789abcdef"}
+        r1, raw1 = self.call("POST", "/api/pair/redeem", body, self.XFF)
+        r2, raw2 = self.call("POST", "/api/pair/redeem", body, self.XFF)
+        self.assertEqual((r1.status, r2.status), (200, 200))
+        self.assertEqual(json.loads(raw1)["device_id"], json.loads(raw2)["device_id"])
+        self.assertEqual(json.loads(raw1)["token"], json.loads(raw2)["token"])
+        self.assertEqual(len(link.list_devices()), 1)
+        r, _ = self.call("GET", "/api/link/check",
+                         headers={**self.XFF, "Authorization": f"Bearer {json.loads(raw2)['token']}"})
+        self.assertEqual(r.status, 200)
+
+    def test_dismiss_all_clears_every_waiting_row(self):
+        bearer = self.pair()
+        conn = db.connect()
+        self.addCleanup(conn.close)
+        self.addCleanup(conn.commit)
+        self.addCleanup(conn.execute, "DELETE FROM pending_txn")
+        rows = {"rows": [{"import_id": f"imp_{i}", "date": "2026-08-03", "amount_minor": -100 * i,
+                          "currency": "SGD", "payee": f"Invented Shop {i}"} for i in (1, 2)]}
+        r, _ = self.call("POST", "/api/link/transactions", rows, {**self.XFF, "Authorization": f"Bearer {bearer}"})
+        self.assertEqual(r.status, 200)
+        # loopback only, armed like any write
+        r, _ = self.call("POST", "/api/link/pending/dismiss-all", {},
+                         {**self.XFF, "Authorization": f"Bearer {bearer}"})
+        self.assertEqual(r.status, 403)
+        r, raw = self.call("POST", "/api/link/pending/dismiss-all", {}, {"X-Kopifund": "1"})
+        self.assertEqual(r.status, 200)
+        self.assertEqual([x["state"] for x in json.loads(raw)["rows"]], ["dismissed", "dismissed"])
+        r, raw = self.call("POST", "/api/link/pending/restore", {"import_id": "imp_1"}, {"X-Kopifund": "1"})
+        self.assertIn("waiting", [x["state"] for x in json.loads(raw)["rows"]])
 
     def test_a_spent_or_stale_token_is_a_422(self):
         r, raw = self.call("POST", "/api/pair/redeem", {"token": "kfp_wrong"}, self.XFF)

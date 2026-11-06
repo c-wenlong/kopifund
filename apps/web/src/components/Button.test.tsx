@@ -1,28 +1,36 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { createRef } from "react";
-import { Button, buttonClass, buttonLook } from "./Button";
+import { vi } from "vitest";
+import { Button, buttonClass, buttonLook, IconButton } from "./Button";
 
 // G18 (U9): the one button look
 describe("Button", () => {
-  it("is a plain button (never a form submit by accident) in the secondary look by default", () => {
+  it("is a plain button: it clicks, and never submits a form by accident", () => {
     const onClick = vi.fn();
-    render(<Button onClick={onClick}>Cancel</Button>);
-    const b = screen.getByRole("button", { name: "Cancel" });
-    expect(b).toHaveAttribute("type", "button");
-    expect(b.className).toBe(buttonClass("secondary", "md"));
-    fireEvent.click(b);
+    const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
+    render(<form onSubmit={onSubmit}><Button onClick={onClick}>Cancel</Button></form>);
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onClick).toHaveBeenCalledOnce();
+    expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("takes a variant, a size, a submit type, a ref and layout classes", () => {
+  it("does nothing when disabled", () => {
+    const onClick = vi.fn();
+    render(<Button disabled onClick={onClick}>Save</Button>);
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(onClick).not.toHaveBeenCalled();
+  });
+
+  it("takes a ref, a submit type that sends the form it names, and layout classes", () => {
     const ref = createRef<HTMLButtonElement>();
-    render(<Button ref={ref} variant="primary" size="sm" type="submit" form="f" className="ml-auto">Save</Button>);
+    const onSubmit = vi.fn((e: React.FormEvent) => e.preventDefault());
+    render(<><form id="f" onSubmit={onSubmit} /><Button ref={ref} variant="primary" size="sm" type="submit" form="f" className="ml-auto">Save</Button></>);
     const b = screen.getByRole("button", { name: "Save" });
     expect(ref.current).toBe(b);
-    expect(b).toHaveAttribute("type", "submit");
-    expect(b).toHaveAttribute("form", "f");
-    expect(b.className).toBe(buttonClass("primary", "sm", "ml-auto"));
+    expect(b).toHaveClass("ml-auto");
+    fireEvent.click(b);
+    expect(onSubmit).toHaveBeenCalledOnce();
   });
 
   it("draws every variant from the colour tokens and every size from the type scale", () => {
@@ -35,5 +43,16 @@ describe("Button", () => {
         expect(cls).toMatch(/text-\[1[1-4]px\]/);
       }
     }
+  });
+});
+
+describe("IconButton", () => {
+  it("is a button named by its label, never a submit, and stays off while disabled", () => {
+    const onClick = vi.fn();
+    render(<form><IconButton label="Delete Kopitiam" onClick={onClick} disabled><svg /></IconButton></form>);
+    const b = screen.getByRole("button", { name: "Delete Kopitiam" });
+    expect(b).toHaveAttribute("type", "button");
+    fireEvent.click(b);
+    expect(onClick).not.toHaveBeenCalled();
   });
 });

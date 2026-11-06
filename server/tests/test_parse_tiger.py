@@ -2,8 +2,8 @@
 
 The fixtures under server/tests/fixtures/tiger/ are made up, but they are laid out
 exactly the way pdftotext -layout renders the real exports, including the two
-symbol layouts, the trades that print twice, a page break inside a table and a
-page break inside a single row. The real PDFs live in data/, which is
+symbol layouts, the trades that print twice (whose tables must not leak into
+the others), a page break inside a table and a page break inside a single row. The real PDFs live in data/, which is
 gitignored, so nothing here reads them.
 
   legacy.txt   the 2022 to 2025 layout: the Symbol column prints the bare
@@ -135,34 +135,6 @@ class Legacy(unittest.TestCase):
             self.assertNotIn("multiplier", h["symbol"])
             self.assertTrue(h["currency"])
 
-    def test_dividends(self):
-        self.assertEqual(self.s["dividends"], [
-            {"date": "2024-05-01", "symbol": "C6L.SI", "gross": 8.0, "tax": 0.0,
-             "net": 8.0, "currency": "SGD", "phase": "Paid"},
-            {"date": "2024-07-01", "symbol": "SPY", "gross": 5.0, "tax": 0.0,
-             "net": 5.0, "currency": "USD", "phase": "Paid"}])
-
-    def test_stock_trades_sum_the_comm_fee_column(self):
-        # the first trade is printed twice, with a page break between the copies
-        self.assertEqual(self.s["trades"], [
-            {"date": "2024-03-01", "symbol": "SPY", "side": "", "quantity": 2.0,
-             "price": 250.0, "amount": 500.0, "fee": -1.99, "gst": -0.16,
-             "currency": "USD"},
-            {"date": "2024-06-10", "symbol": "C6L.SI", "side": "", "quantity": 100.0,
-             "price": 5.0, "amount": 500.0, "fee": -0.5, "gst": -0.05,
-             "currency": "SGD"}])
-
-    def test_forex_trades(self):
-        self.assertEqual(self.s["forex"], [
-            {"date": "2024-03-01", "pair": "USD.SGD", "side": "", "quantity": 400.0,
-             "price": 1.325, "amount": -530.0, "currency": "SGD"},
-            {"date": "2024-06-10", "pair": "USD.SGD", "side": "", "quantity": -50.0,
-             "price": 1.3, "amount": 65.0, "currency": "SGD"}])
-
-    def test_the_trade_date_wins_over_the_settlement_date(self):
-        self.assertEqual(self.s["trades"][0]["date"], "2024-03-01")   # settles 03-05
-        self.assertEqual(self.s["forex"][0]["date"], "2024-03-01")
-
     def test_fx_to_base(self):
         self.assertEqual(self.s["fx_to_base"],
                          {"USD": 1.0, "AUD": 0.62, "SGD": 0.75})
@@ -188,45 +160,6 @@ class Wrapped(unittest.TestCase):
         self.assertEqual(self.s["holdings"][1]["quantity"], 0.59)
         self.assertEqual(self.s["holdings_value_base"], 900.0)
 
-    def test_every_trade_is_printed_twice_and_kept_once(self):
-        self.assertEqual(len(self.s["trades"]), 2)
-        self.assertEqual([t["symbol"] for t in self.s["trades"]], ["SPY", "SPY"])
-        self.assertEqual([t["date"] for t in self.s["trades"]],
-                         ["2026-01-05", "2026-02-03"])
-        self.assertEqual([t["side"] for t in self.s["trades"]], ["Open", "Open"])
-        self.assertEqual(round(sum(t["amount"] for t in self.s["trades"]), 2), 384.95)
-        self.assertEqual(round(sum(t["fee"] for t in self.s["trades"]), 2), -2.0)
-        self.assertEqual(round(sum(t["gst"] for t in self.s["trades"]), 2), -0.18)
-
-    def test_a_row_torn_by_a_page_break_is_put_back_together(self):
-        # the second trade's name and trade time print at the foot of one page
-        # and its figures at the top of the next; without the rejoin the two
-        # halves would read as one dated and one undated trade
-        torn = self.s["trades"][1]
-        self.assertEqual(torn["date"], "2026-02-03")
-        self.assertEqual(torn["symbol"], "SPY")
-        self.assertEqual(torn["amount"], 189.95)
-
-    def test_forex_is_de_duplicated_too(self):
-        self.assertEqual(len(self.s["forex"]), 2)
-        self.assertEqual([f["pair"] for f in self.s["forex"]], ["USD.SGD", "USD.SGD"])
-        self.assertEqual([f["side"] for f in self.s["forex"]], ["Buy", "Buy"])
-        self.assertEqual(sum(f["amount"] for f in self.s["forex"]), -400.0)
-
-    def test_dividends_wrap_their_date_and_carry_a_tax(self):
-        self.assertEqual(self.s["dividends"], [
-            {"date": "2026-05-20", "symbol": "C6L.SI", "gross": 9.0, "tax": 0.0,
-             "net": 9.0, "currency": "SGD", "phase": "Paid"},
-            {"date": "2026-03-15", "symbol": "SPY", "gross": 20.0, "tax": 4.0,
-             "net": 16.0, "currency": "USD", "phase": "Paid"}])
-
-    def test_accrual_rows_are_not_dividends(self):
-        # the fixture prints the SPY dividend again as "Dividend Accruals
-        # Increase"; counting it would book the same 16.00 twice
-        self.assertIn("Dividend Accruals", (FIXTURES / "wrapped.txt").read_text())
-        self.assertEqual([d["phase"] for d in self.s["dividends"]], ["Paid", "Paid"])
-        self.assertEqual(sum(d["net"] for d in self.s["dividends"]), 25.0)
-
     def test_base_figures(self):
         self.assertEqual(self.s["deposits_base"], 310.0)
         self.assertEqual(self.s["dividends_base"], 25.0)
@@ -246,7 +179,7 @@ class Sparse(unittest.TestCase):
         cls.s = load("sparse")
 
     def test_the_empty_tables_are_empty_lists_not_missing_keys(self):
-        for key in ("withdrawals", "dividends", "trades", "forex"):
+        for key in ("withdrawals",):
             self.assertEqual(self.s[key], [], key)
 
     def test_absent_cash_report_rows_read_as_zero(self):
@@ -273,12 +206,6 @@ class Pieces(unittest.TestCase):
         self.assertEqual(pt.symbol_of("SPDR S&P 500 ETF Trust (SPY)"),
                          ("SPY", "SPDR S&P 500 ETF Trust"))
         self.assertEqual(pt.symbol_of(""), ("", ""))
-
-    def test_dedupe_keeps_the_first_of_each_trade(self):
-        rows = [{"date": "d", "symbol": "SPY", "quantity": 1.0, "price": 2.0, "n": 1},
-                {"date": "d", "symbol": "SPY", "quantity": 1.0, "price": 2.0, "n": 2},
-                {"date": "d", "symbol": "SPY", "quantity": 3.0, "price": 2.0, "n": 3}]
-        self.assertEqual([r["n"] for r in pt.dedupe(rows, "symbol")], [1, 3])
 
     def test_columns_cluster_a_heading_spread_over_three_lines(self):
         cols = pt.Columns([
@@ -334,7 +261,6 @@ class SecondOldLayout(unittest.TestCase):
 
     def test_no_withdrawal_and_no_dividends_section(self):
         self.assertEqual(self.s["withdrawals"], [])
-        self.assertEqual(self.s["dividends"], [])
         self.assertEqual(self.s["dividends_base"], 0.0)
         self.assertEqual(self.s["withholding_tax_base"], 0.0)
 
@@ -353,21 +279,6 @@ class SecondOldLayout(unittest.TestCase):
              "close_price": 474.96, "value": 474.96, "unrealized_pl": 31.87,
              "currency": "USD"}])
         self.assertEqual(self.s["holdings_value_base"], 876.78)
-
-    def test_the_fee_is_the_sum_of_the_charges_in_the_comm_fee_cell(self):
-        # the second trade is read after the page break reprints the header
-        self.assertEqual(self.s["trades"], [
-            {"date": "2021-05-12", "symbol": "SPY", "side": "", "quantity": 1.0,
-             "price": 441.1, "amount": 441.1, "fee": -1.99, "gst": -0.14,
-             "currency": "USD"},
-            {"date": "2021-03-16", "symbol": "C6L.SI", "side": "", "quantity": 150.0,
-             "price": 3.45, "amount": 517.5, "fee": -1.16, "gst": -0.15,
-             "currency": "SGD"}])
-
-    def test_forex_with_no_activity_type_printed(self):
-        self.assertEqual(self.s["forex"], [
-            {"date": "2021-03-09", "pair": "USD.SGD", "side": "", "quantity": 833.3333,
-             "price": 1.38, "amount": -1150.0, "currency": "SGD"}])
 
     def test_the_exchange_rate_table(self):
         self.assertEqual(self.s["fx_to_base"], {"USD": 1.0, "EUR": 1.1, "SGD": 0.74})
@@ -411,33 +322,7 @@ class SecondWrappedLayout(unittest.TestCase):
         self.assertEqual(self.s["holdings"][0]["name"], "SIA")
         self.assertEqual(self.s["holdings_value_base"], 2279.98)
 
-    def test_trades_and_forex_are_kept_once_and_add_up_to_the_printed_total(self):
-        self.assertEqual(self.s["trades"][0],
-                         {"date": "2027-01-05", "symbol": "SPY", "side": "Open",
-                          "quantity": 1.38204, "price": 694.17, "amount": 959.37,
-                          "fee": -1.0, "gst": -0.09, "currency": "USD"})
-        self.assertEqual([(t["symbol"], t["side"]) for t in self.s["trades"]],
-                         [("SPY", "Open"), ("AAPL", "Close")])
-        self.assertEqual(round(sum(t["amount"] for t in self.s["trades"]), 2), 1442.49)
-        self.assertEqual(round(sum(t["fee"] for t in self.s["trades"]), 2), -2.0)
-        self.assertEqual(self.s["forex"], [
-            {"date": "2027-01-05", "pair": "USD.SGD", "side": "Buy",
-             "quantity": 990.4762, "price": 1.3125, "amount": -1300.0,
-             "currency": "SGD"},
-            {"date": "2027-02-07", "pair": "USD.SGD", "side": "Sell",
-             "quantity": -2.41, "price": 1.3387, "amount": 3.23,
-             "currency": "SGD"}])
-
-    def test_a_stock_trade_torn_across_a_page_break_is_one_trade(self):
-        torn = pt.parse_text(inject("wrapped-2026", ("Trust", "1.38204"), BREAK), "x")
-        self.assertEqual(torn["trades"], self.s["trades"])
-
-    def test_a_wrapped_date_a_blank_tax_cell_and_a_printed_one(self):
-        self.assertEqual(self.s["dividends"], [
-            {"date": "2027-05-28", "symbol": "C6L.SI", "gross": 27.0, "tax": 0.0,
-             "net": 27.0, "currency": "SGD", "phase": "Paid"},
-            {"date": "2027-01-30", "symbol": "SPY", "gross": 4.47, "tax": 1.34,
-             "net": 3.13, "currency": "USD", "phase": "Paid"}])
+    def test_the_base_dividends_tax_and_fees(self):
         self.assertEqual(self.s["dividends_base"], 25.71)
         self.assertEqual(self.s["withholding_tax_base"], -1.34)
         self.assertEqual(self.s["fees_base"], -2.18)
@@ -453,9 +338,9 @@ class Shape(unittest.TestCase):
     """The dict the analytics side reads has the same keys on every layout."""
 
     KEYS = {"file", "account", "base_currency", "period", "overview", "cash_report",
-            "deposits", "withdrawals", "deposits_base", "dividends", "dividends_base",
+            "deposits", "withdrawals", "deposits_base", "dividends_base",
             "withholding_tax_base", "fees_base", "holdings", "holdings_value_base",
-            "trades", "forex", "fx_to_base", "fx_date"}
+            "fx_to_base", "fx_date"}
 
     def test_every_fixture_fills_every_key(self):
         for name in ("legacy", "wrapped", "sparse", "old-layout", "wrapped-2026"):
@@ -465,20 +350,10 @@ class Shape(unittest.TestCase):
                 for half in ("begin", "end"):
                     self.assertEqual(set(s["overview"][half]),
                                      {"cash", "stock", "dividend_accruals", "total"})
-                for t in s["trades"]:
-                    self.assertEqual(set(t), {"date", "symbol", "side", "quantity",
-                                              "price", "amount", "fee", "gst",
-                                              "currency"})
-                for f in s["forex"]:
-                    self.assertEqual(set(f), {"date", "pair", "side", "quantity",
-                                              "price", "amount", "currency"})
                 for h in s["holdings"]:
                     self.assertEqual(set(h), {"symbol", "name", "quantity",
                                               "cost_price", "close_price", "value",
                                               "unrealized_pl", "currency"})
-                for d in s["dividends"]:
-                    self.assertEqual(set(d), {"date", "symbol", "gross", "tax", "net",
-                                              "currency", "phase"})
 
 
 class Folder(unittest.TestCase):
@@ -540,7 +415,7 @@ class Folder(unittest.TestCase):
             (folder / "2021").mkdir()
             pdf = folder / "2021" / "1-12.pdf"
             pdf.write_bytes(b"%PDF-1.4")
-            with mock.patch.object(pt.subprocess, "run") as run:
+            with mock.patch("subprocess.run") as run:
                 run.return_value = mock.Mock(stdout=raw("old-layout"))
                 s = pt.parse_pdf(pdf, folder)
             self.assertEqual(run.call_args[0][0][:2], ["pdftotext", "-layout"])
@@ -554,7 +429,7 @@ class Folder(unittest.TestCase):
             folder = Path(tmp)
             pdf = folder / "1-12.pdf"
             pdf.write_bytes(b"%PDF-1.4")
-            with mock.patch.object(pt.subprocess, "run") as run:
+            with mock.patch("subprocess.run") as run:
                 run.return_value = mock.Mock(stdout=raw("old-layout"))
                 pt.parse_pdf(pdf, folder, write_text=False)
             self.assertFalse((folder / "1-12.txt").exists())

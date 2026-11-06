@@ -42,13 +42,13 @@ import os
 import re
 import secrets
 import sys
-import tempfile
 import threading
 import traceback
 from datetime import date, datetime, timezone
 from pathlib import Path
 
 from . import ai, copilot_tools as tools, dates
+from .atomic import write_private
 from .errors import NotFound
 
 MAX_ROUNDS = 8
@@ -138,15 +138,7 @@ def save(thread):
     with _LOCK:
         folder.mkdir(parents=True, exist_ok=True)
         os.chmod(folder, 0o700)
-    fd, tmp = tempfile.mkstemp(dir=folder, prefix=".thread-", suffix=".tmp")   # mkstemp makes it 600
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as fh:
-            json.dump(thread, fh, ensure_ascii=False, indent=1)
-        os.replace(tmp, _path(thread["id"]))
-    except BaseException:
-        if os.path.exists(tmp):
-            os.unlink(tmp)
-        raise
+    write_private(_path(thread["id"]), json.dumps(thread, ensure_ascii=False, indent=1))
 
 
 def open_thread(thread_id):
@@ -329,9 +321,20 @@ def _events(cfg, settings, key, path, thread, question, page, transport, today):
             thread = {"id": secrets.token_hex(8), "title": "", "updated_at": _now(), "messages": []}
             _ISSUED.add(thread["id"])
         _LATEST[thread["id"]] = token     # a question asked on this thread after now overtakes this one
+    answer = _answer(cfg, settings, key, path, thread, question, page, transport, today, token)
+    ended = False
     try:
-        yield from _answer(cfg, settings, key, path, thread, question, page, transport, today, token)
+        for event in answer:
+            ended = event["type"] == "done"
+            yield event
+    except Exception:            # noqa: BLE001  Audit: a failure outside the model loop (the record would
+        # not open, the turn could not be saved) still ends the stream the way the page reads one
+        traceback.print_exc(file=sys.stderr)
+        if not ended:
+            yield {"type": "error", "message": "Something went wrong while answering. Try again."}
+            yield {"type": "done"}
     finally:
+        answer.close()
         with _LOCK:
             if _LATEST.get(thread["id"]) is token:
                 del _LATEST[thread["id"]]

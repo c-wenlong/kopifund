@@ -21,9 +21,10 @@ import unittest
 from analytics import stats
 from analytics.stats import common as c
 from analytics_fixture import settings, snapshot as fixture_snapshot
-from finance import api, db, spending
+from finance import api, dashboard, db, spending
 from finance.db import SYNTHETIC_TYPE
-from test_db import SNAP, block, parsed, row
+import support
+from test_db import block, row
 
 EMERGENCY = {"name": "Emergency fund", "bucket": "Transfer", "group": "Savings",
              "need_class": "Savings", "sort_order": 235}
@@ -81,19 +82,16 @@ def _rows():
 
 
 def record():
-    conn = db.connect(":memory:")
-    snap = {k: [dict(x) for x in v] for k, v in SNAP.items()}
-    snap["categories"] = [dict(x) for x in db.shipped_categories()] + [dict(EMERGENCY)]
-    db.import_user_tables(conn, snap)
     keyed = []
     for key, day, amount, extra in _rows():
         extra = dict(extra)
         payee = extra.pop("payee", "")
         keyed.append(row(key, amount, date=day, payee=payee, merchant=extra.pop("merchant", payee.upper() or f"SHOP {key}"),
                          rule="r1", **extra))
-    db.load_parsed(conn, parsed([block(), FOREIGN], keyed), payees=[
-        {"name": p, "kind": "Merchant", "country": "SGP"}
-        for p in ("Acme", "Landlord", "Market", "Noodle Bar", "Bean", "Gadget", "Mystery", "Hostel", "Broker", "Clinic", "Gym")])
+    conn = support.build_record(
+        keyed, user=support.user_tables(categories=[*db.shipped_categories(), EMERGENCY]), blocks=[block(), FOREIGN],
+        payees=support.payees(("Acme", "Landlord", "Market", "Noodle Bar", "Bean", "Gadget", "Mystery", "Hostel",
+                               "Broker", "Clinic", "Gym")))
     # the trip: the hostel and one meal are overseas
     conn.execute("UPDATE txn SET trip_id = (SELECT id FROM trip LIMIT 1) WHERE txn_key IN ('s13', 's14', 's15')")
     return conn
@@ -170,7 +168,11 @@ class StatBars(unittest.TestCase):
 
     def test_monthly_cash_flow_income_spend_and_net(self):
         res = self.run_stat("monthly-cashflow")
-        self.assert_bars(res, {"income_minor": 1, "spend_minor": -1, "net_minor": 1}, minimum=3)
+        self.assert_bars(res, {"income_minor": 1, "spend_minor": -1, "net_minor": 1,
+                               "investing_minor": -1}, minimum=2)
+        # investing is the Investment transfers only: not the emergency fund, not a wallet top-up
+        _, _, page = listed(self.conn, filled(res["chart"]["links"]["investing_minor"], "2026-06"))
+        self.assertEqual(sorted(r["key"] for r in page["rows"]), ["t2"])
         # a month's rows alone are not any of the three: a refund, a filler, a transfer and a row with no rate sit in it
         n, total, _ = listed(self.conn, {"month": "2026-06"})
         june = next(m for m in res["data"]["months"] if m["month"] == "2026-06")
@@ -179,12 +181,18 @@ class StatBars(unittest.TestCase):
 
     def test_needs_wants_and_savings(self):
         res = self.run_stat("needs-wants-savings")
-        self.assert_bars(res, {"need_minor": -1, "want_minor": -1, "savings_minor": -1}, minimum=3)
+        self.assert_bars(res, {"income_minor": 1, "need_minor": -1, "want_minor": -1, "savings_minor": -1},
+                         minimum=3)
         # savings are the investing and saving transfers: not a wallet top-up, not a move between own accounts
         _, _, page = listed(self.conn, filled(res["chart"]["links"]["savings_minor"], "2026-06"))
         self.assertEqual(sorted(r["key"] for r in page["rows"]), ["t2"])
         _, _, page = listed(self.conn, filled(res["chart"]["links"]["want_minor"], "2026-06"))
         self.assertEqual(sorted(r["key"] for r in page["rows"]), ["s18", "s6", "s7", "s8"])
+
+    def test_a_months_spending_beside_cash_and_runway(self):
+        res = self.run_stat("savings-runway")
+        self.assert_bars(res, {"spend_minor": -1}, minimum=3)
+        self.assertEqual(set(res["chart"]["links"]), {"spend_minor"})    # cash is a balance, runway a ratio
 
     def test_salary_and_other_income(self):
         res = self.run_stat("income-stability")
@@ -262,7 +270,9 @@ class StatBars(unittest.TestCase):
             linked = set(res["chart"].get("links", {}))
             unlinked = {s for s in chart["series"] if s not in linked}
             with self.subTest(stat=module.ID):
-                self.assertLessEqual(linked, set(chart["series"]))
+                # a link past the drawn series names a field of the same rows, which a dashboard widget plots
+                rows = res["data"][chart["source"]]
+                self.assertLessEqual(linked - set(chart["series"]), set(rows[0]) if rows else set())
                 self.assertEqual(unlinked, UNLINKED.get(module.ID, set()))
 
 
@@ -331,6 +341,96 @@ class Explorer(unittest.TestCase):
         for s in d["series"]:
             for m, value in zip(d["months"], s["values"]):
                 self.assertEqual(-listed(self.conn, {**d["link"], **s["link"], "month": m})[1], value)
+
+
+# G26: a dashboard metric's sign against what Transactions sums: money out is
+# counted positive, so its rows sum to minus the figure
+OUT = {"spend", "transfers", "investing", "need", "want", "savings"}
+
+
+class DashboardPoints(unittest.TestCase):
+    """G26: every point a dashboard widget links opens exactly the rows its figure counts, to the cent."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.conn = record()
+        snap = db.snapshot(cls.conn)
+        cls.results = {i: stats.by_id()[i].run(snap, None)
+                       for i in ("monthly-cashflow", "needs-wants-savings", "savings-runway")}
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.conn.close()
+
+    def follow(self, query):
+        """(points followed, points with no link): each point's figure held to the rows its link lists,
+        following it the way the widgets do (pointHref: the label's link, then the series')."""
+        a = dashboard.resolve(self.conn, self.results, query)
+        sign = -1 if query["metric"] in OUT else 1
+        followed, unlinked = 0, 0
+        for s in a["series"]:
+            for i, figure in enumerate(s["values_minor"]):
+                base = (a.get("label_links") or [None] * len(a["labels"]))[i]
+                link = None if s.get("link", {}) is None or not (base or s.get("link")) \
+                    else {**(base or {}), **(s.get("link") or {})}
+                if link is None:
+                    unlinked += 1
+                    continue
+                with self.subTest(query=query, series=s["name"], label=a["labels"][i]):
+                    self.assertEqual(sign * listed(self.conn, link)[1], figure)
+                followed += 1
+        return followed, unlinked
+
+    def test_every_spending_point_lists_its_rows(self):
+        followed = 0
+        ranges = [None, {"from": "2026-05", "to": "2026-05"}, {"from": "2026-06", "to": "2026-06"},
+                  {"from": "2026-07", "to": "2026-07"}]
+        for metric in ("spend", "income", "transfers", "net"):
+            for scope in ("sg", "all"):
+                for rng in ranges:
+                    base = {"source": "spending", "metric": metric, "filters": {"scope": scope}}
+                    if rng:
+                        base["range"] = rng
+                    queries = [dict(base, dimension="month")]
+                    queries += [dict(base, dimension="month", split=s) for s in dashboard.SPLITS]
+                    queries += [dict(base, dimension=d) for d in ("bucket", "category", "payee", "account", "need")]
+                    for q in queries:
+                        followed += self.follow(q)[0]
+        self.assertGreater(followed, 500)
+
+    def test_a_query_filter_that_already_excludes_stays_in_the_folded_slice(self):
+        for dim, filters in (("category", {"not_categories": json.dumps(["Coffee"])}),
+                             ("payee", {"not_payees": json.dumps(["Bean"])})):
+            q = {"source": "spending", "metric": "spend", "dimension": dim, "filters": {"scope": "all", **filters}}
+            a = dashboard.resolve(self.conn, {}, q)
+            self.assertEqual(a["labels"][-1], spending.OTHER, dim)
+            self.follow(q)
+            self.assertNotIn("s4", {r["key"] for r in listed(self.conn, a["label_links"][-1])[2]["rows"]})
+        # an empty exclusion is no exclusion: the folded slice still answers and lists its rows
+        for dim, key in (("category", "not_categories"), ("payee", "not_payees")):
+            q = {"source": "spending", "metric": "spend", "dimension": dim, "filters": {"scope": "all", key: ""}}
+            self.follow(q)
+            self.follow({**q, "dimension": "month", "split": dim})
+
+    def test_every_stat_point_lists_its_rows_through_the_stats_own_links(self):
+        linked = {}
+        for source, metrics in (("monthly-cashflow", ("income", "spend", "net", "investing")),
+                                ("needs-wants-savings", ("income", "need", "want", "savings")),
+                                ("savings-runway", ("cash", "spend", "carried"))):
+            for metric in metrics:
+                followed, unlinked = self.follow({"source": source, "metric": metric})
+                if followed:
+                    self.assertEqual(unlinked, 0, (source, metric))
+                    linked.setdefault(source, set()).add(metric)
+        # a balance links nowhere; every sum of rows does
+        self.assertEqual(linked, {"monthly-cashflow": {"income", "spend", "net", "investing"},
+                                  "needs-wants-savings": {"income", "need", "want", "savings"},
+                                  "savings-runway": {"spend"}})
+
+    def test_a_stat_link_names_its_month_as_a_range(self):
+        a = dashboard.resolve(self.conn, self.results, {"source": "needs-wants-savings", "metric": "savings"})
+        self.assertEqual(a["label_links"][0], {"from": a["labels"][0], "to": a["labels"][0], "transfer": "1",
+                                               "need": "Investment,Savings", "hide_transfers": "0"})
 
 
 class TripCards(unittest.TestCase):

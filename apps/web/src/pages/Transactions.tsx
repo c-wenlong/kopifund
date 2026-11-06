@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EyeOff, Pencil, Plus, X, type LucideIcon } from "lucide-react";
 import {
   postJSON, rowsChanged, useApi, type GroupRow, type GroupRows, type PinSet, type Relinked, type RulePreview, type RuleSavedEdit,
@@ -6,23 +6,26 @@ import {
 } from "../api";
 import { formatAmount, formatSgd } from "../money";
 import { BankMark } from "../components/BankMark";
-import { Button, buttonClass } from "../components/Button";
+import { Button } from "../components/Button";
 import { Combobox } from "../components/Combobox";
 import { EmptyState } from "../components/EmptyState";
+import { FilterChip } from "../components/FilterChip";
 import { Pager, usePager } from "../components/Pager";
-import { PinForm, pinnedText, savePin, undoRuleWrite, type PinDraft } from "../components/PinRow";
+import { PinForm, pinDirty, pinnedText, savePin, undoRuleWrite, type PinDraft } from "../components/PinRow";
 import { draftParams, ruleOf, type Draft } from "../components/RuleEditor";
 import { Select } from "../components/Select";
-import { Loading, Problem } from "../components/States";
+import { Loading, NoStatementsYet, Problem } from "../components/States";
 import { HEAD_ROW, ROW, TABLE_CARD, TH } from "../components/tableKit";
 import { Tile } from "../components/Tile";
 import { showToast } from "../components/Toast";
 import { useWide } from "../components/useWide";
+import { useAction } from "../components/useAction";
 import { formatDate, formatDay, formatMonth, formatRange, formatWeekday } from "../dates";
-import { onLinkClick } from "../router";
-import { useUrlParams } from "../useUrlParams";
+import { useUnsavedGuard } from "../router";
+import { pageParam, useUrlPage, useUrlParams } from "../useUrlParams";
 import type { GroupKind, NeedClass } from "../types.gen";
 import { KIND_ICON, KindIcon, NEED_ICON, EYE_ICON, SCAM_FLAG_ICON, SCAM_ICON, TRIP_ICON } from "../icons";
+import { plural, sentence } from "../words";
 
 // G13: transfers (wallet top-ups, moves between your own accounts) are hidden
 // unless the browser has saved the opposite. The saved choice is per browser;
@@ -87,7 +90,7 @@ export function scopeParts(s: Scope): { text: string; icons: LucideIcon[] }[] {
     : kinds.map((k) => KIND_ICON[k]);
   const parts: [string | false | null | undefined, LucideIcon[]][] = [
     [s.trip && `Trip: ${s.trip}`, [TRIP_ICON]],
-    [counted && `${counted.charAt(0).toUpperCase()}${counted.slice(1)}${kinds.length || need.length ? " only" : ""}`, countedIcons],
+    [counted && `${sentence(counted)}${kinds.length || need.length ? " only" : ""}`, countedIcons],
     [s.bucket && `Bucket: ${s.bucket}`, []],
     [s.categories && `Categories: ${names(s.categories)}`, []],
     [s.notCategories && `Not categories: ${names(s.notCategories)}`, []],
@@ -103,6 +106,9 @@ export function scopeParts(s: Scope): { text: string; icons: LucideIcon[] }[] {
 // the category box's entry for "no category filter": a Combobox only takes a choice from its list
 const ALL_CATEGORIES = "All categories";
 
+// how long typing in the search box pauses before the search is asked for
+const SEARCH_PAUSE_MS = 250;
+
 // one family: every filter is a 32px box with the same border, fill and 13px text
 const FILTER_BOX = "flex-1 basis-36 sm:flex-none";
 
@@ -110,11 +116,31 @@ export function Transactions() {
   // G13: every filter, the page included, lives in the address. Back restores
   // them, a copied link shares them, and Home's "needs a category" banner and
   // every chart bar link here with ?category=, ?month= or ?q= to open the rows
-  const [params, patch] = useUrlParams();
+  const [params, patchUrl] = useUrlParams();
   const month = params.get("month") ?? "";
   const category = params.get("category") ?? "";
   const account = params.get("account") ?? "";
   const q = params.get("q") ?? "";
+  // the search box shows every key at once, and the address (so the server, and the kept answers) takes the
+  // text once typing pauses or on Enter: "starbucks" is one request, not nine, and no half-typed word's page
+  // pushes another page's answer out of the cache. Any change of the address fills the box from it, so a link
+  // (the sidebar's, Back, Clear filters) drops a search still waiting; every write this page makes takes the
+  // waiting search along (patch below), so a filter or a page picked here keeps it.
+  const where = params.toString();
+  const [box, setBox] = useState({ text: q, from: where });
+  if (box.from !== where) setBox({ text: q, from: where });
+  const typed = box.from !== where ? q : box.text;
+  const waitingSearch = useRef<string | null>(null);
+  waitingSearch.current = typed !== q ? typed : null;
+  const patch = useCallback((change: Record<string, string | null>) => {
+    const text = waitingSearch.current;
+    patchUrl(text !== null && !("q" in change) ? { q: text, ...change } : change);
+  }, [patchUrl]);
+  useEffect(() => {
+    if (typed === q) return;
+    const wait = window.setTimeout(() => patchUrl({ q: typed }), SEARCH_PAUSE_MS);
+    return () => window.clearTimeout(wait);
+  }, [typed, q, patchUrl]);
   // G13: a link from another page lists exactly the rows its figure counts: one payee by its exact
   // name, or particular rows by their keys (comma-separated). Each shows as a chip that clears it.
   const payee = params.get("payee") ?? "";
@@ -179,7 +205,7 @@ export function Transactions() {
     return p.toString();
   }, [month, category, account, q, payee, named, keys, paymentsOnly, scope.from, scope.to, scope.home, scope.spend, scope.trip, scope.income, scope.transfer,
     scope.need, scope.bucket, scope.categories, scope.notCategories, scope.notPayees, scope.external, scope.standIn, noSynthetic, hideTransfers, scam, noFx]);
-  const urlPage = Math.max(1, Math.floor(Number(params.get("page"))) || 1);
+  const urlPage = pageParam(params);
   // G13: server-side pages. The page starts again at 1 when any filter changes
   // and is clamped when the total shrinks. The total is the one the last answer
   // gave for these filters: a view that has kept the old rows on screen while
@@ -188,18 +214,7 @@ export function Transactions() {
   const [answer, setAnswer] = useState<{ data: TxnPage | null; filters: string }>({ data: null, filters });
   const waiting = answer.filters !== filters && urlPage > 1;
   const pager = usePager("transactions", waiting ? undefined : answer.data?.total, filters, urlPage);
-  // the page and the address follow each other: a click on a page number writes
-  // it, a link to another page of this list (or none) moves the list there
-  const seenUrlPage = useRef(urlPage);
-  useEffect(() => {
-    if (urlPage !== seenUrlPage.current) {
-      seenUrlPage.current = urlPage;
-      if (urlPage !== pager.page) pager.setPage(urlPage);
-    } else if (pager.page !== urlPage) {
-      seenUrlPage.current = pager.page;
-      patch({ page: pager.page > 1 ? String(pager.page) : null });
-    }
-  }, [urlPage, pager, patch]);
+  useUrlPage(pager, urlPage, patch);
   const url = `/api/transactions?${new URLSearchParams({ limit: String(pager.size), offset: String(pager.offset) })}${filters ? `&${filters}` : ""}`;
   const { data, error, loading } = useApi<TxnPage>(url);
   const [open, setOpen] = useState<string | null>(null);   // the row whose panel is open, under it
@@ -216,32 +231,62 @@ export function Transactions() {
   };
 
   // every filter off for this view; whether transfers show is left as it is
-  const clearFilters = () => patch({
+  // a search still waiting for the pause goes too, so it cannot come back after the clear
+  const clearFilters = () => { setBox({ text: "", from: where }); patch({
     q: null, payee: null, named: null, key: null, out: null, month: null, category: null, account: null, page: null, ...NO_SCOPE, synthetic: null,
     flag: null, missing_fx: null,
-  });
+  }); };
   const groups = useMemo(() => (data ? groupByDay(data.rows, data.days) : []), [data]);
   // the whole day's totals the server counted for a day on this page
   const dayOf = (date: string): TxnDay =>
     data?.days.find((d) => d.date === date) ?? { date, count: 0, in_sgd: 0, out_sgd: 0, continued: false, continues: false };
   // what was typed into a row's own form, kept here so a change of layout (a tablet turned over) does not empty it
   const drafts = useRef<Record<string, PinDraft>>({});
+  // the rows whose More form is on screen
+  const shownForms = useRef(new Set<string>());
+  // the rows whose kept draft holds something unsaved: leaving asks while any does, the form open or not,
+  // and a save takes its row off
+  const [unsaved, setUnsaved] = useState<ReadonlySet<string>>(() => new Set());
+  const markUnsaved = useCallback((key: string, dirty: boolean) => setUnsaved((was) => {
+    if (was.has(key) === dirty) return was;
+    const now = new Set(was);
+    if (dirty) now.add(key); else now.delete(key);
+    return now;
+  }), []);
+  useUnsavedGuard(unsaved.size > 0);
+  // the rows whose own form is saving: its panel and form stay mounted, hidden if closed meanwhile, until the
+  // save lands, so the one form that sent it settles it and no second form opened meanwhile can disagree
+  const [savingRows, setSavingRows] = useState<ReadonlySet<string>>(() => new Set());
+  const markSaving = useCallback((key: string, on: boolean) => setSavingRows((was) => {
+    if (was.has(key) === on) return was;
+    const now = new Set(was);
+    if (on) now.add(key); else now.delete(key);
+    return now;
+  }), []);
   const pickable = (data?.categories ?? []).filter((c) => c !== "(none)");
   const cell = (t: Txn) => (
     <CategoryCell t={t} categories={pickable} picking={picking === t.key}
       onStart={() => setPicking(t.key)} onDone={() => setPicking((k) => (k === t.key ? null : k))} onPicked={() => setOpen(t.key)}
       onPinned={(pin) => {
         setPins((p) => ({ ...p, [t.key]: pin }));
-        // a form typed into before keeps its note and payee, with the category just picked
+        // a form typed into before keeps its note and payee, with the category just picked, which is now
+        // saved: the row is left unsaved only if something else typed still differs
         const typed = drafts.current[t.key];
-        if (pin && typed) drafts.current[t.key] = { ...typed, category: pin.category };
+        if (pin && typed) {
+          const next = { ...typed, category: pin.category, base: typed.base && { ...typed.base, category: pin.category } };
+          drafts.current[t.key] = next;
+          // (a form on screen reports for itself)
+          if (next.base && !shownForms.current.has(t.key)) markUnsaved(t.key, pinDirty(next, next.base));
+        }
       }} />
   );
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2 text-[13px]">
-        <input type="search" placeholder="Search merchant, payee, memo" value={q} onChange={(e) => patch({ q: e.target.value })}
+        <input type="search" placeholder="Search merchant, payee, memo" value={typed}
+          onChange={(e) => setBox({ text: e.target.value, from: where })}
+          onKeyDown={(e) => { if (e.key === "Enter") patch({ q: typed }); }}
           aria-label="Search transactions" className="h-8 min-w-0 basis-full rounded-md border border-line bg-panel px-2.5 sm:min-w-56 sm:flex-1 sm:basis-auto" />
         <Combobox label="Category" value={category || ALL_CATEGORIES} options={[ALL_CATEGORIES, ...(data?.categories ?? [])]}
           className={`${FILTER_BOX} sm:w-48`} onChange={(v) => patch({ category: v === ALL_CATEGORIES ? null : v })} />
@@ -254,45 +299,29 @@ export function Transactions() {
           onChange={(v) => patch({ account: v })} />
       </div>
       {scoped && (
-        <div className="flex items-center gap-2 text-[12px] text-ink-2">
-          <span className="rounded-full bg-tile px-2.5 py-0.5">
-            {/* G18: each part led by the icons of the kinds it names; the words stay one run of text */}
-            {scopeParts(scope).map((p, i) => (
-              <Fragment key={p.text}>
-                {i > 0 && " · "}
-                {p.icons.map((icon, j) => <KindIcon key={j} icon={icon} className="mr-1 inline align-[-2px]" />)}
-                {p.text}
-              </Fragment>
-            ))}
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => patch({ ...NO_SCOPE, ...(scope.standIn ? { synthetic: null } : {}) })}>Clear</Button>
-        </div>
+        <FilterChip onClear={() => patch({ ...NO_SCOPE, ...(scope.standIn ? { synthetic: null } : {}) })}>
+          {/* G18: each part led by the icons of the kinds it names; the words stay one run of text */}
+          {scopeParts(scope).map((p, i) => (
+            <Fragment key={p.text}>
+              {i > 0 && " · "}
+              {p.icons.map((icon, j) => <KindIcon key={j} icon={icon} className="mr-1 inline align-[-2px]" />)}
+              {p.text}
+            </Fragment>
+          ))}
+        </FilterChip>
       )}
       {(payee || keyCount > 0 || paymentsOnly) && (
-        <div className="flex items-center gap-2 text-[12px] text-ink-2">
-          <span className="rounded-full bg-tile px-2.5 py-0.5">
-            {[payee && `Payee: ${payee}`, keyCount > 0 && (keyCount === 1 ? "One payment" : `${keyCount.toLocaleString("en-SG")} payments`),
-              paymentsOnly && "Money out only"]
-              .filter(Boolean).join(" · ")}
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => patch({ payee: null, named: null, key: null, out: null })}>Clear</Button>
-        </div>
+        <FilterChip onClear={() => patch({ payee: null, named: null, key: null, out: null })}>
+          {[payee && `Payee: ${payee}`, keyCount > 0 && (keyCount === 1 ? "One payment" : `${keyCount.toLocaleString("en-SG")} payments`),
+            paymentsOnly && "Money out only"]
+            .filter(Boolean).join(" · ")}
+        </FilterChip>
       )}
       {scam && (
-        <div className="flex items-center gap-2 text-[12px] text-ink-2">
-          <span className="inline-flex items-center gap-1 rounded-full bg-warn-bg px-2.5 py-0.5 text-warn">
-            <KindIcon icon={SCAM_FLAG_ICON} />Flagged as a possible scam
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => patch({ flag: null })}>Clear</Button>
-        </div>
+        <FilterChip tone="warn" icon={SCAM_FLAG_ICON} onClear={() => patch({ flag: null })}>Flagged as a possible scam</FilterChip>
       )}
       {noFx && (
-        <div className="flex items-center gap-2 text-[12px] text-ink-2">
-          <span className="inline-flex items-center gap-1 rounded-full bg-warn-bg px-2.5 py-0.5 text-warn">
-            <KindIcon icon={EYE_ICON.missing_fx} />No SGD value
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => patch({ missing_fx: null })}>Clear</Button>
-        </div>
+        <FilterChip tone="warn" icon={EYE_ICON.missing_fx} onClear={() => patch({ missing_fx: null })}>No SGD value</FilterChip>
       )}
       {error && <Problem message={error} />}
       {loading && !data && <Loading what="Loading transactions" />}
@@ -305,10 +334,7 @@ export function Transactions() {
       {data && data.total === 0 && (
         anyFilter
           ? <EmptyState title="Nothing matches" action={<ClearFilters onClick={clearFilters} bordered />}>No transaction passes every filter.</EmptyState>
-          : <EmptyState title="No transactions yet"
-              action={<a href="/upload" onClick={onLinkClick("/upload")} className={buttonClass("secondary")}>Load your statements</a>}>
-              Transactions come with your first statements.
-            </EmptyState>
+          : <NoStatementsYet title="No transactions yet">Transactions come with your first statements.</NoStatementsYet>
       )}
       {data && data.total > 0 && (
         <>
@@ -319,7 +345,7 @@ export function Transactions() {
               <Tile label="Money in" value={formatSgd(data.in_sgd ?? 0, { decimals: true })} />
               <Tile label="Money out" value={formatSgd(Math.abs(data.out_sgd ?? 0), { decimals: true })} />
               <Tile label="Net" value={formatSgd(data.sum_sgd, { decimals: true })}
-                note={`${data.total.toLocaleString("en-SG")} transaction${data.total === 1 ? "" : "s"}${hideTransfers ? ", transfers hidden" : ""}`} />
+                note={`${plural(data.total, "transaction")}${hideTransfers ? ", transfers hidden" : ""}`} />
             </div>
           </div>
           {wide ? (
@@ -363,9 +389,9 @@ export function Transactions() {
                             )}
                           </td>
                         </tr>
-                        {open === t.key && (
-                          <tr>
-                            <td colSpan={4} className="bg-tile px-3 py-2"><RowPanel txnKey={t.key} drafts={drafts.current} pin={pins[t.key]} onClose={() => setOpen(null)} /></td>
+                        {(open === t.key || savingRows.has(t.key)) && (
+                          <tr hidden={open !== t.key}>
+                            <td colSpan={4} className="bg-tile px-3 py-2"><RowPanel txnKey={t.key} drafts={drafts.current} shownForms={shownForms.current} onUnsaved={markUnsaved} onSaving={markSaving} pin={pins[t.key]} onClose={() => setOpen(null)} /></td>
                           </tr>
                         )}
                         </Fragment>
@@ -395,7 +421,7 @@ export function Transactions() {
                     {t.currency !== "SGD" && <span className="num ml-auto text-ink-3">{sgdValue(t)}</span>}
                   </div>
                   <ScamNote t={t} />
-                  {open === t.key && <div className="mt-2 rounded-md bg-tile px-3 py-2"><RowPanel txnKey={t.key} drafts={drafts.current} pin={pins[t.key]} onClose={() => setOpen(null)} /></div>}
+                  {(open === t.key || savingRows.has(t.key)) && <div hidden={open !== t.key} className="mt-2 rounded-md bg-tile px-3 py-2"><RowPanel txnKey={t.key} drafts={drafts.current} shownForms={shownForms.current} onUnsaved={markUnsaved} onSaving={markSaving} pin={pins[t.key]} onClose={() => setOpen(null)} /></div>}
                 </li>
                 </Fragment>
               ))}
@@ -462,21 +488,10 @@ function TransfersChip({ hidden, onClick }: { hidden: boolean; onClick: () => vo
 // G15: why the scam checks flag a row, and "This is fine", which saves the
 // choice in the record so that payee is not flagged again
 function ScamNote({ t }: { t: Txn }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // the row can stay on screen and be flagged again later (Flag again in Settings)
+  const { running: busy, error, run } = useAction();
   if (!t.flags?.length) return null;
-  async function fine() {
-    setBusy(true);
-    setError(null);
-    try {
-      await postJSON("/api/scam-checks/fine", JSON.stringify({ key: t.key }));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      // the row can stay on screen and be flagged again later (Flag again in Settings)
-      setBusy(false);
-    }
-  }
+  const fine = () => run("fine", () => postJSON("/api/scam-checks/fine", JSON.stringify({ key: t.key })));
   return (
     <div className="mt-1 flex flex-col items-start gap-1 text-[12px]">
       <ul aria-label="Why this looks like a scam" className="m-0 list-none p-0 text-warn">
@@ -574,8 +589,9 @@ function CategoryCell({ t, categories, picking, onStart, onDone, onPicked, onPin
 // into a rule for the rows like it ("Apply to 6 similar rows", the count from
 // the rule preview), and "More" for the payee, kind and note of the row's own
 // rule. A row a hand-edited rules file left unapplied offers Apply rules.
-function RowPanel({ txnKey, drafts, pin, onClose }: {
-  txnKey: string; drafts: Record<string, PinDraft>; onClose: () => void;
+function RowPanel({ txnKey, drafts, shownForms, onUnsaved, onSaving, pin, onClose }: {
+  txnKey: string; drafts: Record<string, PinDraft>; shownForms: Set<string>; onUnsaved: (key: string, dirty: boolean) => void;
+  onSaving: (key: string, on: boolean) => void; onClose: () => void;
   // what the pick just set, so the similar-rows chip need not wait for the row to be asked again;
   // null while the pick is still being saved, when there is nothing to preview yet
   pin?: PinSet | null;
@@ -583,7 +599,15 @@ function RowPanel({ txnKey, drafts, pin, onClose }: {
   const state = useApi<GroupRows>(`/api/rules/rows?${new URLSearchParams({ key: txnKey })}`);
   // a form opened before a change of layout (a tablet turned over) opens again with what was typed
   const [more, setMore] = useState(() => txnKey in drafts);
-  const [busy, setBusy] = useState(false);
+  // the form's save on its way: the form stays mounted (hidden after Less) until it lands
+  const [formSaving, setFormSaving] = useState(false);
+  const mountForm = more || formSaving;
+  useEffect(() => {
+    if (!mountForm) return;
+    shownForms.add(txnKey);
+    return () => { shownForms.delete(txnKey); };
+  }, [mountForm, txnKey, shownForms]);
+  const { running: busy, run } = useAction();
   // the pick's answer stands for the row's pin only until the row is asked again: after
   // that (a save through More, an Undo) the row's own pin is the newer word
   const [fresh, setFresh] = useState<PinSet | undefined>(pin ?? undefined);
@@ -612,16 +636,7 @@ function RowPanel({ txnKey, drafts, pin, onClose }: {
   if (!row) return <p className="m-0 text-[13px] text-warn">That row is no longer in the record.</p>;
   const similar = counted === query && hidden !== query && preview.data && !preview.data.error ? preview.data.changes ?? 0 : 0;
 
-  async function act(run: () => Promise<void>) {
-    setBusy(true);
-    try {
-      await run();
-    } catch (e) {
-      showToast({ tone: "error", message: (e as Error).message });
-    } finally {
-      setBusy(false);
-    }
-  }
+  const act = (write: () => Promise<void>) => run("act", write, { toast: true });
   // the same rule "Apply to similar rows" built before G13: the row's text as a pattern, with its category and payee
   const applySimilar = () => act(async () => {
     const r = await postJSON<RuleSavedEdit>("/api/rules/save", JSON.stringify({ rule: ruleOf(draft!), edit: null }));
@@ -646,7 +661,7 @@ function RowPanel({ txnKey, drafts, pin, onClose }: {
           <button type="button" disabled={busy} onClick={() => void applySimilar()}
             className="num inline-flex items-center gap-1.5 rounded-full border border-line bg-panel px-3 py-1 hover:bg-hover disabled:opacity-40">
             <Plus size={13} aria-hidden />
-            Apply to {similar.toLocaleString("en-SG")} similar {similar === 1 ? "row" : "rows"}
+            Apply to {plural(similar, "similar row")}
           </button>
         )}
         <button type="button" aria-expanded={more} onClick={() => setMore(!more)}
@@ -658,9 +673,18 @@ function RowPanel({ txnKey, drafts, pin, onClose }: {
           <X size={14} aria-hidden />
         </button>
       </div>
-      {more && (
-        <PinForm row={row} categories={d.categories} kinds={d.kinds} draft={drafts[txnKey]}
-          onDraft={(x) => { drafts[txnKey] = x; }} onPinned={() => setMore(false)} />
+      {mountForm && (
+        <div hidden={!more}>
+          <PinForm row={row} categories={d.categories} kinds={d.kinds} draft={drafts[txnKey]}
+            onDraft={(x) => { drafts[txnKey] = x; }} onDirty={(dirty) => onUnsaved(txnKey, dirty)}
+            onSaving={(on) => { setFormSaving(on); onSaving(txnKey, on); }}
+            onPinned={() => {
+              // saved: More opens again on what the row has now, and nothing is left to ask about
+              delete drafts[txnKey];
+              onUnsaved(txnKey, false);
+              setMore(false);
+            }} />
+        </div>
       )}
     </div>
   );

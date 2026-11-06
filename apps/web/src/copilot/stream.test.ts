@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { CopilotEvent } from "../types.gen";
-import { ask, readEvents } from "./stream";
+import { ask, GARBLED, readEvents } from "./stream";
+import { json } from "../test-helpers";
 
 // G22: the copilot's answer is one JSON event per line, read as the lines arrive.
 
@@ -17,8 +18,6 @@ async function read(chunks: string[]) {
   await readEvents(streamOf(chunks), (e) => seen.push(e));
   return seen;
 }
-
-afterEach(() => vi.unstubAllGlobals());
 
 describe("readEvents", () => {
   it("joins a line split across chunks, even mid-character", async () => {
@@ -74,8 +73,36 @@ describe("ask", () => {
   });
 
   it("throws the server's words for a refusal before any line", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "Turn on Send matching rows in Settings first." }), { status: 422 })));
+    vi.stubGlobal("fetch", vi.fn(async () => json({ error: "Turn on Send matching rows in Settings first." }, 422)));
     await expect(ask({ thread: null, question: "q", page: { path: "/", title: "Home", filters: {} } }, () => {}))
       .rejects.toMatchObject({ message: "Turn on Send matching rows in Settings first.", status: 422 });
+  });
+});
+
+// Audit: a line that is not JSON stops the read and the request, and says so in plain words
+describe("a garbled answer", () => {
+  it("cancels the body it was reading", async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(c) { c.enqueue(enc.encode('{"type":"text","text":"a"}\nnot json\n')); },
+      cancel,
+    });
+    const seen: CopilotEvent[] = [];
+    await expect(readEvents(body, (e) => seen.push(e))).rejects.toThrow();
+    expect(seen.map((e) => e.type)).toEqual(["text"]);
+    expect(cancel).toHaveBeenCalled();
+  });
+
+  it("cancels the body when a listener throws", async () => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({ start(c) { c.enqueue(enc.encode('{"type":"text","text":"a"}\n')); }, cancel });
+    await expect(readEvents(body, () => { throw new Error("listener broke"); })).rejects.toThrow("listener broke");
+    expect(cancel).toHaveBeenCalled();
+  });
+
+  it("rejects ask with a readable message, not the parser's", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(streamOf(['{"type":"text","text":"a"}\n<html>\n']), { status: 200 })));
+    await expect(ask({ thread: null, question: "q", page: { path: "/", title: "Home", filters: {} } }, () => {}))
+      .rejects.toMatchObject({ message: GARBLED });
   });
 });

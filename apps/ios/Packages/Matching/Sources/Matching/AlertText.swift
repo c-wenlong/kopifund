@@ -49,7 +49,7 @@ public enum AlertText {
     }
 
     /// The title a list row should lead with: the detector's confident
-    /// payee guess says who the money went to ("CHINESE COOKED FOOD"), which
+    /// payee guess says who the money went to ("GOLDEN WOK KITCHEN"), which
     /// reads better than "Transaction Ref: PLPE…" when every alert in the
     /// queue shares that same subject line. Runs only the payee scan, but
     /// keep it off the render path anyway.

@@ -5,8 +5,10 @@ import { formatDay } from "../dates";
 import { Button } from "./Button";
 import { Combobox } from "./Combobox";
 import { Select } from "./Select";
+import { TextInput } from "./TextInput";
 import { StatusChip } from "./StatusChip";
 import { TIER_TESTS, tierLabel } from "../ruleWords";
+import { plural } from "../words";
 
 export type Draft = {
   match_on: string; pattern: string; payee: string; kind: string; country: string;
@@ -38,7 +40,6 @@ export function draftParams(draft: Draft): URLSearchParams {
   });
 }
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-SG")} ${n === 1 ? one : many}`;
 const outcome = (o: PayeeCategory) => (o.category ? [o.payee, o.category].filter(Boolean).join(", ") : "no rule");
 
 // G7: add a rule, or edit one, with a live preview of what saving it would
@@ -89,6 +90,9 @@ export function RuleEditor({ rule, initial, tiers, tierFiles, categories, kinds,
   const preview = useApi<RulePreview>(ready ? `/api/rules/preview?${asked}` : null);
   const p = ready ? preview.data : null;
   const current = asked === query && !preview.loading;
+  // Audit: an answer without the lists (an older server, an error answer) draws as empty lists, not a crash
+  const beaten = p?.beaten_by ?? [];
+  const sample = p?.sample ?? [];
 
   async function save() {
     report({ saving: true, error: null });
@@ -116,7 +120,6 @@ export function RuleEditor({ rule, initial, tiers, tierFiles, categories, kinds,
   const where = rule?.shared
     ? `Shared rule, read only. Saving adds a rule to your ${file} that matches first, ahead of it.`
     : rule && rule.file !== file ? `Moves to your ${file}.` : null;
-  const input = "h-8 w-full rounded-md border border-line bg-panel px-2";
 
   return (
     <div className="flex flex-col gap-2 text-[13px]">
@@ -135,8 +138,8 @@ export function RuleEditor({ rule, initial, tiers, tierFiles, categories, kinds,
                 options={tiers.filter((t) => t !== "key" || draft.match_on === "key").map((t) => ({ value: t, label: tierLabel(t) }))} />
             </Field>
             <Field label={`Text to match, in ${TIER_TESTS[draft.match_on] ?? draft.match_on}`} wide>
-              <input value={draft.pattern} aria-label={`Pattern for ${what}`} placeholder="KOPITIAM*"
-                onChange={(e) => set({ pattern: e.target.value })} className={input} />
+              <TextInput value={draft.pattern} aria-label={`Pattern for ${what}`} placeholder="KOPITIAM*"
+                onChange={(e) => set({ pattern: e.target.value })} className="w-full" />
             </Field>
           </>
         )}
@@ -145,23 +148,23 @@ export function RuleEditor({ rule, initial, tiers, tierFiles, categories, kinds,
             placeholder="Choose a category" onChange={(category) => set({ category })} />
         </Field>
         <Field label="Payee">
-          <input value={draft.payee} aria-label={`Payee for ${what}`} placeholder="None"
-            onChange={(e) => set({ payee: e.target.value })} className={input} />
+          <TextInput value={draft.payee} aria-label={`Payee for ${what}`} placeholder="None"
+            onChange={(e) => set({ payee: e.target.value })} className="w-full" />
         </Field>
         <Field label="Kind">
           <Select label={`Kind for ${what}`} placeholder="Kind" value={draft.kind} disabled={!draft.payee.trim()}
             onChange={(v) => set({ kind: v })} className="w-full" options={kinds.map((k) => ({ value: k, label: k }))} />
         </Field>
         <Field label="Country">
-          <input value={draft.country} aria-label={`Country for ${what}`} placeholder="SGP" maxLength={3}
-            onChange={(e) => set({ country: e.target.value.toUpperCase() })} className={input} />
+          <TextInput value={draft.country} aria-label={`Country for ${what}`} placeholder="SGP" maxLength={3}
+            onChange={(e) => set({ country: e.target.value.toUpperCase() })} className="w-full" />
         </Field>
         <label className="flex items-center gap-2 self-end pb-1.5">
           <input type="checkbox" checked={draft.recurring} onChange={(e) => set({ recurring: e.target.checked })} />
           Recurring
         </label>
         <Field label="Notes" full>
-          <input value={draft.notes} aria-label={`Notes for ${what}`} onChange={(e) => set({ notes: e.target.value })} className={input} />
+          <TextInput value={draft.notes} aria-label={`Notes for ${what}`} onChange={(e) => set({ notes: e.target.value })} className="w-full" />
         </Field>
       </div>
 
@@ -180,17 +183,17 @@ export function RuleEditor({ rule, initial, tiers, tierFiles, categories, kinds,
                 </span>
               )}
             </div>
-            {p.beaten_by!.length > 0 && (
+            {beaten.length > 0 && (
               <p className="m-0 text-warn">
                 {p.wins ? "Earlier rules match the rest first" : "Earlier rules match them first"}:{" "}
-                {p.beaten_by!.map((b) => `${tierLabel(b.tier)} ${b.pattern} in ${b.file} (${plural(b.rows, "row")})`).join("; ")}.
+                {beaten.map((b) => `${tierLabel(b.tier)} ${b.pattern} in ${b.file} (${plural(b.rows, "row")})`).join("; ")}.
               </p>
             )}
-            {p.sample!.length > 0 && (
+            {sample.length > 0 && (
               <div className="overflow-x-auto">
                 <table className="num w-full border-collapse text-[12px]">
                   <tbody>
-                    {p.sample!.map((s) => (
+                    {sample.map((s) => (
                       <tr key={s.key} className="border-t border-line">
                         <td className="whitespace-nowrap py-1 pr-3 text-ink-2">{formatDay(s.date)}</td>
                         <td className="max-w-64 truncate py-1 pr-3" title={s.text}>{s.text || "(no text)"}</td>
@@ -200,7 +203,7 @@ export function RuleEditor({ rule, initial, tiers, tierFiles, categories, kinds,
                     ))}
                   </tbody>
                 </table>
-                {p.changes! > p.sample!.length && <p className="m-0 text-ink-3">and {plural(p.changes! - p.sample!.length, "more")}.</p>}
+                {(p.changes ?? 0) > sample.length && <p className="m-0 text-ink-3">and {plural((p.changes ?? 0) - sample.length, "more")}.</p>}
               </div>
             )}
           </div>

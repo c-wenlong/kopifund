@@ -65,12 +65,16 @@ def config_plan():
         return None
 
 
-def trips_from_db(conn):
+def trips_from_db(conn, rows=()):
     """The trips as the sync's Trip objects, so assignment is the same rule.
     G17 (T9): a pinned key the parser has since changed (txn_key_alias) is
-    the row's key now, so the row stays on its trip."""
+    the row's key now, so the row stays on its trip. With `rows`, a parser
+    run about to be loaded, a pin also names the key that run gives the row
+    (db.rekeys), so the load that re-keys a pinned row keeps it on its trip."""
     out = []
     codes, pins = db.trip_countries(conn), db.trip_pins(conn)
+    renamed = {old: new for _, old, new in db.rekeys(conn, rows)} if rows else {}
+    pins = {tid: [*keys, *(renamed[k] for k in keys if k in renamed)] for tid, keys in pins.items()}
     for r in conn.execute("SELECT * FROM trip WHERE start_date IS NOT NULL"):
         out.append(sync.Trip(page_id=str(r["id"]), name=r["name"], start=r["start_date"],
                              end=r["end_date"] or r["start_date"],
@@ -111,7 +115,7 @@ def load(cfg, conn, parsed, kind="load"):
     # a category no longer shipped that the rows still name (Transport, before
     # split-transport) is added back, so its rows keep counting
     db.seed_categories(conn, named={r.get("category") for r in parsed.rows})
-    trip_of = trip_names(cfg, parsed.rows, trips_from_db(conn))
+    trip_of = trip_names(cfg, parsed.rows, trips_from_db(conn, parsed.rows))
     rows = [{"payee": r.get("payee") or "", "category": r.get("category") or "",
              "amount_sgd_minor": None} for r in parsed.rows]
     payees = snap.payees_from_rules(parsed.rules, rows) if getattr(parsed, "rules", None) else []
@@ -130,8 +134,10 @@ def load(cfg, conn, parsed, kind="load"):
                                 complete=complete, kind=kind)
         db.load_statements_meta(conn, cfg.root, pdfs, pdf_parsers(cfg))
         db.load_broker_and_cpf(conn, portfolio, cpf)
-        # G25: the phone's waiting rows confirm against what this load landed
+        # G25: the phone's waiting rows confirm against what this load landed,
+        # then any whose wait is over expire
         counts["phone rows matched"] = pending.confirm(conn)
+        counts["phone rows expired"] = pending.expire(conn)
     counts["trips assigned"] = len(trip_of)
     counts["complete"] = complete
     return counts

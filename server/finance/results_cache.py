@@ -15,6 +15,7 @@ import copy
 import json
 import re
 import threading
+from collections.abc import Mapping
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -25,16 +26,6 @@ from .money import in_cents
 RESULT_FILE = re.compile(r"^(?P<id>[a-z0-9]+(?:-[a-z0-9]+)*)-(?P<date>\d{4}-\d{2}-\d{2})\.json$")
 STAT_ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
-# The order the cards read best in: money in and out first, then where it goes,
-# then who it goes to, then the outliers, then the forward-looking ones, and
-# the caveats about the data itself last. Anything not listed sorts after.
-DISPLAY_ORDER = [
-    "monthly-cashflow", "needs-wants-savings", "category-breakdown",
-    "recurring-detector", "eating-out", "merchant-concentration", "one-offs",
-    "income-stability", "savings-runway", "portfolio", "cpf", "travel",
-    "benchmarks-sg",
-    "forward-view", "data-quality",
-]
 
 
 def safe_path(base, relative):
@@ -129,9 +120,23 @@ class Cache:
                 continue
             if not in_cents(body):
                 continue
-            out[stat_id] = body
+            out[stat_id] = current_names(stat_id, body)
             newest = max(newest, mtime)
         return out, newest
+
+
+def current_names(stat_id, body):
+    """A saved result with any field renamed since it was written given its
+    name now, so a result from before the rename still reads right until the
+    stats run again. category-breakdown wrote its trend ratio as `change_pct`
+    before #308; it is `change_share` now, since a `_pct` name is a percent and
+    the ratio would read as a hundredth of itself (server/analytics/SPEC.md,
+    "The chart hint")."""
+    if stat_id == "category-breakdown":
+        for row in (body.get("data") or {}).get("categories") or ():
+            if isinstance(row, dict) and "change_pct" in row:
+                row.setdefault("change_share", row.pop("change_pct"))
+    return body
 
 
 def _cache():
@@ -146,11 +151,9 @@ _RESULTS_MEMO: dict = {}
 _RESULTS_LOCK = threading.Lock()
 
 
-def results(req=None):
-    """Every stat's current result, or {} before the first analysis, with any
-    account number the record knows masked to its last four digits. Masking
-    reads the request's connection when it has to work them out, so that
-    costs the request no second one."""
+def _shared(req=None):
+    """The memo's own results for this data version, worked out once: never
+    handed to a caller, which gets a copy (`results`) or a view (`results_view`)."""
     from . import api, page_cache
     version = page_cache.data_version()
     with _RESULTS_LOCK:                  # one works them out, the others wait for it
@@ -163,4 +166,38 @@ def results(req=None):
             results = api.masked(results, conn=req.maybe_record() if req else None) if results else {}
             _RESULTS_MEMO.clear()
             _RESULTS_MEMO[version] = results
-        return copy.deepcopy(results)
+        return results
+
+
+def results(req=None):
+    """Every stat's current result, or {} before the first analysis, with any
+    account number the record knows masked to its last four digits. Masking
+    reads the request's connection when it has to work them out, so that
+    costs the request no second one."""
+    return copy.deepcopy(_shared(req))
+
+
+class _View(Mapping):
+    """The results, each copied only when it is read."""
+
+    def __init__(self, shared):
+        self._shared = shared
+        self._read = {}
+
+    def __getitem__(self, stat_id):
+        if stat_id not in self._read:
+            self._read[stat_id] = copy.deepcopy(self._shared[stat_id])
+        return self._read[stat_id]
+
+    def __iter__(self):
+        return iter(self._shared)
+
+    def __len__(self):
+        return len(self._shared)
+
+
+def results_view(req=None) -> Mapping:
+    """`results`, read only, copying a stat's result only when it is read
+    (G26): a dashboard widget asks one question of one or two stats, once per
+    widget, and copying every stat for each would cost more than the answer."""
+    return _View(_shared(req))

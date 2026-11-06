@@ -7,28 +7,15 @@ import { columnUnit, fmt, label, plan, type Row, type StatResult } from "./hint"
 import { CENTS_UNIT, centsOf, inCents } from "./money";
 import { tipExtras } from "./tipExtras";
 import { versusFigure } from "./VersusList";
+import { json, useSizedCharts } from "../test-helpers";
 
 // G20 line 6: a stat result's money is cents only. A card shows a result in
 // cents (unit "sgd_minor", `<name>_minor`) exactly as it showed the dollar
 // result it replaces, never reads a bare dollar figure, and shows a result
 // still in dollars (a copy the browser kept) as no result. Every figure is invented.
 
-// jsdom has no layout; a chart needs a size to draw its axes
-class SizedObserver {
-  constructor(private cb: ResizeObserverCallback) {}
-  observe(el: Element) {
-    this.cb([{ target: el, contentRect: { width: 800, height: 400 } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
-  }
-  unobserve() {}
-  disconnect() {}
-}
-vi.mock("../router", () => ({ navigate: vi.fn() }));
-const real = globalThis.ResizeObserver;
-beforeEach(() => { globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver; });
-afterEach(() => {
-  globalThis.ResizeObserver = real;
-  vi.unstubAllGlobals();
-});
+vi.mock("../router", async (actual) => (await import("../test-helpers")).withNavigate(await actual()));
+useSizedCharts();
 
 describe("centsOf", () => {
   it("reads the cents under `<name>_minor`", () => {
@@ -124,10 +111,10 @@ const versus: StatResult = {
 // The text each card showed for the dollar result it replaces (G20 line 1 proved the
 // two alike): the card's text, then each piece of text the chart's svg draws
 const SHOWN: Record<string, string> = {
-  "savings-runway": "Cash and runwayCashS$3,303at Sep 2026Runway, 6 months1.0 moS$3,442 a monthRunway, all months1.2 moS$2,653 a monthCash over 6 months−S$7,755CashRunwayAug 26Sep 26S$0S$1.5kS$3kS$4.5kS$6k0 mo0.4 mo0.8 mo1.2 mo1.6 mo|Aug 26|Sep 26|S$0|S$1.5k|S$3k|S$4.5k|S$6k|0 mo|0.4 mo|0.8 mo|1.2 mo|1.6 mo",
-  "monthly-cashflow": "Monthly cash flowIncomeSpendNetAug 26Sep 26−S$2kS$0S$2kS$4kS$6k|Aug 26|Sep 26|−S$2k|S$0|S$2k|S$4k|S$6k",
-  "needs-wants-savings": "Needs, wants and savingsStackedLinesNeeds, of income29%rule 50% · S$954 a monthWants, of income52%rule 30% · S$1,688 a monthSavings, of income23%rule 20% · S$750 a monthNeedWantSavingsSep 26S$0S$850S$1.7kS$2.5kS$3.4k|Sep 26|S$0|S$850|S$1.7k|S$2.5k|S$3.4k",
-  "data-quality": "Data qualityRows with no category, and stand-in rows that fill a gap in a YouTrip export, by month.Rows with no category12S$346 outStand-in rows30Rows with no exchange rate2Months missing statements7UncategorisedSyntheticSep 2608162432|Sep 26|0|8|16|24|32",
+  "savings-runway": "Cash and runwayCashS$3,303at Sep 2026Runway, 6 months1.0 moS$3,442 a monthRunway, all months1.2 moS$2,653 a monthCash over 6 months−S$7,755CashRunwayAug 26Sep 26S$0S$1.5kS$3kS$4.5kS$6k0 mo0.4 mo0.8 mo1.2 mo1.6 moFigures as a tableMonthCashRunwayAug 2026S$5,410.081.6 moSep 2026S$3,302.661 mo|Aug 26|Sep 26|S$0|S$1.5k|S$3k|S$4.5k|S$6k|0 mo|0.4 mo|0.8 mo|1.2 mo|1.6 mo",
+  "monthly-cashflow": "Monthly cash flowIncomeSpendNetAug 26Sep 26−S$2kS$0S$2kS$4kS$6kFigures as a tableMonthIncomeSpendNetAug 2026S$5,200.50S$2,410.25S$2,790.25Sep 2026S$4,100.00S$4,915.90−S$815.90|Aug 26|Sep 26|−S$2k|S$0|S$2k|S$4k|S$6k",
+  "needs-wants-savings": "Needs, wants and savingsStackedLinesNeeds, of income29%rule 50% · S$954 a monthWants, of income52%rule 30% · S$1,688 a monthSavings, of income23%rule 20% · S$750 a monthNeedWantSavingsSep 26S$0S$850S$1.7kS$2.5kS$3.4kFigures as a tableMonthNeedWantSavingsSep 2026S$954.10S$1,688.45S$750.00|Sep 26|S$0|S$850|S$1.7k|S$2.5k|S$3.4k",
+  "data-quality": "Data qualityRows with no category, and stand-in rows that fill a gap in a YouTrip export, by month.Rows with no category12S$346 outStand-in rows30Rows with no exchange rate2Months missing statements7UncategorisedSyntheticSep 2608162432Figures as a tableMonthUncategorisedSyntheticSep 20261230|Sep 26|0|8|16|24|32",
   "travel": "TripsNameDaysSpendSpend per dayShareTrip A3S$1,200.50S$400.1730%|",
   "benchmarks-sg": "Against Singapore referencesFoodS$674 vs S$578Months of cash1.0 vs 6.0Line = typical. SGD a month.|",
 };
@@ -236,7 +223,7 @@ describe("OneStat, as a page shows one stat", () => {
   // a fresh page each time, so no answer kept from the last render paints first
   const serve = (result: StatResult) => {
     clearApiCache();
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(result), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn(async () => json(result)));
   };
 
   it.each([

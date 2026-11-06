@@ -234,6 +234,16 @@ catch, and why `--force` and `--archive-orphans` are not part of a normal month.
 What does not change a key: adding a rule, renaming a payee or category, editing
 anything in Notion.
 
+The record follows a re-key. A load pairs each live row no parsed key covers
+with a new key on the same account, currency, date, amount and running balance,
+gives the row the new key in place and writes the old one to `txn_key_alias`
+(`db.rekeys`). Trip pins, rows marked fine, series edits, matched phone rows
+(G25) and `keys.csv` rules saved on the old key then still find the row. A row that would be archived while
+it carries one of those is the `pinned-rows-gone` problem, and an old key the
+run gives to a different row while one of those is saved on it is
+`pinned-key-reused`. A key the run produces is that row's own, so any alias
+under it is dropped.
+
 ### Synthetic YouTrip rows
 
 The YouTrip export omits rows, so the parser turns every unexplained balance
@@ -389,10 +399,14 @@ rollup keeps Actual current and never touches anything else.
 
 ### How Actual is computed
 
-Actual sums `Amount SGD` over the rows with a category and `Flow class =
-External`, computed in Python the same way the Notion formula computes it per
-row: Amount times the row's FX rate when the block prints one, Amount itself
-when it does not.
+Actual sums the SGD value of the rows with a category and `Flow class =
+External`, computed in Python in cents by the record's rule (`v_txn`,
+`sync.sgd_minor`): Amount times the row's FX rate when the block prints one, an
+SGD row's Amount as it is, and nothing for a foreign row whose block prints no
+rate. Such a row has no SGD value (SPEC), so Actual leaves it out and the rollup
+says how many it left out, where the Notion `Amount SGD` formula would count it
+one to one. The CSV snapshot (`analyse --from-csv`) gives the same rows an empty
+`amount_sgd_minor` and a note.
 
 The sign is flipped so Planned and Actual compare like for like. On a spending
 category Actual is positive when money went out. On a category whose `Need
@@ -538,7 +552,7 @@ still points at it.
 
 <!-- sqlite-schema: begin, written by docs/gen_schema.py -->
 
-Schema version 7 (`PRAGMA user_version`). Every table is STRICT.
+Schema version 8 (`PRAGMA user_version`). Every table is STRICT.
 
 ### `currency`
 
@@ -688,10 +702,11 @@ Schema version 7 (`PRAGMA user_version`). Every table is STRICT.
 | `amount_minor` | INTEGER | yes |  |  |  |  |  |
 | `currency` | TEXT | yes |  |  |  |  |  |
 | `payee` | TEXT | yes | '' |  |  |  |  |
-| `state` | TEXT | yes | 'waiting' |  |  |  |  |
+| `state` | TEXT | yes | 'waiting' |  |  |  | waiting, matched, dismissed, expired |
 | `matched_txn_key` | TEXT |  |  |  |  |  |  |
 | `rejected` | TEXT | yes | '[]' |  |  |  |  |
 | `created_at` | TEXT | yes |  |  |  |  |  |
+| `state_changed_at` | TEXT | yes | '' |  |  |  |  |
 
 ### `statement_file`
 

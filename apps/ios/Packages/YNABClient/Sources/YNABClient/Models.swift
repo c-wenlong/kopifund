@@ -32,19 +32,12 @@ public struct CategoryGroup: Codable, Equatable, Sendable, Identifiable {
     public let categories: [Category]
 }
 
-public struct Payee: Codable, Equatable, Sendable, Identifiable {
-    public let id: String
-    public let name: String
-    public let deleted: Bool
-}
-
 /// A transaction headed for the review queue: uncleared, unapproved, with a
 /// deterministic `import_id` so a retried post never duplicates.
 public struct NewTransaction: Codable, Equatable, Sendable {
     public let accountID: String
     public let date: String          // yyyy-MM-dd
     public let amount: Int           // milliunits, negative for outflows
-    public let payeeID: String?
     public let payeeName: String?
     public let categoryID: String?
     public let memo: String?
@@ -56,7 +49,6 @@ public struct NewTransaction: Codable, Equatable, Sendable {
     enum CodingKeys: String, CodingKey {
         case accountID = "account_id"
         case date, amount
-        case payeeID = "payee_id"
         case payeeName = "payee_name"
         case categoryID = "category_id"
         case memo, cleared, approved
@@ -65,13 +57,12 @@ public struct NewTransaction: Codable, Equatable, Sendable {
     }
 
     public init(accountID: String, date: String, amount: Int, payeeName: String,
-                payeeID: String? = nil, categoryID: String? = nil, memo: String? = nil,
+                categoryID: String? = nil, memo: String? = nil,
                 cleared: String = "uncleared", approved: Bool = false,
                 flagColor: String? = nil, importID: String) {
         self.accountID = accountID
         self.date = date
         self.amount = amount
-        self.payeeID = payeeID
         self.payeeName = payeeName
         self.categoryID = categoryID
         self.memo = memo
@@ -103,9 +94,19 @@ public struct CategoriesResponse: Codable, Sendable {
     }
 }
 
-public struct PayeesResponse: Codable, Sendable {
+/// `{ "data": { "settings": { "currency_format": { "iso_code": "SGD", ... } } } }`
+/// for GET /plans/{id}/settings. YNAB may send a null currency format.
+public struct PlanSettingsResponse: Codable, Sendable {
     public let data: Payload
-    public struct Payload: Codable, Sendable { public let payees: [Payee] }
+    public struct Payload: Codable, Sendable { public let settings: Settings }
+    public struct Settings: Codable, Sendable {
+        public let currencyFormat: CurrencyFormat?
+        enum CodingKeys: String, CodingKey { case currencyFormat = "currency_format" }
+    }
+    public struct CurrencyFormat: Codable, Sendable {
+        public let isoCode: String
+        enum CodingKeys: String, CodingKey { case isoCode = "iso_code" }
+    }
 }
 
 public struct TransactionResponse: Codable, Sendable {

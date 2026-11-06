@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Download, FileJson, FileSpreadsheet, FileText } from "lucide-react";
 import { useSidebarMode, type SidebarMode } from "../components/sidebarMode";
-import { checkServer, postJSON, useApi, useLink, type ExportDone, type Exports, type ScamChecks, type ScamSettings, type ServerInfo, type ServerMode } from "../api";
-import { centsText, formatSgd, parseCents } from "../money";
+import { checkServer, postJSON, useApi, useLink, type ExportDone, type Exports, type ScamChecks, type ScamSettings, type ServerEnding, type ServerInfo, type ServerMode } from "../api";
+import { centsText, formatSgd, isAmountText, parseCents } from "../money";
 import { formatDay } from "../dates";
 import { MoneyInput } from "../components/MoneyInput";
 import { SaveBar } from "../components/SaveBar";
@@ -12,11 +12,13 @@ import { StatusChip } from "../components/StatusChip";
 import { COLLAPSED_ROWS, CollapsibleRows } from "../components/CollapsibleRows";
 import { PageActions } from "../components/PageActions";
 import { useWide } from "../components/useWide";
+import { useAction } from "../components/useAction";
+import { useDraft } from "../components/useDraft";
 import { SERVER_ICON, type ServerState } from "../icons";
-import { useUnsavedGuard } from "../router";
 import { AiCard } from "./AiCard";
 import { AppIconCard } from "./AppIconCard";
 import { LinkCard } from "./LinkCard";
+import { plural } from "../words";
 
 const options: { value: SidebarMode; label: string }[] = [
   { value: "open", label: "Keep open" },
@@ -88,10 +90,29 @@ const SERVER_MODE: Record<ServerMode, string> = {
 function runningFor(started: number, now: number): string {
   const m = Math.floor(Math.max(0, Math.floor(now / 1000) - started) / 60);
   const h = Math.floor(m / 60), d = Math.floor(h / 24);
-  const word = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;
-  if (d > 0) return h % 24 ? `${word(d, "day")} ${word(h % 24, "hour")}` : word(d, "day");
-  if (h > 0) return m % 60 ? `${word(h, "hour")} ${word(m % 60, "minute")}` : word(h, "hour");
-  return m > 0 ? word(m, "minute") : "under a minute";
+  if (d > 0) return h % 24 ? `${plural(d, "day")} ${plural(h % 24, "hour")}` : plural(d, "day");
+  if (h > 0) return m % 60 ? `${plural(h, "hour")} ${plural(m % 60, "minute")}` : plural(h, "hour");
+  return m > 0 ? plural(m, "minute") : "under a minute";
+}
+
+/** "2 minutes", "30 seconds" */
+function waitAtMost(seconds: number): string {
+  return seconds >= 120 ? `${Math.round(seconds / 60)} minutes` : seconds >= 60 ? "a minute" : `${seconds} seconds`;
+}
+
+/** "a load and the stats rebuild" */
+function andList(words: string[]): string {
+  return words.length < 2 ? words.join("") : `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}`;
+}
+
+/** Whether the server still answers, asked without flipping the offline banner. */
+async function serverAnswers(): Promise<boolean> {
+  try {
+    // a stalled connection must not hold the card past its deadline
+    return (await fetch("/api/server", { cache: "no-store", signal: AbortSignal.timeout(2000) })).ok;
+  } catch {
+    return false;
+  }
 }
 
 function ServerCard() {
@@ -101,6 +122,8 @@ function ServerCard() {
   const [acting, setActing] = useState<"restart" | "stop" | null>(null);
   const [confirmStop, setConfirmStop] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  // the work a stop or restart waits for before the process ends
+  const [waiting, setWaiting] = useState<ServerEnding | null>(null);
 
   useEffect(() => {
     if (!data) return;
@@ -115,10 +138,13 @@ function ServerCard() {
     setActing("restart");
     setProblem(null);
     try {
-      await postJSON("/api/server/restart");
+      const ending = await postJSON<ServerEnding>("/api/server/restart");
+      setWaiting(ending);
       // ask with a plain fetch: the gap in the middle is expected, and must
-      // not flash the offline banner on the way
-      for (let i = 0; i < 60; i++) {
+      // not flash the offline banner on the way. The old process may first
+      // wait up to `timeout` seconds for work under way.
+      const tries = 60 + 2 * (ending.timeout ?? 0);
+      for (let i = 0; i < tries; i++) {
         await new Promise((r) => setTimeout(r, 500));
         try {
           const r = await fetch("/api/server", { cache: "no-store" });
@@ -130,6 +156,7 @@ function ServerCard() {
       setProblem((e as Error).message);
     } finally {
       setActing(null);
+      setWaiting(null);
     }
   }
 
@@ -138,10 +165,17 @@ function ServerCard() {
     setConfirmStop(false);
     setProblem(null);
     try {
-      await postJSON("/api/server/stop");
-      // give the exit a moment, then ask: the miss is what flips the chip and
-      // the banner to offline
-      window.setTimeout(() => void checkServer(), 800);
+      const ending = await postJSON<ServerEnding>("/api/server/stop");
+      setWaiting(ending);
+      // give the exit a moment, then ask until it misses: the miss is what
+      // flips the chip and the banner to offline. Work under way holds the
+      // exit back by up to `timeout` seconds.
+      const deadline = Date.now() + ((ending.timeout ?? 0) + 5) * 1000;
+      const ask = async () => {
+        if (!(await serverAnswers()) || Date.now() > deadline) void checkServer();
+        else window.setTimeout(() => void ask(), 1000);
+      };
+      window.setTimeout(() => void ask(), 800);
     } catch (e) {
       setProblem((e as Error).message);
       setActing(null);
@@ -186,6 +220,12 @@ function ServerCard() {
       <p className="m-0 mt-1 text-[13px] text-ink-3">
         Started by {SERVER_MODE[data.mode]} on 127.0.0.1:{data.port} · pid {data.pid}
       </p>
+      {acting && waiting && waiting.waiting_for.length > 0 && (
+        <p role="status" className="m-0 mt-1 text-[13px] text-ink-2">
+          Waiting for {andList(waiting.waiting_for)} to finish first ({waitAtMost(waiting.timeout)} at most).
+          Changes made meanwhile are refused until the server is back.
+        </p>
+      )}
       {problem && <p role="alert" className="m-0 mt-1 text-[13px] text-danger">{problem}</p>}
     </Card>
   );
@@ -201,22 +241,12 @@ function FileIcon({ name }: { name: string }) {
 function ExportCard() {
   const [version, setVersion] = useState(0);
   const list = useApi<Exports>(`/api/exports?v=${version}`);
-  const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<ExportDone | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function run() {
-    setBusy(true);
-    setError(null);
-    try {
-      setDone(await postJSON<ExportDone>("/api/export"));
-      setVersion((v) => v + 1);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const { running: busy, error, run: act } = useAction();
+  const run = () => act("export", async () => {
+    setDone(await postJSON<ExportDone>("/api/export"));
+    setVersion((v) => v + 1);
+  });
 
   const latest = list.data?.exports[0];
   return (
@@ -254,55 +284,27 @@ const isMoney = (k: ScamKey) => MONEY.includes(k);
 const draftOf = (v: ScamSettings): ScamDraft =>
   Object.fromEntries((Object.keys(v) as ScamKey[]).map((k) => [k, isMoney(k) ? centsText(v[k]) : String(v[k])])) as ScamDraft;
 const WHOLE = /^\d+$/;
-const DOLLARS = /^\d+(\.\d{1,2})?$/;
 
 export function ScamChecksCard() {
   const { data, error } = useApi<ScamChecks>("/api/scam-checks");
-  // G18: only the boxes typed in, so a save from another tab still shows in every box left alone
-  const [draft, setDraft] = useState<Partial<ScamDraft> | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  // a save on its way: what is typed meanwhile is an edit, even back to the old saved value
-  const inFlight = useRef(false);
-  const saved = data ? draftOf(data.settings) : null;
+  // G18: only the boxes typed in, so a save from another tab still shows in every box left alone (useDraft)
+  const form = useDraft<ScamDraft>(data ? draftOf(data.settings) : null, data);
+  const { saved, dirty, saving, problem } = form;
   const keys = saved ? Object.keys(saved) as ScamKey[] : [];
-  const d = { ...saved, ...draft } as ScamDraft;
-  const dirty = !!saved && keys.some((k) => d[k] !== saved[k]);
-  // G18: leaving the page with a threshold typed and not saved asks first
-  useUnsavedGuard(dirty);
+  const d = form.value!;
   if (error) return <Card title="Scam checks"><p className="m-0 text-[13px] text-warn">{error}</p></Card>;
   if (!data || !saved) return null;
-  const bad = (k: ScamKey) => !(isMoney(k) ? DOLLARS : WHOLE).test(d[k]);
-  const set = (k: ScamKey) => (v: string) => {
-    // a box typed back to its saved value is no longer an edit, unless that value is about to change
-    const rest = { ...draft };
-    delete rest[k];
-    setDraft(v === saved[k] && !inFlight.current ? rest : { ...rest, [k]: v });
-    setProblem(null);
-  };
+  // an amount takes what every other money box takes (".5" included); the rest are whole numbers
+  const bad = (k: ScamKey) => (isMoney(k) ? !isAmountText(d[k]) : !WHOLE.test(d[k]));
+  const set = (k: ScamKey) => (v: string) => form.set({ [k]: v } as Partial<ScamDraft>);
 
   async function save() {
     if (keys.some(bad)) {
-      setProblem("Each box takes a whole number; an amount can have cents.");
+      form.setProblem("Each box takes a whole number; an amount can have cents.");
       return;
     }
-    setSaving(true);
-    inFlight.current = true;
-    const sent = { ...d };
-    try {
-      await postJSON("/api/scam-checks/settings", JSON.stringify(Object.fromEntries(
-        keys.map((k) => [k, isMoney(k) ? parseCents(sent[k]) : Number(sent[k])]))));
-      // G18: the boxes the save covered are saved; one typed in while it was on its way stays an edit
-      setDraft((now) => {
-        const left = Object.fromEntries(Object.entries(now ?? {}).filter(([k, v]) => v !== sent[k as ScamKey]));
-        return Object.keys(left).length ? left : null;
-      });
-    } catch (e) {
-      setProblem((e as Error).message);
-    } finally {
-      inFlight.current = false;
-      setSaving(false);
-    }
+    await form.save((sent) => postJSON("/api/scam-checks/settings", JSON.stringify(Object.fromEntries(
+      keys.map((k) => [k, isMoney(k) ? parseCents(sent[k]) : Number(sent[k])])))));
   }
 
   const field = (k: ScamKey, label: string, opts: { before?: string; after?: string; group?: boolean }) => (
@@ -313,7 +315,7 @@ export function ScamChecksCard() {
     </label>
   );
   return (
-    <Card title="Scam checks" actions={<SaveBar dirty={dirty} saving={saving} onSave={() => void save()} onDiscard={() => { setDraft(null); setProblem(null); }} />}>
+    <Card title="Scam checks" actions={<SaveBar dirty={dirty} saving={saving} onSave={() => void save()} onDiscard={form.discard} />}>
       <form onSubmit={(e) => { e.preventDefault(); void save(); }} aria-label="Scam check thresholds"
         className="mt-2 flex flex-col gap-3">
         <section aria-label="Transfers" className="flex flex-col gap-1.5">
@@ -343,19 +345,8 @@ export function ScamChecksCard() {
 }
 
 function MarkedFine({ rows }: { rows: ScamChecks["marked_fine"] }) {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [failed, setFailed] = useState<{ key: string; message: string } | null>(null);
-  async function again(key: string) {
-    setBusy(key);
-    setFailed(null);
-    try {
-      await postJSON("/api/scam-checks/fine", JSON.stringify({ key, fine: false }));
-    } catch (e) {
-      setFailed({ key, message: (e as Error).message });
-    } finally {
-      setBusy(null);
-    }
-  }
+  const { busy, failed, run } = useAction();
+  const again = (key: string) => run(key, () => postJSON("/api/scam-checks/fine", JSON.stringify({ key, fine: false })));
   return (
     <section aria-label="Marked fine" className="mt-3">
       <h3 className="m-0 mb-1.5 text-[13px] font-semibold">Marked fine</h3>

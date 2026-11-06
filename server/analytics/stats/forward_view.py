@@ -332,15 +332,6 @@ def month_one_offs(month, one_offs):
     return sum(x["amount_minor"] for x in parts), parts
 
 
-def month_gross(month, segments):
-    """(gross, cpf-liable gross) in cents a month earns from the plan's income
-    rows, each prorated by the calendar days of the month it covers, bonuses
-    and side income included. Rows that overlap add up, which is how a raise
-    mid-month is expressed as two. G14: read through server/analytics/income.py."""
-    pm = pay_for({"income_segments": segments}).at(month)
-    return pm["income"], pm["ow"] + pm["aw_liable"]
-
-
 # What each parameter means, keyed by its name without `_minor`: a note is
 # text, never money, so it never sits under a money field's name.
 NOTES = {
@@ -541,15 +532,17 @@ def other_outflow(snapshot, months):
 
 
 def phase_rate(snapshot):
-    """(rate, months): the latest phase's own spending average, in cents.
+    """(rate, months): the latest phase's own spending average, in cents, and
+    the number of months it divides by.
 
-    The same figure the monthly-cashflow stat prints, partial months included,
-    over the whole phase rather than six months. It is the floor of the range: a rate
-    taken over long enough to have the quiet months in it as well.
+    The same figure the monthly-cashflow stat prints, over the phase's full
+    months (`common.average_months`) rather than six. It is the floor of the
+    range: a rate taken over long enough to have the quiet months in it as well.
     """
     phase = c.latest_phase()
-    months = [m for m in c.month_range(snapshot) if c.in_phase(m, phase)]
-    rows = [r for r in c.spend_rows(snapshot) if r["month"] in set(months)]
+    months = set(c.average_months([m for m in c.month_range(snapshot) if c.in_phase(m, phase)],
+                                  c.full_months(snapshot)))
+    rows = [r for r in c.spend_rows(snapshot) if r["month"] in months]
     return c.div_cents(c.spend_minor(rows), len(months)), len(months)
 
 

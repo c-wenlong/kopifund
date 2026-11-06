@@ -29,6 +29,7 @@ from pathlib import Path
 from . import account_names, db, local, sync
 from .parsers import layouts as registry
 from .paths import cache_dir
+from .pdftext import pdf_text as _text   # one name, so a test can stand in for pdftotext
 
 INBOX = "inbox"
 MAX_PDF_BYTES = 20 * 1024 * 1024
@@ -63,11 +64,6 @@ def folders(cfg):
 
 
 # ---------------------------------------------------------------- upload
-
-def _text(pdf):
-    return subprocess.run(["pdftotext", "-layout", str(pdf), "-"], capture_output=True,
-                          text=True, check=True).stdout
-
 
 def canonical_name(parser, pdf, wallet="", today=None):
     """(year folder, file name) for a statement, read from its own text by
@@ -236,14 +232,17 @@ def check(cfg, conn):
     problems = list(parsed.problems) + sync.check_environment(cfg) + \
         sync.check_statements(cfg, parsed) + \
         sync.check_statement_files(cfg, dict(conn.execute("SELECT path, sha256 FROM statement_file"))) + \
-        sync.check_blocks(parsed)
+        sync.check_blocks(parsed) + sync.check_pinned_rows(conn, parsed)
     problems = sync.one_problem_per_copy(problems)
     have = {r["txn_key"]: r for r in conn.execute(
         "SELECT txn_key, amount_minor, category_id, payee_id, archived_at FROM txn")}
-    new = [r for r in parsed.rows if r["txn_key"] not in have]
+    # a row the load will give a new key (db.rekeys) stays: neither added nor archived
+    moved = db.rekeys(conn, parsed.rows)
+    moved_new, moved_old = {n for _, _, n in moved}, {o for _, o, _ in moved}
+    new = [r for r in parsed.rows if r["txn_key"] not in have and r["txn_key"] not in moved_new]
     shown = account_names.record_names(conn, cfg.folders)
     keys = parsed.keys
-    gone = [k for k, r in have.items() if r["archived_at"] is None and k not in keys]
+    gone = [k for k, r in have.items() if r["archived_at"] is None and k not in keys and k not in moved_old]
     cats = db.category_ids(conn)          # a renamed category's old name included
     changed = [r for r in parsed.rows if r["txn_key"] in have
                and cats.get(r.get("category")) != have[r["txn_key"]]["category_id"]]
@@ -263,6 +262,7 @@ def check(cfg, conn):
         "to_add_count": len(new),
         "recategorised_count": len(changed),
         "to_archive_count": len(gone),
+        "rekeyed_count": len(moved),
         "needs_rule": needs_rule(parsed.rows),
         # what each statement file gave, for the upload history
         "rows_by_statement": account_names.scrub_tree(

@@ -1,13 +1,15 @@
 """server/finance/home.py: what Home draws (GET /api/overview)."""
 import isolate  # noqa: F401  first: no test writes the real record or cache
 import unittest
+from contextlib import closing
 import urllib.parse
 from datetime import date
 
 from finance import api, db, home, money, recurring, rules_app, upload_log
 from finance.db import SYNTHETIC_TYPE
 from test_app_writes import record
-from test_db import SNAP, block, parsed, row
+import support
+from test_db import block, parsed, row
 from test_recurring import ACTIVE, ROWS, record as recurring_record, results as recurring_results
 from test_scam_checks import MAY, card, sent
 
@@ -94,12 +96,12 @@ class Tiles(unittest.TestCase):
         # investments or CPF there is no net worth figure to put a change under
         months = [{"month": f"2025-{m:02d}", "cash_minor": 10000, "complete": True} for m in range(1, 13)]
         months.append({"month": "2026-01", "cash_minor": 15000, "complete": True})
-        h = api.overview(record(), runway(months), today=date(2026, 10, 15))["headline"]
+        h = api.overview(self.enterContext(closing(record())), runway(months), today=date(2026, 10, 15))["headline"]
         self.assertEqual((h["net_worth_incl_cpf"], h["net_worth_change"]), (None, None))
         self.assertEqual(h["cash_change"], {"change": 5000, "since": "2025-12"})
 
     def test_headline_figures_are_cents_with_the_runway_range(self):
-        o = api.overview(record(), {**runway([{"month": "2026-08", "cash_minor": 1_355_100, "complete": True}]),
+        o = api.overview(self.enterContext(closing(record())), {**runway([{"month": "2026-08", "cash_minor": 1_355_100, "complete": True}]),
                                     "cpf": {"data": {"summary": {"years": 3, "total_minor": 606_103,
                                                                  "as_of": "2025-12-31",
                                                                  "net_worth_total_minor": 4_929_940, "oa_minor": 100,
@@ -111,7 +113,7 @@ class Tiles(unittest.TestCase):
         self.assertEqual([x["label"] for x in o["holdings"]], ["Cash", "CPF"])
 
     def test_no_results_yet_still_answers(self):
-        o = api.overview(record(), {}, today=date(2026, 10, 15))
+        o = api.overview(self.enterContext(closing(record())), {}, today=date(2026, 10, 15))
         h = o["headline"]
         self.assertEqual((h["cash"], h["cash_change"], h["net_worth_change"], h["runway_range"]),
                          (None, None, None, None))
@@ -263,7 +265,7 @@ class EyeLines(unittest.TestCase):
         self.assertEqual((words(cash_trend_6m=50000), words(cash_trend_6m=0)), ([], []))
         self.assertEqual(words(irregular=1)[0][0], "1 payee marked recurring has no regular spacing")
         self.assertEqual(words(needs_rule=1)[0][0], "1 statement text needs a rule")
-        self.assertEqual(words(pending=1), [("1 spend from the phone waits for a statement", "/settings")])
+        self.assertEqual(words(pending=1), [("1 spend from the phone waits for a statement", "/settings?phone_rows=waiting")])
         self.assertEqual(words(pending=3)[0][0], "3 spends from the phone wait for a statement")
         self.assertEqual(words(upload={"id": 3, "state": "problems", "problems": 1})[0][0],
                          "The last upload has 1 problem to fix")
@@ -339,15 +341,13 @@ class EyeLines(unittest.TestCase):
 def no_fx_record(more=0):
     """A record with a USD block that printed no rate to SGD: a payment and a move between own accounts
     in it, and `more` payments after them, beside an SGD payment that has its value."""
-    conn = db.connect(":memory:")
-    db.import_user_tables(conn, {k: [dict(x) for x in v] for k, v in SNAP.items()})
     usd = "111-11111-1 · USD · 2026-08"
-    db.load_parsed(conn, parsed([block(), block(period=usd, currency="USD", fx_to_sgd="", closing_sgd="")], [
+    return support.build_record([
         row("k1", "-12.50"), row("u1", "-20.00", currency="USD", period=usd),
         row("u2", "15.00", currency="USD", period=usd, direction="In", flow_class="Internal - own account"),
-        *(row(f"m{i:04d}", "-1.00", currency="USD", period=usd, merchant=f"SHOP {i}") for i in range(more))]),
-        payees=[{"name": "Grab", "kind": "Merchant", "country": "SGP"}])
-    return conn
+        *(row(f"m{i:04d}", "-1.00", currency="USD", period=usd, merchant=f"SHOP {i}") for i in range(more))],
+        blocks=[block(), block(period=usd, currency="USD", fx_to_sgd="", closing_sgd="")],
+        payees=support.payees(["Grab"]))
 
 
 class MissingFx(unittest.TestCase):
@@ -545,6 +545,48 @@ class StaleAccounts(unittest.TestCase):
         self.assertEqual(home.eye_lines(e)[0]["text"], "No statement from 2 accounts for up to 4 months")
         e["stale_accounts"] = [{"name": "CPF", "last": "2024-12-31", "months": 12}]
         self.assertEqual(home.eye_lines(e)[0]["text"], "No statement from CPF for 1 year")
+
+
+class DetectorOncePerAnswer(unittest.TestCase):
+    """Audit: Home's readers of the recurring result (Coming up, the irregular count, the
+    scam checks through the owner's series edits) share one Record, so each group the
+    stat found a series in is detected again once per answer, and split into amount
+    levels once however many readers prepare its series."""
+
+    def setUp(self):
+        from test_recurring import days, detected
+        self.conn, self.res = detected(*[("Fruitco", d, "-13.98") for d in days("2026-01", 9, 12)],
+                                       *[("Fruitco", d, "-40.98") for d in days("2026-01", 9, 20)],
+                                       *[("Gymco", d, "-120.00") for d in days("2026-01", 9, 5)],
+                                       ("Club", "2026-09-25", "-12.00"))
+        self.addCleanup(self.conn.close)
+        # an owner's edit, so the scam checks read the series too (recurring.edited_out)
+        sid = recurring.page(self.conn, self.res, today=date(2026, 10, 16))["active"][0]["id"]
+        recurring.save_series(self.conn, self.res, {"id": sid, "amount": 4500}, today=date(2026, 10, 16))
+        self.calls = {"detect": [], "partition": 0}
+        detect, split = recurring.detect_group, recurring.partition
+
+        def counted_detect(kind, name, *a):
+            self.calls["detect"].append(name)
+            return detect(kind, name, *a)
+
+        def counted_partition(*a):
+            self.calls["partition"] += 1
+            return split(*a)
+        for name, fake in (("detect_group", counted_detect), ("partition", counted_partition)):
+            setattr(recurring, name, fake)
+            self.addCleanup(setattr, recurring, name, {"detect_group": detect, "partition": split}[name])
+
+    def test_overview_detects_each_group_once(self):
+        home.overview(self.conn, self.res, today=date(2026, 10, 16))
+        self.assertEqual(sorted(self.calls["detect"]), ["Fruitco", "Gymco"])
+        # one split per group (Fruitco's two series share theirs)
+        self.assertEqual(self.calls["partition"], 2)
+
+    def test_the_recurring_page_detects_each_group_once(self):
+        recurring.page(self.conn, self.res, today=date(2026, 10, 16))
+        self.assertEqual(sorted(self.calls["detect"]), ["Fruitco", "Gymco"])
+        self.assertEqual(self.calls["partition"], 2)
 
 
 if __name__ == "__main__":

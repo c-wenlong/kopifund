@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { clearModelCache, MODEL_PAUSE_MS, MODELS_CAP, ModelField } from "./ModelField";
+import { json } from "../test-helpers";
 
 // G22: a model name field that asks the provider's list only once typing pauses, and remembers each answer.
 
@@ -11,7 +12,7 @@ function stub(answer: (q: string) => object) {
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
     asked.push(url);
     const q = new URL(url, "http://x").searchParams.get("q") ?? "";
-    return new Response(JSON.stringify({ provider: "anthropic", fetched_at: "2026-10-23T09:00:00", error: null, models: [], ...answer(q) }), { status: 200 });
+    return json({ provider: "anthropic", fetched_at: "2026-10-23T09:00:00", error: null, models: [], ...answer(q) });
   }));
 }
 
@@ -28,7 +29,6 @@ const pause = () => act(async () => { await vi.advanceTimersByTimeAsync(MODEL_PA
 beforeEach(() => vi.useFakeTimers());
 afterEach(() => {
   vi.useRealTimers();
-  vi.unstubAllGlobals();
 });
 
 describe("ModelField", () => {
@@ -149,8 +149,8 @@ describe("ModelField", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       asked.push(url);
       if (url.includes("provider=anthropic")) await gate;
-      return new Response(JSON.stringify({ provider: "anthropic", fetched_at: null, error: null,
-        models: [{ id: url.includes("provider=anthropic") ? "claude-old" : "gpt-5", label: "" }] }), { status: 200 });
+      return json({ provider: "anthropic", fetched_at: null, error: null,
+        models: [{ id: url.includes("provider=anthropic") ? "claude-old" : "gpt-5", label: "" }] });
     }));
     const { rerender } = render(<Field />);
     // typed, and the provider changes before the pause ends: nothing is asked of the old one
@@ -170,5 +170,14 @@ describe("ModelField", () => {
     await pause();
     expect(screen.getByRole("option", { name: /gpt-5/ })).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: /claude-old/ })).not.toBeInTheDocument();
+  });
+});
+
+// Audit: aria-controls named a list that is not there while closed
+describe("ModelField's ARIA", () => {
+  it("names no list while none is shown", () => {
+    stub(() => ({ models: [] }));
+    render(<Field />);
+    expect(box()).not.toHaveAttribute("aria-controls");
   });
 });

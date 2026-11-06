@@ -1,11 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { stubQueries, useSizedCharts } from "./testkit";
+import { stubQueries } from "./testkit";
 import { StackedAreaChart, StackedAreaWidget, type StackedAreaConfig } from "./StackedArea";
 import { joinFrames } from "./shared";
 import type { WidgetAnswer, WidgetQuery } from "../../../types.gen";
+import { navigate, useSizedCharts } from "../../../test-helpers";
 
-const navigate = vi.fn();
-vi.mock("../../../router", () => ({ navigate: (to: string) => navigate(to) }));
+vi.mock("../../../router", async (actual) => (await import("../../../test-helpers")).withNavigate(await actual()));
 
 useSizedCharts();
 
@@ -41,8 +41,6 @@ const areas = (c: HTMLElement) => c.querySelectorAll(".recharts-area-curve");
 const lines = (c: HTMLElement) => c.querySelectorAll(".recharts-line-curve");
 
 describe("StackedAreaWidget", () => {
-  afterEach(() => { vi.unstubAllGlobals(); navigate.mockReset(); });
-
   it("draws the series piled up, with the Stacked / Lines / Total switch in its header", async () => {
     stubQueries(stubs());
     const { container } = render(<StackedAreaWidget config={config} />);
@@ -73,8 +71,6 @@ describe("StackedAreaWidget", () => {
 });
 
 describe("StackedAreaChart", () => {
-  afterEach(() => { vi.unstubAllGlobals(); navigate.mockReset(); });
-
   it("hides a part from its legend entry and keeps the stack going", () => {
     const { container } = render(<StackedAreaChart frame={frame()} view="stacked" />);
     fireEvent.click(screen.getByRole("button", { name: "Investments" }));

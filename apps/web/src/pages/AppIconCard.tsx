@@ -2,30 +2,38 @@
 // picked (POST /api/app-icon). The pick moves the tab's icon and the logo
 // beside the app's name at once, and the Dock icon in the Mac app; the
 // iPhone app picks its own in its Settings (SPEC.md, "App icon").
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useApi } from "../api";
 import { Card } from "../components/Card";
-import { iconFile, pickAppIcon } from "../components/appIcon";
+import { iconFile, pickAppIcon, syncAppIcon, useAppIconChoice } from "../components/appIcon";
 import type { AppIconPage } from "../types.gen";
 
 export function AppIconCard() {
   const page = useApi<AppIconPage>("/api/app-icon");
-  const [picked, setPicked] = useState<string | null>(null);
+  // the pick being saved, shown at once; while it saves the other rows wait,
+  // so a failed save only ever puts back a pick the record holds
+  const [saving, setSaving] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  // the pick this tab last heard of: its own saved pick, the server's, or another tab's
+  const heard = useAppIconChoice();
+  // opening the card asks the server afresh, so a pick another browser saved
+  // since this tab started shows here (and a refused pick goes back to it)
+  useEffect(() => { void syncAppIcon(); }, []);
   // an answer without the sets (an older server, a test's stand-in) is no answer to draw
   const data = Array.isArray(page.data?.sets) ? page.data : null;
   if (!data) return null;
-  const chosen = picked ?? data.chosen;
+  const chosen = saving ?? heard ?? data.chosen;
 
   async function pick(name: string) {
-    const was = chosen;
-    setPicked(name);
+    if (saving) return;
+    setSaving(name);
     setProblem(null);
     try {
-      setPicked((await pickAppIcon(name)).chosen);
+      await pickAppIcon(name);
     } catch (e) {
-      setPicked(was);
       setProblem((e as Error).message);
+    } finally {
+      setSaving(null);
     }
   }
 
@@ -36,7 +44,7 @@ export function AppIconCard() {
         {data.sets.map((s) => (
           <label key={s.name} className="flex cursor-pointer items-center gap-3 rounded-md px-2 py-1.5 text-[14px] hover:bg-hover">
             <input type="radio" name="app-icon" value={s.name} checked={chosen === s.name}
-              onChange={() => void pick(s.name)} />
+              disabled={saving != null} onChange={() => void pick(s.name)} />
             <img src={iconFile(s.name, "icon-picker-120.png")} alt="" className="size-10 shrink-0 rounded-[9px]" />
             <span className="flex min-w-0 flex-col">
               <span>{s.label}{s.name === data.default && <span className="text-ink-3"> (default)</span>}</span>

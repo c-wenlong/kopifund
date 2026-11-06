@@ -54,14 +54,14 @@ outflow is negative in `transactions` and positive in `outflow`.
 import argparse
 import json
 import re
-import shutil
-import subprocess
 import sys
 from pathlib import Path
 
 # the data folder's layout (server/finance/paths.py) decides where text dumps go
-from finance.paths import current_statements, statements_dir, text_dump_path
+from finance.paths import current_statements, statements_dir
+from finance.pdftext import pdf_to_text, require as require_pdftotext
 
+from .common import header_spans
 from .layouts import CHECKED, Bank, Layout, Seen, register, register_bank
 
 MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
@@ -111,12 +111,6 @@ def cents(x):
 
 
 # ---------------------------------------------------------------- table layout
-
-def header_spans(ln):
-    """The words of a header line, grouped so a single space keeps them
-    together: "Ordinary Account ($)" is one heading, two spaces start the next."""
-    return [(m.start(), m.end(), m.group()) for m in re.finditer(r"\S+(?: \S+)*", ln)]
-
 
 class Columns:
     """The columns of the transactions table, read off its header block.
@@ -452,17 +446,6 @@ def reconcile(statement):
 
 # ---------------------------------------------------------------- files
 
-def pdf_to_text(pdf, write=True):
-    """The layout-preserved text of a PDF, the same call the other parsers
-    make, saved as a dump (finance.paths.text_dump_path) so a later run can be
-    checked against it."""
-    out = subprocess.run(["pdftotext", "-layout", str(pdf), "-"],
-                         capture_output=True, text=True, check=True).stdout
-    if write:
-        text_dump_path(pdf).write_text(out)
-    return out
-
-
 def parse_pdf(path, folder, write_text=True):
     """One statement, named by its path relative to the folder it sits in."""
     path, folder = Path(path), Path(folder)
@@ -528,8 +511,7 @@ def main():
                     help="do not save the .txt dump beside each PDF")
     args = ap.parse_args()
 
-    if not shutil.which("pdftotext"):
-        sys.exit("pdftotext not found (brew install poppler)")
+    require_pdftotext()
     folder = Path(args.folder)
     if not folder.is_dir():
         sys.exit(f"not a directory: {folder}")

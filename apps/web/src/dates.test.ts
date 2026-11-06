@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  addDays, ago, formatDate, formatDateTime, formatDay, formatDayShort, formatMonth, formatRange, formatTime, formatWeekday, isoDay, isoMonth, isoParts, parseDay, parseMonth,
+  addDays, ago, formatDate, formatDateTime, formatStampDay, formatDay, formatDayShort, formatMonth, formatRange, formatTime, formatWeekday, isoDay, isoMonth, isoParts, parseDay, parseMonth,
   shiftMonth, toLocalDate, toMillis,
 } from "./dates";
 import { tickLabel } from "./stats/hint";
+import { zoneSwitch } from "./test-zone";
 
 describe("a phone's short day and how long ago", () => {
   it("drops the year from a day, and leaves other text alone", () => {
@@ -174,5 +175,36 @@ describe("formatWeekday", () => {
   it("hands back anything that is not a day", () => {
     expect(formatWeekday("2026-10")).toBe("2026-10");
     expect(formatWeekday("soon")).toBe("soon");
+  });
+});
+
+// Audit: the device's zone matters to what a stamp reads and to nothing else
+describe("time zones", () => {
+  const inZone = zoneSwitch();
+
+  it("dates a stamp in this device's time, so a Singapore morning is that day", () => {
+    inZone("Asia/Singapore");
+    expect(formatStampDay("2026-10-03T22:30:00+00:00")).toBe("4 Oct 2026");
+    inZone("America/Los_Angeles");
+    expect(formatStampDay("2026-10-03T22:30:00+00:00")).toBe("3 Oct 2026");
+    expect(formatStampDay("not a stamp")).toBe("not a stamp");
+  });
+
+  it("reads and steps days the same in a zone that skipped one", () => {
+    // Kiritimati went from 30 Dec 1994 to 1 Jan 1995 at local midnight
+    inZone("Pacific/Kiritimati");
+    expect(parseDay("31 Dec 1994")).toBe("1994-12-31");
+    expect(addDays("1994-12-30", 1)).toBe("1994-12-31");
+    expect(addDays("1995-01-01", -1)).toBe("1994-12-31");
+    inZone("Pacific/Apia");
+    expect(parseDay("30 Dec 2011")).toBe("2011-12-30");
+    expect(addDays("2011-12-29", 2)).toBe("2011-12-31");
+  });
+
+  it("still steps over a month end and a leap day", () => {
+    expect(addDays("2024-02-28", 1)).toBe("2024-02-29");
+    expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
+    expect(addDays("2026-03-01", -1)).toBe("2026-02-28");
+    expect(parseDay("29 Feb 2025")).toBeNull();
   });
 });

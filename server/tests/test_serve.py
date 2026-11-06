@@ -1,4 +1,5 @@
 import isolate  # noqa: F401  first: no test writes the real record or cache
+import io
 import json
 import os
 import tempfile
@@ -38,7 +39,8 @@ class ServeTest(unittest.TestCase):
             with urllib.request.urlopen(req) as r:
                 return r.status, r.headers, r.read().decode()
         except urllib.error.HTTPError as e:
-            return e.code, e.headers, ""
+            with e:
+                return e.code, e.headers, ""
 
     def status_with_host(self, host, method="GET"):
         from http.client import HTTPConnection
@@ -114,7 +116,8 @@ class ServeTest(unittest.TestCase):
         req = urllib.request.Request(self.base + "/api/rules/pin", method="POST", data=b"{}")
         with self.assertRaises(urllib.error.HTTPError) as e:
             urllib.request.urlopen(req)
-        self.assertEqual(e.exception.code, 403)
+        with e.exception:
+            self.assertEqual(e.exception.code, 403)
 
     def test_rule_edits_need_the_app_header_and_this_machine(self):
         for path in ("/api/rules/save", "/api/rules/undo", "/api/rules/remove"):
@@ -204,11 +207,14 @@ class ReloadWatchTest(unittest.TestCase):
 class ReloadLoopTest(unittest.TestCase):
     """reload_forever swaps the child on a change and stops it on the way out."""
 
-    def run_loop(self, snapshots, children, sleeps):
+    def run_loop(self, snapshots, children, sleeps, port_taken=False):
         popen = mock.Mock(side_effect=children)
+        # the port check is mocked: a real server on 8770 (`make serve` in
+        # another checkout) must not change what these tests see
         with mock.patch("dev_reload.python_files", side_effect=snapshots), \
                 mock.patch.object(dev_reload.subprocess, "Popen", popen), \
-                mock.patch.object(dev_reload.time, "sleep", side_effect=sleeps):
+                mock.patch.object(dev_reload.time, "sleep", side_effect=sleeps), \
+                mock.patch("dev_reload.port_answers", return_value=port_taken):
             dev_reload.reload_forever(8770)
         return popen
 
@@ -241,6 +247,33 @@ class ReloadLoopTest(unittest.TestCase):
         popen = self.run_loop([{"a": 1}, {"a": 2}], [crashed, fixed], [None, KeyboardInterrupt])
         self.assertEqual(popen.call_count, 2)
         fixed.terminate.assert_called_once()
+
+    def test_a_child_that_cannot_take_the_port_stops_make_dev(self):
+        # another checkout's server holds 8770: Vite would forward /api to it,
+        # so the loop stops with an error instead of carrying on without one
+        lost = self.child(alive=False)
+        with self.assertRaises(SystemExit) as stop, \
+                mock.patch("sys.stderr", new_callable=io.StringIO) as err:
+            self.run_loop([{"a": 1}, {"a": 1}], [lost], [None, KeyboardInterrupt], port_taken=True)
+        self.assertEqual(stop.exception.code, 1)
+        self.assertIn("8770", err.getvalue())
+
+    def test_a_port_taken_after_a_crash_still_stops_make_dev(self):
+        crashed = self.child(alive=False)
+        popen = mock.Mock(side_effect=[crashed])
+        # free on the first tick, taken by another checkout on the second
+        with mock.patch("dev_reload.python_files", side_effect=[{"a": 1}, {"a": 1}, {"a": 1}]), \
+                mock.patch.object(dev_reload.subprocess, "Popen", popen), \
+                mock.patch.object(dev_reload.time, "sleep", side_effect=[None, None, KeyboardInterrupt]), \
+                mock.patch("dev_reload.port_answers", side_effect=[False, True]), \
+                mock.patch("sys.stderr", new_callable=io.StringIO), \
+                self.assertRaises(SystemExit):
+            dev_reload.reload_forever(8770)
+
+    def test_a_crashed_child_on_a_free_port_waits_for_the_next_change(self):
+        crashed = self.child(alive=False)
+        popen = self.run_loop([{"a": 1}, {"a": 1}, {"a": 1}], [crashed], [None, None, KeyboardInterrupt])
+        self.assertEqual(popen.call_count, 1)
 
     def test_a_child_that_will_not_stop_is_killed(self):
         stuck, fresh = self.child(), self.child()

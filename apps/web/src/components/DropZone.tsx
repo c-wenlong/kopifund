@@ -26,7 +26,7 @@ export function DropZone({ disabled, reason, onFiles }: {
         else { setPending(null); onFiles(e.dataTransfer.files); }
       }}
       className={`flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border border-dashed px-3 py-3 text-[13px] sm:py-4 ${over && !disabled ? "border-ink bg-hover" : "border-line"}`}>
-      <label className={`flex h-8 items-center gap-2 rounded-md border border-line px-3 ${disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:bg-hover"}`}>
+      <label className={`flex h-8 items-center gap-2 rounded-md border border-line px-3 has-[:focus-visible]:outline-2 has-[:focus-visible]:outline-[var(--focus)] ${disabled ? "cursor-not-allowed opacity-40" : "cursor-pointer hover:bg-hover"}`}>
         <FileUp size={15} aria-hidden /> Choose PDFs
         <input type="file" accept="application/pdf" multiple className="sr-only" disabled={disabled}
           onChange={(e) => { setPending(null); onFiles(e.target.files); e.target.value = ""; }} />

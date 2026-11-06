@@ -53,3 +53,171 @@ final class PerformanceTests: XCTestCase {
         XCTAssertLessThan(elapsed, .milliseconds(500))
     }
 }
+
+/// Audit: the matcher's regex used to backtrack catastrophically. Every
+/// literal was wrapped in `\s*…\s*`, the payee could start and end on a
+/// space, and the whole template sat inside `\A[\s\S]*?…[\s\S]*?\z`, so a
+/// run of spaces or a repeated sentence made a failed match polynomial in
+/// the text's length: 2,000 spaces took 49 s, two ignore spans on 2 KB took
+/// 19 s, all on the main thread. Each case below must finish far inside the
+/// bound; the broken regex needs seconds to minutes on the same input.
+final class MatcherSpeedTests: XCTestCase {
+
+    private func pattern(from text: String,
+                         tag: (Token) -> PatternBuilder.Field?) throws -> AlertPattern {
+        let tokens = Tokenizer.tokenize(text)
+        var tags: [Int: PatternBuilder.Field] = [:]
+        for (i, t) in tokens.enumerated() { if let f = tag(t) { tags[i] = f } }
+        let segs = try PatternBuilder.segments(in: text, tokens: tokens,
+                                               spans: PatternBuilder.spans(from: tags, tokens: tokens))
+        return AlertPattern(name: "p", direction: .outflow, accountID: "a",
+                            segments: segs, sampleText: text)
+    }
+
+    /// The everyday pattern: a greeting long enough to shed, then amount,
+    /// payee and date. Invented bank text.
+    private func cardPattern() throws -> AlertPattern {
+        let sample = "Dear valued customer of the bank, you charged SGD 4.80 at KOPITIAM on 27 Oct 2026. Thank you for banking with us."
+        return try pattern(from: sample) { t in
+            switch t.text {
+            case "SGD", "4.80": return .amount
+            case "KOPITIAM": return .payee
+            case "27", "Oct", "2026": return .date
+            default: return nil
+            }
+        }
+    }
+
+    /// Two ignore spans the user tagged, the shape that took 19 s on 2 KB.
+    private func ignorePattern() throws -> AlertPattern {
+        let sample = "Alert ref 8842 for you: charged SGD 4.80 card x1234 at KOPITIAM on 27 Oct 2026 via app id 77 ok"
+        return try pattern(from: sample) { t in
+            switch t.text {
+            case "8842": return .ignore
+            case "SGD", "4.80": return .amount
+            case "x1234": return .ignore
+            case "KOPITIAM": return .payee
+            case "27", "Oct", "2026": return .date
+            default: return nil
+            }
+        }
+    }
+
+    private func assertFast(_ p: AlertPattern, _ text: String, _ label: String,
+                            file: StaticString = #filePath, line: UInt = #line) {
+        var outcome: Result<ParsedTransaction, MatchError>?
+        let elapsed = ContinuousClock().measure { outcome = Matcher.test(p, text: text) }
+        if case .failure(let e) = outcome {
+            XCTAssertNotEqual(e.reason, "text too long to read in time", label, file: file, line: line)
+        }
+        XCTAssertLessThan(elapsed, .milliseconds(500), label, file: file, line: line)
+    }
+
+    func test_a_long_run_of_spaces_stays_fast() throws {
+        let p = try cardPattern()
+        let spaces = String(repeating: " ", count: 2000)
+        // the run sits where the payee starts, and the alert then fails
+        let broken = "Dear valued customer of the bank, you charged SGD 4.80 at\(spaces)KOPITIAM was declined."
+        assertFast(p, broken, "2,000 spaces, no match")
+        // the same run in an alert that should still read
+        let good = "Dear valued customer of the bank, you charged SGD 4.80 at\(spaces)KOPITIAM on 27 Oct 2026. Thank you for banking with us."
+        assertFast(p, good, "2,000 spaces, match")
+        guard case .success(let t) = Matcher.test(p, text: good) else {
+            return XCTFail("a long space run should still read")
+        }
+        XCTAssertEqual(t.payee, "KOPITIAM")
+    }
+
+    func test_repeated_sentences_stay_fast() throws {
+        let p = try cardPattern()
+        // every sentence opens like the template but none completes it
+        let sentence = "you charged SGD 4.80 at KOPITIAM was declined, "
+        let text = String(repeating: sentence, count: 10_240 / sentence.count + 1)
+        assertFast(p, text, "10 KB of near-miss sentences")
+        let tail = text + "Dear valued customer of the bank, you charged SGD 4.80 at KOPITIAM on 27 Oct 2026. Thank you for banking with us."
+        assertFast(p, tail, "10 KB of near misses, then the real line")
+        guard case .success(let t) = Matcher.test(p, text: tail) else {
+            return XCTFail("the real line at the end should read")
+        }
+        XCTAssertEqual(t.payee, "KOPITIAM")
+    }
+
+    func test_two_ignore_spans_on_long_text_stay_fast() throws {
+        let p = try ignorePattern()
+        let filler = "Alert ref 99 for you: charged SGD 1.00 card x9 at "
+        for size in [2_048, 10_240] {
+            let text = String(repeating: filler, count: size / filler.count + 1)
+            assertFast(p, text, "\(size) bytes, two ignores")
+        }
+        let good = "Alert ref 9911 for you: charged SGD 9.00 card x5678 at TOAST BOX on 3 Nov 2026 via app id 12 ok"
+        guard case .success(let t) = Matcher.test(p, text: good) else {
+            return XCTFail("the ignore pattern should read a fresh alert")
+        }
+        XCTAssertEqual(t.payee, "TOAST BOX")
+    }
+
+    /// A template that opens on the payee used to retry the capture from
+    /// every character of the text.
+    func test_a_payee_first_template_stays_fast() throws {
+        let p = try pattern(from: "KOPITIAM charged you SGD 4.80 today") { t in
+            switch t.text {
+            case "KOPITIAM": return .payee
+            case "SGD", "4.80": return .amount
+            default: return nil
+            }
+        }
+        for unit in ["x", "a1 ", "KOPITIAM charged you ", "at on SGD 4.80 "] {
+            let text = String(repeating: unit, count: 10_240 / unit.count + 1)
+            assertFast(p, text, "10 KB of \(unit.debugDescription)")
+        }
+        guard case .success(let t) = Matcher.test(p, text: "Note\nTOAST BOX charged you SGD 9.00 today") else {
+            return XCTFail("a payee-first alert on its own line should read")
+        }
+        XCTAssertEqual(t.payee, "TOAST BOX")
+    }
+
+    /// The budget is the backstop for any shape the builder did not foresee:
+    /// a textbook catastrophic regex gives up on time instead of hanging.
+    func test_the_budget_stops_a_runaway_match() throws {
+        let re = try NSRegularExpression(pattern: #"^(a+)+$"#)
+        let text = String(repeating: "a", count: 40) + "b"
+        var result: Matcher.Search = .none
+        let elapsed = ContinuousClock().measure {
+            result = Matcher.search(re, in: text, budget: .milliseconds(50))
+        }
+        guard case .timedOut = result else { return XCTFail("expected a timeout, got \(result)") }
+        XCTAssertLessThan(elapsed, .seconds(1))
+    }
+
+    func test_long_runs_of_digits_words_and_newlines_stay_fast() throws {
+        let p = try cardPattern()
+        for (label, body) in [
+            ("digits", String(repeating: "1", count: 10_240)),
+            ("glued word with digits", String(repeating: "a1", count: 5_120)),
+            ("newlines", String(repeating: "\n", count: 10_240)),
+            ("mixed whitespace", String(repeating: " \t\n", count: 3_413)),
+            ("repeated tokens", String(repeating: "at on SGD 4.80 ", count: 700)),
+        ] {
+            assertFast(p, "you charged SGD " + body + " at KOPITIAM on " + body, label)
+            assertFast(p, body, label + " alone")
+        }
+    }
+
+    /// G24: the wallet email's payee may wrap onto more lines and its
+    /// anchors are only the labels beside each field, so long near-miss
+    /// text full of those labels must still fail fast.
+    func test_a_wrapping_payee_and_label_anchors_stay_fast() throws {
+        let p = try CorpusTests.teach(CorpusTests.walletTemplate)
+        for (label, unit) in [
+            ("labels", "Amount:\nSGD4.50\nTo:\n"),
+            ("long lines", String(repeating: "WORD ", count: 300) + "\n"),
+            ("short lines", "A\n"),
+            ("template restarts", "Date & Time:\n12 Oct 14:05 (SGT)\nAmount:\nSGD4.50\nTo:\nX\nY\nZ\nW\n"),
+        ] {
+            let body = String(repeating: unit, count: 10_240 / unit.count + 1)
+            assertFast(p, body, "10 KB of \(label)")
+            assertFast(p, CorpusTests.wallet().replacingOccurrences(of: "LUCKY BOWL", with: body),
+                       "10 KB of \(label) inside the payee")
+        }
+    }
+}
