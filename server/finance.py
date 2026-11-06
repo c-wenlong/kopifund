@@ -604,6 +604,7 @@ COMMANDS = {"sync": cmd_sync, "analyse": cmd_analyse, "load": cmd_load,
 def cmd_migrate(args):
     """Copy a finance-tracking folder into the data folder (server/finance/migrate.py)."""
     from finance import migrate
+    from finance.atomic import write_private
     if not args.source:
         print("migrate needs --from <finance-tracking folder>", file=sys.stderr)
         return ENVIRONMENT
@@ -613,8 +614,7 @@ def cmd_migrate(args):
     print(text)
     if not args.dry_run and not p.problems:
         out = p.new / f"migrate-report-{date.today().isoformat()}.txt"
-        out.write_text(text + "\n", encoding="utf-8")
-        out.chmod(0o600)
+        write_private(out, text + "\n")
         print(f"\nreport saved to {out}")
     return DOCTOR_FAILED if p.problems else CLEAN
 

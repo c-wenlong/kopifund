@@ -29,7 +29,7 @@ from analytics import run as analytics_run                      # noqa: E402
 from finance import snapshot as snap                          # noqa: E402
 from analytics.stats import common, savings_runway             # noqa: E402
 from analytics.stats import cpf as cpf_stat                     # noqa: E402
-from finance import db, sync                                    # noqa: E402
+from finance import atomic, db, sync                            # noqa: E402
 
 REPO = HERE.parent
 POSB, WISE, PAYLAH = "222-22222-2", "666-66666-6", "3333333333333333"
@@ -513,9 +513,9 @@ class CacheFilesAreReplacedWhole(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "latest.json"
             path.write_text('{"old": true}\n')
-            with mock.patch.object(snap.os, "fsync", side_effect=OSError("disk full")):
+            with mock.patch.object(atomic.os, "fsync", side_effect=OSError("disk full")):
                 with self.assertRaises(OSError):
-                    snap.write_atomic(path, '{"new": true}\n')
+                    atomic.write_private(path, '{"new": true}\n')
             self.assertEqual(path.read_text(), '{"old": true}\n')
             self.assertEqual([p.name for p in Path(tmp).iterdir()], ["latest.json"])
 
@@ -529,7 +529,7 @@ class CacheFilesAreReplacedWhole(unittest.TestCase):
             replaced.append(Path(dst).name)
             real(src, dst)
         with tempfile.TemporaryDirectory() as tmp, fx.settings(), \
-                mock.patch.object(snap.os, "replace", side_effect=spy):
+                mock.patch.object(atomic.os, "replace", side_effect=spy):
             snap.save(fx.snapshot(), tmp, day="2026-01-02")
             analytics_run.run_stats(fx.snapshot(), tmp, only=("travel",),
                                     benchmarks=fx.BENCHMARKS, day="2026-01-02",

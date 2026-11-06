@@ -30,6 +30,7 @@ except ImportError:                      # not on Windows: one process's thread 
     fcntl = None
 
 from . import account_names, dates, money
+from .atomic import write_private
 from .paths import REPO_RULES, cache_dir, data_root, personal_rules_dir, rules_history_dir
 from .parsers import categorise
 
@@ -687,18 +688,7 @@ def _write_atomic(path, data):
     if data is None:
         path.unlink(missing_ok=True)
         return
-    # a name of its own: two writers never share one temp file
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.name}.", suffix=".tmp")
-    tmp = Path(tmp)
-    try:
-        with os.fdopen(fd, "wb") as fh:
-            fh.write(data)
-            fh.flush()
-            os.fsync(fh.fileno())
-        tmp.chmod(0o600)
-        os.replace(tmp, path)
-    finally:
-        tmp.unlink(missing_ok=True)
+    write_private(path, data)
 
 
 def _commit(conn, files, action, summary, check=True, linked=None):
