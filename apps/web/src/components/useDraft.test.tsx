@@ -110,6 +110,23 @@ describe("useDraft", () => {
     expect(result.current.dirty).toBe(false);
   });
 
+  it("takes the refusal away when the same edit is sent again, whether the second try works or is refused again", async () => {
+    const { result } = setup();
+    act(() => result.current.set({ a: "5" }));
+    await act(async () => { await result.current.save(() => Promise.reject(new Error("Disk full."))); });
+    expect(result.current.problem).toBe("Disk full.");
+    const d = deferred();
+    let again!: Promise<void>;
+    act(() => { again = result.current.save(() => d.promise); });
+    // while the second try is on its way the old refusal is no longer true
+    expect(result.current.problem).toBeNull();
+    await act(async () => { d.resolve(); await again; });
+    expect(result.current.problem).toBeNull();
+    act(() => result.current.set({ a: "6" }));
+    await act(async () => { await result.current.save(() => Promise.reject(new Error("Disk full again."))); });
+    expect(result.current.problem).toBe("Disk full again.");
+  });
+
   it("has no values while nothing is loaded", () => {
     const { result } = renderHook(() => useDraft<V>(null, null));
     expect(result.current.value).toBeNull();
