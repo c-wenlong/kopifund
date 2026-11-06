@@ -114,6 +114,19 @@ alert the record already covers ("in kopifund") or whose shape is ignored
 stays where it is. **Try patterns again** at the top of Unmatched runs the
 same pass by hand.
 
+An alert that still fails says why on its page: the saved pattern that
+reads the most of it, and the first field it could not read, by the words
+the pattern finds that field between ("Closest: Demo Wallet: payee not found
+after 'To:'"; `Matcher.closest`). The pattern is read one segment at a time
+from its start, so a missing label names the field after it, missing words
+after the last field name that field ("payee not found before 'Ref'"), and a
+shape that reads whole names the value it refused (a source filter, a third
+decimal, another card). A pattern that reads none of the alert is no
+closest. **Edit that pattern** opens the builder on that pattern, its tags
+restored on its own sample and its borders and settings kept, with this
+alert in the live test; saving writes over the pattern and re-reads
+Unmatched. Patterns' rows open the same editor.
+
 A field is found by the stable words right around it, not by every word of
 the alert: the literal before a field keeps its nearest words on the field's
 line (at most two words that do not change, never past an earlier clause's

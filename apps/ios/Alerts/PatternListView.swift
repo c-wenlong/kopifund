@@ -16,12 +16,22 @@ struct PatternListView: View {
         NavigationStack {
             List {
                 ForEach(patterns) { p in
-                    VStack(alignment: .leading) {
-                        Text(p.name)
-                        // G24: a pattern needs no YNAB account; one shows only when set
-                        Text("\(p.direction)" + (p.accountID.isEmpty ? "" : " -> \(p.accountID)")
-                             + " · priority \(p.priority)")
-                            .font(.caption).foregroundStyle(.secondary)
+                    // G24: a saved pattern opens in the builder to edit;
+                    // saving the edit re-reads Unmatched like a new one
+                    NavigationLink {
+                        if let pattern = p.pattern {
+                            PatternBuilderView(sampleText: pattern.sampleText,
+                                               source: pattern.sourceMatch,
+                                               editing: pattern, onSaved: patternSaved)
+                        }
+                    } label: {
+                        VStack(alignment: .leading) {
+                            Text(p.name)
+                            // G24: a pattern needs no YNAB account; one shows only when set
+                            Text("\(p.direction)" + (p.accountID.isEmpty ? "" : " -> \(p.accountID)")
+                                 + " · priority \(p.priority)")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
                 .onDelete { idx in idx.forEach { context.delete(patterns[$0]) }; try? context.save() }

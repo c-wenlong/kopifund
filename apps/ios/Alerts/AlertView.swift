@@ -25,6 +25,8 @@ struct AlertView: View {
     /// alert. Nil until the scan lands, so the label simply appears late.
     @State private var found: (amount: Bool, date: Bool, payee: Bool)?
     @State private var title: String?
+    /// G24: the saved pattern that came nearest, and what it could not read.
+    @State private var closest: (pattern: AlertPattern, explained: ClosestPattern)?
 
     nonisolated private static func detectedFields(in text: String)
         -> (amount: Bool, date: Bool, payee: Bool, title: String) {
@@ -87,6 +89,10 @@ struct AlertView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
+                if let c = closest {
+                    closestCard(c.pattern, c.explained)
+                }
+
                 NavigationLink {
                     PatternBuilderView(sampleText: record.text, source: record.source,
                                        arrivedOn: record.arrivedOn) {
@@ -131,6 +137,46 @@ struct AlertView: View {
             found = (f.amount, f.date, f.payee)
             title = f.title
         }
+        .task { await findClosest() }
+    }
+
+    /// "Closest: Demo Wallet: payee not found after 'To:'", with the way
+    /// to fix that pattern rather than teach a second one.
+    private func closestCard(_ p: AlertPattern, _ c: ClosestPattern) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(c.summary, systemImage: "scope")
+                .font(.footnote).foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityIdentifier("closestPattern")
+            NavigationLink {
+                // the builder opens on the pattern's own sample, with this
+                // alert in the live test so the fix shows as it is made
+                PatternBuilderView(sampleText: p.sampleText, source: p.sourceMatch,
+                                   editing: p, initialTestText: record.text) {
+                    Task {
+                        let (toast, moved) = await rematch()
+                        onFinished(toast, moved)
+                    }
+                }
+            } label: {
+                Text("Edit that pattern").frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+
+    /// Patterns are read on the actor, the explanation runs detached: it
+    /// re-reads the alert once per field of every pattern.
+    private func findClosest() async {
+        let patterns = ((try? context.fetch(FetchDescriptor<PatternRecord>())) ?? []).compactMap(\.pattern)
+        guard !patterns.isEmpty else { closest = nil; return }
+        let text = record.text, source = record.source
+        let at = record.receivedAt, day = record.arrivedOn
+        let found = await Task.detached(priority: .userInitiated) {
+            Matcher.closest(text: text, source: source, receivedAt: at, arrivedOn: day,
+                            patterns: patterns)
+        }.value
+        closest = found.flatMap { c in patterns.first { $0.id == c.patternID }.map { ($0, c) } }
     }
 
     /// G24: the saved pattern should capture this alert, and every other
