@@ -26,16 +26,6 @@ from .money import in_cents
 RESULT_FILE = re.compile(r"^(?P<id>[a-z0-9]+(?:-[a-z0-9]+)*)-(?P<date>\d{4}-\d{2}-\d{2})\.json$")
 STAT_ID = re.compile(r"^[a-z0-9]+(?:-[a-z0-9]+)*$")
 
-# The order the cards read best in: money in and out first, then where it goes,
-# then who it goes to, then the outliers, then the forward-looking ones, and
-# the caveats about the data itself last. Anything not listed sorts after.
-DISPLAY_ORDER = [
-    "monthly-cashflow", "needs-wants-savings", "category-breakdown",
-    "recurring-detector", "eating-out", "merchant-concentration", "one-offs",
-    "income-stability", "savings-runway", "portfolio", "cpf", "travel",
-    "benchmarks-sg",
-    "forward-view", "data-quality",
-]
 
 
 def safe_path(base, relative):

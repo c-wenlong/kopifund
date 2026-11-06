@@ -597,11 +597,16 @@ class ForwardView(unittest.TestCase):
         segs = [{"from": "2026-03-01", "to": "2026-04-13", "gross_minor": 200_000, "cpf": True},
                 {"from": "2026-04-14", "to": "2026-06-30", "gross_minor": 250_000, "cpf": True},
                 {"from": "2026-08-11", "to": "2026-12-31", "gross_minor": 600_000, "cpf": False}]
-        self.assertEqual(forward_view.month_gross("2026-03", segs), (200_000, 200_000))
-        self.assertEqual(forward_view.month_gross("2026-04", segs), (228_334, 228_334))
-        self.assertEqual(forward_view.month_gross("2026-07", segs), (0, 0))
-        self.assertEqual(forward_view.month_gross("2026-08", segs), (406_452, 0))
-        self.assertEqual(forward_view.month_gross("2026-09", segs), (600_000, 0))
+        pay = forward_view.pay_for({"income_segments": segs})
+
+        def gross(month):   # (gross, cpf-liable gross) the month earns, in cents
+            pm = pay.at(month)
+            return pm["income"], pm["ow"] + pm["aw_liable"]
+        self.assertEqual(gross("2026-03"), (200_000, 200_000))
+        self.assertEqual(gross("2026-04"), (228_334, 228_334))
+        self.assertEqual(gross("2026-07"), (0, 0))
+        self.assertEqual(gross("2026-08"), (406_452, 0))
+        self.assertEqual(gross("2026-09"), (600_000, 0))
 
     def test_segments_drive_the_projection_when_given(self):
         from analytics.stats import forward_view
@@ -897,8 +902,6 @@ income_scenarios = [
 
     def test_the_named_phases_are_used_and_the_broken_ones_skipped(self):
         self.assertEqual([p["name"] for p in c.phases()], ["Up north", "Down south"])
-        self.assertEqual(c.phase_of("2025-01"), "Before Mar 2025")
-        self.assertEqual(c.phase_of("2025-10"), "Down south")
         cov = c.coverage(SNAP)
         self.assertEqual([m for m in MONTHS if cov[m]["before_phases"]],
                          ["2025-01", "2025-02"])

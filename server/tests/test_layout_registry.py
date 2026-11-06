@@ -93,7 +93,7 @@ class ANewLayoutIsOneModule(DataFolder):
     def setUp(self):
         super().setUp()
         layouts.register(fake_layout.LAYOUT)
-        self.addCleanup(layouts.unregister, "fakebank")
+        self.addCleanup(fake_layout.unregister, "fakebank")
         # the run starts the parser as `python3 -m fake_layout`, found on this path
         p = mock.patch.dict(os.environ, {"PYTHONPATH": str(TESTS)})
         p.start()

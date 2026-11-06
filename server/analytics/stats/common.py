@@ -199,14 +199,6 @@ def in_phase(month, phase):
     return phase["from"] <= month and (phase["to"] is None or month <= phase["to"])
 
 
-def phase_of(month):
-    for p in phases():
-        if in_phase(month, p):
-            return p["name"]
-    first = phases()[0]["from"]
-    return f"Before {month_label(first)}"
-
-
 def last_month(snapshot):
     """The last month with any transaction."""
     months = month_range(snapshot)

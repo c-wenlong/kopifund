@@ -111,9 +111,9 @@ class Bank(unittest.TestCase):
         import fake_layout
         from finance.parsers import layouts
         layouts.register_bank(layouts.Bank("fakebank", r"\bfakebank\b"))
-        self.addCleanup(layouts.unregister_bank, "fakebank")
+        self.addCleanup(fake_layout.unregister_bank, "fakebank")
         layouts.register(dataclasses.replace(fake_layout.LAYOUT, bank="fakebank", folder_title="Fakebank Saver"))
-        self.addCleanup(layouts.unregister, "fakebank")
+        self.addCleanup(fake_layout.unregister, "fakebank")
         f = Folder("statements/fakebank-savings", "fakebank", "FB-0042")
         self.assertEqual((an.folder_name(f), an.folder_bank(f)), ("Fakebank Saver", "fakebank"))
         self.assertEqual(an.bank("My Fakebank pot"), "fakebank")

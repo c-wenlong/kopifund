@@ -766,11 +766,6 @@ class Trip:
         return bool(day) and self.start <= day <= self.settled_end
 
 
-def read_trips(cfg, client):
-    """Every Trips row with a start date, earliest first."""
-    return trips_from_pages(client.query_all(cfg.ds("trips")))
-
-
 def plan_spans(trip_pages, plan_pages):
     """{Trips Expenses page id: (start, end)} from the planner rows each
     Trip plan points at: earliest start to latest end, a planner day trip
@@ -1631,18 +1626,6 @@ def write_hub_status(cfg, client, text, dry_run=False):
 SEED_TYPES = {"Planned": "number"}
 SEED_CLASSES = ("Need", "Want")
 SEED_ALL_CLASSES = ("Need", "Want", "Savings", "Investment")
-
-
-def months_before(month, n):
-    """The n calendar months before YYYY-MM, earliest first."""
-    y, m = int(month[:4]), int(month[5:7])
-    out = []
-    for _ in range(n):
-        m -= 1
-        if m == 0:
-            y, m = y - 1, 12
-        out.append(f"{y:04d}-{m:02d}")
-    return out[::-1]
 
 
 def seed_budgets(cfg, client, month, window=6, everything=False, dry_run=False, echo=True,

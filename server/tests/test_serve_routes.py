@@ -108,13 +108,15 @@ class RouteTableTest(unittest.TestCase):
             serve.answer("/api/overveiw", {})
 
     def test_the_families_are_what_the_separate_lists_held(self):
-        self.assertEqual(serve.PLANNING_WRITES, (
+        def tagged(tag):
+            return tuple(p for p, route in serve.POST_ROUTES.items() if route.tag == tag)
+        self.assertEqual(tagged("planning"), (
             "/api/budgets", "/api/budgets/copy", "/api/plan", "/api/categories",
             "/api/trips", "/api/trips/remove", "/api/trips/restore", "/api/trips/undo"))
-        self.assertEqual(serve.RULE_WRITES, (
+        self.assertEqual(tagged("rules"), (
             "/api/rules/remove", "/api/rules/save", "/api/rules/undo", "/api/rules/apply",
             "/api/rules/batch", "/api/rules/pin"))
-        self.assertEqual(serve.CATEGORY_WRITES, (
+        self.assertEqual(tagged("categories"), (
             "/api/categories/add", "/api/categories/rename", "/api/categories/move", "/api/categories/delete",
             "/api/category-groups/add", "/api/category-groups/rename", "/api/category-groups/reorder",
             "/api/category-groups/delete", "/api/category-groups/style"))
