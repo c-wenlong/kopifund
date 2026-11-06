@@ -17,6 +17,9 @@ struct TransactionDetailView: View {
     // set by Delete: the row goes once this view is off screen, so no
     // render ever reads a deleted model
     @State private var deleteOnExit = false
+    /// The Amount field's text, "5.80" for 580 cents; cents stay the truth.
+    @State private var amountDraft = ""
+    @FocusState private var amountFocused: Bool
 
     var body: some View {
         Form {
@@ -27,9 +30,21 @@ struct TransactionDetailView: View {
                 HStack {
                     Text("Amount")
                     Spacer()
-                    TextField("Amount", value: centsBinding, format: .number)
+                    // two decimals like every other figure; the row keeps
+                    // integer cents, the field a text draft of them
+                    TextField("Amount", text: $amountDraft)
                         .keyboardType(.decimalPad)
                         .multilineTextAlignment(.trailing)
+                        .focused($amountFocused)
+                        .accessibilityIdentifier("amountField")
+                        .onChange(of: amountDraft) {
+                            if let cents = Cents.parse(amountDraft), cents != row.amountCents {
+                                row.amountCents = cents
+                            }
+                        }
+                        .onChange(of: amountFocused) {
+                            if !amountFocused { amountDraft = Cents.text(row.amountCents) }
+                        }
                 }
                 // the picker edits the calendar day in the phone's own
                 // calendar; the row keeps it as a zone-free day
@@ -42,11 +57,9 @@ struct TransactionDetailView: View {
                     Text("Inflow").tag("inflow")
                 }
                 // nobody holds a YNAB category id in their head: pick from the
-                // cached list, fall back to a raw field until Settings fetches
-                if categoryOptions.isEmpty {
-                    TextField("Category ID", text: Binding(
-                        get: { row.categoryID ?? "" }, set: { row.categoryID = $0.isEmpty ? nil : $0 }))
-                } else {
+                // cached list. With no list there is no control at all (YNAB
+                // is optional); a saved id stays untouched on the row
+                if !categoryOptions.isEmpty {
                     Picker("Category", selection: Binding(
                         get: { row.categoryID ?? "" }, set: { row.categoryID = $0.isEmpty ? nil : $0 })) {
                         Text("None").tag("")
@@ -180,6 +193,7 @@ struct TransactionDetailView: View {
         .navigationTitle(row.state == "pending" ? "Review"
                          : row.state == "kopifund" ? "in kopifund" : row.state)
         .task {
+            amountDraft = Cents.text(row.amountCents)
             loadSibling()
             categoryOptions = YNABCache.categories(in: context, planID: planID)
                 .map { ($0.id, "\($0.group) · \($0.name)") }
@@ -234,11 +248,5 @@ struct TransactionDetailView: View {
     private var convertedCents: Int? {
         guard let c = converted, c > 0, let cents = Cents.from(c), cents > 0 else { return nil }
         return cents
-    }
-
-    private var centsBinding: Binding<Double> {
-        Binding(get: { Double(row.amountCents) / 100 },
-                // the same rounding as intake; a figure past counting is ignored
-                set: { if let cents = Cents.from($0) { row.amountCents = cents } })
     }
 }
