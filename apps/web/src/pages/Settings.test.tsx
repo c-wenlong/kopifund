@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Settings } from "./Settings";
 import { leadingIcon } from "../test-icons";
 import { ServerBanner } from "../components/ServerBanner";
-import { json, stubMatchMedia } from "../test-helpers";
+import { fakeClock, json, stubMatchMedia } from "../test-helpers";
 
 const scamChecks = {
   settings: { big_transfer: 50_000, repeat_count: 3, repeat_days: 14, new_payee_days: 30,
@@ -288,6 +288,7 @@ describe("Server card", () => {
   });
 
   it("says what a stop waits for, and goes offline once the work is done", async () => {
+    const clock = fakeClock();
     const server = stubFetch({ waitingFor: ["a load", "the stats rebuild"] });
     render(<><Settings /><ServerBanner /></>);
     await screen.findByText("Server connected");
@@ -296,7 +297,7 @@ describe("Server card", () => {
     expect(await screen.findByRole("status")).toHaveTextContent(
       "Waiting for a load and the stats rebuild to finish first (2 minutes at most).");
     // still up a while later: the card waits, the banner stays quiet
-    await new Promise((r) => setTimeout(r, 1200));
+    await clock.pass(1200);
     expect(screen.queryByText("Stopped.")).not.toBeInTheDocument();
     server.goDown();
     expect(await screen.findByText("Stopped.", {}, { timeout: 4000 })).toBeInTheDocument();

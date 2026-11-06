@@ -6,7 +6,7 @@ import { notifyChanged } from "../api";
 import type { ActiveSeries, ComingUpRow, RecurringPage, SeriesView } from "../api";
 import { ComingUpItem, DotStrip, mergeSeries, Recurring, stepOn } from "./Recurring";
 import { leadingIcon } from "../test-icons";
-import { json, stubMatchMedia } from "../test-helpers";
+import { json, settle, stubMatchMedia } from "../test-helpers";
 
 // invented payees and amounts
 // G16: a row's series id and name follow its payee unless the test says otherwise
@@ -679,7 +679,7 @@ describe("A series' own view, G16", () => {
     await act(async () => release());
     await waitFor(() => expect(now.amount).toBe(5500));
     // the series read again after the save does not put 55 over it
-    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    await settle();
     const region = screen.getByRole("region", { name: "Gym" });
     expect(within(region).getByLabelText("Usual amount")).toHaveValue(before);
     expect(within(region).getByText("Unsaved changes")).toBeInTheDocument();
@@ -721,7 +721,7 @@ describe("A series' own view, G16", () => {
     await act(async () => posts.shift()!());
     await waitFor(() => expect(reads.length).toBeGreaterThan(0));
     await act(async () => { while (reads.length) reads.shift()!(); });
-    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    await settle();
     expect(now.amount).toBe(6000);
     expect(amount()).toHaveValue("55");
     expect(within(screen.getByRole("region", { name: "Gym" })).getByText("Unsaved changes")).toBeInTheDocument();
@@ -777,7 +777,7 @@ describe("A series' own view, G16", () => {
     // another tab makes it weekly, on Tuesdays
     now = { ...VIEW, cadence: "weekly", day: 2, edit: { ...VIEW.edit, cadence: "weekly", day: 2 } };
     await act(async () => notifyChanged());
-    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    await settle();
     const region = screen.getByRole("region", { name: "Gym" });
     // the day typed is a day of the month: it stays with the monthly cadence it was typed under
     expect(within(region).getByRole("button", { name: "How often" })).toHaveTextContent("Monthly");

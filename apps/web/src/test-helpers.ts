@@ -51,3 +51,22 @@ export const navigate = vi.fn();
 export function withNavigate<T extends object>(actual: T): T & { navigate: (to: string) => void } {
   return { ...actual, navigate: (to: string) => navigate(to) };
 }
+
+/**
+ * Let every promise already on its way finish: a few turns of the event loop inside act, so a mocked fetch
+ * (which answers in promise steps, not on a clock) has landed and the page has drawn what it will. For
+ * "and nothing else happens"; to wait for something that should happen, use findBy or waitFor.
+ */
+export async function settle() {
+  for (let turn = 0; turn < 3; turn++) await act(async () => { await new Promise<void>((r) => setTimeout(r, 0)); });
+}
+
+/**
+ * setTimeout on a fake clock, for a test that waits out a pause (a debounce, a poll) without sitting through it.
+ * The clock also ticks on its own, which testing-library's waitFor and findBy need to finish; `pass(ms)`
+ * jumps it on. Restored to the real one after the test.
+ */
+export function fakeClock() {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+  return { pass: (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); }) };
+}

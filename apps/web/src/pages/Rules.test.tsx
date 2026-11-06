@@ -8,7 +8,7 @@ import { Toaster } from "../components/Toast";
 import { choose } from "../test-select";
 import { navigate } from "../router";
 import { useUrlParams } from "../useUrlParams";
-import { json, stubMatchMedia } from "../test-helpers";
+import { json, settle, stubMatchMedia } from "../test-helpers";
 
 // another reader of the address, as the copilot panel is: it sends every query parameter as the page's filters
 function AddressProbe() {
@@ -663,10 +663,8 @@ describe("Rules", () => {
     refuse();
     // the refusal is read; what the page does with it is promises alone, all run before the next task: one
     // task later the late answer has landed wherever it was going to, on any machine, however slow
-    await act(async () => {
-      await answered;
-      await new Promise((r) => setTimeout(r, 0));
-    });
+    await act(async () => { await answered; });
+    await settle();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save as my rule" })).toBeEnabled();
   });

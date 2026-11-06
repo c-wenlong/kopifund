@@ -7,7 +7,7 @@ import { HIDE_TRANSFERS_KEY, Transactions } from "./Transactions";
 import { leadingIcon } from "../test-icons";
 import { choose } from "../test-select";
 import { Toaster } from "../components/Toast";
-import { json, stubMatchMedia } from "../test-helpers";
+import { fakeClock, json, settle, stubMatchMedia } from "../test-helpers";
 
 // what the server sends for the days on a page: each day's rows, money in and money out
 type StubRow = { date: string; amount_sgd: number | null };
@@ -303,7 +303,7 @@ describe("Transactions", () => {
     fireEvent.change(note, { target: { value: "a wedding gift" } });
     await waitFor(() => expect(release).not.toBeNull());
     await act(async () => release!());
-    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    await settle();
     // "a gift" is saved; the rest was never sent, so the form stays open on it and leaving asks
     expect(screen.getByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).toHaveValue("a wedding gift");
     expect(leaveAsks()).toBe(true);
@@ -337,7 +337,7 @@ describe("Transactions", () => {
     expect(leaveAsks()).toBe(true);
     await waitFor(() => expect(release).not.toBeNull());
     await act(async () => release!());
-    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    await settle();
     expect(screen.getByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).toHaveValue("");
     expect(leaveAsks()).toBe(true);
   });
@@ -388,7 +388,7 @@ describe("Transactions", () => {
     fireEvent.change(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
     await waitFor(() => expect(fail).not.toBeNull());
     await act(async () => fail!());
-    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    await settle();
     expect(leaveAsks()).toBe(true);
   });
 
@@ -417,7 +417,7 @@ describe("Transactions", () => {
     expect(leaveAsks()).toBe(true);
     await waitFor(() => expect(release).not.toBeNull());
     await act(async () => release!());
-    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    await settle();
     expect(leaveAsks()).toBe(true);
   });
 
@@ -1089,6 +1089,7 @@ describe("Transactions filters in the address", () => {
   });
 
   it("drops a search still waiting for the pause when Clear filters is pressed", async () => {
+    const clock = fakeClock();
     window.history.replaceState(null, "", "/transactions?category=Donations");
     const calls = stubTxns({ rows: [money(1)], total: 1, ...months });
     render(<Transactions />);
@@ -1098,13 +1099,14 @@ describe("Transactions filters in the address", () => {
     fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
     expect(box).toHaveValue("");
     // well past the pause, the search never comes back
-    await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+    await clock.pass(400);
     expect(box).toHaveValue("");
     expect(window.location.search).toBe("");
     expect(calls.filter((u) => u.includes("q="))).toEqual([]);
   });
 
   it("drops a search still waiting for the pause when a link moves the page, and keeps it when a filter changes here", async () => {
+    const clock = fakeClock();
     window.history.replaceState(null, "", "/transactions?category=Donations");
     const calls = stubTxns({ rows: [money(1)], total: 1, ...months });
     render(<Transactions />);
@@ -1120,7 +1122,7 @@ describe("Transactions filters in the address", () => {
     fireEvent.change(box, { target: { value: "kopi" } });
     act(() => navigate("/transactions"));
     expect(box).toHaveValue("");
-    await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+    await clock.pass(400);
     expect(window.location.search).toBe("");
     expect(calls.filter((u) => u.includes("q=kopi"))).toEqual([]);
   });
@@ -1355,7 +1357,7 @@ describe("Transactions: a row save across a change of layout", () => {
     fireEvent.change(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
     await waitFor(() => expect(fail).not.toBeNull());
     await act(async () => fail!());
-    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    await settle();
     expect(leaveAsks()).toBe(true);
   });
 });
