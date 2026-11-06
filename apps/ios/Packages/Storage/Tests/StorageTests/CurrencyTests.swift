@@ -138,3 +138,10 @@ func nonCodesAreRefused(raw: String) {
     #expect(Cents.parse("abc") == nil)
     #expect(Cents.text(Cents.parse("5.8")!) == "5.80")
 }
+
+@Test func aReadAmountPrintsWithTwoDecimalsAndItsCurrency() {
+    #expect(Cents.figure(Decimal(string: "6.4")!, currency: "SGD") == "SGD 6.40")
+    #expect(Cents.figure(Decimal(string: "12")!, currency: nil) == "12.00")
+    #expect(Cents.figure(Decimal(string: "0.05")!, currency: "USD") == "USD 0.05")
+    #expect(Cents.figure(Cents.ceiling, currency: "SGD") == nil)
+}

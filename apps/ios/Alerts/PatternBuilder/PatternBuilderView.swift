@@ -228,15 +228,18 @@ struct PatternBuilderView: View {
     /// currency fallback and date parsing are exactly what intake produces.
     private func readsSummary(_ m: ParsedTransaction) -> String {
         var parts = [m.payee]
-        // a match keeps cents (Matcher refuses a third decimal), so the
-        // figure prints exactly
-        let figure = Cents.from(m.amount).map(Cents.text) ?? "\(m.amount)"
-        parts.append((m.currency.map { "\($0) " } ?? "") + figure)
+        parts.append(figure(m))
         parts.append(m.date.formatted(date: .abbreviated, time: .omitted))
         if let h = m.accountHint { parts.append("card \(h)") }
         // G24: the YNAB account only says something when YNAB is in play
         if let name = accountOptions.first(where: { $0.0 == accountID })?.1 { parts.append("→ \(name)") }
         return parts.joined(separator: " · ")
+    }
+
+    /// A read amount as the lists print it, "SGD 6.40" (`Cents.figure`):
+    /// a match keeps cents, as Matcher refuses a third decimal.
+    private func figure(_ m: ParsedTransaction) -> String {
+        Cents.figure(m.amount, currency: m.currency) ?? "\(m.amount)"
     }
 
     private var testSection: some View {
@@ -323,7 +326,7 @@ struct PatternBuilderView: View {
                 switch Matcher.test(p, text: text, arrivedOn: day) {
                 case .success(let t):
                     if live {
-                        testResult = "test alert reads \(t.payee) · \(t.amount) · \(t.date.formatted(date: .abbreviated, time: .omitted))"
+                        testResult = "test alert reads \(t.payee) · \(figure(t)) · \(t.date.formatted(date: .abbreviated, time: .omitted))"
                     } else {
                         matched = t
                     }
