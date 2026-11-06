@@ -3,11 +3,9 @@
 import isolate  # noqa: F401  first: no test writes the real record or cache
 import hashlib
 import io
-import os
 import sqlite3
 import subprocess
 import sys
-import tempfile
 import time
 import unittest
 from contextlib import closing, redirect_stdout
@@ -17,6 +15,7 @@ from unittest import mock
 from finance.parsers import categorise
 from finance import db, rules_app, setup, transport_split
 from finance.transport_split import PRIVATE, PUBLIC, classify
+from support import DataFolder
 from test_db import block, parsed, row
 
 MERCHANTS = (b"match_on,pattern,payee,kind,country,category,notes\r\n"
@@ -64,6 +63,7 @@ class ClassifyTest(unittest.TestCase):
 class SeedTest(unittest.TestCase):
     def test_a_fresh_record_whose_rules_still_say_transport_gets_it(self):
         conn = db.connect(":memory:")
+        self.addCleanup(conn.close)
         db.seed_categories(conn)
         self.assertIsNone(conn.execute("SELECT 1 FROM category WHERE name = 'Transport'").fetchone())
         db.seed_categories(conn, named={"Transport", "Coffee"})
@@ -74,6 +74,7 @@ class SeedTest(unittest.TestCase):
     def test_a_new_category_goes_last_in_its_bucket_in_a_record_the_user_ordered(self):
         from finance import categories
         conn = db.connect(":memory:")
+        self.addCleanup(conn.close)
         db.seed_categories(conn, [c for c in db.shipped_categories() if c["name"] != PRIVATE])
         categories.move_category(conn, "Groceries", "Food", 0)      # the page renumbers everything
         db.seed_categories(conn)                                     # Transport (private) arrives
@@ -84,6 +85,7 @@ class SeedTest(unittest.TestCase):
     def test_a_category_the_shipped_rename_reaches_keeps_its_place(self):
         from finance import categories
         conn = db.connect(":memory:")
+        self.addCleanup(conn.close)
         old = [{**c, "name": "Tuition"} if c["name"] == "Education" else c for c in db.shipped_categories()]
         db.seed_categories(conn, old)
         categories.move_category(conn, "Tuition", "Growth", 0)      # the user put it first
@@ -107,15 +109,9 @@ class KeyRuleTest(unittest.TestCase):
         self.assertEqual(transport_split._classify_key_rule(rows, ""), (None, "its rows differ"))
 
 
-class SplitTest(unittest.TestCase):
+class SplitTest(DataFolder):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        p = mock.patch.dict(os.environ, {"KOPIFUND_DATA": str(self.root),
-                                         "KOPIFUND_DB": str(self.root / "kopifund.db")})
-        p.start()
-        self.addCleanup(p.stop)
-        self.addCleanup(self.tmp.cleanup)
+        super().setUp()
         setup.create(["posb-everyday"])
         self.record = self.root / "kopifund.db"
         self.rules = self.root / "rules"

@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { UploadPage } from "./Upload";
 import { leadingIcon } from "../test-icons";
 import type { CheckReport, LoadResult } from "../api";
-import { json } from "../test-helpers";
+import { expectAsks, expectFree, json } from "../test-helpers";
 
 const status = {
   folders: [
@@ -80,7 +80,6 @@ function serve(routes: Routes = {}) {
   });
 }
 
-const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 const pdf = (name: string) => new File(["%PDF"], name, { type: "application/pdf" });
 const stepper = () => within(screen.getByRole("list", { name: "Steps" }));
 const stateOf = (key: string) => stepper().getAllByRole("listitem").find((li) => li.getAttribute("data-step") === key)?.getAttribute("data-state");
@@ -209,7 +208,7 @@ describe("Upload page", () => {
       expect(items[2]).toHaveTextContent(/YouTrip$/);
       expect(within(screen.getByRole("list", { name: "Banks coming soon" })).getByText(/Trust Bank/)).toBeInTheDocument();
       expect(screen.getAllByRole("list", { name: "Banks Kopifund reads" })).toHaveLength(1);
-      expect(screen.getByText("python3 finance.py sample")).toBeInTheDocument();
+      expect(screen.getByText(/To help add a bank, share a scrubbed text copy/)).toBeInTheDocument();
       // the card and the stepper agree: nothing was kept
       expect(screen.getAllByText("Not supported").length).toBeGreaterThan(2);
       expect(stateOf("add")).toBe("blocked");
@@ -221,7 +220,7 @@ describe("Upload page", () => {
       await add("new.pdf", "odd.pdf");
       await screen.findByText(/Saved as/);
       expect(screen.queryByRole("list", { name: "Banks Kopifund reads" })).not.toBeInTheDocument();
-      expect(screen.queryByText("python3 finance.py sample")).not.toBeInTheDocument();
+      expect(screen.queryByText(/To help add a bank/)).not.toBeInTheDocument();
     });
   });
 
@@ -260,16 +259,16 @@ describe("Upload page", () => {
       serve({ check: () => report({ to_add_count: 2 }) });
       render(<UploadPage />);
       expect(await screen.findByLabelText("Choose PDFs", { selector: "input" })).toBeEnabled();
-      expect(leaveAsks()).toBe(false);
+      await expectFree();
       await add("two.pdf");
       const waiting = within(await screen.findByRole("list", { name: "Files that need an account" }));
       // the PDF is held in this page only: leaving would drop it with nothing saved
-      expect(leaveAsks()).toBe(true);
+      await expectAsks();
       fireEvent.click(waiting.getByRole("button", { name: "Account" }));
       fireEvent.mouseDown(screen.getByRole("option", { name: /YouTrip/ }));
       fireEvent.click(waiting.getByRole("button", { name: "Save here" }));
       await screen.findByText(/Saved as statements\/youtrip-sek/);
-      await waitFor(() => expect(leaveAsks()).toBe(false));
+      await expectFree();
     });
 
     it("stays waiting with the reason in the danger colour when the account chosen refuses it", async () => {

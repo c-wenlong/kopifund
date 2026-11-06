@@ -6,7 +6,6 @@ import UIKit
 struct PatternListView: View {
     @Query(sort: \PatternRecord.priority, order: .reverse) private var patterns: [PatternRecord]
     @Environment(\.modelContext) private var context
-    @State private var pasteText = ""
     @State private var showBuilder = false
     // "always ignore" shapes, listed here so one can be undone without
     // wiping every pattern and transaction

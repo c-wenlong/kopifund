@@ -25,6 +25,7 @@ import { useAction } from "../components/useAction";
 import { ago, formatDay, formatDayShort, formatMonth, isoParts } from "../dates";
 import type { Cadence } from "../types.gen";
 import { CADENCE_ICON, COMING_ICON, KindIcon, KindLabel, NEED_ICON, type IconTone } from "../icons";
+import { plural } from "../words";
 
 // G13: the Recurring page is lists: one list of every live series, soonest
 // next payment first, each with this month's status and a bar of its yearly
@@ -96,7 +97,7 @@ function Lists() {
   const state = useApi<RecurringPage>("/api/recurring");
   return (
     <Loaded state={state} what="Loading your recurring payments" missing="No recurring payments yet.">{(data) => !data.ready
-      ? <Problem message="No recurring payments result yet." hint="Run the analysis from the Upload page, or `make analyse`." />
+      ? <Problem message="No recurring payments result yet." hint="Run the analysis from the Upload page." />
       : (
         <div className="flex flex-col gap-3">
           <p className="m-0 text-[12px] text-ink-3">As of {formatDay(data.coming_up.as_of)}</p>
@@ -475,7 +476,6 @@ function IrregularList({ rows, asOf }: { rows: IrregularPayee[]; asOf: string })
   );
 }
 
-const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
 /** G16: what the owner said is not recurring, each with Undo; a series' name opens its view. */
 function NotRecurringList({ rows }: { rows: NotRecurring[] }) {

@@ -24,6 +24,7 @@ import { CARD_CELL, CARD_ROW, HEAD_ROW, TH } from "../components/tableKit";
 import { centsText, formatSgd, parseCents, type Cents } from "../money";
 import { SuggestChip } from "../components/SuggestChip";
 import { chipKind, chipText, claims, coversLast, dollarsText, incomeText, typedValue } from "../suggest";
+import { sentence } from "../words";
 
 export type IncomeDraft = {
   name: string; type: "employment" | "side"; from: string; to: string; gross: string; cpf: boolean;
@@ -134,7 +135,6 @@ const PROJECTION_FIELD: [RegExp, string][] = [
   [/^FRS and BHS growth/i, "sums_growth_pct"], [/^Spending growth/i, "spend_growth_pct"],
   [/^Spending a month/i, "spend"], [/^The milestone/i, "milestone"],
 ];
-const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /**
  * What the draft's own text says is wrong, plus the server's refusal put
@@ -492,4 +492,3 @@ export function InputsEditor({ draft, onChange, hint, inflation, errors = {}, br
 }
 
 /** "Oct 2026" for a month the server named, or the word for none. */
-export const monthOrNone = (m: string | null | undefined, none: string) => (m ? formatMonth(m) : none);

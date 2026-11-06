@@ -28,44 +28,12 @@ struct InboxView: View {
                             .foregroundStyle(.red)
                     }
                 }
-                if !pending.isEmpty {
-                    Section("Pending") {
-                        ForEach(pending) { row in
-                            NavigationLink(value: row.id) {
-                                Row(row: row, accountName: accountNames[row.accountID])
-                            }
-                        }
-                    }
-                }
-                if !duplicates.isEmpty {
-                    Section("Possible duplicates") {
-                        ForEach(duplicates) { row in
-                            NavigationLink(value: row.id) {
-                                Row(row: row, accountName: accountNames[row.accountID])
-                            }
-                        }
-                    }
-                }
-                if !recorded.isEmpty {
-                    // covered by a loaded statement row: parked like a
-                    // duplicate, but the match is the record itself
-                    Section("Already in kopifund") {
-                        ForEach(recorded) { row in
-                            NavigationLink(value: row.id) {
-                                Row(row: row, accountName: accountNames[row.accountID])
-                            }
-                        }
-                    }
-                }
-                if !rest.isEmpty {
-                    Section("History") {
-                        ForEach(rest) { row in
-                            NavigationLink(value: row.id) {
-                                Row(row: row, accountName: accountNames[row.accountID])
-                            }
-                        }
-                    }
-                }
+                rowSection("Pending", pending)
+                rowSection("Possible duplicates", duplicates)
+                // covered by a loaded statement row: parked like a
+                // duplicate, but the match is the record itself
+                rowSection("Already in kopifund", recorded)
+                rowSection("History", rest)
                 if rows.isEmpty {
                     ContentUnavailableView("No alerts yet",
                         systemImage: "tray",
@@ -102,6 +70,19 @@ struct InboxView: View {
                     .autocorrectionDisabled()
                 Button("Ingest") { ingestPaste() }
                 Button("Cancel", role: .cancel) { pasteText = "" }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func rowSection(_ title: String, _ section: [TransactionRecord]) -> some View {
+        if !section.isEmpty {
+            Section(title) {
+                ForEach(section) { row in
+                    NavigationLink(value: row.id) {
+                        Row(row: row, accountName: accountNames[row.accountID])
+                    }
+                }
             }
         }
     }
@@ -152,22 +133,10 @@ struct InboxView: View {
         let row: TransactionRecord
         let accountName: String?
         var body: some View {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    Text(row.payee).font(.body)
-                    Spacer()
-                    Text(row.amountText).font(.body.monospacedDigit())
-                }
-                HStack {
-                    Text(caption(row)).font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    // "pending" inside the Pending section says nothing; the
-                    // caption only speaks where the state adds information
-                    if row.state != "pending" {
-                        Text(row.state).font(.caption).foregroundStyle(color)
-                    }
-                }
-            }
+            // "pending" inside the Pending section says nothing; the
+            // caption only speaks where the state adds information
+            LedgerRow(title: row.payee, amount: row.amountText, caption: caption(row),
+                      note: row.state == "pending" ? nil : (row.state, color))
         }
         private func caption(_ r: TransactionRecord) -> String {
             r.day.formatted(date: .abbreviated, time: .omitted)

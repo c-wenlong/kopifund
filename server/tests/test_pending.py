@@ -11,11 +11,11 @@ import isolate  # noqa: F401  first: no test writes the real record or cache
 import os
 import unittest
 
-import serve
 from finance import db, home, pending
 from finance.errors import NotFound, Refused
 from test_app_writes import record
 from test_db import row
+import support
 
 
 def spend(import_id="imp1", date="2026-08-03", amount=-1250, currency="SGD", payee="Grab", **kw):
@@ -209,18 +209,18 @@ class ApiTest(unittest.TestCase):
         self.addCleanup(conn.execute, "DELETE FROM pending_txn")
 
     def test_post_dismiss_restore_through_the_routes(self):
-        out = serve.write("/api/link/transactions", {},
+        out = support.write("/api/link/transactions", {},
                           b'{"rows": [{"import_id": "i1", "date": "2026-08-03", "amount_minor": -1250,'
                           b' "currency": "SGD", "payee": "NOBODY"}]}')
         self.assertEqual(out, {"accepted": 1, "matched": 0})
-        rows = serve.answer("/api/link/pending", {})["rows"]
+        rows = support.answer("/api/link/pending", {})["rows"]
         self.assertEqual([(r["import_id"], r["state"]) for r in rows], [("i1", "waiting")])
-        out = serve.write("/api/link/pending/dismiss", {}, b'{"import_id": "i1"}')
+        out = support.write("/api/link/pending/dismiss", {}, b'{"import_id": "i1"}')
         self.assertEqual(out["rows"][0]["state"], "dismissed")
-        out = serve.write("/api/link/pending/restore", {}, b'{"import_id": "i1"}')
+        out = support.write("/api/link/pending/restore", {}, b'{"import_id": "i1"}')
         self.assertEqual(out["rows"][0]["state"], "waiting")
         with self.assertRaises(NotFound):
-            serve.write("/api/link/pending/dismiss", {}, b'{"import_id": "nope"}')
+            support.write("/api/link/pending/dismiss", {}, b'{"import_id": "nope"}')
 
 
 if __name__ == "__main__":
