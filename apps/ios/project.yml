@@ -105,7 +105,9 @@ targets:
   AlertsUITests:
     type: bundle.ui-testing
     platform: iOS
-    sources: [AlertsUITests]
+    # AppIcons.swift (written by make app-icon) too, so AppIconUITests
+    # expects the build's own default set and labels
+    sources: [AlertsUITests, Alerts/AppIcons.swift]
     dependencies:
       - target: Alerts
     settings:
