@@ -9,6 +9,8 @@ struct BuilderDock: View {
     @Binding var armed: PatternBuilder.Field
     /// nil when the pattern can save; otherwise what blocks it.
     let blocking: String?
+    /// G24: where approved rows go (`Destination`), said under Save.
+    var destination: String = ""
     let onSave: () -> Void
 
     var body: some View {
@@ -29,6 +31,11 @@ struct BuilderDock: View {
             }
             .buttonStyle(.borderedProminent).controlSize(.large)
             .disabled(blocking != nil)
+            if blocking == nil, !destination.isEmpty {
+                Text(destination)
+                    .font(.footnote).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity)
+            }
         }
         .padding(.horizontal).padding(.top, 10)
         .background(.regularMaterial)

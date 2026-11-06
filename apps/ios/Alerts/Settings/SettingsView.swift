@@ -3,8 +3,9 @@ import SwiftData
 import Storage
 import YNABClient
 
-/// Settings: the YNAB token, plan and default account; the phone link
-/// (LinkSection); the bundled shortcuts (ShortcutsSection); the app icon;
+/// Settings: the phone link to Kopifund (LinkSection), the app's own
+/// destination, first; then YNAB's token, plan and default account, an
+/// optional extra; the bundled shortcuts (ShortcutsSection); the app icon;
 /// and the data actions.
 struct SettingsView: View {
     @Environment(\.modelContext) private var context
@@ -29,7 +30,8 @@ struct SettingsView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("YNAB") {
+                LinkSection(scanning: $scanning, scanProblem: $scanProblem)
+                Section {
                     SecureField("Personal access token", text: $token)
                         .textContentType(.password)
                         .autocorrectionDisabled()
@@ -56,8 +58,11 @@ struct SettingsView: View {
                     }
                     Toggle("Post transactions as approved", isOn: $postApproved)
                     if !status.isEmpty { Text(status).font(.caption).foregroundStyle(.secondary) }
+                } header: {
+                    Text("YNAB")
+                } footer: {
+                    Text("Optional. With a token and a plan, approved rows go to YNAB too.")
                 }
-                LinkSection(scanning: $scanning, scanProblem: $scanProblem)
                 ShortcutsSection(exporting: $exporting)
                 AppIconSection()
                 Section("Data") {

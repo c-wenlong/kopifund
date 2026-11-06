@@ -33,7 +33,7 @@ struct InboxView: View {
                             .foregroundStyle(.red)
                     }
                 }
-                rowSection("Pending", pending)
+                rowSection("Pending", pending, footer: DestinationState.summary)
                 needsDetailsSection
                 rowSection("Possible duplicates", duplicates)
                 // covered by a loaded statement row: parked like a
@@ -85,15 +85,22 @@ struct InboxView: View {
         }
     }
 
+    /// `footer`, when set, says where approving these rows sends them.
     @ViewBuilder
-    private func rowSection(_ title: String, _ section: [TransactionRecord]) -> some View {
+    private func rowSection(_ title: String, _ section: [TransactionRecord],
+                            footer: String? = nil) -> some View {
         if !section.isEmpty {
-            Section(title) {
+            Section {
                 ForEach(section) { row in
                     NavigationLink(value: row.id) {
-                        Row(row: row, accountName: accountNames[row.accountID])
+                        Row(row: row, accountName: accountNames[row.accountID],
+                            linked: LinkState.shared.isLinked, ynab: DestinationState.ynab)
                     }
                 }
+            } header: {
+                Text(title)
+            } footer: {
+                if let footer { Text(footer) }
             }
         }
     }
@@ -107,7 +114,8 @@ struct InboxView: View {
             Section {
                 ForEach(needsDetails) { row in
                     NavigationLink(value: row.id) {
-                        Row(row: row, accountName: accountNames[row.accountID])
+                        Row(row: row, accountName: accountNames[row.accountID],
+                            linked: LinkState.shared.isLinked, ynab: DestinationState.ynab)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button("Delete", role: .destructive) { delete([row]) }
@@ -186,6 +194,8 @@ struct InboxView: View {
     private struct Row: View {
         let row: TransactionRecord
         let accountName: String?
+        let linked: Bool
+        let ynab: Bool
         var body: some View {
             // "pending" inside the Pending section says nothing; the
             // caption only speaks where the state adds information
@@ -201,6 +211,12 @@ struct InboxView: View {
         private var note: (String, Color)? {
             if row.state == "pending" {
                 return row.missingDetailsNote.map { ($0, .orange) }
+            }
+            // G24: with no YNAB an approved row's state alone does not say
+            // where it is: on the hub, on its way, or waiting for a link
+            if let note = Destination.note(state: row.state, linked: linked, ynab: ynab,
+                                           sentToKopifund: row.kopifundSent != nil) {
+                return (note, note == "in Kopifund" ? .green : .orange)
             }
             return (row.state, color)
         }

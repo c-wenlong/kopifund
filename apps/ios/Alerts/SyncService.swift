@@ -107,7 +107,11 @@ final class SyncService {
             } catch {}
         }
 
-        let hub = HubLane.start(planCurrency: settings.planCurrency)
+        // G24: with no YNAB plan, a row that printed no currency counts in
+        // the record's own, SGD (SPEC.md: every row carries its amount in
+        // SGD), so a Kopifund-only phone is never stuck on YNAB's reading
+        let hub = HubLane.start(planCurrency: settings.planCurrency
+                                ?? (planID.isEmpty ? HubLane.recordCurrency : nil))
         // the hub owes no YNAB setup: rows a linked phone still owes the
         // record go first, whatever their YNAB state
         if let hub { await hub.sendOwed(context: context) }
@@ -229,6 +233,10 @@ final class HubLane {
         self.link = link
         self.planCurrency = planCurrency
     }
+
+    /// The record's own currency, for a row that printed none when no YNAB
+    /// plan is configured to count it in.
+    static let recordCurrency = "SGD"
 
     /// nil when the phone is not linked.
     static func start(planCurrency: String?) -> HubLane? {
