@@ -387,9 +387,8 @@ def post_link_transactions(req):
 
 
 def _pending_list(req):
-    from . import link, pending
-    names = {d["id"]: d["name"] for d in link.list_devices()}
-    return {"rows": pending.rows(req.record(create=True), names)}
+    from .api import pending_answer
+    return pending_answer(req.record(create=True))
 
 
 def post_pending_dismiss(req):

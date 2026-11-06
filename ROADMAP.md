@@ -332,6 +332,7 @@ Each line is one PR, in build order:
 - [x] The app's Kopifund screens: a Settings section that scans the QR or takes a paste, tests the connection and unlinks; an Accounts list (`/api/profile`) and a Transactions browser (`/api/transactions`)
 - [x] Alerts reads the record: an alert row whose amount, currency, date and payee a loaded statement row already covers is marked "already in kopifund" and never offered for posting; rows that share all four with more than one loaded row are left for the owner
 - [x] Phone rows into the record: `POST /api/link/transactions` lands an approved alert row as a `pending_txn` (`import_id` unique, so a retry never doubles), each load matches a pending row to one real row on amount, currency, date and payee (a statement row takes at most one pending row, and a pair the owner refuses is kept on the row's rejected list and never offered again), and Home's "Needs your eye" lists what is still waiting until it is matched, dismissed or restored
+- [x] Phone row history: a row left waiting 60 days (the record's `link.expire_days`) expires at a load or a read, every state change is stamped, and Settings' "Phone row history" sheet lists every row ever posted by state (waiting, matched with its record row, dismissed to review, expired), with Put back on the dismissed and expired ones
 
 ## G26: interactive visual dashboard
 

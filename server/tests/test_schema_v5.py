@@ -253,9 +253,11 @@ V5_LISTS = {
 V6_LISTS = {**V5_LISTS, "series_group": ("payee", "text", "amount"),
             "cadence": ("weekly", "fortnightly", "twice-monthly", "monthly", "two-monthly", "quarterly",
                         "half-yearly", "yearly")}
-# G25: version 7 kept version 6's lists; pending_txn's states are an inline
+# G25: version 7 kept version 6's lists; pending_txn's states were an inline
 # CHECK, not a Python list
 V7_LISTS = V6_LISTS
+# G25: version 8 builds pending_txn's states from pending.STATES, with 'expired'
+V8_LISTS = {**V7_LISTS, "pending_state": ("waiting", "matched", "dismissed", "expired")}
 
 
 class CheckTest(unittest.TestCase):
@@ -268,6 +270,9 @@ class CheckTest(unittest.TestCase):
         # G16 (version 6): a series' edit
         self.conn.execute("INSERT INTO series_override(id, series_id, group_kind, group_name, saved_at) "
                           "VALUES (1, 'payee:Gym:5000', 'payee', 'Gym', 'x')")
+        # G25 (version 8): a phone row
+        self.conn.execute("INSERT INTO pending_txn(id, import_id, txn_date, amount_minor, currency, created_at) "
+                          "VALUES (1, 'imp1', '2026-08-03', -1250, 'SGD', 'x')")
 
     # a write that puts `value` into each checked column
     WRITES = {
@@ -281,6 +286,7 @@ class CheckTest(unittest.TestCase):
         ("upload_step", "status"): "UPDATE upload_step SET status = ? WHERE id = 1",
         ("series_override", "group_kind"): "UPDATE series_override SET group_kind = ? WHERE id = 1",
         ("series_override", "cadence"): "UPDATE series_override SET cadence = ? WHERE id = 1",
+        ("pending_txn", "state"): "UPDATE pending_txn SET state = ? WHERE id = 1",
     }
 
     def test_every_listed_column_refuses_a_value_outside_its_list_and_takes_every_one_in_it(self):
@@ -309,11 +315,11 @@ class CheckTest(unittest.TestCase):
         sql = self.conn.execute("SELECT sql FROM sqlite_master WHERE name = 'upload_step'").fetchone()[0]
         self.assertIn("'duplicate'", sql)
 
-    def test_the_lists_are_the_ones_version_7_was_built_with(self):
-        # G25: version 7 kept version 6's lists and added pending_txn
-        self.assertEqual(db.SCHEMA_VERSION, 7, "a new version: copy its lists into a V8_LISTS")
-        self.assertEqual(db.enums(), V7_LISTS,
-                         "a record built at version 7 refuses a value added since: bump SCHEMA_VERSION "
+    def test_the_lists_are_the_ones_version_8_was_built_with(self):
+        # G25: version 8 added pending_txn's states, with 'expired'
+        self.assertEqual(db.SCHEMA_VERSION, 8, "a new version: copy its lists into a V9_LISTS")
+        self.assertEqual(db.enums(), V8_LISTS,
+                         "a record built at version 8 refuses a value added since: bump SCHEMA_VERSION "
                          "so the upgrade rebuilds the tables with the new list")
 
 
