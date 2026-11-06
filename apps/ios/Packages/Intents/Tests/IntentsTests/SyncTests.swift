@@ -427,6 +427,20 @@ struct SyncTests {
         }
     }
 
+    /// A failed empty row whose retry waits for "Sync now" still goes back
+    /// to review on an ordinary run, so Needs details can show and delete it.
+    @Test func aFailedEmptyRowPastItsRetriesGoesBackToReview() async throws {
+        let context = ModelContext(try Store.memory())
+        let stuck = approved(context, payee: "", cents: 0)
+        stuck.state = "failed"
+        stuck.nextSyncAt = .distantFuture
+        try? context.save()
+        MockProtocol.handler = { _ in created("y1") }
+        _ = await Sync.run(context: context, client: client(), settings: settings)
+        #expect(MockProtocol.requests.isEmpty)
+        #expect(stuck.state == "pending")
+    }
+
     /// The hub lane asks the same question before its pending post.
     @Test func holdIfMissingDetailsLeavesAPendingRowAndACompleteRowAlone() throws {
         let context = ModelContext(try Store.memory())

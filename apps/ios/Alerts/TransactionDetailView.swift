@@ -138,7 +138,9 @@ struct TransactionDetailView: View {
                         Task { await SyncService.flush(context: context) }
                         dismiss()
                     }
-                    .disabled(convertedCents == nil)
+                    // a blank payee never posts (G24), so the button waits for one too
+                    .disabled(convertedCents == nil
+                              || row.payee.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 } header: {
                     Text("Different currency")
                 } footer: {

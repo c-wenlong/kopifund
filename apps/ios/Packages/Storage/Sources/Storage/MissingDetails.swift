@@ -38,8 +38,8 @@ extension TransactionRecord {
 /// G24: removes, once, the empty Wallet captures builds before the
 /// missing-details check queued as approvable rows (amount 0, blank payee).
 /// Only a row that is certainly one of those goes: from the Wallet intent,
-/// with no alert text, never sent to YNAB or the hub, and not the row
-/// another one is parked against. Anything else stays where it is.
+/// with no alert text, no memo or category the owner set, never sent to
+/// YNAB or the hub, and not the row another one is parked against. Anything else stays where it is.
 public enum EmptyWalletCleanup {
     /// Set in the app's defaults once a sweep has saved.
     public static let doneKey = "G24.emptyWalletCleanupDone"
@@ -52,6 +52,9 @@ public enum EmptyWalletCleanup {
             && r.amountCents == 0
             && r.payee.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             && r.alertText.isEmpty
+            // a memo or category the owner set means they touched it: it stays
+            && r.memo.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && r.categoryID == nil
             && ["pending", "approved", "failed", "duplicate"].contains(r.state)
             && r.ynabID == nil && r.importID == nil && r.syncAttempts == 0
             && r.kopifundID == nil

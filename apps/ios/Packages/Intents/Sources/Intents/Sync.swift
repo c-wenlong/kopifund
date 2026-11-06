@@ -128,6 +128,9 @@ public enum Sync {
                 predicate: #Predicate {
                     $0.state == "approved" || $0.state == "failed" || $0.state == "syncing" },
                 sortBy: [SortDescriptor(\.receivedAt)]))) ?? [])
+                // before the backoff: a failed empty row waiting for "Sync
+                // now" still goes back to Needs details on this run
+                .filter { !holdIfMissingDetails($0, context: context) }
                 .filter { !tried.contains($0.id) && isDue($0, now: now(), force: force) }
                 .map(\.id)
             if ids.isEmpty { break }

@@ -466,6 +466,11 @@ private func walletRow(_ context: ModelContext, cents: Int = 0, payee: String = 
     sms.source = "sms"
     sms.alertText = "SGD 0.00 card check"
     context.insert(sms)
+    // a memo or category the owner set keeps the row
+    let noted = walletRow(context)
+    noted.memo = "bus to work"
+    let filed = walletRow(context)
+    filed.categoryID = "cat-transport"
     // an empty row another row is parked against stays, so no pointer dangles
     let kept = walletRow(context)
     let parked = walletRow(context, cents: 100, payee: "Kopi", state: "duplicate")
@@ -474,7 +479,7 @@ private func walletRow(_ context: ModelContext, cents: Int = 0, payee: String = 
 
     #expect(try EmptyWalletCleanup.runOnce(in: context, defaults: defaults) == doomed.count)
     let left = Set(try context.fetch(FetchDescriptor<TransactionRecord>()).map(\.id))
-    #expect(left == Set([real, named, noPayee, synced, sent, onHub, sms, kept, parked].map(\.id)))
+    #expect(left == Set([real, named, noPayee, synced, sent, onHub, sms, noted, filed, kept, parked].map(\.id)))
     #expect(defaults.bool(forKey: EmptyWalletCleanup.doneKey))
 
     // once only: a later empty row is left for the owner to see
