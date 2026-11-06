@@ -3,15 +3,13 @@ buckets, and server/finance/categories.py's edits (rename, move, delete with wha
 moves along)."""
 import isolate  # noqa: F401  first: no test writes the real record or cache
 import json
-import os
 import sqlite3
-import tempfile
 import unittest
 from contextlib import closing
-from pathlib import Path
 from unittest import mock
 
 from finance import categories, db, planning, rules_app, stats_rebuild
+import support
 from test_db import block, parsed, row
 
 # the category table as version 2 left it, with the categories it held
@@ -19,17 +17,8 @@ V2_CATEGORY = """CREATE TABLE category (id INTEGER PRIMARY KEY, name TEXT NOT NU
                  bucket TEXT, grp TEXT, need_class TEXT, sort_order REAL) STRICT;"""
 
 
-class DataFolder(unittest.TestCase):
-    """A temporary data folder holding the record, so nothing touches the real one."""
-
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        self.path = self.root / "kopifund.db"
-        p = mock.patch.dict(os.environ, {"KOPIFUND_DATA": str(self.root), "KOPIFUND_DB": str(self.path)})
-        p.start()
-        self.addCleanup(p.stop)
-        self.addCleanup(self.tmp.cleanup)
+class DataFolder(support.DataFolder):
+    """The shared throwaway data folder, with a version 2 record and its backups."""
 
     def v2_record(self, rows):
         with closing(sqlite3.connect(self.path)) as c:
@@ -382,19 +371,19 @@ class EditTest(DataFolder):
             self.assertIn("groups", serve.answer("/api/categories", {}))
         with mock.patch("finance.api.config", lambda: None), \
                 mock.patch("finance.stats_rebuild.refresh_stats") as refresh:
-            out = serve.write("/api/categories/move", {}, json.dumps(
+            out = support.write("/api/categories/move", {}, json.dumps(
                 {"name": "Coffee", "group": "Lifestyle", "index": 0}).encode())
             self.assertEqual((out["index"], out["stats"]), (0, "rebuilding"))
             self.assertEqual(refresh.call_count, 1)       # the stat results follow the edit
-            serve.write("/api/categories", {}, b'{"name": "Coffee", "need_class": "Need"}')
+            support.write("/api/categories", {}, b'{"name": "Coffee", "need_class": "Need"}')
             self.assertEqual(refresh.call_count, 2)
             with self.assertRaises(serve.Refused):
-                serve.write("/api/category-groups/delete", {}, b'{"name": "Income"}')
+                support.write("/api/category-groups/delete", {}, b'{"name": "Income"}')
             for bad in (b'{"name": "Coffee", "group": "Food", "index": "1"}', b'{"name": ["Coffee"], "group": "Food"}'):
                 with self.assertRaises(ValueError, msg=bad):
-                    serve.write("/api/categories/move", {}, bad)
+                    support.write("/api/categories/move", {}, bad)
             with self.assertRaises(ValueError):
-                serve.write("/api/category-groups/reorder", {}, b'{"names": "Food"}')
+                support.write("/api/category-groups/reorder", {}, b'{"names": "Food"}')
         with closing(db.connect()) as conn:
             self.assertEqual(conn.execute("""SELECT g.name FROM category c JOIN category_group g
                                              ON g.id = c.group_id WHERE c.name = 'Coffee'""").fetchone()[0],
@@ -502,6 +491,7 @@ class SnapshotTest(unittest.TestCase):
     def test_category_breakdown_carries_each_category_s_bucket(self):
         from analytics.stats import category_breakdown
         conn = db.connect(":memory:")
+        self.addCleanup(conn.close)
         db.seed_categories(conn)
         db.load_parsed(conn, parsed([block()], [row("k1", "-4.50", category="Coffee")]))
         snap = db.snapshot(conn)

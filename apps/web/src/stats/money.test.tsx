@@ -7,28 +7,15 @@ import { columnUnit, fmt, label, plan, type Row, type StatResult } from "./hint"
 import { CENTS_UNIT, centsOf, inCents } from "./money";
 import { tipExtras } from "./tipExtras";
 import { versusFigure } from "./VersusList";
+import { json, useSizedCharts } from "../test-helpers";
 
 // G20 line 6: a stat result's money is cents only. A card shows a result in
 // cents (unit "sgd_minor", `<name>_minor`) exactly as it showed the dollar
 // result it replaces, never reads a bare dollar figure, and shows a result
 // still in dollars (a copy the browser kept) as no result. Every figure is invented.
 
-// jsdom has no layout; a chart needs a size to draw its axes
-class SizedObserver {
-  constructor(private cb: ResizeObserverCallback) {}
-  observe(el: Element) {
-    this.cb([{ target: el, contentRect: { width: 800, height: 400 } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
-  }
-  unobserve() {}
-  disconnect() {}
-}
-vi.mock("../router", () => ({ navigate: vi.fn() }));
-const real = globalThis.ResizeObserver;
-beforeEach(() => { globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver; });
-afterEach(() => {
-  globalThis.ResizeObserver = real;
-  vi.unstubAllGlobals();
-});
+vi.mock("../router", async (actual) => (await import("../test-helpers")).withNavigate(await actual()));
+useSizedCharts();
 
 describe("centsOf", () => {
   it("reads the cents under `<name>_minor`", () => {
@@ -236,7 +223,7 @@ describe("OneStat, as a page shows one stat", () => {
   // a fresh page each time, so no answer kept from the last render paints first
   const serve = (result: StatResult) => {
     clearApiCache();
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(result), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn(async () => json(result)));
   };
 
   it.each([

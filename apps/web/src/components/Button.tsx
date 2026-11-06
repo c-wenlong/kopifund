@@ -43,3 +43,18 @@ export const Button = forwardRef<HTMLButtonElement, Props>(function Button(
 ) {
   return <button ref={ref} type={type} className={buttonClass(variant, size, className)} {...rest} />;
 });
+
+/**
+ * Audit: an icon alone inside a row (edit, delete, move up): a quiet square
+ * just around the icon, so a dense row keeps its height. `label` is its name.
+ * An icon button that stands on its own (a card's, a sheet's) is
+ * `<Button size="icon">`.
+ */
+export const IconButton = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { label: string }>(function IconButton(
+  { label, className = "", type = "button", ...rest }, ref,
+) {
+  return (
+    <button ref={ref} type={type} aria-label={label} {...rest}
+      className={`rounded-md p-1 text-ink-3 hover:bg-hover hover:text-ink disabled:pointer-events-none disabled:opacity-40 ${className}`} />
+  );
+});

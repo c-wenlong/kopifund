@@ -980,9 +980,9 @@ def doctor(cfg, parsed, state, plan, force=False, archive_orphans=False):
 
 def check_environment(cfg):
     """pdftotext on PATH, and every configured folder present."""
-    import shutil
+    from . import pdftext
     out = []
-    if not shutil.which("pdftotext"):
+    if not pdftext.installed():
         out.append(Problem("pdftotext-missing", "PATH",
                            "brew install poppler (the parsers shell out to pdftotext)"))
     for f in cfg.folders:

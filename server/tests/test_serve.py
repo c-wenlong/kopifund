@@ -39,7 +39,8 @@ class ServeTest(unittest.TestCase):
             with urllib.request.urlopen(req) as r:
                 return r.status, r.headers, r.read().decode()
         except urllib.error.HTTPError as e:
-            return e.code, e.headers, ""
+            with e:
+                return e.code, e.headers, ""
 
     def status_with_host(self, host, method="GET"):
         from http.client import HTTPConnection
@@ -115,7 +116,8 @@ class ServeTest(unittest.TestCase):
         req = urllib.request.Request(self.base + "/api/rules/pin", method="POST", data=b"{}")
         with self.assertRaises(urllib.error.HTTPError) as e:
             urllib.request.urlopen(req)
-        self.assertEqual(e.exception.code, 403)
+        with e.exception:
+            self.assertEqual(e.exception.code, 403)
 
     def test_rule_edits_need_the_app_header_and_this_machine(self):
         for path in ("/api/rules/save", "/api/rules/undo", "/api/rules/remove"):

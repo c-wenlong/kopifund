@@ -1,26 +1,21 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { revalidate } from "../api";
 import { Profile, ageOn, freshness } from "./Profile";
+import { expectAsks, expectFree, json } from "../test-helpers";
 
 const profile = {
   data_folder: "/Users/x/.kopifund", notion_enabled: false, about: { birth_date: null },
   accounts: [], folders: [], transactions: 0,
 };
 
-const reply = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
-
 // G18: true when the page would hold a reload or a closed tab behind the browser's question
-const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 
 describe("Profile", () => {
-  afterEach(() => vi.restoreAllMocks());
-
   it("shows five accounts and a row that opens the rest", async () => {
     const accounts = Array.from({ length: 7 }, (_, i) => ({
       name: `Account ${i + 1}`, bank: "OCBC", number: "", statements: 3, transactions: 40, first: "2026-01-01", last: "2026-06-30",
     }));
-    vi.spyOn(globalThis, "fetch").mockImplementation(async () => reply({ ...profile, accounts }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => json({ ...profile, accounts }));
     render(<Profile />);
     await screen.findByText("Account 1");
     expect(screen.queryByText("Account 6")).not.toBeInTheDocument();
@@ -35,15 +30,15 @@ describe("Profile", () => {
 
   it("saves the date of birth with the write header", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) =>
-      init?.method === "POST" ? reply({ about: { birth_date: "2000-08-03" } }) : reply(profile));
+      init?.method === "POST" ? json({ about: { birth_date: "2000-08-03" } }) : json(profile));
     render(<Profile />);
     const input = await screen.findByLabelText("Date of birth");
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
     fireEvent.change(input, { target: { value: "2000-08-03" } });
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await screen.findByText("Saved");
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
     const post = fetchSpy.mock.calls.find(([, init]) => init?.method === "POST")!;
     expect(post[0]).toBe("/api/profile");
     expect((post[1] as RequestInit).headers).toMatchObject({ "X-Kopifund": "1" });
@@ -51,7 +46,7 @@ describe("Profile", () => {
   });
 
   it("shows the date of birth in the app's format and reads it typed day first", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async () => reply({ ...profile, about: { birth_date: "2000-08-03" } }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => json({ ...profile, about: { birth_date: "2000-08-03" } }));
     render(<Profile />);
     const input = await screen.findByLabelText("Date of birth");
     expect(input).toHaveValue("3 Aug 2000");
@@ -63,7 +58,7 @@ describe("Profile", () => {
 
   it("jumps to a year from a dropdown instead of paging back month by month", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) =>
-      init?.method === "POST" ? reply({ about: { birth_date: "1995-03-01" } }) : reply(profile));
+      init?.method === "POST" ? json({ about: { birth_date: "1995-03-01" } }) : json(profile));
     render(<Profile />);
     fireEvent.click(await screen.findByLabelText("Date of birth"));
     const cal = within(screen.getByRole("dialog", { name: "Date of birth calendar" }));
@@ -78,7 +73,7 @@ describe("Profile", () => {
 
   it("clears a saved date of birth and saves it empty", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) =>
-      init?.method === "POST" ? reply({ about: { birth_date: null } }) : reply({ ...profile, about: { birth_date: "2000-08-03" } }));
+      init?.method === "POST" ? json({ about: { birth_date: null } }) : json({ ...profile, about: { birth_date: "2000-08-03" } }));
     render(<Profile />);
     const input = await screen.findByLabelText("Date of birth");
     expect(input).toHaveValue("3 Aug 2000");
@@ -93,13 +88,13 @@ describe("Profile", () => {
   it("disables the date while saving, so the confirmation is always for what is shown", async () => {
     let finish: (r: Response) => void = () => {};
     vi.spyOn(globalThis, "fetch").mockImplementation((_url, init) =>
-      init?.method === "POST" ? new Promise<Response>((res) => { finish = res; }) : Promise.resolve(reply(profile)));
+      init?.method === "POST" ? new Promise<Response>((res) => { finish = res; }) : Promise.resolve(json(profile)));
     render(<Profile />);
     const input = await screen.findByLabelText("Date of birth");
     fireEvent.change(input, { target: { value: "2000-08-03" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     expect(input).toBeDisabled();
-    finish(reply({ about: { birth_date: "2000-08-03" } }));
+    finish(json({ about: { birth_date: "2000-08-03" } }));
     await screen.findByText("Saved");
     expect(input).toBeEnabled();
     fireEvent.change(input, { target: { value: "2000-08-04" } });
@@ -108,7 +103,7 @@ describe("Profile", () => {
 
   it("says when the stored file is damaged", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async () =>
-      reply({ ...profile, about: { birth_date: null, problem: "profile.json is damaged (not a JSON object); saving replaces it and keeps a copy" } }));
+      json({ ...profile, about: { birth_date: null, problem: "profile.json is damaged (not a JSON object); saving replaces it and keeps a copy" } }));
     render(<Profile />);
     expect(await screen.findByRole("alert")).toHaveTextContent("damaged");
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
@@ -143,7 +138,7 @@ describe("Profile", () => {
 
   it("lists accounts by bank mark, name and the last four digits, with what the statements cover", async () => {
     today();
-    vi.spyOn(globalThis, "fetch").mockImplementation(async () => reply(withAccounts));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => json(withAccounts));
     render(<Profile />);
     const row = (await screen.findByText("Travel wallet")).closest("li")!;
     expect(row).toHaveTextContent("•• 3210");
@@ -157,7 +152,7 @@ describe("Profile", () => {
 
   it("says in a chip whether each account's statements reach last month, and which months are missing", async () => {
     today();
-    vi.spyOn(globalThis, "fetch").mockImplementation(async () => reply(withAccounts));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => json(withAccounts));
     render(<Profile />);
     const chip = async (name: string) => within((await screen.findByText(name)).closest("li")!);
     expect((await chip("Travel wallet")).getByText("Up to date")).toBeInTheDocument();
@@ -181,7 +176,7 @@ describe("Profile", () => {
 
   it("links each account to the upload page with that account chosen", async () => {
     today();
-    vi.spyOn(globalThis, "fetch").mockImplementation(async () => reply(withAccounts));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => json(withAccounts));
     render(<Profile />);
     const link = await screen.findByRole("link", { name: "Add statement for Travel wallet" });
     expect(link).toHaveTextContent("Add statement");
@@ -193,7 +188,7 @@ describe("Profile", () => {
 
   it("puts the statement folders in the accounts: the PDF count is a detail, and a folder no account has yet is still listed", async () => {
     today();
-    vi.spyOn(globalThis, "fetch").mockImplementation(async () => reply(withAccounts));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => json(withAccounts));
     render(<Profile />);
     expect(screen.queryByRole("heading", { name: "Statement folders" })).not.toBeInTheDocument();
     const travel = (await screen.findByText("Travel wallet")).closest("li")!;
@@ -210,7 +205,7 @@ describe("Profile", () => {
 
   it("lists accounts with a statement first and those still waiting last", async () => {
     today();
-    vi.spyOn(globalThis, "fetch").mockImplementation(async () => reply(withAccounts));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => json(withAccounts));
     render(<Profile />);
     await screen.findByText("Travel wallet");
     const names = screen.getAllByRole("listitem").map((li) => li.querySelector("span.truncate")?.textContent);
@@ -218,7 +213,7 @@ describe("Profile", () => {
   });
 
   it("shrinks where the data lives to one line at the foot of the page", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async () => reply(withAccounts));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => json(withAccounts));
     render(<Profile />);
     const foot = await screen.findByText(/\.kopifund/);
     expect(foot.tagName).toBe("P");
@@ -229,7 +224,7 @@ describe("Profile", () => {
   });
 
   it("says nothing under the date of birth but its label", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async () => reply(profile));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => json(profile));
     render(<Profile />);
     await screen.findByLabelText("Date of birth");
     expect(screen.queryByText(/Stored in your data folder only/)).not.toBeInTheDocument();
@@ -238,7 +233,7 @@ describe("Profile", () => {
 
   it("shows the reason when the server refuses", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (_url, init) =>
-      init?.method === "POST" ? reply({ error: "the date of birth must be a real past date" }, 400) : reply(profile));
+      init?.method === "POST" ? json({ error: "the date of birth must be a real past date" }, 400) : json(profile));
     render(<Profile />);
     fireEvent.change(await screen.findByLabelText("Date of birth"), { target: { value: "2999-01-01" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -248,11 +243,9 @@ describe("Profile", () => {
 
 // G18: unsaved means typed here; a date saved from another tab is not an edit on this one
 describe("a date of birth saved from another tab", () => {
-  afterEach(() => vi.restoreAllMocks());
-
   it("shows in the untouched box and leaves nothing unsaved", async () => {
     let birth: string | null = null;
-    vi.spyOn(globalThis, "fetch").mockImplementation(async () => reply({ ...profile, about: { birth_date: birth } }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => json({ ...profile, about: { birth_date: birth } }));
     render(<Profile />);
     const input = await screen.findByLabelText("Date of birth");
     expect(input).toHaveValue("");
@@ -260,6 +253,20 @@ describe("a date of birth saved from another tab", () => {
     act(() => revalidate());
     await waitFor(() => expect(screen.getByLabelText("Date of birth")).toHaveValue("4 May 1990"));
     expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
+  });
+});
+
+describe("a profile that does not load", () => {
+  it("says why, and Try again asks the server again and draws the page", async () => {
+    let up = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => up ? json(profile) : json({ error: "The record is locked." }, 500));
+    render(<Profile />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("The record is locked.");
+    expect(screen.queryByLabelText("Date of birth")).not.toBeInTheDocument();
+    up = true;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByLabelText("Date of birth")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });

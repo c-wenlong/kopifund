@@ -90,6 +90,16 @@ export function parseCents(text: string): Cents | null {
   return Number.isSafeInteger(cents) ? cents : NaN;
 }
 
+/**
+ * Audit: the one rule for a money box that must hold an amount: dollars and
+ * cents the record can keep ("1,200.50", "12.", ".5"), never empty and never
+ * finer than a cent.
+ */
+export function isAmountText(text: string): boolean {
+  const cents = parseCents(text);
+  return cents !== null && !Number.isNaN(cents);
+}
+
 /** Cents as the plain text a money box shows: "1234" for whole dollars, "1234.50" otherwise; the box groups it. */
 export function centsText(amount: Cents): string {
   const cents = wholeCents(amount);

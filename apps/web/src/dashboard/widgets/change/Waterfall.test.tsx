@@ -1,14 +1,14 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { stubQueries, useSizedCharts } from "./testkit";
+import { stubQueries } from "./testkit";
 import {
   balanceSpec, DEFAULT_WATERFALL_CONFIG, WaterfallChart, WaterfallWidget, waterfallSteps,
   type WaterfallConfig, type WaterfallStep,
 } from "./Waterfall";
 import { joinFrames } from "./shared";
 import type { WidgetAnswer, WidgetQuery } from "../../../types.gen";
+import { navigate, useSizedCharts } from "../../../test-helpers";
 
-const navigate = vi.fn();
-vi.mock("../../../router", () => ({ navigate: (to: string) => navigate(to) }));
+vi.mock("../../../router", async (actual) => (await import("../../../test-helpers")).withNavigate(await actual()));
 
 useSizedCharts();
 
@@ -140,7 +140,6 @@ describe("waterfallSteps", () => {
 });
 
 describe("WaterfallChart", () => {
-  afterEach(() => navigate.mockReset());
   const steps: WaterfallStep[] = [
     { name: "Opening", kind: "open", value: 900000, before: 0, after: 900000, href: null },
     { name: "Income", kind: "in", value: 300000, before: 900000, after: 1200000, href: "/transactions?income=1" },
@@ -180,8 +179,6 @@ describe("WaterfallChart", () => {
 });
 
 describe("WaterfallWidget", () => {
-  afterEach(() => { vi.unstubAllGlobals(); navigate.mockReset(); });
-
   it("draws the bridge from the queries' answers", async () => {
     stubQueries([[CASH, balance], [NET_BY_BUCKET, flows]]);
     const { container } = render(<WaterfallWidget config={config} />);

@@ -1,20 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { StatChart, Tip } from "./StatChart";
 import { plan, type StatResult } from "./hint";
+import { navigate, stubMatchMedia, useSizedCharts } from "../test-helpers";
 
-const navigate = vi.fn();
-vi.mock("../router", () => ({ navigate: (to: string) => navigate(to) }));
-
-// Give ResponsiveContainer a real size: jsdom has no layout, and a chart of
-// width 0 draws nothing, which would let the collapsed-bar bug pass unseen.
-class SizedObserver {
-  constructor(private cb: ResizeObserverCallback) {}
-  observe(el: Element) {
-    this.cb([{ target: el, contentRect: { width: 800, height: 400 } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
-  }
-  unobserve() {}
-  disconnect() {}
-}
+vi.mock("../router", async (actual) => (await import("../test-helpers")).withNavigate(await actual()));
 
 function chartFor(result: StatResult, view?: "stacked" | "lines") {
   const p = plan(result);
@@ -23,12 +12,7 @@ function chartFor(result: StatResult, view?: "stacked" | "lines") {
 }
 
 describe("StatChart", () => {
-  const real = globalThis.ResizeObserver;
-  beforeEach(() => {
-    globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver;
-    navigate.mockReset();
-  });
-  afterEach(() => { globalThis.ResizeObserver = real; });
+  useSizedCharts();
 
   const categories: StatResult = {
     id: "category-breakdown", title: "Spend by category",
@@ -210,10 +194,7 @@ describe("StatChart", () => {
       ] },
     };
     const names = (c: HTMLElement) => [...c.querySelectorAll(".recharts-yAxis .recharts-cartesian-axis-tick-value")];
-    const phone = (on: boolean) => vi.stubGlobal("matchMedia", (q: string) => ({
-      matches: !on, media: q, addEventListener: () => {}, removeEventListener: () => {},
-    }));
-    afterEach(() => vi.unstubAllGlobals());
+    const phone = (on: boolean) => stubMatchMedia(!on);
 
     it("is 160px wide on a desktop and cuts a name that will not fit, with an ellipsis", () => {
       phone(false);
@@ -244,9 +225,7 @@ describe("StatChart", () => {
 
 // G18: every stat chart takes its colours from the chart kit's twelve
 describe("StatChart's series colours", () => {
-  const real = globalThis.ResizeObserver;
-  beforeEach(() => { globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver; });
-  afterEach(() => { globalThis.ResizeObserver = real; });
+  useSizedCharts();
 
   it("gives nine series nine different colours, in the legend and on the bars", () => {
     const series = Array.from({ length: 9 }, (_, i) => `part_${i}_minor`);

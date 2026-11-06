@@ -14,7 +14,6 @@ import stat
 import tempfile
 import threading
 import unittest
-import warnings
 from contextlib import closing
 from datetime import date
 from pathlib import Path
@@ -22,6 +21,7 @@ from types import SimpleNamespace
 from unittest import mock
 
 import serve
+import support
 from finance import ai, api, copilot, db, keys, setup
 from finance import copilot_tools as tools
 from finance import types as wire
@@ -86,15 +86,12 @@ class Record(unittest.TestCase):
         cls.env.stop()
         cls.tmp.cleanup()
 
-    def setUp(self):
-        # serve.answer and serve.write called directly leave the record open to their caller
-        self.enterContext(warnings.catch_warnings())
-        warnings.simplefilter("ignore", ResourceWarning)
-
     def context(self):
         conn = tools.open_readonly(self.path)
         self.addCleanup(conn.close)
-        return tools.Context(conn, self.path, {}, (), None, date(2026, 10, 23))
+        ctx = tools.Context(conn, self.path, {}, (), None, date(2026, 10, 23))
+        self.addCleanup(ctx.close)  # the query tool's in-memory copy
+        return ctx
 
     def call(self, ctx, tool, **args):
         text, failed = tools.run(ctx, tool, args)
@@ -712,12 +709,12 @@ class ToolsTest(Record):
         # G22: no undo captured when the card was made: the amount may change before Confirm
         self.assertIsNone(card["undo"])
         with mock.patch("finance.stats_rebuild.refresh_stats"):
-            serve.write(card["request"]["path"], {}, json.dumps(card["request"]["body"]).encode())
+            support.write(card["request"]["path"], {}, json.dumps(card["request"]["body"]).encode())
             with closing(db.connect()) as conn:
                 self.assertEqual(conn.execute("SELECT planned_minor FROM budget WHERE month = '2026-09'").fetchone()[0],
                                  45_000)
             # what the page's Undo sends: the amount it read at Confirm, to the same endpoint
-            serve.write(card["request"]["path"], {}, json.dumps({**card["request"]["body"], "planned": 30_000}).encode())
+            support.write(card["request"]["path"], {}, json.dumps({**card["request"]["body"], "planned": 30_000}).encode())
         with closing(db.connect()) as conn:
             self.assertEqual(conn.execute("SELECT planned_minor FROM budget WHERE month = '2026-09'").fetchone()[0],
                              30_000)
@@ -759,7 +756,7 @@ class StreamTest(Record):
             self.assertEqual(problems(e, wire.CopilotEvent), [])
         # the thread is saved with its page, the folder 700 and the file 600
         tid = events[0]["thread"]["id"]
-        thread = serve.answer(f"/api/copilot/threads/{tid}", {})
+        thread = support.answer(f"/api/copilot/threads/{tid}", {})
         self.assertEqual(problems(thread, wire.CopilotThread), [])
         self.assertEqual(thread["messages"][0]["page"], {"path": "/trips", "title": "Trips", "filters": {}})
         self.assertEqual(stat.S_IMODE(copilot.threads_dir().stat().st_mode), 0o700)
@@ -793,28 +790,28 @@ class StreamTest(Record):
     def test_threads_round_trip(self):
         events = ask("First question here", Script(answer("First answer.")))
         tid = events[0]["thread"]["id"]
-        listed = serve.answer("/api/copilot/threads", {})
+        listed = support.answer("/api/copilot/threads", {})
         self.assertEqual(problems(listed, wire.CopilotThreads), [])
         mine = next(t for t in listed["threads"] if t["id"] == tid)
         self.assertEqual((mine["title"], mine["turns"]), ("First question here", 1))
-        out = serve.write("/api/copilot/threads/remove", {}, json.dumps({"id": tid}).encode())
+        out = support.write("/api/copilot/threads/remove", {}, json.dumps({"id": tid}).encode())
         self.assertNotIn(tid, {t["id"] for t in out["threads"]})
         for bad in ("../../etc/passwd", tid):
             with self.assertRaises(serve.NotFound):
-                serve.answer(f"/api/copilot/threads/{bad}", {})
+                support.answer(f"/api/copilot/threads/{bad}", {})
 
     def test_the_ai_endpoints_answer_in_their_shapes(self):
-        self.assertEqual(problems(serve.answer("/api/ai", {}), wire.AiSettings), [])
+        self.assertEqual(problems(support.answer("/api/ai", {}), wire.AiSettings), [])
         with mock.patch.object(ai, "_get", lambda url, headers: {"data": [], "has_more": False}):
-            self.assertEqual(problems(serve.answer("/api/ai/models", {"q": "opus"}), wire.AiModels), [])
-        self.assertEqual(problems(serve.write("/api/ai/settings", {}, b'{"model": "claude-haiku-5-5"}'),
+            self.assertEqual(problems(support.answer("/api/ai/models", {"q": "opus"}), wire.AiModels), [])
+        self.assertEqual(problems(support.write("/api/ai/settings", {}, b'{"model": "claude-haiku-5-5"}'),
                                   wire.AiSettings), [])
         with mock.patch.object(ai, "_post", lambda *a, **k: {"type": "message", "content": []}):
-            self.assertEqual(problems(serve.write("/api/ai/test", {}, b"{}"), wire.AiTest), [])
+            self.assertEqual(problems(support.write("/api/ai/test", {}, b"{}"), wire.AiTest), [])
         with self.assertRaises(serve.Refused):
-            serve.write("/api/ai/settings", {}, b'{"provider": "skynet"}')
+            support.write("/api/ai/settings", {}, b'{"provider": "skynet"}')
         with self.assertRaises(serve.Refused):
-            serve.write("/api/ai/key", {}, b'{"provider": "anthropic", "key": "  "}')
+            support.write("/api/ai/key", {}, b'{"provider": "anthropic", "key": "  "}')
 
 
 class ThreadSaveTest(Record):
@@ -941,8 +938,8 @@ class LinksTest(Record):
         text = self.call(ctx, "query", sql="SELECT SUM(amount_sgd_minor) AS total FROM v_txn")
         self.assertNotIn("link", text)
         self.assertEqual(ctx.links, [])
-        keys = [r[0] for r in tools.open_readonly(self.path).execute(
-            "SELECT txn_key FROM v_txn ORDER BY txn_key LIMIT 3")]
+        with closing(tools.open_readonly(self.path)) as conn:
+            keys = [r[0] for r in conn.execute("SELECT txn_key FROM v_txn ORDER BY txn_key LIMIT 3")]
         text = self.call(ctx, "query", sql="SELECT txn_key, amount_sgd_minor FROM v_txn ORDER BY txn_key LIMIT 3")
         want = tools.href({"key": ",".join(keys)})
         self.assertEqual(text["link"], want)

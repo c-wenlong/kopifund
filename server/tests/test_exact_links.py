@@ -11,9 +11,10 @@ import unittest
 import urllib.parse
 from datetime import date
 
-from finance import api, db, home, recurring, spending
+from finance import api, home, recurring, spending
 from finance.db import SYNTHETIC_TYPE
-from test_db import SNAP, block, parsed, row
+import support
+from test_db import row
 from test_recurring import ACTIVE as MONTH_ACTIVE, CATEGORIES, ROWS as MONTH_ROWS, record as month_record, results, series
 
 # invented payees: "Gym Plus" and "Gymkhana" contain "Gym", "Magazine Club" contains "Magazine"
@@ -22,9 +23,6 @@ PAYEES = ["Gym", "Gym Plus", "Gymkhana", "Magazine", "Magazine Club", "Broker", 
 
 def record(*rows):
     """(day, payee, amount, extra) rows in a record where the payee's name is also its bank text."""
-    conn = db.connect(":memory:")
-    db.import_user_tables(conn, {**{k: [dict(x) for x in v] for k, v in SNAP.items()},
-                                 "categories": [dict(c) for c in CATEGORIES]})
     keyed = []
     for i, (day, payee, amount, extra) in enumerate(rows):
         extra = dict(extra)
@@ -32,8 +30,7 @@ def record(*rows):
                          merchant=extra.pop("merchant", payee.upper() if payee else f"SHOP*{i}"),
                          category=extra.pop("category", "Investments" if payee == "Broker" else "Transport"),
                          **extra))
-    db.load_parsed(conn, parsed([block()], keyed), payees=[{"name": p, "kind": "Merchant", "country": "SGP"} for p in PAYEES])
-    return conn
+    return support.build_record(keyed, user=support.user_tables(categories=CATEGORIES), payees=support.payees(PAYEES))
 
 
 def listed(conn, link):

@@ -1,13 +1,15 @@
 """server/finance/home.py: what Home draws (GET /api/overview)."""
 import isolate  # noqa: F401  first: no test writes the real record or cache
 import unittest
+from contextlib import closing
 import urllib.parse
 from datetime import date
 
 from finance import api, db, home, money, recurring, rules_app, upload_log
 from finance.db import SYNTHETIC_TYPE
 from test_app_writes import record
-from test_db import SNAP, block, parsed, row
+import support
+from test_db import block, parsed, row
 from test_recurring import ACTIVE, ROWS, record as recurring_record, results as recurring_results
 from test_scam_checks import MAY, card, sent
 
@@ -94,12 +96,12 @@ class Tiles(unittest.TestCase):
         # investments or CPF there is no net worth figure to put a change under
         months = [{"month": f"2025-{m:02d}", "cash_minor": 10000, "complete": True} for m in range(1, 13)]
         months.append({"month": "2026-01", "cash_minor": 15000, "complete": True})
-        h = api.overview(record(), runway(months), today=date(2026, 10, 15))["headline"]
+        h = api.overview(self.enterContext(closing(record())), runway(months), today=date(2026, 10, 15))["headline"]
         self.assertEqual((h["net_worth_incl_cpf"], h["net_worth_change"]), (None, None))
         self.assertEqual(h["cash_change"], {"change": 5000, "since": "2025-12"})
 
     def test_headline_figures_are_cents_with_the_runway_range(self):
-        o = api.overview(record(), {**runway([{"month": "2026-08", "cash_minor": 1_355_100, "complete": True}]),
+        o = api.overview(self.enterContext(closing(record())), {**runway([{"month": "2026-08", "cash_minor": 1_355_100, "complete": True}]),
                                     "cpf": {"data": {"summary": {"years": 3, "total_minor": 606_103,
                                                                  "as_of": "2025-12-31",
                                                                  "net_worth_total_minor": 4_929_940, "oa_minor": 100,
@@ -111,7 +113,7 @@ class Tiles(unittest.TestCase):
         self.assertEqual([x["label"] for x in o["holdings"]], ["Cash", "CPF"])
 
     def test_no_results_yet_still_answers(self):
-        o = api.overview(record(), {}, today=date(2026, 10, 15))
+        o = api.overview(self.enterContext(closing(record())), {}, today=date(2026, 10, 15))
         h = o["headline"]
         self.assertEqual((h["cash"], h["cash_change"], h["net_worth_change"], h["runway_range"]),
                          (None, None, None, None))
@@ -339,15 +341,13 @@ class EyeLines(unittest.TestCase):
 def no_fx_record(more=0):
     """A record with a USD block that printed no rate to SGD: a payment and a move between own accounts
     in it, and `more` payments after them, beside an SGD payment that has its value."""
-    conn = db.connect(":memory:")
-    db.import_user_tables(conn, {k: [dict(x) for x in v] for k, v in SNAP.items()})
     usd = "111-11111-1 · USD · 2026-08"
-    db.load_parsed(conn, parsed([block(), block(period=usd, currency="USD", fx_to_sgd="", closing_sgd="")], [
+    return support.build_record([
         row("k1", "-12.50"), row("u1", "-20.00", currency="USD", period=usd),
         row("u2", "15.00", currency="USD", period=usd, direction="In", flow_class="Internal - own account"),
-        *(row(f"m{i:04d}", "-1.00", currency="USD", period=usd, merchant=f"SHOP {i}") for i in range(more))]),
-        payees=[{"name": "Grab", "kind": "Merchant", "country": "SGP"}])
-    return conn
+        *(row(f"m{i:04d}", "-1.00", currency="USD", period=usd, merchant=f"SHOP {i}") for i in range(more))],
+        blocks=[block(), block(period=usd, currency="USD", fx_to_sgd="", closing_sgd="")],
+        payees=support.payees(["Grab"]))
 
 
 class MissingFx(unittest.TestCase):

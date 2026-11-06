@@ -363,9 +363,13 @@ class ConnectionTest(Server):
     def test_a_direct_call_leaves_the_record_to_its_caller(self):
         # the tests of the routes hand over their own record through _conn or db.connect and go on using it
         self.count.update(opened=0, closed=0)
-        serve.answer("/api/trips", {})
-        serve.answer("/api/trips", {})
+        handed, counted = [], db.connect
+        with mock.patch.object(db, "connect", lambda *a, **k: handed.append(counted(*a, **k)) or handed[-1]):
+            serve.answer("/api/trips", {})
+            serve.answer("/api/trips", {})
         self.assertEqual((self.count["opened"], self.count["closed"]), (2, 0))
+        for conn in handed:               # the caller's now, so the caller closes them
+            conn.close()
 
 
 class DownloadTest(Server):

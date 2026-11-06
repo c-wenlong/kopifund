@@ -17,7 +17,7 @@ from unittest import mock
 import fake_layout
 from finance import api, model, monthly, setup, sniff, sync
 from finance.parsers import layouts
-from test_app_writes import DataFolder
+from support import DataFolder
 
 ROOT = Path(__file__).resolve().parent.parent
 TESTS = Path(__file__).resolve().parent

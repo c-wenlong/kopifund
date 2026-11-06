@@ -1351,10 +1351,12 @@ terminal and a browser tab. `apps/desktop/` holds a Tauri v2 shell; nothing in
   the app in `/Applications` keeps serving that version while the checkout
   changes branch; each build replaces the last, older copies are deleted, and
   one Rust cache (`~/Library/Caches/Kopifund/cargo-target`, shared with `make
-  desktop` and `make check`) keeps rebuilds quick. `build_macos.sh` and `make
-  desktop` take one build lock, since they share its bundle folder, and both
-  copy the new app beside the old one and swap it in, so a failed copy leaves
-  the old app. The later
+  desktop` and `make check`) keeps rebuilds quick. Both routes build and
+  install through one script, `apps/desktop/install.sh`: it takes the build
+  lock (the two share the Rust cache's bundle folder; `build_macos.sh` holds
+  it for its whole run and passes it down), builds the shell, and copies the
+  new app beside the old one and swaps it in, so a failed copy leaves the old
+  app. Only `build_macos.sh` asks it to quit the open app first. The later
   lines bundle Python and `pdftotext`, sign and notarise the app, add updates
   from GitHub Releases, and build for Windows.
 
@@ -1776,6 +1778,16 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
     generic one.
   - A card still loading is a fixed-height skeleton, so the cards below do not
     jump when its figures arrive.
+  - **Destructive actions** follow one rule. One that can be taken back acts
+    at once and offers Undo in its toast (deleting a rule, removing a trip, a
+    row's category). One that cannot be taken back as a whole
+    asks with a second press: the first press arms the button, which then says
+    what a second press within four seconds does ("Press again to remove");
+    leaving the button or waiting disarms it (removing the AI key, revoking a
+    phone, dismissing every waiting phone row). `useArmed`
+    (`apps/web/src/components/useArmed.ts`) is that rule. One that needs a
+    choice as well asks inline with the choice and a Cancel (deleting a
+    category or a bucket picks where its rows go; stopping the server).
   - A toast is a short message at the bottom of the screen in a polite live
     region (an error is an alert), gone after a few seconds, with an optional
     Undo. Toasts sit straight under the page's body, above an open Sheet and
@@ -2049,10 +2061,12 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   back to page 1, a total that shrinks leaves the last page that exists, and
   under 640px the numbers shrink to the first, current and last page (1 ... 94
   ... 188) with a "Go to page" box that jumps anywhere. The current page carries
-  `aria-current`. A page can keep its page in the address: `usePager(list,
-  total, resetOn, initialPage, { urlKey: "page" })` reads `?page=3` on the way in and writes
-  it (page 1 leaves it off, other query keys stay, no history entry is added)
-  as the page changes. A list of ten rows or fewer shows no pager. Transactions
+  `aria-current`. A page can keep its page in the address: it passes
+  `pageParam(params)` (`?page=3`) to `usePager` as the page to open on, and
+  `useUrlPage(pager, urlPage, patch)` (`apps/web/src/useUrlParams.ts`) writes
+  the page as it changes (page 1 leaves it off, other query keys stay, no
+  history entry is added) and moves the list when the address names another
+  page (Back, a link). Rules and Transactions keep their page this way. A list of ten rows or fewer shows no pager. Transactions
   and Past uploads page on the server (`limit` and `offset`, with the total);
   the others page what the browser already holds: Rules (groups by payee, or
   rules in order), the payees awaiting a rule, the Upload check's rows to add
@@ -2654,7 +2668,9 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   ones coming soon (`coming_soon`), both from the layout registry: it is kept
   nowhere, not even in the upload history, and the card lists it as "Not
   supported" with no account to pick, the banks under the list once (a bank
-  from a public sample saying so), and one line naming `finance.py sample`.
+  from a public sample saying so), and one line asking for a scrubbed text
+  copy of one of its statements and naming `docs/runbook.md`, which says how
+  `finance.py sample` makes one (the card names no command).
   A PDF that matches more than one layout (each DBS layout is tested on
   its own, page by page, so a file holding a PayLah! and a card statement
   reads as both), or more than one folder it cannot tell apart is answered
