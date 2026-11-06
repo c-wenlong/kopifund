@@ -478,6 +478,40 @@ private func rows(_ container: ModelContainer) throws -> [TransactionRecord] {
     #expect(all.allSatisfy { $0.state == "pending" && $0.duplicateOf == nil })
 }
 
+@Test @MainActor func detailsTypedIntoAnEmptyCaptureGetTheDuplicateCheck() throws {
+    // the tap arrived empty, then the bank's alert for the same spend
+    // queued; once the owner types the tap's amount and payee the two are
+    // one spend, and the poorer capture (the tap) parks
+    let context = ModelContext(try Store.memory())
+    let tap = makeRow(payee: "", cents: 0, at: day)
+    context.insert(tap)
+    let alert = makeRow(payee: "HVC - DENTAL & EYE", at: day, rich: true)
+    context.insert(alert)
+    Ingest.settleDuplicates(of: alert, in: context)
+    #expect(alert.state == "pending" && tap.state == "pending")
+
+    // still half typed: nothing to check yet
+    tap.amountCents = 3817
+    #expect(!Ingest.settleTypedDetails(of: tap, in: context))
+    #expect(tap.state == "pending")
+
+    tap.payee = "Hvc - Dental & Eye"
+    #expect(Ingest.settleTypedDetails(of: tap, in: context))
+    #expect(tap.state == "duplicate" && tap.duplicateOf == alert.id)
+    #expect(alert.state == "pending")
+}
+
+@Test @MainActor func typedDetailsOfAnotherSpendStayPending() throws {
+    let context = ModelContext(try Store.memory())
+    let tap = makeRow(payee: "", cents: 0, at: day)
+    context.insert(tap)
+    context.insert(makeRow(payee: "HVC - DENTAL & EYE", at: day, rich: true))
+    tap.amountCents = 450
+    tap.payee = "Kopi Corner"
+    #expect(!Ingest.settleTypedDetails(of: tap, in: context))
+    #expect(tap.state == "pending" && tap.duplicateOf == nil)
+}
+
 @Test @MainActor func walletFallsBackToThePatternThatHasAnAccount() throws {
     // G24: a pattern's YNAB account is optional, so a higher-priority one
     // saved without any must not leave Wallet taps with no account
