@@ -1,8 +1,9 @@
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppIconCard } from "./AppIconCard";
 import { syncAppIcon, useAppIconLogo } from "../components/appIcon";
+import { json, settle } from "../test-helpers";
 
 const SETS = [
   { name: "sticker", label: "Sticker", about: "Kopi in a tied bag with a coin, on yellow" },
@@ -16,10 +17,10 @@ function stubFetch({ chosen = "sticker", refuse = false } = {}) {
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (url === "/api/app-icon" && init?.method === "POST") {
       posts.push(init.body as string);
-      if (refuse) return new Response(JSON.stringify({ error: "Not an app icon" }), { status: 422 });
-      return new Response(JSON.stringify(page(JSON.parse(init.body as string).name)), { status: 200 });
+      if (refuse) return json({ error: "Not an app icon" }, 422);
+      return json(page(JSON.parse(init.body as string).name));
     }
-    if (url === "/api/app-icon") return new Response(JSON.stringify(page(chosen)), { status: 200 });
+    if (url === "/api/app-icon") return json(page(chosen));
     return new Response("{}", { status: 404 });
   }));
 }
@@ -32,11 +33,9 @@ const href = (selector: string) => document.querySelector(selector)?.getAttribut
 
 beforeEach(() => {
   posts.length = 0;
-  window.localStorage.clear();
   document.head.innerHTML = '<link rel="icon" href="/favicon.ico" sizes="16x16 32x32 48x48" />'
     + '<link rel="icon" href="/favicon.svg" type="image/svg+xml" /><link rel="apple-touch-icon" href="/apple-touch-icon.png" />';
 });
-afterEach(() => vi.unstubAllGlobals());
 
 describe("App icon card", () => {
   it("lists the sets, marks the default and the pick, and saves a new pick", async () => {
@@ -47,13 +46,15 @@ describe("App icon card", () => {
     expect(screen.getByText("A cup on a stack of coins, on green")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: "logo" })).toHaveAttribute("src", "/logo.svg");
     fireEvent.click(screen.getByRole("radio", { name: /Iso/ }));
-    await waitFor(() => expect(screen.getByRole("radio", { name: /Iso/ })).toBeChecked());
+    // the radio is ticked at once, before the server has answered: the pick is kept only when it has
+    await waitFor(() => expect(window.localStorage.getItem("kopifund.appIcon")).toBe("iso"));
+    await settle();
+    expect(screen.getByRole("radio", { name: /Iso/ })).toBeChecked();
     expect(posts).toEqual([JSON.stringify({ name: "iso" })]);
     expect(href('link[rel="icon"][type="image/svg+xml"]')).toBe("/app-icons/iso/favicon.svg");
     expect(href('link[rel="icon"]:not([type])')).toBe("/app-icons/iso/favicon.ico");
     expect(href('link[rel="apple-touch-icon"]')).toBe("/app-icons/iso/apple-touch-icon.png");
     expect(screen.getByRole("img", { name: "logo" })).toHaveAttribute("src", "/app-icons/iso/logo.svg");
-    expect(window.localStorage.getItem("kopifund.appIcon")).toBe("iso");
   });
 
   it("puts the pick back and says why when the server refuses it", async () => {
@@ -74,7 +75,7 @@ describe("syncAppIcon", () => {
     const done = syncAppIcon();
     expect(href('link[rel="icon"][type="image/svg+xml"]')).toBe("/app-icons/riso/favicon.svg");
     await act(async () => {
-      answer(new Response(JSON.stringify(page("iso")), { status: 200 }));
+      answer(json(page("iso")));
       await done;
     });
     expect(href('link[rel="icon"][type="image/svg+xml"]')).toBe("/app-icons/iso/favicon.svg");

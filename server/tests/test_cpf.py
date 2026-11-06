@@ -16,6 +16,7 @@ import copy
 import unittest
 from decimal import Decimal
 from pathlib import Path
+from unittest import mock
 
 
 import analytics_fixture as fixture
@@ -25,8 +26,17 @@ from finance import cpf_rules as rules
 from finance.money import label, to_cents
 
 # The forward view reads the owner's [plan] from server/finance/config.toml; this
-# suite must not depend on it, so point it at the fixture config (no [plan]).
-forward_view.PLAN_CONFIG = Path(__file__).resolve().parent / "fixtures" / "config.toml"
+# suite must not depend on it, so point it at the fixture config (no [plan])
+# while this module's tests run, and give it back after.
+_PLAN = mock.patch.object(forward_view, "PLAN_CONFIG", Path(__file__).resolve().parent / "fixtures" / "config.toml")
+
+
+def setUpModule():
+    _PLAN.start()
+
+
+def tearDownModule():
+    _PLAN.stop()
 
 
 def snapshot(statements=None, with_portfolio=True):

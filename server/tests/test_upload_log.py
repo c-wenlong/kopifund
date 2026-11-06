@@ -7,7 +7,8 @@ from unittest import mock
 
 import serve
 from finance import db, monthly, sync, upload_log
-from test_app_writes import DataFolder
+from support import DataFolder
+import support
 
 REPORT = {"problems": [], "statements": 2, "rows": 1200, "to_add": [{"key": "k1"}], "to_add_count": 1,
           "recategorised_count": 0, "to_archive_count": 0, "needs_rule": [],
@@ -100,14 +101,14 @@ class EndpointTest(DataFolder):
         p = mock.patch("finance.api.config", return_value=mock.Mock(folders=[], accounts={}))
         p.start()
         self.addCleanup(p.stop)
-        self.attempt = serve.write("/api/uploads/start", {}, b'{"origin": "upload"}')["attempt"]
+        self.attempt = support.write("/api/uploads/start", {}, b'{"origin": "upload"}')["attempt"]
 
     def steps(self):
         with closing(db.connect()) as conn:
             return upload_log.attempt(conn, self.attempt)["steps"]
 
     def go(self, path, query=None, body=b""):
-        return serve.write(path, {"attempt": str(self.attempt), **(query or {})}, body)
+        return support.write(path, {"attempt": str(self.attempt), **(query or {})}, body)
 
     def test_a_check_returns_its_attempt_and_is_recorded_whole(self):
         with mock.patch.object(monthly, "folders", return_value=[{"path": "statements/dbs"}]), \
@@ -162,32 +163,32 @@ class EndpointTest(DataFolder):
     def test_a_load_from_another_page_gets_its_own_attempt(self):
         done = {"loaded": True, "report": REPORT, "counts": {"inserted": 0, "updated": 2, "archived": 0}}
         with mock.patch.object(monthly, "load", return_value=done):
-            out = serve.write("/api/run/load", {"from": "rules"}, b"")
+            out = support.write("/api/run/load", {"from": "rules"}, b"")
         self.assertNotEqual(out["attempt"], self.attempt)
-        listed = serve.answer("/api/uploads", {})["attempts"]
-        self.assertIsNone(serve.answer("/api/uploads", {})["next"])
+        listed = support.answer("/api/uploads", {})["attempts"]
+        self.assertIsNone(support.answer("/api/uploads", {})["next"])
         self.assertEqual([(a["id"], a["origin"]) for a in listed], [(out["attempt"], "rules")])
 
     def test_the_list_takes_a_limit_and_an_offset_and_says_how_many_there_are(self):
         with mock.patch.object(monthly, "folders", return_value=[]), \
                 mock.patch.object(monthly, "check", return_value=(sync.Parsed(), REPORT)):
             self.go("/api/run/check")
-        page = serve.answer("/api/uploads", {"limit": "1", "offset": "1"})
+        page = support.answer("/api/uploads", {"limit": "1", "offset": "1"})
         self.assertEqual((page["attempts"], page["total"]), ([], 1))
-        self.assertEqual(serve.answer("/api/uploads", {"limit": "1"})["total"], 1)
+        self.assertEqual(support.answer("/api/uploads", {"limit": "1"})["total"], 1)
         with self.assertRaises(ValueError):
-            serve.answer("/api/uploads", {"limit": "lots"})
+            support.answer("/api/uploads", {"limit": "lots"})
 
     def test_the_history_endpoints(self):
         with mock.patch.object(monthly, "folders", return_value=[]), \
                 mock.patch.object(monthly, "check", return_value=(sync.Parsed(), REPORT)):
             self.go("/api/run/check")
-        detail = serve.answer(f"/api/uploads/{self.attempt}", {})
+        detail = support.answer(f"/api/uploads/{self.attempt}", {})
         self.assertEqual(detail["steps"][0]["output"]["to_add_count"], 1)
         json.dumps(detail)
         for bad in ("/api/uploads/999", "/api/uploads/x"):
             with self.assertRaises(serve.NotFound):
-                serve.answer(bad, {})
+                support.answer(bad, {})
 
 
 if __name__ == "__main__":

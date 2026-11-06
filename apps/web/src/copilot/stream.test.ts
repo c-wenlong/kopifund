@@ -1,6 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { CopilotEvent } from "../types.gen";
 import { ask, GARBLED, readEvents } from "./stream";
+import { json } from "../test-helpers";
 
 // G22: the copilot's answer is one JSON event per line, read as the lines arrive.
 
@@ -17,8 +18,6 @@ async function read(chunks: string[]) {
   await readEvents(streamOf(chunks), (e) => seen.push(e));
   return seen;
 }
-
-afterEach(() => vi.unstubAllGlobals());
 
 describe("readEvents", () => {
   it("joins a line split across chunks, even mid-character", async () => {
@@ -74,7 +73,7 @@ describe("ask", () => {
   });
 
   it("throws the server's words for a refusal before any line", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "Turn on Send matching rows in Settings first." }), { status: 422 })));
+    vi.stubGlobal("fetch", vi.fn(async () => json({ error: "Turn on Send matching rows in Settings first." }, 422)));
     await expect(ask({ thread: null, question: "q", page: { path: "/", title: "Home", filters: {} } }, () => {}))
       .rejects.toMatchObject({ message: "Turn on Send matching rows in Settings first.", status: 422 });
   });

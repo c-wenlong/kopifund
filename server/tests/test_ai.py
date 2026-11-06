@@ -7,12 +7,15 @@ import json
 import os
 import tempfile
 import unittest
+from contextlib import closing
 from pathlib import Path
 from types import SimpleNamespace
 from unittest import mock
 
 from finance import ai, rules_app
-from test_app_writes import DataFolder, record
+import support
+from support import DataFolder
+from test_app_writes import record
 
 CATS = ["Eating out", "Shopping", "Transport", "Person to person"]
 GROUPS = [
@@ -259,12 +262,15 @@ class SuggestTest(unittest.TestCase):
 
 
 class BatchTest(DataFolder):
+    def record(self):
+        return self.enterContext(closing(record()))
+
     def rule(self, pattern, category="Eating out"):
         return {"match_on": "merchant", "pattern": pattern, "payee": pattern.title().rstrip("*"),
                 "kind": "Merchant", "category": category, "notes": "[ai] suggested by a test model"}
 
     def test_all_rules_go_in_with_one_load(self):
-        out = rules_app.add_many(record(), [self.rule("TOAST BOX*"), self.rule("KOPITIAM*")])
+        out = rules_app.add_many(self.record(), [self.rule("TOAST BOX*"), self.rule("KOPITIAM*")])
         self.assertEqual(out["added"], 2)
         with (self.root / "rules" / "merchants.csv").open(newline="") as fh:
             rows = list(csv.DictReader(fh))
@@ -272,14 +278,14 @@ class BatchTest(DataFolder):
         self.assertTrue(rows[0]["notes"].startswith("[ai]"))
 
     def test_one_bad_rule_keeps_every_rule_out(self):
-        rules_app.add_many(record(), [self.rule("TOAST BOX*")])
+        rules_app.add_many(self.record(), [self.rule("TOAST BOX*")])
         before = (self.root / "rules" / "merchants.csv").read_bytes()
         with self.assertRaises(rules_app.RuleRefused):
-            rules_app.add_many(record(), [self.rule("KOPITIAM*"), self.rule("SHOP*", "No such category")])
+            rules_app.add_many(self.record(), [self.rule("KOPITIAM*"), self.rule("SHOP*", "No such category")])
         self.assertEqual((self.root / "rules" / "merchants.csv").read_bytes(), before)
 
     def test_a_file_that_cannot_be_written_puts_every_rule_back(self):
-        rules_app.add_many(record(), [self.rule("TOAST BOX*")])
+        rules_app.add_many(self.record(), [self.rule("TOAST BOX*")])
         before = (self.root / "rules" / "merchants.csv").read_bytes()
         person = {"match_on": "counterparty", "pattern": "J TAN*", "payee": "J Tan", "kind": "Person",
                   "category": "Person to person"}
@@ -291,25 +297,24 @@ class BatchTest(DataFolder):
             real(path, data)
         with mock.patch.object(rules_app, "_write_atomic", write), \
                 self.assertRaisesRegex(rules_app.RuleRefused, "Could not write"):
-            rules_app.add_many(record(), [self.rule("KOPITIAM*"), person])
+            rules_app.add_many(self.record(), [self.rule("KOPITIAM*"), person])
         self.assertEqual((self.root / "rules" / "merchants.csv").read_bytes(), before)
         self.assertFalse((self.root / "rules" / "people.csv").exists())
 
     def test_an_empty_batch_is_refused(self):
         with self.assertRaises(rules_app.RuleRefused):
-            rules_app.add_many(record(), [])
+            rules_app.add_many(self.record(), [])
 
 
 class RouteTest(DataFolder):
     """The two POST routes the upload page calls."""
 
     def write(self, path, body, ai_section=None):
-        import serve
         conf = SimpleNamespace(root=self.root, ai=ai_section)
         # G13: a rule write relinks the record and reruns the stats in the
         # background; this folder has no statements to rerun them over
         with mock.patch("finance.api.config", lambda: conf), mock.patch("finance.stats_rebuild.refresh_stats"):
-            return serve.write(path, {}, json.dumps(body).encode())
+            return support.write(path, {}, json.dumps(body).encode())
 
     def test_without_an_ai_section_the_table_still_gets_guesses(self):
         out = self.write("/api/rules/suggest", {"groups": GROUPS})

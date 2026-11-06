@@ -123,7 +123,8 @@ class NotionClient:
                 with urllib.request.urlopen(req, timeout=self.timeout) as resp:
                     return json.load(resp)
             except urllib.error.HTTPError as e:
-                msg = e.read().decode(errors="replace")
+                with e:  # Notion's reply: close it, not leave it for the collector
+                    msg = e.read().decode(errors="replace")
                 if creates and e.code >= 500:
                     # a 4xx is Notion refusing the page, so nothing was made; it
                     # is not retried either, and falls through to the plain error

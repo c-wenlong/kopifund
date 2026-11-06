@@ -13,6 +13,7 @@ import serve
 from analytics.stats import monthly_cashflow, needs_wants_savings, savings_runway
 from finance import dashboard, db
 from finance.errors import NotFound
+import support
 from test_db import SNAP, block, parsed, row
 
 # SNAP plus one Transfer-bucket category, so a `transfers` metric has rows
@@ -27,11 +28,7 @@ def snapshot():
 
 def record(rows, **kw):
     """A small invented record: two months of rows, an income, a trip, a move."""
-    conn = db.connect(":memory:")
-    db.import_user_tables(conn, snapshot())
-    db.load_parsed(conn, parsed([block()], rows),
-                   payees=[{"name": "Grab", "kind": "Merchant", "country": "SGP"}], **kw)
-    return conn
+    return support.build_record(rows, user=snapshot(), payees=support.payees(["Grab"]), **kw)
 
 
 def rows():
@@ -397,10 +394,10 @@ class EndpointTest(unittest.TestCase):
                            payees=[{"name": "Grab", "kind": "Merchant", "country": "SGP"}])
 
     def get(self, path, query=None):
-        return serve.answer(path, query or {})
+        return support.answer(path, query or {})
 
     def post(self, path, body):
-        return serve.write(path, {}, json.dumps(body).encode())
+        return support.write(path, {}, json.dumps(body).encode())
 
     QUERY = {"source": "spending", "metric": "spend", "dimension": "bucket",
              "range": {"from": "2026-08", "to": "2026-08"}}

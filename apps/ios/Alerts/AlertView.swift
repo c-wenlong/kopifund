@@ -109,10 +109,9 @@ struct AlertView: View {
         }
         .confirmationDialog("Dismiss this alert?", isPresented: $showDismissChoices,
                             titleVisibility: .visible) {
-            Button("Just this alert") { onFinished("Alert dismissed") }
+            Button("Just this alert") { onFinished(Triage.dismissed) }
             Button("Always ignore alerts like this") {
-                Suppression.add(AlertShape.signature(of: record.text))
-                onFinished("Ignored. Undo it under Patterns")
+                onFinished(Triage.ignoreShape(of: record.text))
             }
             Button("Cancel", role: .cancel) {}
         } message: {

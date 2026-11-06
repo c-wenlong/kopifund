@@ -27,7 +27,7 @@ struct UnmatchedView: View {
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button("Not an alert", role: .destructive) {
-                            dismiss(r, andSay: "Alert dismissed")
+                            dismiss(r, andSay: Triage.dismissed)
                         }
                     }
                     .swipeActions(edge: .leading, allowsFullSwipe: false) {
@@ -54,8 +54,7 @@ struct UnmatchedView: View {
                                                      set: { if !$0 { confirmIgnore = nil } }),
                                 titleVisibility: .visible, presenting: confirmIgnore) { r in
                 Button("Always ignore") {
-                    Suppression.add(AlertShape.signature(of: r.text))
-                    dismiss(r, andSay: "Ignored. Undo it under Patterns")
+                    dismiss(r, andSay: Triage.ignoreShape(of: r.text))
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { _ in

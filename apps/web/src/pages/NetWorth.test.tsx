@@ -1,16 +1,16 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { NetWorth, TotalTip } from "./NetWorth";
 import { revalidate, type Growth, type NetWorth as NetWorthT, type Suggestions } from "../api";
 import { choose } from "../test-select";
+import { expectAsks, expectFree, json, settle, useSizedCharts } from "../test-helpers";
 
-vi.mock("../router", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../router")>()), navigate: vi.fn(), onLinkClick: () => () => {},
+vi.mock("../router", async (actual) => ({
+  ...(await import("../test-helpers")).withNavigate(await actual()), onLinkClick: () => () => {},
 }));
 
 // G18: true when the page would hold a reload or a closed tab behind the browser's question
-const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 
 // Every figure, name and date here is invented.
 const netWorth: NetWorthT = {
@@ -86,12 +86,12 @@ function serve(handler: Handler = () => undefined) {
     if (post) posts.push(post);
     const own = handler(url, post);
     if (own) return own;
-    if (url.startsWith("/api/net-worth")) return new Response(JSON.stringify(netWorth), { status: 200 });
-    if (url.startsWith("/api/growth")) return new Response(JSON.stringify(growth()), { status: 200 });
+    if (url.startsWith("/api/net-worth")) return json(netWorth);
+    if (url.startsWith("/api/growth")) return json(growth());
     if (url.startsWith("/api/results/")) {
       const id = url.split("/").pop();
       // G20: a result in cents, as the stats write one; a card shows no result in dollars
-      return new Response(JSON.stringify({ id, title: `${id} title`, findings: [`${id} finding`], chart: { unit: "sgd_minor" }, data: {} }), { status: 200 });
+      return json({ id, title: `${id} title`, findings: [`${id} finding`], chart: { unit: "sgd_minor" }, data: {} });
     }
     return new Response("{}", { status: 404 });
   }));
@@ -114,17 +114,15 @@ const fact = (label: string) =>
 function stored(start: Growth = growth(), refuse?: string) {
   let now = start;
   return serve((url, post) => {
-    if (url === "/api/growth") return new Response(JSON.stringify(now), { status: 200 });
+    if (url === "/api/growth") return json(now);
     if (url !== "/api/growth/inputs" || !post) return undefined;
-    if (refuse) return new Response(JSON.stringify({ error: refuse }), { status: 422 });
+    if (refuse) return json({ error: refuse }, 422);
     now = { ...now, inputs: post.body as unknown as Growth["inputs"] };
-    return new Response(JSON.stringify(now), { status: 200 });
+    return json(now);
   });
 }
 
 describe("Net worth page", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("draws net worth over time with a range selector", async () => {
     serve();
     render(<NetWorth />);
@@ -172,7 +170,7 @@ describe("Net worth page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add income" }));
     expect(rowsOf()).toHaveLength(2);
     expect(screen.getByRole("status")).toHaveTextContent("Unsaved changes");
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
     choose(screen.getByLabelText("Type, income row 2"), "Side income");
     expect(screen.getByLabelText("Pays CPF, income row 2")).not.toBeChecked();      // side income: no CPF
     expect(screen.queryByLabelText("Bonus month, income row 2")).not.toBeInTheDocument();
@@ -183,7 +181,7 @@ describe("Net worth page", () => {
     expect(rowsOf()).toHaveLength(1);
     expect(screen.getByRole("textbox", { name: "Name, income row 1" })).toHaveValue("Invented job");
     expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
   });
 
   // G18: what is typed while a save is on its way is a new edit, even typed back to the old saved value
@@ -194,7 +192,7 @@ describe("Net worth page", () => {
     const answer = () => {
       const g = growth();
       g.inputs.income[0].name = stored;
-      return new Response(JSON.stringify(g), { status: 200 });
+      return json(g);
     };
     serve((url, post) => {
       if (url === "/api/growth") return answer();
@@ -209,9 +207,11 @@ describe("Net worth page", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Name, income row 1" }), { target: { value: "Invented job" } });
     await act(async () => release());
     await waitFor(() => expect(screen.queryByRole("button", { name: "Saving" })).not.toBeInTheDocument());
+    // the save sets off a reload of the figures: let it land, since what is unsaved is measured against it
+    await settle();
     expect(screen.getByRole("textbox", { name: "Name, income row 1" })).toHaveValue("Invented job");
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
   });
 
   // G18: unsaved means typed here, never "the record moved under an untouched form"
@@ -222,7 +222,7 @@ describe("Net worth page", () => {
         if (url !== "/api/growth") return undefined;
         const g = growth();
         g.inputs.income[0].name = job;
-        return new Response(JSON.stringify(g), { status: 200 });
+        return json(g);
       });
       return (name: string) => { job = name; act(() => revalidate()); };
     };
@@ -236,7 +236,7 @@ describe("Net worth page", () => {
       save("Renamed elsewhere");
       await waitFor(() => expect(screen.getByRole("textbox", { name: "Name, income row 1" })).toHaveValue("Renamed elsewhere"));
       expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
-      expect(leaveAsks()).toBe(false);
+      await expectFree();
     });
 
     it("a form with typing in it keeps the typing, still unsaved", async () => {
@@ -246,7 +246,7 @@ describe("Net worth page", () => {
       const name = await screen.findByRole("textbox", { name: "Name, income row 1" });
       fireEvent.change(name, { target: { value: "Typed here" } });
       save("Renamed elsewhere");
-      await waitFor(() => expect(leaveAsks()).toBe(true));
+      await expectAsks();
       expect(screen.getByRole("textbox", { name: "Name, income row 1" })).toHaveValue("Typed here");
       expect(screen.getByRole("status")).toHaveTextContent("Unsaved changes");
     });
@@ -258,16 +258,16 @@ describe("Net worth page", () => {
       const name = await screen.findByRole("textbox", { name: "Name, income row 1" });
       fireEvent.change(name, { target: { value: "Typed here" } });
       fireEvent.change(name, { target: { value: "Invented job" } });
-      expect(leaveAsks()).toBe(false);
+      await expectFree();
       save("Renamed elsewhere");
       await waitFor(() => expect(screen.getByRole("textbox", { name: "Name, income row 1" })).toHaveValue("Renamed elsewhere"));
-      expect(leaveAsks()).toBe(false);
+      await expectFree();
     });
   });
 
   it("previews the chart live with the unsaved values and writes nothing", async () => {
     const { posts } = serve((url) => (url === "/api/growth/preview"
-      ? new Response(JSON.stringify(growth({ total: { ...growth().total, tiles: { ...growth().total.tiles, today: { month: "2026-10", total: 4_321_000 } } } })), { status: 200 })
+      ? json(growth({ total: { ...growth().total, tiles: { ...growth().total.tiles, today: { month: "2026-10", total: 4_321_000 } } } }))
       : undefined));
     render(<NetWorth />);
     const sheet = await openInputs();
@@ -297,7 +297,7 @@ describe("Net worth page", () => {
     expect(body.investing).toEqual([{ from: null, amount_minor: 45_000 }]);
     expect((body.projection as Record<string, unknown>).expected_pct).toBe("6");
     await waitFor(() => expect(fact("Investing")).toHaveTextContent("S$450 a month"));
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
     // the dialog opens again on what is saved
     await openInputs();
     expect(screen.getByRole("textbox", { name: "Amount a month (S$), investing step 1" })).toHaveValue("450");
@@ -373,7 +373,7 @@ describe("Net worth page", () => {
     fireEvent.change(amount, { target: { value: "475" } });      // typed before the save answers
     const saved = growth();
     saved.inputs = { ...saved.inputs, investing: [{ from: null, amount_minor: 45_000 }] };
-    answer(new Response(JSON.stringify(saved), { status: 200 }));
+    answer(json(saved));
     await waitFor(() => expect(screen.queryByRole("button", { name: "Saving" })).not.toBeInTheDocument());
     // G18: something typed is still unsaved, so the dialog stays open on it
     expect(dialog()).toBeInTheDocument();
@@ -382,12 +382,12 @@ describe("Net worth page", () => {
   });
 
   it("says when the brokerage starts from nothing because there is no statement, and names no broker", async () => {
-    serve((url) => (url === "/api/growth" ? new Response(JSON.stringify(growth({
+    serve((url) => (url === "/api/growth" ? json(growth({
       tiger: { as_of: null, measured: false, broker: null, start: 0, contributed: 0, rows: [
         { month: "2026-09", pessimistic: 0, expected: 0, optimistic: 0, put_in: 0 },
         { month: "2026-10", pessimistic: 30_000, expected: 30_000, optimistic: 30_000, put_in: 30_000 },
       ] },
-    })), { status: 200 }) : undefined));
+    })) : undefined));
     render(<NetWorth />);
     await openInputs();
     expect(await screen.findByText(/No brokerage statement yet, so this starts from nothing/)).toBeInTheDocument();
@@ -399,7 +399,7 @@ describe("Net worth page", () => {
 
   it("keeps the last projection on screen beside a refused preview", async () => {
     serve((url) => (url === "/api/growth/preview"
-      ? new Response(JSON.stringify({ error: "Inflation is between -10 and 20 per cent a year" }), { status: 422 })
+      ? json({ error: "Inflation is between -10 and 20 per cent a year" }, 422)
       : undefined));
     render(<NetWorth />);
     await openInputs();
@@ -433,7 +433,7 @@ describe("Net worth page", () => {
     expect(last).toMatchObject({ horizon: "20y", dollars: "future" });
     expect(posts.some((p) => p.url === "/api/growth/preview")).toBe(false);
     expect(dialog()).not.toBeInTheDocument();
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
   });
 
   it("puts a switch back when its save is refused", async () => {
@@ -443,7 +443,7 @@ describe("Net worth page", () => {
     fireEvent.click(await screen.findByRole("radio", { name: "20Y" }));
     await waitFor(() => expect(screen.getByRole("radio", { name: "10Y" })).toHaveAttribute("aria-checked", "true"));
     expect(fact("Horizon")).toHaveTextContent("10 years");
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
   });
 
   // G18 review: each save of a switch is answered only when the test says, ok or refused
@@ -451,12 +451,12 @@ describe("Net worth page", () => {
     let now = growth();
     const answers: ((ok: boolean) => void)[] = [];
     const { posts } = serve((url, post) => {
-      if (url === "/api/growth") return new Response(JSON.stringify(now), { status: 200 });
+      if (url === "/api/growth") return json(now);
       if (url !== "/api/growth/inputs" || !post) return undefined;
       return new Promise<Response>((done) => answers.push((ok) => {
-        if (!ok) return done(new Response(JSON.stringify({ error: "The plan could not be written" }), { status: 422 }));
+        if (!ok) return done(json({ error: "The plan could not be written" }, 422));
         now = { ...now, inputs: post.body as unknown as Growth["inputs"] };
-        done(new Response(JSON.stringify(now), { status: 200 }));
+        done(json(now));
       }));
     });
     const saves = () => posts.filter((p) => p.url === "/api/growth/inputs");
@@ -535,9 +535,9 @@ describe("Net worth page", () => {
   });
 
   it("turns a projected figure under zero red, and leaves the others ink", async () => {
-    serve((url) => (url === "/api/growth" ? new Response(JSON.stringify(growth({
+    serve((url) => (url === "/api/growth" ? json(growth({
       total: { ...growth().total, tiles: { ...growth().total.tiles, in_5y: { month: "2031-10", total: -4_311_400 } } },
-    })), { status: 200 }) : undefined));
+    })) : undefined));
     render(<NetWorth />);
     const tiles = within(await screen.findByRole("group", { name: "Net worth at a glance" }));
     expect(tiles.getByText(/S\$43,114/)).toHaveClass("text-danger");
@@ -545,18 +545,18 @@ describe("Net worth page", () => {
   });
 
   it("names the months cash goes under zero", async () => {
-    serve((url) => (url === "/api/growth" ? new Response(JSON.stringify(growth({
+    serve((url) => (url === "/api/growth" ? json(growth({
       total: { ...growth().total, below_zero: [{ from: "2029-03", to: "2029-06" }] },
-    })), { status: 200 }) : undefined));
+    })) : undefined));
     render(<NetWorth />);
     expect(await screen.findByText("Cash under zero: Mar to Jun 2029")).toBeInTheDocument();
     expect(screen.getByRole("img", { name: /cash under zero in Mar to Jun 2029/ })).toBeInTheDocument();
   });
 
   it("says why CPF is not projected from a statement after 55", async () => {
-    serve((url) => (url.startsWith("/api/growth") ? new Response(JSON.stringify(growth({
+    serve((url) => (url.startsWith("/api/growth") ? json(growth({
       birth_date: "1960-01-01", age: 66, cpf: { as_of: "2025-12-31", needs: "before_55", rows: [] },
-    })), { status: 200 }) : undefined));
+    })) : undefined));
     render(<NetWorth />);
     expect(await screen.findByText(/Retirement Account this projection does not read yet/)).toBeInTheDocument();
   });
@@ -577,14 +577,14 @@ describe("Net worth page", () => {
   });
 
   it("draws CPF once there is a date of birth, with the age markers", async () => {
-    serve((url) => (url.startsWith("/api/growth") ? new Response(JSON.stringify(growth({
+    serve((url) => (url.startsWith("/api/growth") ? json(growth({
       birth_date: "1996-03-15", age: 30, can_reach_65: true,
       markers: [{ age: 55, month: "2051-03" }, { age: 65, month: "2061-03" }],
       cpf: { as_of: "2025-12-31", needs: null, frs: { year: 2051, month: "2051-03", value: 30_000_000, assumed: true }, rows: [
         { month: "2025-12", age: 29, oa: 100, sa: 50, ra: null, ma: 50, total: 200, frs: null },
         { month: "2026-01", age: 29, oa: 110, sa: 55, ra: null, ma: 55, total: 220, frs: null },
       ] },
-    })), { status: 200 }) : undefined));
+    })) : undefined));
     render(<NetWorth />);
     expect(await screen.findByText("All accounts")).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: "Your profile" })).not.toBeInTheDocument();
@@ -610,20 +610,8 @@ describe("the projected net worth tooltip", () => {
   });
 });
 
-// Recharts draws nothing into a box of width 0, which is all jsdom gives it
-class SizedObserver {
-  constructor(private cb: ResizeObserverCallback) {}
-  observe(el: Element) {
-    this.cb([{ target: el, contentRect: { width: 800, height: 400 } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
-  }
-  unobserve() {}
-  disconnect() {}
-}
-
 describe("the chart views", () => {
-  const real = globalThis.ResizeObserver;
-  beforeEach(() => { globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver; localStorage.clear(); });
-  afterEach(() => { globalThis.ResizeObserver = real; vi.unstubAllGlobals(); localStorage.clear(); });
+  useSizedCharts();
 
   const card = (title: string) => screen.getByRole("heading", { name: title, level: 2 }).closest("section")!;
   const history = () => card("Net worth so far");
@@ -655,9 +643,9 @@ describe("the chart views", () => {
   });
 
   it("keeps the projection's view apart from the history's, and the under-zero marks in every view", async () => {
-    serve((url) => url.startsWith("/api/growth") ? new Response(JSON.stringify(growth({
+    serve((url) => url.startsWith("/api/growth") ? json(growth({
       total: { ...growth().total, below_zero: [{ from: "2026-10", to: "2031-10" }] },
-    })), { status: 200 }) : undefined);
+    })) : undefined);
     render(<NetWorth />);
     await screen.findByRole("img", { name: /Net worth projected/ });
     expect(areas(projected())).toBe(3);   // the parts and the band round the total
@@ -719,15 +707,13 @@ describe("the projected tooltip with a part hidden", () => {
 });
 
 describe("the inputs card", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("names the broker on the investing step only from the loaded statement", async () => {
     serve();
     const first = render(<NetWorth />);
     await openInputs();
     expect(await screen.findByRole("region", { name: "Investing into Tiger Brokers" })).toBeInTheDocument();
     first.unmount();
-    serve((url) => (url === "/api/growth" ? new Response(JSON.stringify(growth({ tiger: null })), { status: 200 }) : undefined));
+    serve((url) => (url === "/api/growth" ? json(growth({ tiger: null })) : undefined));
     render(<NetWorth />);
     await openInputs();
     expect(await screen.findByRole("region", { name: "Investing" })).toBeInTheDocument();
@@ -794,7 +780,7 @@ describe("the inputs card", () => {
 
   it("puts a refusal about a row under that row, not at the top of the card", async () => {
     serve((url) => (url === "/api/growth/preview"
-      ? new Response(JSON.stringify({ error: "Income row 1 (Invented job): the to date is before the from date" }), { status: 422 })
+      ? json({ error: "Income row 1 (Invented job): the to date is before the from date" }, 422)
       : undefined));
     render(<NetWorth />);
     await openInputs();
@@ -834,8 +820,6 @@ describe("the inputs card", () => {
 
 // G13: what the record already knows, as chips beside the inputs. Every name and figure is invented.
 describe("suggestion chips on the inputs", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   const known = (over: Partial<Suggestions> = {}): Suggestions => ({
     income: [{ name: "Invented Co", type: "employment", from: "2025-03-14", last: "2026-09-28", take_home: 400_000, gross: 500_000,
       cpf: true, basis: "gross", bonus_months: 2, bonus_month: 12 }],
@@ -848,8 +832,8 @@ describe("suggestion chips on the inputs", () => {
   };
   const row = (over: Partial<Growth["inputs"]["income"][number]> = {}) => ({ ...growth().inputs.income[0], name: "Invented Co", ...over });
   const withKnown = (suggestions: Suggestions, g: Growth) => serve((url) => {
-    if (url.startsWith("/api/suggestions")) return new Response(JSON.stringify(suggestions), { status: 200 });
-    if (url === "/api/growth") return new Response(JSON.stringify(g), { status: 200 });
+    if (url.startsWith("/api/suggestions")) return json(suggestions);
+    if (url === "/api/growth") return json(g);
     return undefined;
   });
   const chips = () => screen.queryAllByRole("button", { name: /^Add Invented|^Seen |^Record shows / });
@@ -938,8 +922,6 @@ describe("suggestion chips on the inputs", () => {
 
 // G18: the saved inputs as one line at the top, and Edit opening them in a dialog
 describe("the inputs strip and its dialog", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("sums the pay running today, takes the step in force, and shows the saved figures", async () => {
     const g = growth();
     const job = g.inputs.income[0];
@@ -999,7 +981,7 @@ describe("the inputs strip and its dialog", () => {
     fireEvent.click(screen.getByTestId("sheet-scrim"));
     fireEvent.click(screen.getByRole("button", { name: "Leave" }));
     expect(dialog()).not.toBeInTheDocument();
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
     expect(fact("Investing")).toHaveTextContent("S$300 a month");
     // opened again, the dialog holds what is saved, not what was left behind
     await openInputs();

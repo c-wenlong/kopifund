@@ -17,7 +17,8 @@ from unittest import mock
 
 import serve
 from finance import db, suggestions as sug
-from test_db import SNAP, block, parsed, row
+import support
+from test_db import row
 
 ROOT = Path(__file__).resolve().parent.parent
 FIXTURES = ROOT / "tests" / "fixtures" / "analytics"
@@ -48,12 +49,9 @@ def credit(key, day, amount, payee, category="Salary"):
 
 
 def record(*rows, path=":memory:"):
-    conn = db.connect(path)
-    db.import_user_tables(conn, {**SNAP, "categories": CATEGORIES}, plan={})
-    names = sorted({r["payee"] for r in rows if r["payee"]})
-    db.load_parsed(conn, parsed([block()], [row("t0", "-5.00", date="2026-09-01"), *rows]),
-                   payees=[{"name": n, "kind": "Employer", "country": "SGP"} for n in names])
-    return conn
+    return support.build_record([row("t0", "-5.00", date="2026-09-01"), *rows], path=path, plan={},
+                                user=support.user_tables(categories=CATEGORIES),
+                                payees=support.payees(sorted({r["payee"] for r in rows if r["payee"]}), kind="Employer"))
 
 
 def pay_rows(payee, first, n, amount, category="Salary", extra=None):
@@ -267,16 +265,17 @@ class Endpoint(unittest.TestCase):
         self.addCleanup(env.stop)
 
     def test_without_a_record_or_a_date_of_birth_there_is_nothing_to_offer_from_the_record(self):
-        out = serve.answer("/api/suggestions", {})
+        out = support.answer("/api/suggestions", {})
         self.assertEqual((out["income"], out["cpf_employer_rate"]), ([], None))
         self.assertFalse((self.root / "kopifund.db").exists())
 
     def test_it_reads_the_record_the_profile_and_the_stat_results(self):
         record(*pay_rows("Acme Pte", "2026-03", 7, "4000.00"), path=str(self.root / "kopifund.db")).close()
         (self.root / "profile.json").write_text(json.dumps({"birth_date": BIRTH.isoformat()}))
-        out = serve.answer("/api/suggestions", {})
+        with support.today_is(TODAY):
+            out = support.answer("/api/suggestions", {})
         self.assertEqual([(p["name"], p["gross"]) for p in out["income"]], [("Acme Pte", 500_000)])
-        self.assertEqual(out["cpf_employer_rate"], sug.employer_cpf_rate(BIRTH, date.today()))
+        self.assertEqual(out["cpf_employer_rate"], sug.employer_cpf_rate(BIRTH, TODAY))
         self.assertGreater(out["investing"]["per_month"], 0)              # the fixtures' brokerage statement deposits
 
     def test_it_is_cached_by_the_data_version_and_moves_with_the_profile(self):
