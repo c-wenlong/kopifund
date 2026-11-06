@@ -419,3 +419,85 @@ func doubleAmountsPastCountingAreRefused(amount: Double) {
     #expect(try context.fetchCount(FetchDescriptor<MetadataRecord>()) == 0)
     #expect(Suppression.signatures(in: defaults).isEmpty)
 }
+
+// MARK: - empty Wallet captures (G24, found on the owner's phone)
+
+@MainActor
+private func walletRow(_ context: ModelContext, cents: Int = 0, payee: String = "",
+                       state: String = "pending") -> TransactionRecord {
+    let row = TransactionRecord(walletAmountCents: cents, merchant: payee, card: nil,
+                                date: day, accountID: "a1", currency: "SGD")
+    row.state = state
+    context.insert(row)
+    return row
+}
+
+@Test func missingDetailsNamesWhatIsMissing() {
+    let empty = TransactionRecord(walletAmountCents: 0, merchant: " ", card: nil,
+                                  date: day, accountID: "")
+    #expect(empty.missingDetails?.contains("amount or payee") == true)
+    #expect(empty.missingDetailsNote == "no amount or payee")
+    empty.payee = "Card check"
+    #expect(empty.missingDetailsNote == "no amount")
+    empty.amountCents = 264
+    #expect(empty.missingDetails == nil && empty.missingDetailsNote == nil)
+    empty.payee = ""
+    #expect(empty.missingDetailsNote == "no payee")
+}
+
+@Test @MainActor func cleanupRemovesOnlyEmptyWalletCapturesNeverSent() throws {
+    let context = ModelContext(try Store.memory())
+    let (defaults, name) = scratchDefaults()
+    defer { defaults.removePersistentDomain(forName: name) }
+    let doomed = [walletRow(context), walletRow(context, payee: "  "),
+                  walletRow(context, state: "approved")]
+    // everything below stays
+    let real = walletRow(context, cents: 264, payee: "Cheers")
+    let named = walletRow(context, payee: "SimplyGo")             // amount 0, has a payee
+    let noPayee = walletRow(context, cents: 450)                  // has an amount
+    let synced = walletRow(context, state: "synced")
+    let sent = walletRow(context)
+    sent.importID = "YNAB:0:x"
+    sent.syncAttempts = 1
+    let onHub = walletRow(context)
+    onHub.kopifundID = "kph_1"
+    let sms = TransactionRecord(walletAmountCents: 0, merchant: "", card: nil,
+                                date: day, accountID: "a1")
+    sms.source = "sms"
+    sms.alertText = "SGD 0.00 card check"
+    context.insert(sms)
+    // a memo or category the owner set keeps the row
+    let noted = walletRow(context)
+    noted.memo = "bus to work"
+    let filed = walletRow(context)
+    filed.categoryID = "cat-transport"
+    // an empty row another row is parked against stays, so no pointer dangles
+    let kept = walletRow(context)
+    let parked = walletRow(context, cents: 100, payee: "Kopi", state: "duplicate")
+    parked.duplicateOf = kept.id
+    try context.save()
+
+    #expect(try EmptyWalletCleanup.runOnce(in: context, defaults: defaults) == doomed.count)
+    let left = Set(try context.fetch(FetchDescriptor<TransactionRecord>()).map(\.id))
+    #expect(left == Set([real, named, noPayee, synced, sent, onHub, sms, noted, filed, kept, parked].map(\.id)))
+    #expect(defaults.bool(forKey: EmptyWalletCleanup.doneKey))
+
+    // once only: a later empty row is left for the owner to see
+    _ = walletRow(context)
+    try context.save()
+    #expect(try EmptyWalletCleanup.runOnce(in: context, defaults: defaults) == nil)
+    #expect(try context.fetchCount(FetchDescriptor<TransactionRecord>()) == left.count + 1)
+}
+
+@Test func unmatchedChipReadsLikeTheInboxRow() {
+    // the phone showed "SGD2.20" in Unmatched beside "-SGD 0.00" in the Inbox
+    #expect(Cents.chipText(printed: "SGD2.20") == "SGD 2.20")
+    #expect(Cents.chipText(printed: "SGD 2.2") == "SGD 2.20")
+    #expect(Cents.chipText(printed: "S$4.50") == "SGD 4.50")
+    #expect(Cents.chipText(printed: "1,234.50") == "1234.50")
+    #expect(Cents.chipText(printed: " USD 12 ") == "USD 12.00")
+    // the same figure the Inbox prints, without the direction's sign
+    let row = TransactionRecord(walletAmountCents: 220, merchant: "Cheers", card: nil,
+                                date: day, accountID: "", currency: "SGD")
+    #expect(row.amountText == "-" + Cents.chipText(printed: "SGD2.20"))
+}

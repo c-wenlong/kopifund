@@ -13,7 +13,12 @@ struct InboxView: View {
     @State private var showPaste = false
     @State private var accountNames: [String: String] = [:]
 
-    private var pending: [TransactionRecord] { rows.filter { $0.state == "pending" } }
+    // G24: a row with no amount or payee waits apart, so "Approve all"
+    // never reaches it
+    private var pending: [TransactionRecord] {
+        rows.filter { $0.state == "pending" && $0.missingDetails == nil } }
+    private var needsDetails: [TransactionRecord] {
+        rows.filter { $0.state == "pending" && $0.missingDetails != nil } }
     private var duplicates: [TransactionRecord] { rows.filter { $0.state == "duplicate" } }
     private var recorded: [TransactionRecord] { rows.filter { $0.state == "kopifund" } }
     private var rest: [TransactionRecord] { rows.filter {
@@ -29,6 +34,7 @@ struct InboxView: View {
                     }
                 }
                 rowSection("Pending", pending)
+                needsDetailsSection
                 rowSection("Possible duplicates", duplicates)
                 // covered by a loaded statement row: parked like a
                 // duplicate, but the match is the record itself
@@ -64,6 +70,11 @@ struct InboxView: View {
             .alert("Ingest failed", isPresented: .constant(!ingestError.isEmpty)) {
                 Button("OK") { ingestError = "" }
             } message: { Text(ingestError) }
+            .confirmationDialog("Delete \(needsDetails.count) rows with no details?",
+                                isPresented: $confirmDeleteAll, titleVisibility: .visible) {
+                Button("Delete all", role: .destructive) { delete(needsDetails) }
+                Button("Cancel", role: .cancel) {}
+            }
             .alert("Paste alert text", isPresented: $showPaste) {
                 TextField("Alert text", text: $pasteText, axis: .vertical)
                     .textInputAutocapitalization(.never)
@@ -87,11 +98,54 @@ struct InboxView: View {
         }
     }
 
+    /// Rows waiting for an amount or a payee, each with what it lacks. A
+    /// swipe deletes one; "Delete all" clears the section, since empty
+    /// Wallet captures arrive in runs and none of them holds anything.
+    @ViewBuilder
+    private var needsDetailsSection: some View {
+        if !needsDetails.isEmpty {
+            Section {
+                ForEach(needsDetails) { row in
+                    NavigationLink(value: row.id) {
+                        Row(row: row, accountName: accountNames[row.accountID])
+                    }
+                    .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                        Button("Delete", role: .destructive) { delete([row]) }
+                    }
+                }
+            } header: {
+                HStack {
+                    Text("Needs details")
+                    Spacer()
+                    Button("Delete all", role: .destructive) { confirmDeleteAll = true }
+                        .font(.caption)
+                }
+            } footer: {
+                Text("No amount or payee came through for these. Open one to type what is "
+                     + "missing; until then it is never approved or synced.")
+            }
+        }
+    }
+
+    @State private var confirmDeleteAll = false
+
+    private func delete(_ doomed: [TransactionRecord]) {
+        // only rows still waiting here: one an edit made complete since the
+        // list loaded is no longer empty
+        withAnimation {
+            for r in doomed where r.state == "pending" && r.missingDetails != nil {
+                context.delete(r)
+            }
+            try? context.save()
+        }
+    }
+
     private func approveAll() {
         // an intent may have parked one of these as a duplicate since this
         // list loaded; approving the stale copy would write over that
         SyncService.refresh(context)
-        for r in pending where r.state == "pending" { r.state = "approved" }
+        // a row with no amount or payee never posts (G24)
+        for r in pending where r.state == "pending" && r.missingDetails == nil { r.state = "approved" }
         try? context.save()
         Task { await SyncService.flush(context: context) }
     }
@@ -135,13 +189,20 @@ struct InboxView: View {
         var body: some View {
             // "pending" inside the Pending section says nothing; the
             // caption only speaks where the state adds information
-            LedgerRow(title: row.payee, amount: row.amountText, caption: caption(row),
-                      note: row.state == "pending" ? nil : (row.state, color))
+            LedgerRow(title: row.payee.trimmingCharacters(in: .whitespaces).isEmpty
+                          ? "No payee" : row.payee,
+                      amount: row.amountText, caption: caption(row), note: note)
         }
         private func caption(_ r: TransactionRecord) -> String {
             r.day.formatted(date: .abbreviated, time: .omitted)
                 + (accountName.map { " · \($0)" } ?? "")
                 + (r.source.map { " · \($0)" } ?? "")
+        }
+        private var note: (String, Color)? {
+            if row.state == "pending" {
+                return row.missingDetailsNote.map { ($0, .orange) }
+            }
+            return (row.state, color)
         }
         private var color: Color {
             switch row.state {

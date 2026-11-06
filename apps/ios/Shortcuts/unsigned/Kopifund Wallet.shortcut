@@ -115,6 +115,7 @@
 		<string>WFSafariWebPageContentItem</string>
 		<string>WFStringContentItem</string>
 		<string>WFURLContentItem</string>
+		<string>WFWalletTransactionContentItem</string>
 	</array>
 	<key>WFWorkflowMinimumClientVersion</key>
 	<integer>900</integer>

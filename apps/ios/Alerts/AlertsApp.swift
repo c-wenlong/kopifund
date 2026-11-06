@@ -18,6 +18,11 @@ struct AlertsApp: App {
             let c = try Store.container()
             container = c
             storeError = nil
+            // G24: builds before the missing-details check queued empty
+            // Wallet captures (amount 0, no payee) as approvable rows; clear
+            // them once. Only rows never sent anywhere go, and the count is
+            // logged (EmptyWalletCleanup)
+            _ = try? EmptyWalletCleanup.runOnce(in: ModelContext(c), defaults: .standard)
             // G25: a UI test seeds one pending row with `-seedSpend
             // cents|currency|payee|YYYY-MM-DD` so an approve can reach the
             // hub's pending post without a saved pattern or YNAB setup

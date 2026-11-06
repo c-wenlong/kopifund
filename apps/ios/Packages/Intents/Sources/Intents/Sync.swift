@@ -128,6 +128,9 @@ public enum Sync {
                 predicate: #Predicate {
                     $0.state == "approved" || $0.state == "failed" || $0.state == "syncing" },
                 sortBy: [SortDescriptor(\.receivedAt)]))) ?? [])
+                // before the backoff: a failed empty row waiting for "Sync
+                // now" still goes back to Needs details on this run
+                .filter { !holdIfMissingDetails($0, context: context) }
                 .filter { !tried.contains($0.id) && isDue($0, now: now(), force: force) }
                 .map(\.id)
             if ids.isEmpty { break }
@@ -198,10 +201,27 @@ public enum Sync {
         }
     }
 
+    /// G24: a row with no amount or no payee (an empty Wallet capture, or
+    /// one an earlier build let "Approve all" take) never posts: it goes
+    /// back to review, where it waits under "Needs details". Returns true
+    /// when the row was held. No request is made, so no attempt counts.
+    /// The hub lane asks the same before its pending post.
+    @discardableResult
+    public static func holdIfMissingDetails(_ row: TransactionRecord, context: ModelContext) -> Bool {
+        guard row.missingDetails != nil else { return false }
+        if ["approved", "failed", "syncing"].contains(row.state) {
+            row.state = "pending"
+            row.nextSyncAt = nil
+            try? context.save()
+        }
+        return true
+    }
+
     /// Send one row. Returns a stop when the run must end here.
     private static func send(_ row: TransactionRecord, context: ModelContext,
                              client: YNABClient, settings: SyncSettings,
                              now: () -> Date, outcome: inout SyncOutcome) async -> SyncStop? {
+        if holdIfMissingDetails(row, context: context) { return nil }
         let accountID = row.accountID.isEmpty ? settings.defaultAccountID : row.accountID
         guard !accountID.isEmpty else {
             // no request was made, so no backoff: the next run tries again,

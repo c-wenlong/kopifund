@@ -402,4 +402,54 @@ struct SyncTests {
         #expect(covered.state == "kopifund")
         #expect(kept.state == "synced")
     }
+
+    /// G24: "Approve all" on an older build could approve an empty Wallet
+    /// capture. A row with no amount or no payee never posts; it goes back
+    /// to review with no request made and no attempt counted.
+    @Test func aRowWithNoAmountOrPayeeNeverPosts() async throws {
+        let context = ModelContext(try Store.memory())
+        let empty = approved(context, payee: "", cents: 0)
+        let zero = approved(context, payee: "Card check", cents: 0)
+        let blank = approved(context, payee: "  ", cents: 264)
+        let failed = approved(context, payee: "", cents: 0)
+        failed.state = "failed"
+        let real = approved(context, payee: "Cheers", cents: 264)
+        try? context.save()
+        MockProtocol.handler = { _ in created("y1") }
+        let outcome = await Sync.run(context: context, client: client(), settings: settings,
+                                     force: true)
+        #expect(MockProtocol.requests.count == 1)
+        #expect(outcome.posted == 1 && outcome.failed == 0)
+        #expect(real.state == "synced")
+        for row in [empty, zero, blank, failed] {
+            #expect(row.state == "pending")
+            #expect(row.syncAttempts == 0 && row.importID == nil)
+        }
+    }
+
+    /// A failed empty row whose retry waits for "Sync now" still goes back
+    /// to review on an ordinary run, so Needs details can show and delete it.
+    @Test func aFailedEmptyRowPastItsRetriesGoesBackToReview() async throws {
+        let context = ModelContext(try Store.memory())
+        let stuck = approved(context, payee: "", cents: 0)
+        stuck.state = "failed"
+        stuck.nextSyncAt = .distantFuture
+        try? context.save()
+        MockProtocol.handler = { _ in created("y1") }
+        _ = await Sync.run(context: context, client: client(), settings: settings)
+        #expect(MockProtocol.requests.isEmpty)
+        #expect(stuck.state == "pending")
+    }
+
+    /// The hub lane asks the same question before its pending post.
+    @Test func holdIfMissingDetailsLeavesAPendingRowAndACompleteRowAlone() throws {
+        let context = ModelContext(try Store.memory())
+        let empty = approved(context, payee: "", cents: 0)
+        #expect(Sync.holdIfMissingDetails(empty, context: context))
+        #expect(empty.state == "pending")
+        #expect(Sync.holdIfMissingDetails(empty, context: context))
+        let real = approved(context, payee: "Cheers", cents: 264)
+        #expect(!Sync.holdIfMissingDetails(real, context: context))
+        #expect(real.state == "approved")
+    }
 }

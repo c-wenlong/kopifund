@@ -94,6 +94,13 @@ public enum Ingest {
     /// figure is refused with a readable error instead of trapping on the
     /// cents conversion. `currency` is the ISO code when the shortcut passes
     /// one; without it the row takes the plan's currency.
+    ///
+    /// A tap that brings an amount of 0 or no merchant (the trigger can fire
+    /// before the issuer sends the details, or for a tap that was no
+    /// purchase) is kept, so a real purchase is never lost, but it waits
+    /// under "Needs details" (`TransactionRecord.missingDetails`): it is not
+    /// approvable, never pairs as a duplicate, and never posts until the
+    /// owner types what is missing. The result says "needs details".
     @MainActor
     public static func wallet(amount: Double, merchant: String, card: String?, date: Date?,
                               currency: String?, container: ModelContainer,
@@ -119,6 +126,12 @@ public enum Ingest {
                                     date: date ?? Date(), accountID: accountID,
                                     currency: code)
         context.insert(row)
+        if row.missingDetails != nil {
+            // an empty capture reads as the same spend as nothing: pairing
+            // it could only park a real row against it
+            try context.save()
+            return "needs details"
+        }
         settleDuplicates(of: row, in: context)
         holdKeeperIfForeign(of: row, in: context, defaults: defaults)
         try context.save()
@@ -179,7 +192,8 @@ public enum Ingest {
         // row post afresh would land the one spend on the record twice.
         var sent: TransactionRecord? = nil
         var best: TransactionRecord? = nil     // still pullable
-        for c in existing where c.id != row.id && c.state != "duplicate" {
+        // a row still missing its amount or payee is no spend to pair with
+        for c in existing where c.id != row.id && c.state != "duplicate" && c.missingDetails == nil {
             // an unstated currency (a Wallet tap) pairs with whatever the
             // other capture printed; two stated ones must agree
             guard Currency.compatible(row.currency, c.currency) else { continue }

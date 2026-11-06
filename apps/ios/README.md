@@ -76,7 +76,9 @@ keep or change the ids, whichever your account allows.
 An alert no pattern takes waits in Unmatched. Rows lead with the merchant
 the detector reads out of the alert (falling back to its first telling
 line), and a neutral chip shows the detector's best money guess when one
-exists (no colour: the direction is unknown until a pattern says it). Tapping a row opens
+exists (no colour: the direction is unknown until a pattern says it). The
+chip prints the figure the way the Inbox does ("SGD 2.20", whatever spacing
+the alert used), without a sign. Tapping a row opens
 the alert itself first: mail chrome dimmed, the detector's summary up top
 ("amount, date found"), and the matcher rejections tucked behind "Why
 nothing matched".
@@ -146,6 +148,14 @@ then add it again. To regenerate a bundled copy, run
 `shortcuts sign -m anyone -i <unsigned> -o <bundled>` on a Mac signed into
 iCloud.
 
+The Wallet trigger does not always hand over a purchase: it fires for every
+tap of a card or pass, and a tap can reach the shortcut before the card's
+issuer has sent the merchant and amount. Such a capture (amount 0, no
+merchant) is kept but never approvable; see "Needs details" below. The
+unsigned Wallet source lists the Wallet transaction among the input types it
+accepts (`WFWalletTransactionContentItem`), which earlier copies left out; the
+bundled signed copy is regenerated from it with the command above.
+
 The merchant and card names arrive from Apple's Wallet record, which prints
 them title-cased ("Sgh - Digestive & Live") where the bank's SMS prints the
 raw descriptor ("SGH - DIGESTIVE & LIVE"). The app stores what it is handed;
@@ -171,6 +181,17 @@ SGD**; the button stays off until a figure is typed. A row whose source printed
 no currency counts in the plan's. The bundled Wallet shortcut does not pass a
 currency yet, so its taps count in the plan's currency; add the Currency
 field to the Ingest Wallet Transaction action to pass one.
+
+A row with an amount of 0 or no payee, such as a Wallet tap whose details
+never came through, waits under **Needs details** with what it lacks. It
+cannot be approved, "Approve all" skips it, it never pairs as a duplicate,
+and a sync never posts it to YNAB or to the linked record (a row an older
+build approved goes back to review). Open it and type the amount and payee
+to make it an ordinary pending row, or swipe to delete it; **Delete all**
+clears the section. The first launch of this build deletes, once, the empty
+Wallet captures older builds queued: rows from the Wallet intent with amount
+0, no payee and no alert text that never reached YNAB or the record, and
+logs how many went.
 
 Matches wait in the Inbox. Edit payee, amount, date, category or memo, then
 approve (or approve all). Approved rows sync to YNAB as uncleared and

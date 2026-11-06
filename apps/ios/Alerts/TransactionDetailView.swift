@@ -113,6 +113,13 @@ struct TransactionDetailView: View {
                     }
                 }
             }
+            if row.state == "pending", let missing = row.missingDetails {
+                // G24: no amount or payee came through; nothing approves or
+                // posts it until both are typed
+                Section("Needs details") {
+                    Text(missing).font(.caption).foregroundStyle(.orange)
+                }
+            }
             if let plan = heldFor {
                 // G24 audit: a foreign spend never posts as the plan's
                 // currency on its own; the owner types the converted figure
@@ -131,7 +138,9 @@ struct TransactionDetailView: View {
                         Task { await SyncService.flush(context: context) }
                         dismiss()
                     }
-                    .disabled(convertedCents == nil)
+                    // a blank payee never posts (G24), so the button waits for one too
+                    .disabled(convertedCents == nil
+                              || row.payee.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 } header: {
                     Text("Different currency")
                 } footer: {
@@ -163,7 +172,7 @@ struct TransactionDetailView: View {
                 .map { ($0.id, "\($0.group) · \($0.name)") }
         }
         .toolbar {
-            if row.state == "pending" && heldFor == nil {
+            if row.state == "pending" && heldFor == nil && row.missingDetails == nil {
                 Button("Approve") {
                     row.state = "approved"
                     try? context.save()
