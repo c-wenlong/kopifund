@@ -183,7 +183,9 @@ struct PatternBuilderView: View {
     /// currency fallback and date parsing are exactly what intake produces.
     private func readsSummary(_ m: ParsedTransaction) -> String {
         var parts = [m.payee]
-        let figure = String(format: "%.2f", (m.amount as NSDecimalNumber).doubleValue)
+        // a match keeps cents (Matcher refuses a third decimal), so the
+        // figure prints exactly
+        let figure = Cents.from(m.amount).map(Cents.text) ?? "\(m.amount)"
         parts.append((m.currency.map { "\($0) " } ?? "") + figure)
         parts.append(m.date.formatted(date: .abbreviated, time: .omitted))
         if let h = m.accountHint { parts.append("card \(h)") }

@@ -25,6 +25,7 @@ import tempfile
 from pathlib import Path
 
 from .paths import REPO
+from .pdftext import pdf_text
 
 # the kinds, in the order the report names them
 KINDS = ("name", "address", "postcode", "id", "email", "phone", "account")
@@ -267,12 +268,6 @@ def scrub(text):
             counts[kind] += 1
     out = "".join(mask(c) if owner[k] else c for k, c in enumerate(text))
     return out, counts
-
-
-def pdf_text(pdf):
-    """The PDF's text as the parsers read it."""
-    return subprocess.run(["pdftotext", "-layout", str(pdf), "-"], capture_output=True,
-                          text=True, check=True).stdout
 
 
 class SampleRefused(Exception):

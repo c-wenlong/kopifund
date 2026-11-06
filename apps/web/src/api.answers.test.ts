@@ -1,15 +1,12 @@
 import { renderHook, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ApiError, clearApiCache, getJSON, KEEP_FOR, KEPT_KEY, OFFLINE, postJSON, restoreKept, UNREADABLE, UNREADABLE_WRITE, useApi, watchStatsRebuild } from "./api";
+import { json } from "./test-helpers";
 
 // Audit: an answer the app cannot read says so plainly, and a write whose answer cannot be
 // read is not reported as saved.
 
 const html = (status = 200) => new Response("<html>Sign in to the network</html>", { status, headers: { "Content-Type": "text/html" } });
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
-
-afterEach(() => vi.unstubAllGlobals());
-
 describe("postJSON", () => {
   it("fails a success whose body is not JSON, rather than resolving it as {}", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => html()));

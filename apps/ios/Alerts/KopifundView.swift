@@ -1,5 +1,6 @@
 import SwiftUI
 import KopifundClient
+import Storage
 
 /// G25: the Kopifund tab: the record the phone is paired to read. Accounts
 /// come from /api/profile; the Transactions browser pages /api/transactions.
@@ -135,10 +136,8 @@ struct TransactionsView: View {
     /// SGD when the record has it (a payment with no SGD value keeps its own
     /// currency's figure). Cents become dollars only for display.
     private func money(_ r: TransactionRow) -> String {
-        if let sgd = r.amountSGD {
-            return "\(sgd < 0 ? "-" : "+")SGD \(String(format: "%.2f", Double(abs(sgd)) / 100))"
-        }
-        return "\(r.amount < 0 ? "-" : "+")\(r.currency) \(String(format: "%.2f", Double(abs(r.amount)) / 100))"
+        if let sgd = r.amountSGD { return Cents.signedText(sgd, currency: "SGD") }
+        return Cents.signedText(r.amount, currency: r.currency)
     }
 
     @State private var generation = 0

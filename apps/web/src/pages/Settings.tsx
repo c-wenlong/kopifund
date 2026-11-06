@@ -1,8 +1,8 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { Download, FileJson, FileSpreadsheet, FileText } from "lucide-react";
 import { useSidebarMode, type SidebarMode } from "../components/sidebarMode";
 import { checkServer, postJSON, useApi, useLink, type ExportDone, type Exports, type ScamChecks, type ScamSettings, type ServerEnding, type ServerInfo, type ServerMode } from "../api";
-import { centsText, formatSgd, parseCents } from "../money";
+import { centsText, formatSgd, isAmountText, parseCents } from "../money";
 import { formatDay } from "../dates";
 import { MoneyInput } from "../components/MoneyInput";
 import { SaveBar } from "../components/SaveBar";
@@ -12,8 +12,9 @@ import { StatusChip } from "../components/StatusChip";
 import { COLLAPSED_ROWS, CollapsibleRows } from "../components/CollapsibleRows";
 import { PageActions } from "../components/PageActions";
 import { useWide } from "../components/useWide";
+import { useAction } from "../components/useAction";
+import { useDraft } from "../components/useDraft";
 import { SERVER_ICON, type ServerState } from "../icons";
-import { useUnsavedGuard } from "../router";
 import { AiCard } from "./AiCard";
 import { AppIconCard } from "./AppIconCard";
 import { LinkCard } from "./LinkCard";
@@ -240,22 +241,12 @@ function FileIcon({ name }: { name: string }) {
 function ExportCard() {
   const [version, setVersion] = useState(0);
   const list = useApi<Exports>(`/api/exports?v=${version}`);
-  const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<ExportDone | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function run() {
-    setBusy(true);
-    setError(null);
-    try {
-      setDone(await postJSON<ExportDone>("/api/export"));
-      setVersion((v) => v + 1);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const { running: busy, error, run: act } = useAction();
+  const run = () => act("export", async () => {
+    setDone(await postJSON<ExportDone>("/api/export"));
+    setVersion((v) => v + 1);
+  });
 
   const latest = list.data?.exports[0];
   return (
@@ -293,55 +284,27 @@ const isMoney = (k: ScamKey) => MONEY.includes(k);
 const draftOf = (v: ScamSettings): ScamDraft =>
   Object.fromEntries((Object.keys(v) as ScamKey[]).map((k) => [k, isMoney(k) ? centsText(v[k]) : String(v[k])])) as ScamDraft;
 const WHOLE = /^\d+$/;
-const DOLLARS = /^\d+(\.\d{1,2})?$/;
 
 export function ScamChecksCard() {
   const { data, error } = useApi<ScamChecks>("/api/scam-checks");
-  // G18: only the boxes typed in, so a save from another tab still shows in every box left alone
-  const [draft, setDraft] = useState<Partial<ScamDraft> | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  // a save on its way: what is typed meanwhile is an edit, even back to the old saved value
-  const inFlight = useRef(false);
-  const saved = data ? draftOf(data.settings) : null;
+  // G18: only the boxes typed in, so a save from another tab still shows in every box left alone (useDraft)
+  const form = useDraft<ScamDraft>(data ? draftOf(data.settings) : null, data);
+  const { saved, dirty, saving, problem } = form;
   const keys = saved ? Object.keys(saved) as ScamKey[] : [];
-  const d = { ...saved, ...draft } as ScamDraft;
-  const dirty = !!saved && keys.some((k) => d[k] !== saved[k]);
-  // G18: leaving the page with a threshold typed and not saved asks first
-  useUnsavedGuard(dirty);
+  const d = form.value!;
   if (error) return <Card title="Scam checks"><p className="m-0 text-[13px] text-warn">{error}</p></Card>;
   if (!data || !saved) return null;
-  const bad = (k: ScamKey) => !(isMoney(k) ? DOLLARS : WHOLE).test(d[k]);
-  const set = (k: ScamKey) => (v: string) => {
-    // a box typed back to its saved value is no longer an edit, unless that value is about to change
-    const rest = { ...draft };
-    delete rest[k];
-    setDraft(v === saved[k] && !inFlight.current ? rest : { ...rest, [k]: v });
-    setProblem(null);
-  };
+  // an amount takes what every other money box takes (".5" included); the rest are whole numbers
+  const bad = (k: ScamKey) => (isMoney(k) ? !isAmountText(d[k]) : !WHOLE.test(d[k]));
+  const set = (k: ScamKey) => (v: string) => form.set({ [k]: v } as Partial<ScamDraft>);
 
   async function save() {
     if (keys.some(bad)) {
-      setProblem("Each box takes a whole number; an amount can have cents.");
+      form.setProblem("Each box takes a whole number; an amount can have cents.");
       return;
     }
-    setSaving(true);
-    inFlight.current = true;
-    const sent = { ...d };
-    try {
-      await postJSON("/api/scam-checks/settings", JSON.stringify(Object.fromEntries(
-        keys.map((k) => [k, isMoney(k) ? parseCents(sent[k]) : Number(sent[k])]))));
-      // G18: the boxes the save covered are saved; one typed in while it was on its way stays an edit
-      setDraft((now) => {
-        const left = Object.fromEntries(Object.entries(now ?? {}).filter(([k, v]) => v !== sent[k as ScamKey]));
-        return Object.keys(left).length ? left : null;
-      });
-    } catch (e) {
-      setProblem((e as Error).message);
-    } finally {
-      inFlight.current = false;
-      setSaving(false);
-    }
+    await form.save((sent) => postJSON("/api/scam-checks/settings", JSON.stringify(Object.fromEntries(
+      keys.map((k) => [k, isMoney(k) ? parseCents(sent[k]) : Number(sent[k])])))));
   }
 
   const field = (k: ScamKey, label: string, opts: { before?: string; after?: string; group?: boolean }) => (
@@ -352,7 +315,7 @@ export function ScamChecksCard() {
     </label>
   );
   return (
-    <Card title="Scam checks" actions={<SaveBar dirty={dirty} saving={saving} onSave={() => void save()} onDiscard={() => { setDraft(null); setProblem(null); }} />}>
+    <Card title="Scam checks" actions={<SaveBar dirty={dirty} saving={saving} onSave={() => void save()} onDiscard={form.discard} />}>
       <form onSubmit={(e) => { e.preventDefault(); void save(); }} aria-label="Scam check thresholds"
         className="mt-2 flex flex-col gap-3">
         <section aria-label="Transfers" className="flex flex-col gap-1.5">
@@ -382,19 +345,8 @@ export function ScamChecksCard() {
 }
 
 function MarkedFine({ rows }: { rows: ScamChecks["marked_fine"] }) {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [failed, setFailed] = useState<{ key: string; message: string } | null>(null);
-  async function again(key: string) {
-    setBusy(key);
-    setFailed(null);
-    try {
-      await postJSON("/api/scam-checks/fine", JSON.stringify({ key, fine: false }));
-    } catch (e) {
-      setFailed({ key, message: (e as Error).message });
-    } finally {
-      setBusy(null);
-    }
-  }
+  const { busy, failed, run } = useAction();
+  const again = (key: string) => run(key, () => postJSON("/api/scam-checks/fine", JSON.stringify({ key, fine: false })));
   return (
     <section aria-label="Marked fine" className="mt-3">
       <h3 className="m-0 mb-1.5 text-[13px] font-semibold">Marked fine</h3>

@@ -8,7 +8,9 @@ import { formatDay } from "../dates";
 import { GroupRowsPanel } from "./PinRow";
 import { Pager, usePager } from "./Pager";
 import { Loading } from "./States";
+import { useAction } from "./useAction";
 import { HEAD_ROW, TABLE_BOX, TH } from "./tableKit";
+import { TextInput } from "./TextInput";
 
 type Row = {
   text: string;
@@ -60,8 +62,7 @@ export function NeedsRuleTable({ groups, canLoad, onSaved }: {
   const [reply, setReply] = useState<SuggestReply | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [failed, setFailed] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { running: saving, error, run } = useAction();
   const [open, setOpen] = useState<string | null>(null);   // the group whose rows are listed
   const [patterns, setPatterns] = useState<Set<string>>(new Set());   // rows whose pattern box is open
 
@@ -104,9 +105,7 @@ export function NeedsRuleTable({ groups, canLoad, onSaved }: {
   const unsure = rows.length - rows.filter((r) => r.picked).length;
 
   async function save() {
-    setSaving(true);
-    setError(null);
-    try {
+    await run("save", async () => {
       await postJSON("/api/rules/batch", JSON.stringify({
         rules: chosen.map((r) => ({
           match_on: r.match_on, pattern: r.pattern, payee: r.payee.trim(), kind: r.kind,
@@ -114,11 +113,7 @@ export function NeedsRuleTable({ groups, canLoad, onSaved }: {
         })),
       }));
       await onSaved(canLoad);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setSaving(false);
-    }
+    });
   }
 
   const n = chosen.length;
@@ -174,9 +169,8 @@ export function NeedsRuleTable({ groups, canLoad, onSaved }: {
                   </td>
                   <td className="px-2 py-2 max-md:py-1">
                     <span className="mb-0.5 block text-[12px] text-ink-3 md:hidden">Payee</span>
-                    <input value={r.payee} aria-label={`Payee for ${r.text}`}
-                      onChange={(e) => update(i, { payee: e.target.value })}
-                      className="h-8 w-full rounded-md border border-line bg-panel px-2" />
+                    <TextInput value={r.payee} aria-label={`Payee for ${r.text}`}
+                      onChange={(e) => update(i, { payee: e.target.value })} className="w-full" />
                     {/* G13: the wildcard stays out of sight until asked for; a clash opens it so it can be narrowed */}
                     {patterns.has(r.text) || conflicts.has(r.text) ? (
                       <label className="mt-1 flex items-center gap-1 text-[12px] text-ink-3">

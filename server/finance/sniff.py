@@ -26,6 +26,7 @@ from pathlib import Path
 
 # every layout a parser declares (G21); Place has a method called layouts
 from .parsers import layouts as registry
+from .pdftext import pdf_text as read_pdf
 
 
 @dataclass(frozen=True)
@@ -88,8 +89,7 @@ def pdf_text(pdf):
             return dump.read_text(errors="replace")
     except ValueError:                    # not under statements/: no dump of its own
         pass
-    return subprocess.run(["pdftotext", "-layout", str(pdf), "-"], capture_output=True,
-                          text=True, check=True).stdout
+    return read_pdf(pdf)
 
 
 # what each statement already in a folder says it is, by (path, size, mtime):

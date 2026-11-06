@@ -34,3 +34,32 @@ public enum Cents {
         return from(exact)
     }
 }
+
+/// The one way the app prints integer cents: whole units, a point and two
+/// digits, worked out in integers so no figure passes through a float.
+extension Cents {
+    /// "4.50" for 450; "-4.50" for -450.
+    public static func text(_ cents: Int) -> String {
+        (cents < 0 ? "-" : "") + digits(cents.magnitude)
+    }
+
+    /// A signed figure with its currency: "-SGD 4.50" for -450, "+SGD 4.50"
+    /// for 450 (zero reads "+").
+    public static func signedText(_ cents: Int, currency: String) -> String {
+        "\(cents < 0 ? "-" : "+")\(currency) \(digits(cents.magnitude))"
+    }
+
+    private static func digits(_ cents: UInt) -> String {
+        let fraction = cents % 100
+        return "\(cents / 100).\(fraction < 10 ? "0" : "")\(fraction)"
+    }
+}
+
+extension TransactionRecord {
+    /// The row's figure as the lists print it: an outflow reads "-SGD 4.50",
+    /// an inflow "+SGD 4.50"; the stored cents are the size, the direction
+    /// the sign.
+    public var amountText: String {
+        "\(direction == "outflow" ? "-" : "+")\(currency) \(Cents.text(amountCents))"
+    }
+}

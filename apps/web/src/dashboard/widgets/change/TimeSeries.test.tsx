@@ -1,11 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { cashflowAnswer, stubQueries, useSizedCharts } from "./testkit";
+import { cashflowAnswer, stubQueries } from "./testkit";
 import { TimeSeriesChart, TimeSeriesWidget, type TimeSeriesConfig } from "./TimeSeries";
 import { joinFrames } from "./shared";
 import type { WidgetAnswer, WidgetQuery } from "../../../types.gen";
+import { navigate, stubMatchMedia, useSizedCharts } from "../../../test-helpers";
 
-const navigate = vi.fn();
-vi.mock("../../../router", () => ({ navigate: (to: string) => navigate(to) }));
+vi.mock("../../../router", async (actual) => (await import("../../../test-helpers")).withNavigate(await actual()));
 
 useSizedCharts();
 
@@ -37,8 +37,6 @@ const stubs = (): [WidgetQuery, WidgetAnswer][] => [
 const lines = (c: HTMLElement) => c.querySelectorAll(".recharts-line-curve");
 
 describe("TimeSeriesWidget", () => {
-  afterEach(() => { vi.unstubAllGlobals(); navigate.mockReset(); });
-
   it("draws one line per series, in invented cents, named in the legend", async () => {
     stubQueries(stubs());
     const { container } = render(<TimeSeriesWidget config={config} />);
@@ -68,8 +66,6 @@ describe("TimeSeriesWidget", () => {
 });
 
 describe("TimeSeriesChart", () => {
-  afterEach(() => { vi.unstubAllGlobals(); navigate.mockReset(); });
-
   const frame = () => joinFrames(
     config.series,
     [cashflowAnswer(MONTHS, "income"), cashflowAnswer(MONTHS, "spend"), cashflowAnswer(MONTHS, "net")],
@@ -111,9 +107,7 @@ describe("TimeSeriesChart", () => {
   });
 
   it("draws at phone height on a phone-width screen", () => {
-    vi.stubGlobal("matchMedia", (q: string) => ({
-      matches: false, media: q, addEventListener: () => {}, removeEventListener: () => {},
-    }));
+    stubMatchMedia(false);
     const { container } = render(<TimeSeriesChart frame={frame()} />);
     const box = container.querySelector(".recharts-responsive-container") as HTMLElement;
     expect(box.style.height).toBe("220px");

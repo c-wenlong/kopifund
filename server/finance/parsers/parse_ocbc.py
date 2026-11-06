@@ -28,11 +28,11 @@ replayed against the printed one. A chain that drifts stops the run.
 import argparse
 import csv
 import re
-import shutil
 import sys
 from decimal import Decimal
 from pathlib import Path
 
+from finance.pdftext import pdf_to_text, require as require_pdftotext
 from . import parse_statements as ps
 from .layouts import SAMPLE, Bank, Layout, NotThisLayout, Seen, by_months, register, register_bank
 
@@ -222,14 +222,13 @@ def main():
     ap.add_argument("--out", metavar="DIR")
     ap.add_argument("--no-text", action="store_true")
     args = ap.parse_args()
-    if not shutil.which("pdftotext"):
-        sys.exit("pdftotext not found (brew install poppler)")
+    require_pdftotext()
     pdfs = ps.collect_pdfs(args.paths or ps.statement_folders("ocbc-"))
     if not pdfs:
         sys.exit("no PDFs found")
     rows, blocks, bad = [], [], []
     for pdf in pdfs:
-        text = ps.pdf_to_text(pdf, write=not args.no_text)
+        text = pdf_to_text(pdf, write=not args.no_text)
         if not detect(text):
             ps.warn(str(pdf), "no transactions parsed")
             continue

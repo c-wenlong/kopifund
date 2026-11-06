@@ -36,15 +36,14 @@ import functools
 import hashlib
 import json
 import re
-import shutil
-import subprocess
 import sys
 from collections import Counter, defaultdict
 from datetime import date
 from pathlib import Path
 
 # the data folder's layout (server/finance/paths.py) decides where text dumps go
-from finance.paths import current_statements, statements_dir, text_dump_path
+from finance.paths import current_statements, statements_dir
+from finance.pdftext import pdf_to_text, require as require_pdftotext
 
 from .layouts import CHECKED, Bank, Layout, Seen, by_months, register, register_bank
 
@@ -198,17 +197,6 @@ def split_amounts(ln, edges):
 
 
 # ---------------------------------------------------------------- extraction
-
-def pdf_to_text(pdf, write=True):
-    """Return the layout-preserved text of a PDF, saving a dump of it: under
-    cache/text/ for a statement in the data folder, beside the PDF otherwise."""
-    txt = text_dump_path(pdf)
-    out = subprocess.run(["pdftotext", "-layout", str(pdf), "-"],
-                         capture_output=True, text=True, check=True).stdout
-    if write:
-        txt.write_text(out)
-    return out
-
 
 def detect_format(lines):
     head = "\n".join(lines[:4])
@@ -836,8 +824,7 @@ def main():
                     help="do not save the .txt dump beside each PDF")
     args = ap.parse_args()
 
-    if not shutil.which("pdftotext"):
-        sys.exit("pdftotext not found (brew install poppler)")
+    require_pdftotext()
 
     pdfs = collect_pdfs(args.paths or statement_folders("dbs-", "posb-"))
     if not pdfs:

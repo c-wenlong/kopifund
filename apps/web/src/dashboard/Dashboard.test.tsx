@@ -4,12 +4,11 @@ import { revalidate, type DashboardLayout, type DashboardLayouts } from "../api"
 import { Toaster } from "../components/Toast";
 import { keepEditing, navigate } from "../router";
 import { Dashboard } from "./Dashboard";
+import { json } from "../test-helpers";
 
 // G26: the Dashboard page against a stand-in server that keeps what is posted,
 // so a second render sees what the first saved, as a reload would. All figures
 // and names are invented.
-
-const ok = (data: unknown) => new Response(JSON.stringify(data), { status: 200 });
 
 const ANSWER = {
   source: "net-worth", metric: "total", dimension: "month", unit: "sgd_minor",
@@ -32,9 +31,9 @@ function stubServer(saved: { layouts: DashboardLayout[]; active: string | null }
         posts.push({ url, body });
         saved.layouts = body.layouts.map((d: DashboardLayout) => doc(d.id, d.name, d.widgets));
         saved.active = body.active ?? saved.active;
-        return ok({ layouts: saved.layouts, active: saved.active });
+        return json({ layouts: saved.layouts, active: saved.active });
       }
-      return ok({ layouts: saved.layouts, active: saved.active } satisfies DashboardLayouts);
+      return json({ layouts: saved.layouts, active: saved.active } satisfies DashboardLayouts);
     }
     const one = url.match(/^\/api\/dashboard\/layouts\/([a-z0-9_-]+)$/);
     if (one && init?.method === "POST") {
@@ -43,10 +42,10 @@ function stubServer(saved: { layouts: DashboardLayout[]; active: string | null }
       const d = doc(one[1], body.name, body.widgets ?? []);
       saved.layouts = [...saved.layouts.filter((x) => x.id !== d.id), d];
       if (body.active) saved.active = d.id;
-      return ok(d);
+      return json(d);
     }
-    if (url.startsWith("/api/dashboard/query")) return ok(ANSWER);
-    return new Response(JSON.stringify({ error: "not here" }), { status: 404 });
+    if (url.startsWith("/api/dashboard/query")) return json(ANSWER);
+    return json({ error: "not here" }, 404);
   });
   return posts;
 }
@@ -151,9 +150,9 @@ describe("Dashboard", () => {
           posts.push({ url, body });
           saved.layouts = body.layouts.map((d: DashboardLayout) => doc(d.id, d.name, d.widgets));
           saved.active = body.active ?? saved.active;
-          return ok({ layouts: saved.layouts, active: saved.active });
+          return json({ layouts: saved.layouts, active: saved.active });
         }
-        return ok({ layouts: saved.layouts, active: saved.active });
+        return json({ layouts: saved.layouts, active: saved.active });
       }
       const one = url.match(/^\/api\/dashboard\/layouts\/([a-z0-9_-]+)$/);
       if (one && init?.method === "POST") {
@@ -167,10 +166,10 @@ describe("Dashboard", () => {
         const d = doc(one[1], body.name, body.widgets ?? []);
         saved.layouts = [...saved.layouts.filter((x) => x.id !== d.id), d];
         if (body.active) saved.active = d.id;
-        return ok(d);
+        return json(d);
       }
-      if (url.startsWith("/api/dashboard/query")) return ok(ANSWER);
-      return new Response(JSON.stringify({ error: "not here" }), { status: 404 });
+      if (url.startsWith("/api/dashboard/query")) return json(ANSWER);
+      return json({ error: "not here" }, 404);
     });
     render(<><Dashboard /><Toaster /></>);
     await screen.findByText("kept");
@@ -273,7 +272,7 @@ describe("Dashboard", () => {
     let fail = true;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) =>
       fail && init?.method === "POST"
-        ? new Response(JSON.stringify({ error: "disk full" }), { status: 500 })
+        ? json({ error: "disk full" }, 500)
         : real(input, init));
     unmount();
     render(<Toaster />);
@@ -299,7 +298,7 @@ describe("Dashboard", () => {
     let fail = true;
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) =>
       fail && init?.method === "POST"
-        ? new Response(JSON.stringify({ error: "disk full" }), { status: 500 })
+        ? json({ error: "disk full" }, 500)
         : real(input, init));
     first.unmount();
     render(<Toaster />);
@@ -378,7 +377,7 @@ describe("Dashboard", () => {
       if (held && init?.method === "POST") {
         held = false;
         await new Promise<void>((r) => { fail = r; });
-        return new Response(JSON.stringify({ error: "disk full" }), { status: 500 });
+        return json({ error: "disk full" }, 500);
       }
       return real(input, init);
     });

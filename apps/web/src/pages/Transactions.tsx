@@ -6,21 +6,23 @@ import {
 } from "../api";
 import { formatAmount, formatSgd } from "../money";
 import { BankMark } from "../components/BankMark";
-import { Button, buttonClass } from "../components/Button";
+import { Button } from "../components/Button";
 import { Combobox } from "../components/Combobox";
 import { EmptyState } from "../components/EmptyState";
+import { FilterChip } from "../components/FilterChip";
 import { Pager, usePager } from "../components/Pager";
 import { PinForm, pinDirty, pinnedText, savePin, undoRuleWrite, type PinDraft } from "../components/PinRow";
 import { draftParams, ruleOf, type Draft } from "../components/RuleEditor";
 import { Select } from "../components/Select";
-import { Loading, Problem } from "../components/States";
+import { Loading, NoStatementsYet, Problem } from "../components/States";
 import { HEAD_ROW, ROW, TABLE_CARD, TH } from "../components/tableKit";
 import { Tile } from "../components/Tile";
 import { showToast } from "../components/Toast";
 import { useWide } from "../components/useWide";
+import { useAction } from "../components/useAction";
 import { formatDate, formatDay, formatMonth, formatRange, formatWeekday } from "../dates";
-import { onLinkClick, useUnsavedGuard } from "../router";
-import { useUrlParams } from "../useUrlParams";
+import { useUnsavedGuard } from "../router";
+import { pageParam, useUrlPage, useUrlParams } from "../useUrlParams";
 import type { GroupKind, NeedClass } from "../types.gen";
 import { KIND_ICON, KindIcon, NEED_ICON, EYE_ICON, SCAM_FLAG_ICON, SCAM_ICON, TRIP_ICON } from "../icons";
 
@@ -202,7 +204,7 @@ export function Transactions() {
     return p.toString();
   }, [month, category, account, q, payee, named, keys, paymentsOnly, scope.from, scope.to, scope.home, scope.spend, scope.trip, scope.income, scope.transfer,
     scope.need, scope.bucket, scope.categories, scope.notCategories, scope.notPayees, scope.external, scope.standIn, noSynthetic, hideTransfers, scam, noFx]);
-  const urlPage = Math.max(1, Math.floor(Number(params.get("page"))) || 1);
+  const urlPage = pageParam(params);
   // G13: server-side pages. The page starts again at 1 when any filter changes
   // and is clamped when the total shrinks. The total is the one the last answer
   // gave for these filters: a view that has kept the old rows on screen while
@@ -211,18 +213,7 @@ export function Transactions() {
   const [answer, setAnswer] = useState<{ data: TxnPage | null; filters: string }>({ data: null, filters });
   const waiting = answer.filters !== filters && urlPage > 1;
   const pager = usePager("transactions", waiting ? undefined : answer.data?.total, filters, urlPage);
-  // the page and the address follow each other: a click on a page number writes
-  // it, a link to another page of this list (or none) moves the list there
-  const seenUrlPage = useRef(urlPage);
-  useEffect(() => {
-    if (urlPage !== seenUrlPage.current) {
-      seenUrlPage.current = urlPage;
-      if (urlPage !== pager.page) pager.setPage(urlPage);
-    } else if (pager.page !== urlPage) {
-      seenUrlPage.current = pager.page;
-      patch({ page: pager.page > 1 ? String(pager.page) : null });
-    }
-  }, [urlPage, pager, patch]);
+  useUrlPage(pager, urlPage, patch);
   const url = `/api/transactions?${new URLSearchParams({ limit: String(pager.size), offset: String(pager.offset) })}${filters ? `&${filters}` : ""}`;
   const { data, error, loading } = useApi<TxnPage>(url);
   const [open, setOpen] = useState<string | null>(null);   // the row whose panel is open, under it
@@ -307,45 +298,29 @@ export function Transactions() {
           onChange={(v) => patch({ account: v })} />
       </div>
       {scoped && (
-        <div className="flex items-center gap-2 text-[12px] text-ink-2">
-          <span className="rounded-full bg-tile px-2.5 py-0.5">
-            {/* G18: each part led by the icons of the kinds it names; the words stay one run of text */}
-            {scopeParts(scope).map((p, i) => (
-              <Fragment key={p.text}>
-                {i > 0 && " · "}
-                {p.icons.map((icon, j) => <KindIcon key={j} icon={icon} className="mr-1 inline align-[-2px]" />)}
-                {p.text}
-              </Fragment>
-            ))}
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => patch({ ...NO_SCOPE, ...(scope.standIn ? { synthetic: null } : {}) })}>Clear</Button>
-        </div>
+        <FilterChip onClear={() => patch({ ...NO_SCOPE, ...(scope.standIn ? { synthetic: null } : {}) })}>
+          {/* G18: each part led by the icons of the kinds it names; the words stay one run of text */}
+          {scopeParts(scope).map((p, i) => (
+            <Fragment key={p.text}>
+              {i > 0 && " · "}
+              {p.icons.map((icon, j) => <KindIcon key={j} icon={icon} className="mr-1 inline align-[-2px]" />)}
+              {p.text}
+            </Fragment>
+          ))}
+        </FilterChip>
       )}
       {(payee || keyCount > 0 || paymentsOnly) && (
-        <div className="flex items-center gap-2 text-[12px] text-ink-2">
-          <span className="rounded-full bg-tile px-2.5 py-0.5">
-            {[payee && `Payee: ${payee}`, keyCount > 0 && (keyCount === 1 ? "One payment" : `${keyCount.toLocaleString("en-SG")} payments`),
-              paymentsOnly && "Money out only"]
-              .filter(Boolean).join(" · ")}
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => patch({ payee: null, named: null, key: null, out: null })}>Clear</Button>
-        </div>
+        <FilterChip onClear={() => patch({ payee: null, named: null, key: null, out: null })}>
+          {[payee && `Payee: ${payee}`, keyCount > 0 && (keyCount === 1 ? "One payment" : `${keyCount.toLocaleString("en-SG")} payments`),
+            paymentsOnly && "Money out only"]
+            .filter(Boolean).join(" · ")}
+        </FilterChip>
       )}
       {scam && (
-        <div className="flex items-center gap-2 text-[12px] text-ink-2">
-          <span className="inline-flex items-center gap-1 rounded-full bg-warn-bg px-2.5 py-0.5 text-warn">
-            <KindIcon icon={SCAM_FLAG_ICON} />Flagged as a possible scam
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => patch({ flag: null })}>Clear</Button>
-        </div>
+        <FilterChip tone="warn" icon={SCAM_FLAG_ICON} onClear={() => patch({ flag: null })}>Flagged as a possible scam</FilterChip>
       )}
       {noFx && (
-        <div className="flex items-center gap-2 text-[12px] text-ink-2">
-          <span className="inline-flex items-center gap-1 rounded-full bg-warn-bg px-2.5 py-0.5 text-warn">
-            <KindIcon icon={EYE_ICON.missing_fx} />No SGD value
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => patch({ missing_fx: null })}>Clear</Button>
-        </div>
+        <FilterChip tone="warn" icon={EYE_ICON.missing_fx} onClear={() => patch({ missing_fx: null })}>No SGD value</FilterChip>
       )}
       {error && <Problem message={error} />}
       {loading && !data && <Loading what="Loading transactions" />}
@@ -358,10 +333,7 @@ export function Transactions() {
       {data && data.total === 0 && (
         anyFilter
           ? <EmptyState title="Nothing matches" action={<ClearFilters onClick={clearFilters} bordered />}>No transaction passes every filter.</EmptyState>
-          : <EmptyState title="No transactions yet"
-              action={<a href="/upload" onClick={onLinkClick("/upload")} className={buttonClass("secondary")}>Load your statements</a>}>
-              Transactions come with your first statements.
-            </EmptyState>
+          : <NoStatementsYet title="No transactions yet">Transactions come with your first statements.</NoStatementsYet>
       )}
       {data && data.total > 0 && (
         <>
@@ -515,21 +487,10 @@ function TransfersChip({ hidden, onClick }: { hidden: boolean; onClick: () => vo
 // G15: why the scam checks flag a row, and "This is fine", which saves the
 // choice in the record so that payee is not flagged again
 function ScamNote({ t }: { t: Txn }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // the row can stay on screen and be flagged again later (Flag again in Settings)
+  const { running: busy, error, run } = useAction();
   if (!t.flags?.length) return null;
-  async function fine() {
-    setBusy(true);
-    setError(null);
-    try {
-      await postJSON("/api/scam-checks/fine", JSON.stringify({ key: t.key }));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      // the row can stay on screen and be flagged again later (Flag again in Settings)
-      setBusy(false);
-    }
-  }
+  const fine = () => run("fine", () => postJSON("/api/scam-checks/fine", JSON.stringify({ key: t.key })));
   return (
     <div className="mt-1 flex flex-col items-start gap-1 text-[12px]">
       <ul aria-label="Why this looks like a scam" className="m-0 list-none p-0 text-warn">
@@ -645,7 +606,7 @@ function RowPanel({ txnKey, drafts, shownForms, onUnsaved, onSaving, pin, onClos
     shownForms.add(txnKey);
     return () => { shownForms.delete(txnKey); };
   }, [mountForm, txnKey, shownForms]);
-  const [busy, setBusy] = useState(false);
+  const { running: busy, run } = useAction();
   // the pick's answer stands for the row's pin only until the row is asked again: after
   // that (a save through More, an Undo) the row's own pin is the newer word
   const [fresh, setFresh] = useState<PinSet | undefined>(pin ?? undefined);
@@ -674,16 +635,7 @@ function RowPanel({ txnKey, drafts, shownForms, onUnsaved, onSaving, pin, onClos
   if (!row) return <p className="m-0 text-[13px] text-warn">That row is no longer in the record.</p>;
   const similar = counted === query && hidden !== query && preview.data && !preview.data.error ? preview.data.changes ?? 0 : 0;
 
-  async function act(run: () => Promise<void>) {
-    setBusy(true);
-    try {
-      await run();
-    } catch (e) {
-      showToast({ tone: "error", message: (e as Error).message });
-    } finally {
-      setBusy(false);
-    }
-  }
+  const act = (write: () => Promise<void>) => run("act", write, { toast: true });
   // the same rule "Apply to similar rows" built before G13: the row's text as a pattern, with its category and payee
   const applySimilar = () => act(async () => {
     const r = await postJSON<RuleSavedEdit>("/api/rules/save", JSON.stringify({ rule: ruleOf(draft!), edit: null }));

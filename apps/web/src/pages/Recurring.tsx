@@ -17,10 +17,11 @@ import { MoneyInput } from "../components/MoneyInput";
 import { SaveBar } from "../components/SaveBar";
 import { Select } from "../components/Select";
 import { StatusChip, type StatusTone } from "../components/StatusChip";
-import { Loading, Problem } from "../components/States";
+import { Loaded, Loading, Problem } from "../components/States";
 import { HEAD_ROW, TH } from "../components/tableKit";
 import { Progress, Tile, TileGrid } from "../components/Tile";
 import { useWide } from "../components/useWide";
+import { useAction } from "../components/useAction";
 import { ago, formatDay, formatDayShort, formatMonth, isoParts } from "../dates";
 import type { Cadence } from "../types.gen";
 import { CADENCE_ICON, COMING_ICON, KindIcon, KindLabel, NEED_ICON, type IconTone } from "../icons";
@@ -33,13 +34,19 @@ import { CADENCE_ICON, COMING_ICON, KindIcon, KindLabel, NEED_ICON, type IconTon
 // G16: a series opens its own view on this page (`?series=<id>`, SeriesView), where it is
 // edited; the payee names on Recurring and a due or late row on Home's Coming up open it.
 
-const STATUS: Record<ComingStatus, { text: string; cls: string }> = {
-  paid: { text: "Paid", cls: "bg-good-bg text-good" },
-  due: { text: "Due", cls: "bg-tile text-ink-2" },
-  late: { text: "Late", cls: "bg-warn-bg text-warn" },
-  different: { text: "Different amount", cls: "bg-info-bg text-info" },
-  extra: { text: "Extra", cls: "bg-info-bg text-info" },
+/** Audit: a month's status as its word and its tone, one map for the Recurring lists and Home's Coming up. */
+const STATUS_CHIP: Record<ComingStatus, { text: string; tone: StatusTone }> = {
+  paid: { text: "Paid", tone: "good" },
+  due: { text: "Due", tone: "neutral" },
+  late: { text: "Late", tone: "warn" },
+  different: { text: "Different amount", tone: "info" },
+  extra: { text: "Extra", tone: "info" },
 };
+
+// what wants a look first: nothing came, then paid at an odd amount, then an extra charge (G16), then
+// still to come, then paid. Home's Coming up lists its rows in this order, and a series shows the most
+// pressing of its month's payments.
+export const URGENCY: Record<ComingStatus, number> = { late: 0, different: 1, extra: 2, due: 3, paid: 4 };
 const CADENCE: Record<Cadence, string> = {
   weekly: "Weekly", fortnightly: "Fortnightly", "twice-monthly": "Twice a month", monthly: "Monthly",
   "two-monthly": "Every 2 months", quarterly: "Quarterly", "half-yearly": "Half-yearly", yearly: "Yearly",
@@ -86,21 +93,20 @@ export function Recurring() {
 }
 
 function Lists() {
-  const { data, error, loading } = useApi<RecurringPage>("/api/recurring");
-  if (loading && !data) return <Loading what="Loading your recurring payments" />;
-  if (error || !data) return <Problem message={error ?? "No recurring payments yet."} retry />;
-  if (!data.ready)
-    return <Problem message="No recurring payments result yet." hint="Run the analysis from the Upload page, or `make analyse`." />;
-  const up = data.coming_up;
+  const state = useApi<RecurringPage>("/api/recurring");
   return (
-    <div className="flex flex-col gap-3">
-      <p className="m-0 text-[12px] text-ink-3">As of {formatDay(up.as_of)}</p>
-      <Totals up={up} />
-      <SeriesList rows={[...data.active, ...data.paused]} coming={up.rows} totals={data.totals} asOf={up.as_of} />
-      {data.stopped.length > 0 && <StoppedList rows={data.stopped} asOf={up.as_of} />}
-      {data.irregular.length > 0 && <IrregularList rows={data.irregular} asOf={up.as_of} />}
-      {data.not_recurring.length > 0 && <NotRecurringList rows={data.not_recurring} />}
-    </div>
+    <Loaded state={state} what="Loading your recurring payments" missing="No recurring payments yet.">{(data) => !data.ready
+      ? <Problem message="No recurring payments result yet." hint="Run the analysis from the Upload page, or `make analyse`." />
+      : (
+        <div className="flex flex-col gap-3">
+          <p className="m-0 text-[12px] text-ink-3">As of {formatDay(data.coming_up.as_of)}</p>
+          <Totals up={data.coming_up} />
+          <SeriesList rows={[...data.active, ...data.paused]} coming={data.coming_up.rows} totals={data.totals} asOf={data.coming_up.as_of} />
+          {data.stopped.length > 0 && <StoppedList rows={data.stopped} asOf={data.coming_up.as_of} />}
+          {data.irregular.length > 0 && <IrregularList rows={data.irregular} asOf={data.coming_up.as_of} />}
+          {data.not_recurring.length > 0 && <NotRecurringList rows={data.not_recurring} />}
+        </div>
+      )}</Loaded>
   );
 }
 
@@ -129,7 +135,7 @@ const DOT: Record<ComingStatus, IconTone> = { paid: "good", due: "ink-3", late: 
 
 export function ComingUpItem({ r }: { r: ComingUpRow }) {
   const wide = useWide();
-  const s = STATUS[r.status];
+  const s = STATUS_CHIP[r.status];
   const fmt = wide ? formatDay : formatDayShort;
   // paid: the day it arrived; otherwise the day it is expected, which is an estimate
   const day = r.paid_on ? fmt(r.paid_on) : `~${fmt(r.expected)}`;
@@ -147,9 +153,7 @@ export function ComingUpItem({ r }: { r: ComingUpRow }) {
         </span>
       </span>
       {wide
-        ? <span className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[12px] font-medium ${s.cls}`}>
-            <KindIcon icon={COMING_ICON[r.status]} size={12} />{s.text}
-          </span>
+        ? <StatusChip tone={s.tone} icon={COMING_ICON[r.status]}>{s.text}</StatusChip>
         : <span className="grid size-4 place-items-center"><KindIcon icon={COMING_ICON[r.status]} size={14} tone={DOT[r.status]} label={s.text} /></span>}
       <span className="num text-right">
         <span className="block">{money(r.paid_amount ?? r.amount)}</span>
@@ -200,7 +204,6 @@ export type MergedSeries = ActiveSeries & { status: ComingStatus | "paused" | nu
 // which of a series' payments this month to speak for it: the one that wants
 // a look first (a weekly series has a row per week), and of several paid, the latest.
 // G16: finance/recurring.py `most_urgent` picks the same way for Home's "Needs your eye"
-const URGENT: Record<ComingStatus, number> = { late: 0, different: 1, extra: 2, due: 3, paid: 4 };
 
 const MONTHS_ON: Record<string, number> = { monthly: 1, "two-monthly": 2, quarterly: 3, "half-yearly": 6, yearly: 12 };
 const DAYS_ON: Record<string, number> = { weekly: 7, fortnightly: 14, "twice-monthly": 15 };
@@ -249,7 +252,7 @@ export function mergeSeries(active: ActiveSeries[], coming: ComingUpRow[]): Merg
     // G16: a paused series is listed, but nothing is expected of it this month
     if (a.state === "paused") return { ...a, month_link: null, status: "paused", paid_on: null, paid_amount: null };
     const rows = mine(a);
-    const pick = [...rows].sort((x, y) => URGENT[x.status] - URGENT[y.status]
+    const pick = [...rows].sort((x, y) => URGENCY[x.status] - URGENCY[y.status]
       || (x.status === "paid" ? y.expected.localeCompare(x.expected) : x.expected.localeCompare(y.expected)))[0];
     // G16: a payment due this month never hides the series being late on an earlier one
     if (a.late && pick?.status !== "late")
@@ -261,14 +264,6 @@ export function mergeSeries(active: ActiveSeries[], coming: ComingUpRow[]): Merg
   }).sort((x, y) => Number(x.state === "paused") - Number(y.state === "paused")
     || x.next_expected.localeCompare(y.next_expected) || x.name.localeCompare(y.name));
 }
-
-const STATUS_CHIP: Record<ComingStatus, { text: string; tone: StatusTone }> = {
-  paid: { text: "Paid", tone: "good" },
-  due: { text: "Due", tone: "neutral" },
-  late: { text: "Late", tone: "warn" },
-  different: { text: "Different amount", tone: "info" },
-  extra: { text: "Extra", tone: "info" },
-};
 
 function StatusOf({ s }: { s: MergedSeries }) {
   if (!s.status) return <StatusChip tone="empty" icon={COMING_ICON.later} title="Nothing is expected this month">Later</StatusChip>;
@@ -436,19 +431,8 @@ const IRREGULAR_GRID = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3
 
 /** G16: one write at a time from a list's buttons, with the reason when the record refused it. */
 function useWrite() {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [failed, setFailed] = useState<{ key: string; message: string } | null>(null);
-  async function run(key: string, url: string, body: object) {
-    setBusy(key);
-    setFailed(null);
-    try {
-      await postJSON(url, JSON.stringify(body));
-    } catch (e) {
-      setFailed({ key, message: (e as Error).message });
-    } finally {
-      setBusy(null);
-    }
-  }
+  const { busy, failed, run: act } = useAction();
+  const run = (key: string, url: string, body: object) => act(key, () => postJSON(url, JSON.stringify(body)));
   return { busy, failed, run };
 }
 

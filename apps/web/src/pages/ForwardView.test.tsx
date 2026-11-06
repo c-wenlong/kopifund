@@ -1,17 +1,7 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import { ForwardChart, ForwardViewCard, lowPoint, points, underZero } from "./ForwardView";
-
-// Give ResponsiveContainer a real size: jsdom has no layout, and a chart of
-// width 0 draws nothing, so neither the marker nor the hover would exist.
-class SizedObserver {
-  constructor(private cb: ResizeObserverCallback) {}
-  observe(el: Element) {
-    this.cb([{ target: el, contentRect: { width: 800, height: 400 } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
-  }
-  unobserve() {}
-  disconnect() {}
-}
+import { json, useSizedCharts } from "../test-helpers";
 
 // Every figure here is invented. `month` is a month as the stat writes it since
 // G20: each figure in integer cents under `<name>_minor` and no dollars at all.
@@ -31,12 +21,7 @@ const months = [
 ];
 
 describe("forward view", () => {
-  const real = globalThis.ResizeObserver;
-  beforeEach(() => { globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver; });
-  afterEach(() => {
-    globalThis.ResizeObserver = real;
-    vi.unstubAllGlobals();
-  });
+  useSizedCharts();
 
   it("reads the stat's cents, which add up to the month's net", () => {
     const [oct, nov] = points(months);
@@ -109,21 +94,21 @@ describe("forward view", () => {
   });
 
   it("waits for the next analysis when the result's months carry no cents", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+    vi.stubGlobal("fetch", vi.fn(async () => json({
       id: "forward-view", title: "Forward view to Feb 2027", chart: { type: "line", x: "month", series: ["cash"], source: "months" },
       data: { months: [dollars("2026-10", 5000)], low_point: { month: "2026-10", cash_minor: 500_000 }, below_zero: [] },
       findings: [], caveats: [],
-    }), { status: 200 })));
+    })));
     render(<ForwardViewCard />);
     expect(await screen.findByText("No forward view result yet.")).toBeInTheDocument();
   });
 
   it("shows no Details toggle and none of the stat's findings", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+    vi.stubGlobal("fetch", vi.fn(async () => json({
       id: "forward-view", title: "Forward view to Feb 2027", chart: { type: "line", x: "month", series: ["cash_minor"], source: "months", unit: "sgd_minor" },
       data: { months, low_point: { month: "2027-01", cash_minor: 123_456 }, below_zero: [] },
       findings: ["An invented finding about the low point."], caveats: ["An invented caveat."],
-    }), { status: 200 })));
+    })));
     render(<ForwardViewCard />);
     expect(await screen.findByRole("heading", { name: "Forward view to Feb 2027" })).toBeInTheDocument();
     expect(await screen.findByText(/in Jan 2027/)).toHaveTextContent("Lowest S$1,235 in Jan 2027");
@@ -155,5 +140,34 @@ describe("forward view", () => {
     fireEvent.mouseMove(container.querySelector(".recharts-wrapper")!, { clientX: 600, clientY: 120 });
     const tip = screen.getByTestId("forward-tip");
     expect(within(tip).queryByText("Investing")).not.toBeInTheDocument();
+  });
+});
+
+describe("a forward view that does not load", () => {
+  useSizedCharts();
+  const result = {
+    id: "forward-view", title: "Forward view to Feb 2027", chart: { type: "line", x: "month", series: ["cash_minor"], source: "months", unit: "sgd_minor" },
+    data: { months, low_point: { month: "2027-01", cash_minor: 123_456 }, below_zero: [] }, findings: [], caveats: [],
+  };
+
+  it("says why, and Try again asks the server again and draws the chart", async () => {
+    let up = false;
+    vi.stubGlobal("fetch", vi.fn(async () => up ? json(result) : json({ error: "The stats are being rebuilt." }, 500)));
+    const { container } = render(<ForwardViewCard />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("The stats are being rebuilt.");
+    up = true;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByRole("heading", { name: "Forward view to Feb 2027" })).toBeInTheDocument();
+    // the chart itself is drawn, not only the card around it
+    await waitFor(() => expect(container.querySelector(".recharts-reference-dot")).not.toBeNull());
+    expect(screen.getByRole("img", { name: "Cash by month to Feb 2027, lowest S$1,235 in Jan 2027" })).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("offers no Try again for a result the analysis has not written yet", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => json({ error: "No result yet." }, 404)));
+    render(<ForwardViewCard />);
+    expect(await screen.findByText("No forward view result yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Try again" })).not.toBeInTheDocument();
   });
 });
