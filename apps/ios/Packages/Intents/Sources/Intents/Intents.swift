@@ -245,6 +245,22 @@ public enum Ingest {
         }
     }
 
+    /// Audit: a row that waited under "Needs details" skipped the duplicate
+    /// check on arrival (an empty capture pairs with nothing), so once the
+    /// owner has typed its amount and payee it gets that check now: the
+    /// bank's alert for the same spend may have queued meanwhile, and
+    /// approving both would post the one spend twice. Call it only for a row
+    /// that was missing details when the owner opened it; a pending row that
+    /// was complete all along was checked on arrival, and running the check
+    /// again would park a row the owner already called "Not a duplicate".
+    /// Returns true when the row was parked. The caller saves.
+    @MainActor @discardableResult
+    public static func settleTypedDetails(of row: TransactionRecord, in context: ModelContext) -> Bool {
+        guard row.state == "pending", row.missingDetails == nil else { return false }
+        settleDuplicates(of: row, in: context)
+        return row.state == "duplicate"
+    }
+
     /// The kept row of a pair is the same spend as the parked one, so a
     /// currency only the parked capture stated (a Wallet tap passing JPY
     /// beside an alert that printed none) moves onto the keeper. The sync's
