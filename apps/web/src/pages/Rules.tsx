@@ -16,7 +16,7 @@ import { NEW_DRAFT, RuleEditor, draftOf, type Draft, type SaveStatus } from "../
 import { Segmented } from "../components/Segmented";
 import { Select } from "../components/Select";
 import { HEAD_ROW, ROW, TABLE_BOX, TH } from "../components/tableKit";
-import { Loading, Problem } from "../components/States";
+import { LOAD_FIRST, Loading, Problem } from "../components/States";
 import { showToast, type ToastAction } from "../components/Toast";
 import { useWide } from "../components/useWide";
 import { useAction } from "../components/useAction";
@@ -106,7 +106,7 @@ export function Rules() {
   const editingHere = !!editing?.rule && here.includes(editing.rule.id);
 
   if (state.loading && !s) return <Loading what="Loading your rules" />;
-  if (state.error || !s) return <Problem message={state.error ?? "No rules"} hint="Load your statements first, from the Upload page." retry />;
+  if (state.error || !s) return <Problem message={state.error ?? "No rules"} hint={LOAD_FIRST} retry />;
 
   // what a write says goes to a toast, where the click was; a delete offers Undo there
   const act = (write: () => Promise<string | { message: string; action?: ToastAction }>) => run("act", async () => {
