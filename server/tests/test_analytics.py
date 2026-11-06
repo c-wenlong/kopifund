@@ -12,6 +12,7 @@ import copy
 import json
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from analytics import stats
 from analytics.stats import common as c
@@ -23,9 +24,11 @@ from analytics_fixture import (BENCHMARKS, MONTHS, NO_RATE_MONTH, NO_SALARY,
 SNAP = snapshot()
 
 # The forward view reads the owner's [plan] from server/finance/config.toml; the
-# suite must not depend on it, so point it at the fixture config (no [plan]).
+# suite must not depend on it, so point it at the fixture config (no [plan])
+# while this module's tests run, and give it back after, so no other module
+# sees this one's choice.
 from analytics.stats import forward_view as _fv  # noqa: E402
-_fv.PLAN_CONFIG = Path(__file__).resolve().parent / "fixtures" / "config.toml"
+FIXTURE_CONFIG = Path(__file__).resolve().parent / "fixtures" / "config.toml"
 
 # The [analytics] settings come from the fixture too, never from the data
 # folder of whoever runs the suite (G10).
@@ -33,6 +36,7 @@ _SETTINGS = contextlib.ExitStack()
 
 
 def setUpModule():
+    _SETTINGS.enter_context(mock.patch.object(_fv, "PLAN_CONFIG", FIXTURE_CONFIG))
     _SETTINGS.enter_context(settings())
 
 

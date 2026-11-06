@@ -1,26 +1,26 @@
 """server/finance/api.py: what the app's endpoints answer."""
 import isolate  # noqa: F401  first: no test writes the real record or cache
 import unittest
+from contextlib import closing
 
 from finance import api, db
 from finance.money import stat_cents
+import support
 from test_db import SNAP, block, parsed, row
 
 
 def loaded():
-    conn = db.connect(":memory:")
-    db.import_user_tables(conn, {k: [dict(x) for x in v] for k, v in SNAP.items()})
-    db.load_parsed(conn, parsed([block()], [
+    return support.build_record([
         row("k1", "-12.50"), row("k2", "-17.00", date="2026-08-20", merchant="KOPITIAM",
                                  payee="", category=""),
-        row("k3", "3000.00", date="2026-08-25", direction="In", category="Salary", payee="")]),
-        payees=[{"name": "Grab", "kind": "Merchant", "country": "SGP"}])
-    return conn
+        row("k3", "3000.00", date="2026-08-25", direction="In", category="Salary", payee="")],
+        payees=support.payees(["Grab"]))
 
 
 class TransactionsTest(unittest.TestCase):
     def setUp(self):
         self.conn = loaded()
+        self.addCleanup(self.conn.close)
 
     def test_newest_first_with_totals(self):
         page = api.transactions(self.conn, {})
@@ -40,6 +40,7 @@ class TransactionsTest(unittest.TestCase):
         # G13: a day split across two pages shows the same totals on both, and the
         # second page's first day says it continues
         conn = db.connect(":memory:")
+        self.addCleanup(conn.close)
         db.import_user_tables(conn, {k: [dict(x) for x in v] for k, v in SNAP.items()})
         db.load_parsed(conn, parsed([block()], [
             row("a1", "-10.00", date="2026-08-21"), row("a2", "-5.00", date="2026-08-21"),
@@ -72,6 +73,7 @@ class TransactionsTest(unittest.TestCase):
     def test_a_made_up_wallet_leg_is_listed_only_with_transfers(self):
         # G13: the data-quality chart counts every made-up row, so its month link asks for transfers too
         conn = db.connect(":memory:")
+        self.addCleanup(conn.close)
         db.import_user_tables(conn, {k: [dict(x) for x in v] for k, v in SNAP.items()})
         db.load_parsed(conn, parsed([block()], [
             row("w1", "-5.00", flow_class="Internal - YouTrip", bank_txn_type=db.SYNTHETIC_TYPE,
@@ -98,6 +100,7 @@ class TransactionsTest(unittest.TestCase):
     def test_hide_transfers_leaves_out_own_moves_and_transfer_categories(self):
         # G13: a top-up between own accounts, and a row in a Transfer category
         conn = db.connect(":memory:")
+        self.addCleanup(conn.close)
         snap = {k: [dict(x) for x in v] for k, v in SNAP.items()}
         snap["categories"].append({"name": "Wallet top-up", "bucket": "Transfer", "group": "Savings",
                                    "need_class": "Transfer", "sort_order": 900})
@@ -156,6 +159,7 @@ class TransactionsTest(unittest.TestCase):
 class TripsTest(unittest.TestCase):
     def test_spend_per_trip(self):
         conn = db.connect(":memory:")
+        self.addCleanup(conn.close)
         db.import_user_tables(conn, {k: [dict(x) for x in v] for k, v in SNAP.items()})
         db.load_parsed(conn, parsed([block()], [row("k1", "-12.50", merchant_country="MYS")]),
                        trips_by_key={"k1": "Trip A"})
@@ -165,13 +169,11 @@ class TripsTest(unittest.TestCase):
 def on_a_trip():
     """Trip A (five days) with a meal, a taxi, a refund, a transfer, a top-up
     synthetic filler and a foreign row with no FX rate, all linked to it."""
-    conn = db.connect(":memory:")
-    snap = {k: [dict(x) for x in v] for k, v in SNAP.items()}
+    snap = support.user_tables()
     snap["categories"] += [
         {"name": "Eating out", "bucket": "Spend", "group": "Variable", "need_class": "Want", "sort_order": 20},
         {"name": "Transfers", "bucket": "Transfer", "group": "Savings", "need_class": "Transfer",
          "sort_order": 900}]
-    db.import_user_tables(conn, snap)
     away = dict(merchant_country="MYS")
     eur = block(period="222 · EUR · 2026-08", account="Wallet", account_no="222", currency="EUR",
                 fx_to_sgd="", closing_sgd="")
@@ -183,9 +185,8 @@ def on_a_trip():
             row("nofx", "-7.00", account="Wallet", account_no="222", currency="EUR",
                 period="222 · EUR · 2026-08", **away),                             # no SGD value
             row("home", "-12.00", date="2026-08-20")]                              # not on the trip
-    db.load_parsed(conn, parsed([block(), eur], rows),
-                   trips_by_key={k: "Trip A" for k in ("meal", "taxi", "refund", "sent", "filler", "nofx")})
-    return conn
+    return support.build_record(rows, user=snap, blocks=[block(), eur],
+                                trips_by_key={k: "Trip A" for k in ("meal", "taxi", "refund", "sent", "filler", "nofx")})
 
 
 class TripSpendingTest(unittest.TestCase):
@@ -193,6 +194,7 @@ class TripSpendingTest(unittest.TestCase):
 
     def setUp(self):
         self.conn = on_a_trip()
+        self.addCleanup(self.conn.close)
         self.trip = api.trips(self.conn, long_stay=60)["trips"][0]
 
     def test_a_transfer_and_a_filler_are_not_spending_and_a_refund_lowers_it(self):
@@ -264,13 +266,15 @@ class FlagsTest(unittest.TestCase):
 
     def test_the_trips_answer_says_when_the_record_ends(self):
         conn = on_a_trip()
+        self.addCleanup(conn.close)
         last = conn.execute("SELECT MAX(txn_date) FROM txn").fetchone()[0]
         self.assertTrue(last)
         self.assertEqual(api.trips(conn, long_stay=60)["last_txn"], last)
-        self.assertEqual(api.trips(db.connect(":memory:"), long_stay=60)["last_txn"], "")
+        self.assertEqual(api.trips(self.enterContext(closing(db.connect(":memory:"))), long_stay=60)["last_txn"], "")
 
     def test_the_trips_answer_carries_a_flag_per_code(self):
         conn = on_a_trip()
+        self.addCleanup(conn.close)
         db.set_trip_links(conn, conn.execute("SELECT id FROM trip").fetchone()[0], ["MYS", "XXX"], [])
         t = api.trips(conn, long_stay=60)["trips"][0]
         self.assertEqual((t["countries"], t["flags"]), (["MYS", "XXX"], ["\U0001F1F2\U0001F1FE", ""]))

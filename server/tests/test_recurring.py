@@ -5,7 +5,8 @@ from datetime import date, timedelta
 
 from finance import api, db, home, recurring
 from finance.money import to_cents
-from test_db import SNAP, block, parsed, row
+import support
+from test_db import SNAP, block, row
 
 # invented payees and amounts; every date is in 2026 unless it says otherwise
 PAYEES = ["Gym", "Phone", "Stream", "Landlord", "Broker", "Cleaner", "Insurer", "Charity", "Club", "Magazine"]
@@ -14,15 +15,10 @@ CATEGORIES = SNAP["categories"] + [
 
 
 def record(*rows):
-    conn = db.connect(":memory:")
-    db.import_user_tables(conn, {**{k: [dict(x) for x in v] for k, v in SNAP.items()},
-                                 "categories": [dict(c) for c in CATEGORIES]})
     keyed = [row(f"k{i}", amount, date=day, payee=payee, merchant=payee.upper(),
                  category="Investments" if payee == "Broker" else "Transport")
              for i, (payee, day, amount) in enumerate(rows)]
-    db.load_parsed(conn, parsed([block()], keyed),
-                   payees=[{"name": p, "kind": "Merchant", "country": "SGP"} for p in PAYEES])
-    return conn
+    return support.build_record(keyed, user=support.user_tables(categories=CATEGORIES), payees=support.payees(PAYEES))
 
 
 def series(payee, median, last_seen, cadence="monthly", **kw):
@@ -135,6 +131,7 @@ class ComingUp(unittest.TestCase):
     def test_a_varying_bill_is_judged_against_its_last_charges(self):
         conn = record(*monthly("Phone", "-30.00", "2026-05-02", "2026-06-02"),
                       *monthly("Phone", "-55.00", "2026-07-02", "2026-08-02"), ("Phone", "2026-09-02", "-90.00"))
+        self.addCleanup(conn.close)
         s = series("Phone", 42.5, "2026-09-02", amount_varies=True)
         up = recurring.coming_up(conn, results([s]), today=date(2026, 9, 30))
         self.assertEqual([(r["status"], r["usual_low"], r["usual_high"], r["paid_amount"]) for r in up["rows"]],
@@ -143,6 +140,7 @@ class ComingUp(unittest.TestCase):
     def test_a_small_charge_the_day_before_does_not_swallow_the_payment(self):
         conn = record(*monthly("Gym", "-50.00", "2026-06-01", "2026-07-01", "2026-08-01", "2026-09-01"),
                       ("Gym", "2026-08-31", "-5.00"), ("Club", "2026-09-20", "-12.00"))
+        self.addCleanup(conn.close)
         up = recurring.coming_up(conn, results([series("Gym", 50.0, "2026-09-01")]), today=date(2026, 9, 30))
         self.assertEqual([(r["expected"], r["status"], r["paid_on"], r["paid_amount"]) for r in up["rows"]],
                          [("2026-09-01", "paid", "2026-09-01", 5000)])
@@ -151,6 +149,7 @@ class ComingUp(unittest.TestCase):
     def test_an_odd_charge_last_month_does_not_hide_this_month_s_bill(self):
         conn = record(*monthly("Gym", "-50.00", "2026-06-01", "2026-07-01", "2026-08-01"),
                       ("Gym", "2026-08-31", "-5.00"), ("Club", "2026-09-10", "-12.00"))
+        self.addCleanup(conn.close)
         up = recurring.coming_up(conn, results([series("Gym", 50.0, "2026-08-01")]), today=date(2026, 9, 30))
         self.assertEqual([(r["expected"], r["status"], r["paid_on"]) for r in up["rows"]],
                          [("2026-09-01", "late", None)])
@@ -159,6 +158,7 @@ class ComingUp(unittest.TestCase):
     def test_a_new_price_paid_on_time_is_a_different_amount(self):
         conn = record(*monthly("Gym", "-50.00", "2026-06-01", "2026-07-01", "2026-08-01"),
                       ("Gym", "2026-09-02", "-80.00"), ("Club", "2026-09-10", "-12.00"))
+        self.addCleanup(conn.close)
         up = recurring.coming_up(conn, results([series("Gym", 50.0, "2026-08-01")]), today=date(2026, 9, 30))
         self.assertEqual([(r["expected"], r["status"], r["paid_amount"]) for r in up["rows"]],
                          [("2026-09-01", "different", 8000)])
@@ -166,6 +166,7 @@ class ComingUp(unittest.TestCase):
     def test_a_renamed_category_keeps_the_tight_band(self):
         conn = record(*monthly("Club", "-10.00", "2026-06-03", "2026-07-03", "2026-08-03"),
                       ("Club", "2026-09-03", "-11.00"))
+        self.addCleanup(conn.close)
         conn.execute("UPDATE category SET name = 'Rides' WHERE name = 'Transport'")
         conn.execute("""INSERT INTO category_alias(name, category_id, how)
                         SELECT 'Transport', id, 'rename' FROM category WHERE name = 'Rides'""")
@@ -179,6 +180,7 @@ class MonthBoundaries(unittest.TestCase):
     def test_a_payment_due_on_the_31st_paid_on_the_1st_counts_for_the_month_it_arrived(self):
         conn = record(*monthly("Charity", "-18.00", "2026-05-31", "2026-06-30", "2026-07-31", "2026-09-01"),
                       ("Club", "2026-09-20", "-12.00"))
+        self.addCleanup(conn.close)
         up = recurring.coming_up(conn, results([series("Charity", 18.0, "2026-09-01")]), today=date(2026, 9, 30))
         # G16: and September's own, due on the 30th, is still to come
         self.assertEqual([(r["expected"], r["status"], r["paid_on"]) for r in up["rows"]],
@@ -188,6 +190,7 @@ class MonthBoundaries(unittest.TestCase):
 
     def test_a_payment_after_the_month_ends_is_not_this_month_s(self):
         conn = record(*monthly("Charity", "-18.00", "2026-07-30", "2026-08-30", "2026-10-01"))
+        self.addCleanup(conn.close)
         s = [series("Charity", 18.0, "2026-10-01")]
         september = recurring.coming_up(conn, results(s), today=date(2026, 9, 30))
         self.assertEqual([(r["expected"], r["status"]) for r in september["rows"]], [("2026-09-30", "due")])
@@ -205,6 +208,7 @@ class MonthBoundaries(unittest.TestCase):
     def test_quarterly_turns_late_after_its_band(self):
         conn = record(*monthly("Insurer", "-300.00", "2025-12-15", "2026-03-15", "2026-06-15"),
                       ("Club", "2026-09-28", "-12.00"))
+        self.addCleanup(conn.close)
         up = recurring.coming_up(conn, results([series("Insurer", 300.0, "2026-06-15", cadence="quarterly")]),
                                  today=date(2026, 10, 1))
         self.assertEqual([(r["expected"], r["status"]) for r in up["rows"]], [("2026-09-15", "late")])
@@ -216,17 +220,13 @@ CARD = {"account": "Card", "account_no": "222-22222-2", "period": "222-22222-2 Â
 
 def two_accounts(bank_end, card_end, bank_rows, card_rows):
     """A record with a bank account whose statements run to `bank_end` and a card whose run to `card_end`."""
-    conn = db.connect(":memory:")
-    db.import_user_tables(conn, {**{k: [dict(x) for x in v] for k, v in SNAP.items()},
-                                 "categories": [dict(c) for c in CATEGORIES]})
     keyed = [row(f"b{i}", amount, date=day, payee=payee, merchant=payee.upper(), category="Transport")
              for i, (payee, day, amount) in enumerate(bank_rows)]
     keyed += [row(f"c{i}", amount, date=day, payee=payee, merchant=payee.upper(), category="Transport", **CARD)
               for i, (payee, day, amount) in enumerate(card_rows)]
-    blocks = [block(period_end=bank_end), block(period_end=card_end, **CARD)]
-    db.load_parsed(conn, parsed(blocks, keyed),
-                   payees=[{"name": p, "kind": "Merchant", "country": "SGP"} for p in PAYEES])
-    return conn
+    return support.build_record(keyed, user=support.user_tables(categories=CATEGORIES),
+                                blocks=[block(period_end=bank_end), block(period_end=card_end, **CARD)],
+                                payees=support.payees(PAYEES))
 
 
 def statuses(up, payee):
@@ -240,6 +240,7 @@ class Schedule(unittest.TestCase):
     def test_a_missed_month_stays_late_and_the_next_is_judged_by_its_own_day(self):
         # P2: monthly on the 28th, last paid 28 August, nothing in September
         conn = record(*monthly("Stream", "-15.00", "2026-06-28", "2026-07-28", "2026-08-28"), ("Club", "2026-11-05", "-12.00"))
+        self.addCleanup(conn.close)
         res = results([series("Stream", 15.0, "2026-08-28")])
         for today, october in ((date(2026, 10, 3), "due"), (date(2026, 10, 30), "due"), (date(2026, 11, 3), "late")):
             with self.subTest(today=today):
@@ -253,6 +254,7 @@ class Schedule(unittest.TestCase):
     def test_a_missed_slot_is_late_once_the_cadence_band_has_run_out(self):
         # 35 days after 28 August is 2 October, so the September payment is late from the 3rd and not before
         conn = record(*monthly("Stream", "-15.00", "2026-06-28", "2026-07-28", "2026-08-28"), ("Club", "2026-10-30", "-12.00"))
+        self.addCleanup(conn.close)
         res = results([series("Stream", 15.0, "2026-08-28")])
         self.assertEqual(statuses(recurring.coming_up(conn, res, today=date(2026, 10, 2)), "Stream")[0][1], "due")
         self.assertEqual(statuses(recurring.coming_up(conn, res, today=date(2026, 10, 3)), "Stream")[0][1], "late")
@@ -260,12 +262,14 @@ class Schedule(unittest.TestCase):
     def test_paying_the_missed_month_late_clears_it(self):
         conn = record(*monthly("Stream", "-15.00", "2026-06-28", "2026-07-28", "2026-08-28", "2026-10-06"),
                       ("Club", "2026-10-30", "-12.00"))
+        self.addCleanup(conn.close)
         up = recurring.coming_up(conn, results([series("Stream", 15.0, "2026-08-28")]), today=date(2026, 10, 30))
         self.assertEqual(statuses(up, "Stream"), [("2026-09-28", "paid", "2026-10-06"), ("2026-10-28", "due", None)])
 
     def test_a_missed_quarter_is_late_on_recurring_and_on_home(self):
         # P3: quarterly, last paid 15 June, judged on 20 October
         conn = record(*monthly("Insurer", "-300.00", "2025-12-15", "2026-03-15", "2026-06-15"), ("Club", "2026-10-20", "-12.00"))
+        self.addCleanup(conn.close)
         res = results([series("Insurer", 300.0, "2026-06-15", cadence="quarterly")])
         up = recurring.coming_up(conn, res, today=date(2026, 10, 20))
         self.assertEqual(statuses(up, "Insurer"), [("2026-09-15", "late", None)])
@@ -278,6 +282,7 @@ class Schedule(unittest.TestCase):
         # a weekly series late twice this month is one bill late, not two
         conn = record(*monthly("Cleaner", "-60.00", "2026-08-01", "2026-08-08", "2026-08-15", "2026-08-22", "2026-08-29"),
                       ("Club", "2026-09-20", "-12.00"))
+        self.addCleanup(conn.close)
         res = results([series("Cleaner", 60.0, "2026-08-29", cadence="weekly")])
         up = recurring.coming_up(conn, res, today=date(2026, 9, 30))
         self.assertEqual([r["status"] for r in up["rows"] if r["payee"] == "Cleaner"], ["late", "late", "due", "due"])
@@ -289,6 +294,7 @@ class Schedule(unittest.TestCase):
         # P4: monthly on the 1st, November's payment made on 30 October
         conn = record(*monthly("Gym", "-50.00", "2026-06-01", "2026-07-01", "2026-08-01", "2026-09-01", "2026-10-01",
                                "2026-10-30"), ("Club", "2026-11-20", "-12.00"))
+        self.addCleanup(conn.close)
         res = results([series("Gym", 50.0, "2026-10-30")])
         up = recurring.coming_up(conn, res, today=date(2026, 11, 20))
         self.assertEqual(statuses(up, "Gym"), [("2026-11-01", "paid", "2026-10-30")])
@@ -303,6 +309,7 @@ class Schedule(unittest.TestCase):
         # paid on the last day or the first, the bill is the one due on the 1st
         conn = record(*monthly("Charity", "-18.00", "2026-03-31", "2026-05-02", "2026-06-02", "2026-07-01", "2026-07-31",
                                "2026-09-01"), ("Club", "2026-09-30", "-12.00"))
+        self.addCleanup(conn.close)
         up = recurring.coming_up(conn, results([series("Charity", 18.0, "2026-09-01")]), today=date(2026, 9, 30))
         self.assertEqual(statuses(up, "Charity"), [("2026-09-01", "paid", "2026-09-01")])
 
@@ -310,6 +317,7 @@ class Schedule(unittest.TestCase):
         # P5: S$20 on the 5th, and another S$21 on 20 September
         conn = record(*monthly("Phone", "-20.00", "2026-06-05", "2026-07-05", "2026-08-05", "2026-09-05"),
                       ("Phone", "2026-09-20", "-21.00"), ("Club", "2026-10-06", "-12.00"))
+        self.addCleanup(conn.close)
         res = results([series("Phone", 20.0, "2026-09-05")])
         up = recurring.coming_up(conn, res, today=date(2026, 9, 25))
         self.assertEqual(statuses(up, "Phone"), [("2026-09-05", "paid", "2026-09-05"), ("2026-09-20", "extra", "2026-09-20")])
@@ -328,6 +336,7 @@ class Schedule(unittest.TestCase):
         conn = two_accounts("2026-09-30", "2026-10-28",
                             monthly("Insurer", "-80.00", "2026-06-01", "2026-07-01", "2026-08-01", "2026-09-01"),
                             [("Club", "2026-10-28", "-12.00")])
+        self.addCleanup(conn.close)
         res = results([series("Insurer", 80.0, "2026-09-01")])
         up = recurring.coming_up(conn, res, today=date(2026, 11, 2))
         self.assertEqual((up["month"], up["as_of"]), ("2026-10", "2026-10-28"))
@@ -339,6 +348,7 @@ class Schedule(unittest.TestCase):
         # Saturdays, paid through 29 August, nothing on 5 September, paid 12 September; judged on 14 September
         conn = record(*monthly("Cleaner", "-60.00", "2026-08-01", "2026-08-08", "2026-08-15", "2026-08-22", "2026-08-29",
                                "2026-09-12"), ("Club", "2026-09-14", "-12.00"))
+        self.addCleanup(conn.close)
         res = results([series("Cleaner", 60.0, "2026-09-12", cadence="weekly")])
         up = recurring.coming_up(conn, res, today=date(2026, 9, 30))
         self.assertEqual(statuses(up, "Cleaner"), [("2026-09-12", "paid", "2026-09-12"), ("2026-09-19", "due", None),
@@ -354,6 +364,7 @@ class Schedule(unittest.TestCase):
             with self.subTest(history=history):
                 conn = record(*monthly("Cleaner", "-60.00", *history, "2026-09-05", "2026-09-12", "2026-09-19", "2026-09-26"),
                               *monthly("Cleaner", "-60.00", "2026-09-15", "2026-09-22", "2026-09-30"))
+                self.addCleanup(conn.close)
                 up = recurring.coming_up(conn, results([series("Cleaner", 60.0, "2026-09-26", cadence="weekly")]),
                                          today=date(2026, 10, 5))
                 self.assertEqual(statuses(up, "Cleaner"), [
@@ -370,6 +381,7 @@ class Schedule(unittest.TestCase):
         conn = two_accounts("2026-09-30", "2026-10-28",
                             monthly("Insurer", "-80.00", "2026-06-01", "2026-07-01", "2026-08-01", "2026-09-01"),
                             [("Insurer", "2026-09-20", "-300.00"), ("Club", "2026-10-28", "-12.00")])
+        self.addCleanup(conn.close)
         res = results([series("Insurer", 80.0, "2026-09-01")])
         up = recurring.coming_up(conn, res, today=date(2026, 11, 2))
         self.assertEqual(statuses(up, "Insurer"), [("2026-10-01", "due", None)])
@@ -380,6 +392,7 @@ class Schedule(unittest.TestCase):
         conn = two_accounts("2026-10-15", "2026-10-28",
                             monthly("Insurer", "-80.00", "2026-06-01", "2026-07-01", "2026-08-01", "2026-09-01"),
                             [("Club", "2026-10-28", "-12.00")])
+        self.addCleanup(conn.close)
         up = recurring.coming_up(conn, results([series("Insurer", 80.0, "2026-09-01")]), today=date(2026, 11, 2))
         self.assertEqual(statuses(up, "Insurer"), [("2026-10-01", "late", None)])
 
@@ -412,6 +425,7 @@ class Page(unittest.TestCase):
 
     def test_last_paid_follows_the_record_past_the_stat(self):
         conn = record(*ROWS, ("Gym", "2026-09-30", "-50.00"))
+        self.addCleanup(conn.close)
         page = recurring.page(conn, results([series("Gym", 50.0, "2026-08-05")]), today=date(2026, 10, 16))
         self.assertEqual(page["active"][0]["last_paid"], "2026-09-30")
 
@@ -474,17 +488,21 @@ def detected(*rows, flagged=()):
     """G16: a record of (payee, day, amount[, bank text]) rows in a non-habit category, and the
     detector's own result over it, so the page is read against what the stat really finds."""
     from analytics.stats import recurring_detector
-    conn = db.connect(":memory:")
-    db.import_user_tables(conn, {**{k: [dict(x) for x in v] for k, v in SNAP.items()},
-                                 "categories": [dict(c) for c in CATEGORIES + SUBS]})
     keyed = [row(f"k{i:03d}", amount, date=day, payee=payee, merchant=(rest[0] if rest else payee.upper()),
                  category="Subscriptions")
              for i, (payee, day, amount, *rest) in enumerate(rows)]
-    names = sorted({r[0] for r in rows if r[0]})
-    db.load_parsed(conn, parsed([block()], keyed), payees=[{"name": p, "kind": "Merchant", "country": "SGP"} for p in names])
+    conn = support.build_record(keyed, user=support.user_tables(categories=CATEGORIES + SUBS),
+                                payees=support.payees(sorted({r[0] for r in rows if r[0]})))
     for p in flagged:
         conn.execute("UPDATE payee SET recurring = 1 WHERE name = ?", (p,))
     return conn, {recurring.STAT: recurring_detector.run(db.snapshot(conn))}
+
+
+def detected_result(*rows, flagged=()):
+    """detected's result alone, its record closed."""
+    conn, res = detected(*rows, flagged=flagged)
+    conn.close()
+    return res
 
 
 def days(first, count, day):
@@ -613,7 +631,7 @@ class PausedResumes(unittest.TestCase):
 
     def setUp(self):
         self.gym = [("Gym", d, "-50.00") for d in days("2026-01", 6, 5)]
-        _, self.res = detected(*self.gym, ("Club", "2026-08-15", "-12.00"))
+        self.res = detected_result(*self.gym, ("Club", "2026-08-15", "-12.00"))
         self.assertEqual([s["payee"] for s in self.res["recurring-detector"]["data"]["paused"]], ["Gym"])
 
     def page(self, *more):
@@ -715,7 +733,7 @@ class StaleResult(unittest.TestCase):
         # 1 July and S$60 on 1 August were loaded, and the stat has not run again
         old = [*[("Twobill", d, "-40.00") for d in days("2026-01", 6, 1)],
                *[("Twobill", d, "-100.00") for d in ("2025-11-01", "2026-02-01", "2026-05-01")]]
-        _, stale = detected(*old, ("Club", "2026-06-20", "-12.00"))
+        stale = detected_result(*old, ("Club", "2026-06-20", "-12.00"))
         new = [("Twobill", "2026-07-01", "-40.00"), ("Twobill", "2026-08-01", "-60.00")]
         conn, fresh = detected(*old, *new, ("Club", "2026-08-20", "-12.00"))
         self.addCleanup(conn.close)
@@ -737,7 +755,7 @@ class Backfilled(unittest.TestCase):
         # S$40 chain and change its first charge, and S$100 came on 1 August
         saved = [*[("Twobill", d, "-40.00") for d in days("2026-01", 6, 1)],
                  *[("Twobill", d, "-100.00") for d in ("2025-11-01", "2026-02-01", "2026-05-01")]]
-        _, stale = detected(*saved, ("Club", "2026-06-20", "-12.00"))
+        stale = detected_result(*saved, ("Club", "2026-06-20", "-12.00"))
         older = [("Twobill", d, "-30.00") for d in days("2025-10", 3, 1)]
         conn, _ = detected(*older, *saved, ("Twobill", "2026-08-01", "-100.00"), ("Club", "2026-08-20", "-12.00"))
         self.addCleanup(conn.close)
@@ -762,7 +780,7 @@ class OlderStatementOfAVaryingBill(unittest.TestCase):
         # S$40 and S$80 by turns on the 5th through 2025 (usual S$60); then the stat ran; then a
         # December 2024 statement with S$80 on the 5th was loaded, and 2026's first bill came
         bill = [("Power", d, "-40.00" if k % 2 == 0 else "-80.00") for k, d in enumerate(days("2025-01", 12, 5))]
-        _, stale = detected(*bill, ("Club", "2025-12-20", "-12.00"))
+        stale = detected_result(*bill, ("Club", "2025-12-20", "-12.00"))
         conn, fresh = detected(("Power", "2024-12-05", "-80.00"), *bill, ("Power", "2026-01-05", "-40.00"),
                                ("Club", "2026-01-20", "-12.00"))
         self.addCleanup(conn.close)
@@ -779,7 +797,7 @@ class FlaggedPayeeGainsASeries(unittest.TestCase):
     def test_a_marked_payee_that_now_keeps_a_cadence_leaves_the_irregular_list(self):
         # the rules mark Gym recurring; the stat saw two payments (no series), then a third came
         two = [("Gym", "2026-07-05", "-50.00"), ("Gym", "2026-08-05", "-50.00")]
-        _, stale = detected(*two, ("Club", "2026-08-20", "-12.00"), flagged=["Gym"])
+        stale = detected_result(*two, ("Club", "2026-08-20", "-12.00"), flagged=["Gym"])
         self.assertEqual(stale["recurring-detector"]["data"]["flag_mismatches"]["flagged_not_detected"], ["Gym"])
         conn, _ = detected(*two, ("Gym", "2026-09-05", "-50.00"), ("Club", "2026-09-20", "-12.00"), flagged=["Gym"])
         self.addCleanup(conn.close)
@@ -792,7 +810,7 @@ class FlaggedPayeeGainsASeries(unittest.TestCase):
     def test_a_marked_payee_whose_series_is_gone_joins_the_irregular_list(self):
         # the stat saw a monthly Gym; then an older, irregular statement was loaded that breaks it
         bills = [("Gym", d, "-50.00") for d in ("2026-06-05", "2026-07-05", "2026-08-05")]
-        _, stale = detected(*bills, ("Club", "2026-08-20", "-12.00"), flagged=["Gym"])
+        stale = detected_result(*bills, ("Club", "2026-08-20", "-12.00"), flagged=["Gym"])
         self.assertEqual([s["payee"] for s in stale["recurring-detector"]["data"]["active"]], ["Gym"])
         conn, fresh = detected(*bills, ("Gym", "2026-06-20", "-50.00"), ("Gym", "2026-07-22", "-50.00"),
                                ("Gym", "2026-08-12", "-50.00"), ("Club", "2026-08-20", "-12.00"), flagged=["Gym"])

@@ -15,7 +15,6 @@ import os
 import tempfile
 import typing
 import unittest
-import warnings
 from contextlib import closing
 from datetime import date
 from pathlib import Path
@@ -26,6 +25,7 @@ from finance import (ai, copilot, dashboard, db, gen_types, home, keys, pending,
                      scam_checks, setup, upload_log)
 from finance import types as wire
 from test_db import block, parsed, row
+import support
 
 # ---------------------------------------------------------------- the checker
 
@@ -232,6 +232,9 @@ RESULTS = {"recurring-detector": {"generated_at": "2026-09-20T08:00:00", "data":
     "flag_mismatches": {"flagged_not_detected": ["Club"], "detected_not_flagged": []}}}}
 
 
+TODAY = date(2026, 10, 30)
+
+
 class December(date):
     """G18: a day when the record's account is late (finance.home reads `date.today`)."""
     @classmethod
@@ -256,6 +259,10 @@ class EndpointTest(unittest.TestCase):
         # one paired phone so LinkDevice is checked too, not just the empty list
         cls.tailnet = mock.patch("finance.link.tailnet_url", return_value="https://kopifund-mac.tailnet-name.ts.net")
         cls.tailnet.start()
+        # the record runs to September 2026 and Coming up is read against today:
+        # a fixed day after it, so every shape below has a row whatever the real clock says
+        cls.today = support.today_is(TODAY)
+        cls.today.__enter__()
         (root / "devices.json").write_text(json.dumps({"pair_tokens": [], "devices": [
             {"id": "dev_1", "name": "Test iPhone", "token_hash": "x", "paired_at": "2026-10-30T08:00:00",
              "revoked": False}]}), encoding="utf-8")
@@ -321,6 +328,7 @@ class EndpointTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
+        cls.today.__exit__(None, None, None)
         cls.tailnet.stop()
         cls.results.stop()
         cls.env.stop()
@@ -360,17 +368,15 @@ class EndpointTest(unittest.TestCase):
 
     def test_every_endpoint_answers_in_its_generated_shape(self):
         # several handlers leave their connection to the garbage collector; that is not this test's subject
-        self.enterContext(warnings.catch_warnings())
-        warnings.simplefilter("ignore", ResourceWarning)
         met = set()
         for path, query, tp in self.answers():
             with self.subTest(path=path, query=query):
-                self.assertEqual(problems(serve.answer(path, query), tp, path, met), [])
+                self.assertEqual(problems(support.answer(path, query), tp, path, met), [])
         # G17: the plan's write answers in the same shape, and so do the Net worth page's inputs
         with mock.patch("finance.stats_rebuild.refresh_stats"):
-            saved = serve.write("/api/plan", {}, json.dumps(serve.answer("/api/plan", {})["plan"]).encode())
+            saved = support.write("/api/plan", {}, json.dumps(support.answer("/api/plan", {})["plan"]).encode())
         self.assertEqual(problems(saved, wire.Plan, "POST /api/plan", met), [])
-        self.assertEqual(problems(serve.answer("/api/growth", {})["inputs"], wire.GrowthInputs,
+        self.assertEqual(problems(support.answer("/api/growth", {})["inputs"], wire.GrowthInputs,
                                   "/api/growth.inputs", met), [])
         expected = set().union(*(reachable(tp) for tp in (*wire.ENDPOINTS.values(), wire.GrowthInputs)))
         self.assertEqual({t.__name__ for t in expected - met}, set(),
@@ -380,17 +386,15 @@ class EndpointTest(unittest.TestCase):
         # G18: the rest of GET /api/overview is not generated yet. Today is December 2026, so the account is
         # late, and a one-off falls in Coming up's month (the record's last, September): every part of the
         # card has something to check
-        self.enterContext(warnings.catch_warnings())
-        warnings.simplefilter("ignore", ResourceWarning)
         self.enterContext(mock.patch.object(home, "date", December))
         offs = {"one-offs": {"data": {"one_offs": [{"date": "2026-09-15", "month": "2026-09", "payee": "Club",
                                                     "category": "Health", "amount_minor": 45_000,
                                                     "multiple": 6.1}]}}}
         self.enterContext(mock.patch("finance.results_cache.results", lambda req=None: {**RESULTS, **offs}))
-        eye, met = serve.answer("/api/overview", {})["needs_your_eye"], set()
+        eye, met = support.answer("/api/overview", {})["needs_your_eye"], set()
         self.assertEqual(problems(eye, wire.NeedsYourEye, "/api/overview.needs_your_eye", met), [])
         # the Rules page's total and the sidebar's count are one number
-        self.assertEqual(serve.answer("/api/rules", {})["needs_total"], eye["needs_rule"])
+        self.assertEqual(support.answer("/api/rules", {})["needs_total"], eye["needs_rule"])
         self.assertEqual({t.__name__ for t in reachable(wire.NeedsYourEye) - met}, set(),
                          "the fixture never filled these, so they went unchecked")
         self.assertEqual([line["kind"] for line in eye["lines"]],
@@ -399,22 +403,18 @@ class EndpointTest(unittest.TestCase):
 
     def test_the_rules_answer_groups_the_rows_no_rule_names_once(self):
         # G18: the list and its total come from one pass over the record
-        self.enterContext(warnings.catch_warnings())
-        warnings.simplefilter("ignore", ResourceWarning)
         spy = self.enterContext(mock.patch.object(rules_app, "_needs_groups", wraps=rules_app._needs_groups))
-        rules = serve.answer("/api/rules", {})
+        rules = support.answer("/api/rules", {})
         self.assertEqual(spy.call_count, 1)
         self.assertEqual(rules["needs_total"], len(rules["needs"]))
 
     def test_coming_up_holds_an_extra_row_so_its_shape_is_checked(self):
-        rows = serve.answer("/api/recurring", {})["coming_up"]["rows"]
+        rows = support.answer("/api/recurring", {})["coming_up"]["rows"]
         self.assertIn(("Gym", "extra"), {(r["payee"], r["status"]) for r in rows})
 
     def test_cost_type_and_its_deprecated_alias_agree(self):
-        self.enterContext(warnings.catch_warnings())
-        warnings.simplefilter("ignore", ResourceWarning)
-        cats = [c for g in serve.answer("/api/categories", {})["groups"] for c in g["categories"]]
-        cats += serve.answer("/api/plan", {})["categories"]
+        cats = [c for g in support.answer("/api/categories", {})["groups"] for c in g["categories"]]
+        cats += support.answer("/api/plan", {})["categories"]
         self.assertTrue(cats)
         self.assertEqual([c["group"] for c in cats], [c["cost_type"] for c in cats])
 

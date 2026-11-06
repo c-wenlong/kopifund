@@ -63,6 +63,7 @@ class ValuesTest(unittest.TestCase):
 class RecordTest(unittest.TestCase):
     def setUp(self):
         self.conn = db.connect(":memory:")
+        self.addCleanup(self.conn.close)
         db.import_user_tables(self.conn, {k: [dict(x) for x in v] for k, v in SNAP.items()},
                               plan={"dca": 100})
 
@@ -168,6 +169,7 @@ class RecordTest(unittest.TestCase):
 class TripsTest(unittest.TestCase):
     def setUp(self):
         self.conn = db.connect(":memory:")
+        self.addCleanup(self.conn.close)
         db.import_user_tables(self.conn, {k: [dict(x) for x in v] for k, v in SNAP.items()})
 
     def test_trips_come_back_as_the_sync_s_trip_objects(self):
@@ -189,6 +191,7 @@ class TripsTest(unittest.TestCase):
 class SeedCategoriesTest(unittest.TestCase):
     def test_blanks_are_filled_and_set_values_kept(self):
         conn = db.connect(":memory:")
+        self.addCleanup(conn.close)
         conn.execute("INSERT INTO category(name) VALUES ('Transport')")
         conn.execute("INSERT INTO category(name, bucket, grp, need_class, sort_order) "
                      "VALUES ('Groceries', 'Spend', 'Fixed', 'Want', 1)")
@@ -203,6 +206,7 @@ class SeedCategoriesTest(unittest.TestCase):
 
     def test_a_renamed_shipped_category_keeps_its_rows(self):
         conn = db.connect(":memory:")
+        self.addCleanup(conn.close)
         conn.execute("INSERT INTO category(name, bucket, grp, need_class, sort_order) "
                      "VALUES ('Tuition', 'Spend', 'Fixed', 'Need', 90)")
         old_id = conn.execute("SELECT id FROM category WHERE name='Tuition'").fetchone()[0]
@@ -213,12 +217,14 @@ class SeedCategoriesTest(unittest.TestCase):
 
     def test_a_record_that_has_both_names_is_left_alone(self):
         conn = db.connect(":memory:")
+        self.addCleanup(conn.close)
         conn.executemany("INSERT INTO category(name) VALUES (?)", [("Tuition",), ("Education",)])
         db.seed_categories(conn, [])
         self.assertEqual({r[0] for r in conn.execute("SELECT name FROM category")}, {"Tuition", "Education"})
 
     def test_a_row_whose_rule_says_the_old_name_lands_under_the_new_one(self):
         conn = db.connect(":memory:")
+        self.addCleanup(conn.close)
         education = conn.execute("INSERT INTO category(name) VALUES ('Education')").lastrowid
         self.assertEqual(db.category_ids(conn)["Tuition"], education)
         tuition = conn.execute("INSERT INTO category(name) VALUES ('Tuition')").lastrowid
@@ -266,6 +272,7 @@ class ImportReviewTest(unittest.TestCase):
 
     def setUp(self):
         self.conn = db.connect(":memory:")
+        self.addCleanup(self.conn.close)
         db.import_user_tables(self.conn, {k: [dict(x) for x in v] for k, v in SNAP.items()})
 
     def snap(self, **changes):

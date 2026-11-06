@@ -14,7 +14,7 @@ from unittest import mock
 from finance.parsers import categorise
 from finance import snapshot as snap
 from finance import db, local, page_cache, planning, relink, rules_app, rules_editor, stats_rebuild, sync
-from test_app_writes import DataFolder
+from support import DataFolder
 from test_db import block, parsed, row
 
 HEADER = "match_on,pattern,payee,kind,country,category,notes,account_no,recurring\n"
@@ -76,6 +76,7 @@ class Relink(DataFolder):
         local.load, which places every row on the record's trips."""
         if conn is None:
             conn = db.connect(path)
+            self.addCleanup(conn.close)
             db.seed_categories(conn)
         p = parsed([block(), block(period=f"{WALLET} · JPY · 2026-08", account_no=WALLET, currency="JPY",
                                    source="wallet/2026/2026-08.pdf")], statement_rows())

@@ -6,17 +6,16 @@ bucket's icon and colour."""
 import isolate  # noqa: F401  first: no test writes the real record or cache
 import hashlib
 import json
-import os
 import re
 import sqlite3
-import tempfile
 import unittest
 from contextlib import closing
 from pathlib import Path
 from unittest import mock
 
 from finance import api, categories, db, local, planning, spending, sync
-from test_db import SNAP, block, parsed, row
+import support
+from test_db import block, parsed, row
 
 REPO = Path(__file__).resolve().parents[2]
 V4 = (REPO / "server" / "tests" / "fixtures" / "record-v4.sql").read_text(encoding="utf-8")
@@ -59,15 +58,8 @@ PRAGMA user_version = 4;
 """
 
 
-class DataFolder(unittest.TestCase):
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        self.path = self.root / "kopifund.db"
-        p = mock.patch.dict(os.environ, {"KOPIFUND_DATA": str(self.root), "KOPIFUND_DB": str(self.path)})
-        p.start()
-        self.addCleanup(p.stop)
-        self.addCleanup(self.tmp.cleanup)
+class DataFolder(support.DataFolder):
+    """The shared throwaway data folder, with a version 4 record to upgrade."""
 
     def v4_record(self, extra=""):
         with closing(sqlite3.connect(self.path)) as c:
@@ -187,11 +179,8 @@ class UpgradeTest(DataFolder):
 def record():
     """A version 5 record in memory with the test_db rows: one trip (MYS,
     pinned k9), a budget, two transactions."""
-    conn = db.connect(":memory:")
-    db.import_user_tables(conn, SNAP)
-    db.load_parsed(conn, parsed([block()], [row("k1", "-12.50"), row("k2", "-5.00", category="Salary")]),
-                   payees=[{"name": "Grab", "kind": "Merchant"}], trips_by_key={"k1": "Trip A"})
-    return conn
+    return support.build_record([row("k1", "-12.50"), row("k2", "-5.00", category="Salary")],
+                                payees=[{"name": "Grab", "kind": "Merchant"}], trips_by_key={"k1": "Trip A"})
 
 
 class OnDeleteTest(unittest.TestCase):
@@ -476,14 +465,14 @@ class StyleEndpointTest(DataFolder):
         db.connect().close()
         with closing(db.connect()) as conn:
             gid = conn.execute("SELECT id FROM category_group WHERE name = 'Giving'").fetchone()[0]
-        out = serve.write("/api/category-groups/style", {},
+        out = support.write("/api/category-groups/style", {},
                           json.dumps({"id": gid, "name": "Giving", "colour": "c11"}).encode())
         self.assertEqual(out, {"id": gid, "name": "Giving", "icon": "gift", "colour": "c11", "shown": "c11",
                                "swapped": "Transfers"})
         with self.assertRaises(serve.Refused):
-            serve.write("/api/category-groups/style", {}, json.dumps({"id": gid, "icon": "rocket-ship"}).encode())
+            support.write("/api/category-groups/style", {}, json.dumps({"id": gid, "icon": "rocket-ship"}).encode())
         with self.assertRaises(ValueError):
-            serve.write("/api/category-groups/style", {}, json.dumps({"id": gid}).encode())
+            support.write("/api/category-groups/style", {}, json.dumps({"id": gid}).encode())
 
 
 if __name__ == "__main__":

@@ -11,7 +11,8 @@ from unittest import mock
 
 import serve
 from finance import db, model, monthly, sniff, upload_log
-from test_app_writes import DataFolder
+from support import DataFolder
+import support
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -270,7 +271,7 @@ class UploadTest(DataFolder):
         self.config = mock.patch("finance.api.config", return_value=self.cfg)
         self.config.start()
         self.addCleanup(self.config.stop)
-        self.attempt = serve.write("/api/uploads/start", {}, b'{"origin": "upload"}')["attempt"]
+        self.attempt = support.write("/api/uploads/start", {}, b'{"origin": "upload"}')["attempt"]
 
     def pdfs(self):
         return sorted(str(p.relative_to(self.root)) for p in (self.root / "statements").rglob("*.pdf"))
@@ -280,7 +281,7 @@ class UploadTest(DataFolder):
             return upload_log.attempt(conn, self.attempt)["steps"]
 
     def go(self, path, query=None, body=b""):
-        return serve.write(path, {"attempt": str(self.attempt), "from": "upload", **(query or {})}, body)
+        return support.write(path, {"attempt": str(self.attempt), "from": "upload", **(query or {})}, body)
 
     def test_find_folder_names_the_one_folder_or_says_why_not(self):
         self.assertEqual(monthly.find_folder(self.cfg, fixture_pdf("statements/posb-deposit.txt")),
