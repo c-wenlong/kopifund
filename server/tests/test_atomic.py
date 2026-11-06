@@ -47,9 +47,12 @@ class WritePrivate(unittest.TestCase):
         self.assertEqual([p.name for p in self.dir.iterdir()], ["keys.env"])
 
     def test_a_long_name_still_gets_a_temp_file(self):
-        path = self.dir / ("x" * 250)
-        write_private(path, "ok")
-        self.assertEqual(path.read_text(), "ok")
+        # 250 one-byte characters, and 62 four-byte ones (252 bytes with .txt)
+        for name in ("x" * 250, "\U0001F600" * 62 + ".txt"):
+            with self.subTest(len(name.encode("utf-8"))):
+                path = self.dir / name
+                write_private(path, "ok")
+                self.assertEqual(path.read_text(), "ok")
 
 
 if __name__ == "__main__":
