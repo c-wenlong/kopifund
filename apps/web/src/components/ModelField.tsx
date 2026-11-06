@@ -8,6 +8,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { getJSON } from "../api";
 import type { AiModel, AiModels } from "../types.gen";
+import { TextInput } from "./TextInput";
 
 export const MODEL_PAUSE_MS = 250;
 /** The most models the server answers for one query (finance/ai.py, MODELS_SHOWN): an answer this long may be cut short. */
@@ -140,7 +141,7 @@ export function ModelField({ label, provider, value, onChange, placeholder }: {
   const showing = open && shown.length > 0;
   return (
     <div className="relative flex flex-col gap-1">
-      <input
+      <TextInput
         role="combobox"
         aria-label={label}
         aria-expanded={showing}
@@ -172,7 +173,7 @@ export function ModelField({ label, provider, value, onChange, placeholder }: {
           setActive(-1);
         }}
         onKeyDown={onKeyDown}
-        className="h-8 w-full rounded-md border border-line bg-panel px-2 text-[13px]"
+        className="w-full text-[13px]"
       />
       {showing && (
         <ul id={listId} role="listbox" aria-label={label}

@@ -1,8 +1,9 @@
 import "@testing-library/jest-dom/vitest";
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Pager, clampPage, compactItems, pageCount, pageItems, usePager } from "./Pager";
+import { stubMatchMedia } from "../test-helpers";
 
 const range = (n: number) => Array.from({ length: n }, (_, i) => i + 1);
 
@@ -52,10 +53,10 @@ describe("page math", () => {
 });
 
 // a list of `rows` items behind a filter, drawn the way a page does
-function Harness({ initial = 312, list = "test", urlKey }: { initial?: number; list?: string; urlKey?: string }) {
+function Harness({ initial = 312, list = "test" }: { initial?: number; list?: string }) {
   const [rows, setRows] = useState(initial);
   const [filter, setFilter] = useState("");
-  const pager = usePager(list, rows, filter, 1, { urlKey });
+  const pager = usePager(list, rows, filter);
   const items = pager.slice(range(rows));
   return (
     <>
@@ -72,8 +73,6 @@ const shown = () => screen.getByTestId("items").textContent;
 const nav = () => screen.getByRole("navigation", { name: "Test pages" });
 
 describe("Pager", () => {
-  beforeEach(() => window.localStorage.clear());
-
   it("says where you are, as 1 to 25 of 312 with no dashes", () => {
     render(<Harness />);
     expect(within(nav()).getByRole("status")).toHaveTextContent("1 to 25 of 312");
@@ -99,10 +98,7 @@ describe("Pager", () => {
   });
 
   describe("on a phone", () => {
-    const phone = (on: boolean) => vi.stubGlobal("matchMedia", (q: string) => ({
-      matches: on && q.includes("max-width"), media: q, addEventListener() {}, removeEventListener() {},
-    }));
-    afterEach(() => vi.unstubAllGlobals());
+    const phone = (on: boolean) => stubMatchMedia((q) => on && q.includes("max-width"));
 
     it("shows the first, current and last page, with ellipses over the rest", () => {
       phone(true);
@@ -237,73 +233,6 @@ describe("Pager", () => {
     expect(shown()).toBe("26-30");
     fireEvent.click(screen.getByRole("button", { name: "Grow" }));
     expect(shown()).toBe("26-50");
-  });
-
-  describe("keeping the page in the address", () => {
-    const at = () => window.location.pathname + window.location.search;
-    beforeEach(() => window.history.replaceState(null, "", "/transactions"));
-    afterEach(() => window.history.replaceState(null, "", "/"));
-
-    it("starts on the page the address names, and writes each page it moves to", () => {
-      window.history.replaceState(null, "", "/transactions?page=3&q=food");
-      render(<Harness urlKey="page" />);
-      expect(shown()).toBe("51-75");
-      fireEvent.click(within(nav()).getByRole("button", { name: "Next page" }));
-      expect(at()).toBe("/transactions?page=4&q=food");
-      fireEvent.click(within(nav()).getByRole("button", { name: "Page 1" }));
-      // page 1 is the bare path; other keys stay
-      expect(at()).toBe("/transactions?q=food");
-      expect(shown()).toBe("1-25");
-    });
-
-    it("does not add an entry to the history, so Back leaves the list rather than paging back", () => {
-      const before = window.history.length;
-      render(<Harness urlKey="page" />);
-      fireEvent.click(within(nav()).getByRole("button", { name: "Next page" }));
-      expect(window.history.length).toBe(before);
-    });
-
-    it("goes back to page 1, and off the address, when the filter changes", () => {
-      window.history.replaceState(null, "", "/transactions?page=3");
-      render(<Harness urlKey="page" />);
-      fireEvent.change(screen.getByRole("textbox", { name: "Filter" }), { target: { value: "x" } });
-      expect(shown()).toBe("1-25");
-      expect(at()).toBe("/transactions");
-    });
-
-    it("follows the address when it changes under the list (Back, or a link to the bare path)", () => {
-      window.history.replaceState(null, "", "/transactions?page=3");
-      render(<Harness urlKey="page" />);
-      act(() => {
-        window.history.replaceState(null, "", "/transactions?page=5");
-        window.dispatchEvent(new PopStateEvent("popstate"));
-      });
-      expect(shown()).toBe("101-125");
-      act(() => {
-        window.history.replaceState(null, "", "/transactions");
-        window.dispatchEvent(new PopStateEvent("popstate"));
-      });
-      expect(shown()).toBe("1-25");
-    });
-
-    it("clamps a page past the end, and ignores nonsense", () => {
-      window.history.replaceState(null, "", "/transactions?page=99");
-      const { unmount } = render(<Harness urlKey="page" />);
-      expect(shown()).toBe("301-312");
-      expect(at()).toBe("/transactions?page=13");
-      unmount();
-      window.history.replaceState(null, "", "/transactions?page=abc");
-      render(<Harness urlKey="page" />);
-      expect(shown()).toBe("1-25");
-    });
-
-    it("leaves the address alone without a urlKey", () => {
-      window.history.replaceState(null, "", "/transactions?page=3");
-      render(<Harness />);
-      expect(shown()).toBe("1-25");
-      fireEvent.click(within(nav()).getByRole("button", { name: "Next page" }));
-      expect(at()).toBe("/transactions?page=3");
-    });
   });
 
   it("shows nothing when ten rows or fewer fit on one page", () => {

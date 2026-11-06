@@ -156,7 +156,7 @@ struct InboxView: View {
                 HStack {
                     Text(row.payee).font(.body)
                     Spacer()
-                    Text(money(row)).font(.body.monospacedDigit())
+                    Text(row.amountText).font(.body.monospacedDigit())
                 }
                 HStack {
                     Text(caption(row)).font(.caption).foregroundStyle(.secondary)
@@ -173,10 +173,6 @@ struct InboxView: View {
             r.day.formatted(date: .abbreviated, time: .omitted)
                 + (accountName.map { " · \($0)" } ?? "")
                 + (r.source.map { " · \($0)" } ?? "")
-        }
-        private func money(_ r: TransactionRecord) -> String {
-            let sign = r.direction == "outflow" ? "-" : "+"
-            return "\(sign)\(r.currency) \(String(format: "%.2f", Double(r.amountCents) / 100))"
         }
         private var color: Color {
             switch row.state {

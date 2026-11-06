@@ -1,7 +1,8 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { Setup } from "./Setup";
 import type { LayoutStatus } from "../api";
+import { json } from "../test-helpers";
 
 const CHECKED: LayoutStatus = "checked on a real statement";
 const SAMPLE: LayoutStatus = "from a public sample";
@@ -17,8 +18,6 @@ const state = { needed: true, data_folder: "/Users/x/.kopifund",
   ] };
 
 describe("Setup", () => {
-  afterEach(() => vi.restoreAllMocks());
-
   it("will not create anything until a provider is chosen, and says why on the button", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     render(<Setup state={state} onDone={() => {}} />);
@@ -99,5 +98,44 @@ describe("Setup", () => {
     expect(box.closest("label")!.querySelector("[data-bank='uob']")).toHaveTextContent("U");
     await userEvent.click(box);
     expect(screen.getByText("1 selected")).toBeInTheDocument();
+  });
+
+  it("says why the folder was not made, keeps the choice and the way forward, and creates it on a second try", async () => {
+    let refuse = true;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => refuse ? json({ error: "The data folder is read only." }, 500) : json({}));
+    const done = vi.fn();
+    render(<Setup state={state} onDone={done} />);
+    await userEvent.click(screen.getByLabelText("POSB Everyday Savings account"));
+    await userEvent.click(screen.getByRole("button", { name: "Create my data folder" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("The data folder is read only.");
+    expect(done).not.toHaveBeenCalled();
+    expect(screen.getByText("1 selected")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Create my data folder" })).toBeEnabled();
+    refuse = false;
+    await userEvent.click(screen.getByRole("button", { name: "Create my data folder" }));
+    await waitFor(() => expect(done).toHaveBeenCalledOnce());
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("takes the failure away as soon as the choice changes", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => json({ error: "The data folder is read only." }, 500));
+    render(<Setup state={state} onDone={() => {}} />);
+    await userEvent.click(screen.getByLabelText("POSB Everyday Savings account"));
+    await userEvent.click(screen.getByRole("button", { name: "Create my data folder" }));
+    expect(await screen.findByRole("alert")).toBeInTheDocument();
+    await userEvent.click(screen.getByLabelText("OCBC 360 account"));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("holds the button while the folder is being made", async () => {
+    let finish: (r: Response) => void = () => {};
+    vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise<Response>((r) => { finish = r; }));
+    const done = vi.fn();
+    render(<Setup state={state} onDone={done} />);
+    await userEvent.click(screen.getByLabelText("POSB Everyday Savings account"));
+    await userEvent.click(screen.getByRole("button", { name: "Create my data folder" }));
+    expect(screen.getByRole("button", { name: "Setting up…" })).toBeDisabled();
+    finish(json({}));
+    await waitFor(() => expect(done).toHaveBeenCalledOnce());
   });
 });
