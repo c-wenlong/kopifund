@@ -100,8 +100,10 @@ download yourself. Nothing leaves the machine unless you switch it on or use it:
   names and, for a row with no payee, the statement's merchant text, of the rows
   a question needs go to that provider, only after you turn on "Send
   matching rows" in Settings (a model on this machine needs no switch).
-- **The iOS app.** The transactions you approve go to `api.ynab.com`, your YNAB
-  plan, with the personal access token you give it.
+- **The iOS app.** The transactions you approve go to this machine over the
+  phone link below, and to `api.ynab.com`, your YNAB plan, only when you give
+  the app a personal access token and pick a plan (YNAB is optional). With
+  no link and no YNAB plan, they stay on the phone.
 - **The phone link (G25).** Once you pair a phone (Settings, "Link a phone")
   and run `tailscale serve`, the phone reads your profile, transactions,
   categories and overview from this machine over your own tailnet, with a
