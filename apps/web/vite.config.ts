@@ -64,5 +64,7 @@ export default defineConfig({
   ],
   // `make dev` passes the API's port; 8770 is serve.py's own default
   server: { proxy: { "/api": `http://127.0.0.1:${process.env.KOPIFUND_API_PORT ?? 8770}` } },
-  test: { environment: "jsdom", globals: true, setupFiles: ["src/test-setup.ts"] },
+  // restoreMocks, unstubGlobals and unstubEnvs: a spy, a stubbed global or a stubbed env var
+  // never outlives its test, so no file cleans up after itself
+  test: { environment: "jsdom", globals: true, setupFiles: ["src/test-setup.ts"], restoreMocks: true, unstubGlobals: true, unstubEnvs: true },
 });

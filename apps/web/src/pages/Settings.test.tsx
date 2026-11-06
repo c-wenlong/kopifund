@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Settings } from "./Settings";
 import { leadingIcon } from "../test-icons";
 import { ServerBanner } from "../components/ServerBanner";
+import { json, stubMatchMedia } from "../test-helpers";
 
 const scamChecks = {
   settings: { big_transfer: 50_000, repeat_count: 3, repeat_days: 14, new_payee_days: 30,
@@ -19,37 +20,37 @@ function stubFetch({ health = true, exports = [{ stamp: "2026-10-12", files: ["t
   let up = health, pid = 4321;
   const started = () => Math.floor(Date.now() / 1000) - 2 * 3600 - 5 * 60;
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
-    if (url === "/api/health") return up ? new Response(JSON.stringify({ ok: true }), { status: 200 }) : Promise.reject(new Error("down"));
+    if (url === "/api/health") return up ? json({ ok: true }) : Promise.reject(new Error("down"));
     if (url.startsWith("/api/server/") && init?.method === "POST") {
       posts.push({ url });
       // a stop with work under way keeps answering until the test lets it go
       if (url.endsWith("/stop") && !waitingFor.length) up = false;
       if (url.endsWith("/restart")) pid += 1;
-      return new Response(JSON.stringify({ ok: true, waiting_for: waitingFor, timeout: 120 }), { status: 200 });
+      return json({ ok: true, waiting_for: waitingFor, timeout: 120 });
     }
     if (url === "/api/server") {
       if (!up) return Promise.reject(new Error("down"));
-      return new Response(JSON.stringify({ version: "0.1.0", mode: "serve", port: 8770, pid, started: started() }), { status: 200 });
+      return json({ version: "0.1.0", mode: "serve", port: 8770, pid, started: started() });
     }
-    if (url.startsWith("/api/exports")) return new Response(JSON.stringify({ exports }), { status: 200 });
+    if (url.startsWith("/api/exports")) return json({ exports });
     // G22: the AI card has its own tests (AiCard.test.tsx); here it asks a server that is down along with the rest
     if (url.startsWith("/api/ai") && !health) return Promise.reject(new Error("down"));
     // the app icon card has its own tests (AppIconCard.test.tsx); a server that is down answers it nothing either
     if (url.startsWith("/api/app-icon")) {
       if (!health) return Promise.reject(new Error("down"));
-      return new Response(JSON.stringify({ sets: [{ name: "sticker", label: "Sticker", about: "Kopi in a bag" }],
-        default: "sticker", chosen: "sticker" }), { status: 200 });
+      return json({ sets: [{ name: "sticker", label: "Sticker", about: "Kopi in a bag" }],
+        default: "sticker", chosen: "sticker" });
     }
     if (url.startsWith("/api/scam-checks")) {
       posts.push({ url, body: init?.body as string | undefined });
-      return new Response(JSON.stringify(scamChecks), { status: 200 });
+      return json(scamChecks);
     }
     if (url === "/api/export" && init?.method === "POST") {
-      return new Response(JSON.stringify({ folder: "exports/2026-10-12", stamp: "2026-10-12", files: [], transactions: 1200 }), { status: 200 });
+      return json({ folder: "exports/2026-10-12", stamp: "2026-10-12", files: [], transactions: 1200 });
     }
     // G25: the link card has its own tests (LinkCard.test.tsx); here it sees an empty registry
-    if (url.startsWith("/api/link/devices")) return new Response(JSON.stringify({ devices: [], url: "" }), { status: 200 });
-    if (url.startsWith("/api/link/pending")) return new Response(JSON.stringify({ rows: [] }), { status: 200 });
+    if (url.startsWith("/api/link/devices")) return json({ devices: [], url: "" });
+    if (url.startsWith("/api/link/pending")) return json({ rows: [] });
     return new Response("{}", { status: 404 });
   }));
   return { goDown: () => { up = false; } };
@@ -60,7 +61,6 @@ const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancel
 
 describe("Scam checks card", () => {
   beforeEach(() => { posts.length = 0; });
-  afterEach(() => vi.unstubAllGlobals());
 
   it("shows the saved thresholds and saves a change in cents", async () => {
     stubFetch();
@@ -103,7 +103,7 @@ describe("Scam checks card", () => {
     stubFetch();
     const ok = globalThis.fetch;
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => url === "/api/scam-checks/fine"
-      ? new Response(JSON.stringify({ error: "the record is busy" }), { status: 422 }) : ok(url, init)));
+      ? json({ error: "the record is busy" }, 422) : ok(url, init)));
     render(<Settings />);
     fireEvent.click(await screen.findByRole("button", { name: "Flag again: SCAMMER PTE on 10 Sep 2026" }));
     expect(await screen.findByRole("alert")).toHaveTextContent("the record is busy");
@@ -119,9 +119,6 @@ describe("Scam checks card", () => {
 });
 
 describe("Settings", () => {
-  beforeEach(() => window.localStorage.clear());
-  afterEach(() => vi.unstubAllGlobals());
-
   it("shows the local server as a status chip, not a card", async () => {
     stubFetch();
     render(<Settings />);
@@ -149,9 +146,9 @@ describe("Settings", () => {
   it("says connected again once the server is back, as the banner goes", async () => {
     let up = false;
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
-      if (url === "/api/health") return up ? new Response(JSON.stringify({ ok: true }), { status: 200 }) : Promise.reject(new Error("down"));
-      if (url.startsWith("/api/exports")) return new Response(JSON.stringify({ exports: [] }), { status: 200 });
-      return new Response(JSON.stringify(scamChecks), { status: 200 });
+      if (url === "/api/health") return up ? json({ ok: true }) : Promise.reject(new Error("down"));
+      if (url.startsWith("/api/exports")) return json({ exports: [] });
+      return json(scamChecks);
     }));
     render(<><Settings /><ServerBanner /></>);
     expect(await screen.findByText("Server offline")).toBeInTheDocument();
@@ -173,7 +170,7 @@ describe("Settings", () => {
   });
 
   it("hides the sidebar setting under 768px, where the sidebar is a drawer", async () => {
-    vi.stubGlobal("matchMedia", (media: string) => ({ matches: false, media, addEventListener() {}, removeEventListener() {} }));
+    stubMatchMedia(false);
     stubFetch();
     render(<Settings />);
     await screen.findByText("Server connected");
@@ -215,7 +212,7 @@ describe("Settings", () => {
 // G18: unsaved means typed here; thresholds saved from another tab are not an edit on this one
 describe("Scam checks saved from another tab", () => {
   const was = { ...scamChecks.settings };
-  afterEach(() => { Object.assign(scamChecks.settings, was); vi.unstubAllGlobals(); });
+  afterEach(() => { Object.assign(scamChecks.settings, was); });
 
   it("show in every box left alone, and a box typed in keeps its typing", async () => {
     stubFetch();
@@ -253,7 +250,7 @@ describe("Scam checks saved from another tab", () => {
       if (url === "/api/scam-checks/settings" && init?.method === "POST") {
         const sent = JSON.parse(String(init.body));
         return new Promise<Response>((done) => {
-          release = () => { Object.assign(scamChecks.settings, sent); done(new Response(JSON.stringify(scamChecks), { status: 200 })); };
+          release = () => { Object.assign(scamChecks.settings, sent); done(json(scamChecks)); };
         });
       }
       return ask(url, init);
@@ -277,7 +274,6 @@ describe("Scam checks saved from another tab", () => {
 // G23: the Server card
 describe("Server card", () => {
   beforeEach(() => { posts.length = 0; });
-  afterEach(() => vi.unstubAllGlobals());
 
   it("says how long the server has run and what started it", async () => {
     stubFetch();

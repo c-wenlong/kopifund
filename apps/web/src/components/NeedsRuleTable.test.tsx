@@ -1,8 +1,9 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { NeedsRule, SuggestReply, Suggestion } from "../api";
 import { NeedsRuleTable, clashes } from "./NeedsRuleTable";
+import { json } from "../test-helpers";
 
 const GROUPS: NeedsRule[] = [
   { text: "TOAST BOX - RAFFLES PL", field: "merchant", rows: 4, amount: 2280, first: "2026-08-02", last: "2026-08-20", keys: [] },
@@ -34,15 +35,12 @@ function stubFetch(reply: SuggestReply) {
     const body = url === "/api/rules/suggest" ? reply
       : url.startsWith("/api/rules/rows") ? toast(calls.some((c) => c.url === "/api/rules/pin"))
       : { added: 1, lint: {} };
-    return new Response(JSON.stringify(body), { status: 200 });
+    return json(body);
   }));
   return calls;
 }
 
 describe("NeedsRuleTable", () => {
-  beforeEach(() => window.localStorage.clear());
-  afterEach(() => vi.unstubAllGlobals());
-
   it("labels the payee and category fields for a phone, where the column headings are gone", async () => {
     stubFetch(REPLY);
     render(<NeedsRuleTable groups={GROUPS} canLoad onSaved={vi.fn()} />);

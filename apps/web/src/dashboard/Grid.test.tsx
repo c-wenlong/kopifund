@@ -43,10 +43,6 @@ beforeEach(() => {
   el.releasePointerCapture ??= () => {};
 });
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
-
 describe("Grid", () => {
   it("settles a drop into the highest free row at once, and saves nothing when that is where it was", () => {
     const onArrange = renderGrid([widget("w-a", { x: 0, y: 0, w: 4, h: 2 }), widget("w-b", { x: 4, y: 0, w: 4, h: 2 })]);

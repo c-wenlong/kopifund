@@ -3,8 +3,6 @@ import { fmt } from "./stats/hint";
 import { CENTS_UNIT } from "./stats/money";
 import { isMoneyText } from "./components/MoneyInput";
 
-afterEach(() => vi.restoreAllMocks());
-
 describe("formatSgd", () => {
   it("formats whole dollars from cents", () => {
     expect(formatSgd(4_929_900)).toBe("S$49,299");

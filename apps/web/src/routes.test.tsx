@@ -3,6 +3,7 @@ import { App } from "./App";
 import { cacheable, type Overview } from "./api";
 import { bottomItems, bottomPages, isUnder, pages } from "./nav";
 import { NAV_PANELS, ROUTES, routeFor, titleFor } from "./routes";
+import { json, stubMatchMedia } from "./test-helpers";
 
 // G19: the route table (routes.tsx) feeds the sidebar, the page titles and the
 // prefetch lists. These tests open every page and check the table against what
@@ -28,30 +29,23 @@ const overview: Overview = {
 };
 
 const requested: string[] = [];
-const original = window.matchMedia;
 
 beforeEach(() => {
   requested.length = 0;
-  window.localStorage.clear();
   // wide, so the sidebar draws
-  window.matchMedia = ((query: string) => ({
-    matches: true, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })) as unknown as typeof window.matchMedia;
+  stubMatchMedia(true);
   // every figure but the overview fails to load, which is enough: the requests
   // a page makes as it opens do not wait for an answer
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
     requested.push(url);
-    if (url.startsWith("/api/setup")) return new Response(JSON.stringify({ needed: false }), { status: 200 });
-    if (url === "/api/overview") return new Response(JSON.stringify(overview), { status: 200 });
-    return new Response(JSON.stringify({ error: "not loaded" }), { status: 404 });
+    if (url.startsWith("/api/setup")) return json({ needed: false });
+    if (url === "/api/overview") return json(overview);
+    return json({ error: "not loaded" }, 404);
   });
 });
 
 afterEach(() => {
-  vi.restoreAllMocks();
-  window.matchMedia = original;
   window.history.pushState(null, "", "/");
 });
 
