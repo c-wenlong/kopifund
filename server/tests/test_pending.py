@@ -291,6 +291,17 @@ class ExpiryTest(unittest.TestCase):
         self.assertEqual(pending.waiting_count(self.conn, date(2026, 12, 1)), 1)
 
 
+    def test_a_correction_to_an_expired_row_lands_and_waits_again(self):
+        pending.expire(self.conn, date(2026, 12, 1))
+        # an unchanged retry leaves it expired
+        self.assertEqual(pending.post_rows(self.conn, "d", [spend(payee="NOBODY")])["accepted"], 0)
+        self.assertEqual(self.state()["state"], "expired")
+        out = pending.post_rows(self.conn, "d", [spend(payee="NOBODY", amount=-1300)])
+        self.assertEqual(out["accepted"], 1)
+        r = pending.rows(self.conn)[0]
+        self.assertEqual((r["state"], r["amount_minor"]), ("waiting", -1300))
+
+
 class UpgradeTest(unittest.TestCase):
     def test_a_version_7_row_takes_its_posted_stamp_and_the_new_state(self):
         with tempfile.TemporaryDirectory() as d:

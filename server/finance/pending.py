@@ -77,8 +77,10 @@ def _row(d):
 def post_rows(conn, device_id, rows):
     """Upsert the phone's rows and answer {"accepted": n}: how many were new or
     corrected. A row that arrives again keeps its one record row (`import_id`
-    is unique); a retry of a row still waiting updates its fields, a row
-    already matched or dismissed is left alone. New rows confirm against the
+    is unique); a retry of a row still waiting updates its fields, and so
+    does one that corrects an expired row, which goes back to waiting with
+    a full wait (an unchanged retry leaves it expired); a row already
+    matched or dismissed is left alone. New rows confirm against the
     record as it stands, so one whose statement loaded first matches at once."""
     if not isinstance(rows, list):
         raise ValueError("rows is a list")
@@ -92,8 +94,14 @@ def post_rows(conn, device_id, rows):
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(import_id) DO UPDATE SET
                        txn_date = excluded.txn_date, amount_minor = excluded.amount_minor,
-                       currency = excluded.currency, payee = excluded.payee
-                   WHERE pending_txn.state = 'waiting'""",
+                       currency = excluded.currency, payee = excluded.payee,
+                       state_changed_at = CASE pending_txn.state WHEN 'expired'
+                           THEN excluded.state_changed_at ELSE pending_txn.state_changed_at END,
+                       state = 'waiting'
+                   WHERE pending_txn.state = 'waiting'
+                      OR (pending_txn.state = 'expired' AND
+                          (pending_txn.txn_date, pending_txn.amount_minor, pending_txn.currency, pending_txn.payee)
+                          IS NOT (excluded.txn_date, excluded.amount_minor, excluded.currency, excluded.payee))""",
                 (r["import_id"], device_id, r["date"], r["amount_minor"], r["currency"], r["payee"],
                  *(db.now(),) * 2))
             accepted += cur.rowcount > 0

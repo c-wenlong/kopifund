@@ -1436,7 +1436,9 @@ whois` on that IP names the tailnet caller when it matters.
   and what is due is decided again under the write lock. A posted date so
   late that its wait would run past the calendar is refused.
   An expired row still matches a statement that lands later; a dismissed
-  one never does. Every change of state stamps `state_changed_at`.
+  one never does. A post that corrects an expired row (another date,
+  amount, currency or payee) lands and puts it back to waiting with a full
+  wait; an unchanged retry leaves it expired. Every change of state stamps `state_changed_at`.
 - **Where the rows show.** Home's Needs your eye counts only the rows still
   waiting (a row past its 60 days counts no more, even before a read has
   written it expired, since Home is also read on the copilot's read-only
