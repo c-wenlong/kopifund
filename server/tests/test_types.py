@@ -261,8 +261,7 @@ class EndpointTest(unittest.TestCase):
         cls.tailnet.start()
         # the record runs to September 2026 and Coming up is read against today:
         # a fixed day after it, so every shape below has a row whatever the real clock says
-        cls.today = support.today_is(TODAY)
-        cls.today.__enter__()
+        cls.enterClassContext(support.today_is(TODAY))
         (root / "devices.json").write_text(json.dumps({"pair_tokens": [], "devices": [
             {"id": "dev_1", "name": "Test iPhone", "token_hash": "x", "paired_at": "2026-10-30T08:00:00",
              "revoked": False}]}), encoding="utf-8")
@@ -328,7 +327,6 @@ class EndpointTest(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        cls.today.__exit__(None, None, None)
         cls.tailnet.stop()
         cls.results.stop()
         cls.env.stop()
