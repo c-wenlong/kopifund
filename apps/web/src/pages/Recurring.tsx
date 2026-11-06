@@ -21,6 +21,7 @@ import { Loading, Problem } from "../components/States";
 import { HEAD_ROW, TH } from "../components/tableKit";
 import { Progress, Tile, TileGrid } from "../components/Tile";
 import { useWide } from "../components/useWide";
+import { useAction } from "../components/useAction";
 import { ago, formatDay, formatDayShort, formatMonth, isoParts } from "../dates";
 import type { Cadence } from "../types.gen";
 import { CADENCE_ICON, COMING_ICON, KindIcon, KindLabel, NEED_ICON, type IconTone } from "../icons";
@@ -436,19 +437,8 @@ const IRREGULAR_GRID = "grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3
 
 /** G16: one write at a time from a list's buttons, with the reason when the record refused it. */
 function useWrite() {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [failed, setFailed] = useState<{ key: string; message: string } | null>(null);
-  async function run(key: string, url: string, body: object) {
-    setBusy(key);
-    setFailed(null);
-    try {
-      await postJSON(url, JSON.stringify(body));
-    } catch (e) {
-      setFailed({ key, message: (e as Error).message });
-    } finally {
-      setBusy(null);
-    }
-  }
+  const { busy, failed, run: act } = useAction();
+  const run = (key: string, url: string, body: object) => act(key, () => postJSON(url, JSON.stringify(body)));
   return { busy, failed, run };
 }
 

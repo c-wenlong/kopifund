@@ -5,6 +5,7 @@ import type { Bank } from "../accounts";
 import { BankMark } from "../components/BankMark";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
+import { useAction } from "../components/useAction";
 
 // G13: a wallet is one tile with a chip for each currency; every other provider is a tile of its own
 // G21: each provider brings its bank's mark and its account's name from the layout registry, and its
@@ -34,30 +35,28 @@ const FRAME = "rounded-lg border border-line bg-panel px-3 py-2.5 has-[:checked]
 /** First run: pick the banks and wallets you hold; Kopifund makes the data folder. */
 export function Setup({ state, onDone }: { state: SetupState; onDone: () => void }) {
   const [chosen, setChosen] = useState<Set<string>>(new Set());
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [empty, setEmpty] = useState(false);
+  const action = useAction();
+  const busy = action.running;
+  const error = empty ? "Choose at least one bank, wallet or statement." : action.error;
 
   const pick = (id: string, on: boolean) => {
     const next = new Set(chosen);
     if (on) next.add(id); else next.delete(id);
     setChosen(next);
-    setError(null);
+    setEmpty(false);
+    action.clear();
   };
 
   async function create() {
     if (!chosen.size) {
-      setError("Choose at least one bank, wallet or statement.");
+      setEmpty(true);
       return;
     }
-    setBusy(true);
-    try {
+    await action.run("create", async () => {
       await postJSON("/api/setup", JSON.stringify({ providers: [...chosen] }));
       onDone();
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   return (
