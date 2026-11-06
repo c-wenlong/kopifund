@@ -23,7 +23,6 @@ from unittest import mock
 
 from finance import monthly, sniff, sync
 from finance.parsers import layouts
-from finance.parsers import parse_statements as ps
 from finance.parsers import parse_uob as pu
 
 FIXTURES = Path(__file__).resolve().parent / "fixtures" / "statements"
@@ -246,8 +245,8 @@ class TheRun(unittest.TestCase):
                 (folder / f"{n}.pdf").write_bytes(b"%PDF-1.4\n")
             texts = {f"{n}.pdf": fixture(n) for n in names}
             argv = ["parse_uob", str(folder.parent), "--out", str(out), "--no-text"]
-            with mock.patch.object(sys, "argv", argv), mock.patch.object(pu.shutil, "which", return_value="x"), \
-                    mock.patch.object(ps, "pdf_to_text", side_effect=lambda pdf, write=True: texts[Path(pdf).name]):
+            with mock.patch.object(sys, "argv", argv), mock.patch("shutil.which", return_value="x"), \
+                    mock.patch.object(pu, "pdf_to_text", side_effect=lambda pdf, write=True: texts[Path(pdf).name]):
                 try:
                     with contextlib.redirect_stdout(io.StringIO()):
                         pu.main()
