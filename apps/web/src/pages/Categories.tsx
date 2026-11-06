@@ -16,6 +16,7 @@ import { KindLabel, NEED_ICON } from "../icons";
 import { bucketLook, BucketMark } from "../components/BucketMark";
 import { useUrlParams } from "../useUrlParams";
 import { BucketStylePicker } from "../components/BucketStylePicker";
+import { plural, sentence } from "../words";
 
 // G8: categories on their own page, grouped into buckets. Every change lands
 // in the record at once and moves everything that hangs off the category:
@@ -33,7 +34,6 @@ const KIND_NOTE: Record<string, string> = { income: "Money in, not spending", tr
 const kindNote = (to: CategoryGroup, from: CategoryGroup) =>
   to.kind === from.kind ? undefined : to.kind === "spend" ? "counts as spending" : "not spending";
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-SG")} ${n === 1 ? one : many}`;
 
 // The tab shown is remembered in the address (?bucket=, so a link opens it) and
 // in this browser. The address wins, and is read on every render, so a link or
@@ -135,7 +135,7 @@ export function Categories() {
       if (out.rules_note) {
         // the change is saved, but the rules could not follow it: say so
         // rather than claim they did
-        showToast({ tone: "error", message: `Saved. ${out.rules_note.charAt(0).toUpperCase()}${out.rules_note.slice(1)}.` });
+        showToast({ tone: "error", message: `Saved. ${sentence(out.rules_note)}.` });
       } else if (out.swapped) {
         showToast({ message: `Swapped colours with ${out.swapped}.` });
       } else if (done) {

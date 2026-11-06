@@ -8,6 +8,7 @@ import { Select } from "./Select";
 import { TextInput } from "./TextInput";
 import { StatusChip } from "./StatusChip";
 import { TIER_TESTS, tierLabel } from "../ruleWords";
+import { plural } from "../words";
 
 export type Draft = {
   match_on: string; pattern: string; payee: string; kind: string; country: string;
@@ -39,7 +40,6 @@ export function draftParams(draft: Draft): URLSearchParams {
   });
 }
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-SG")} ${n === 1 ? one : many}`;
 const outcome = (o: PayeeCategory) => (o.category ? [o.payee, o.category].filter(Boolean).join(", ") : "no rule");
 
 // G7: add a rule, or edit one, with a live preview of what saving it would

@@ -25,6 +25,7 @@ import { useAction } from "../components/useAction";
 import { ago, formatDay, formatDayShort, formatMonth, isoParts } from "../dates";
 import type { Cadence } from "../types.gen";
 import { CADENCE_ICON, COMING_ICON, KindIcon, KindLabel, NEED_ICON, type IconTone } from "../icons";
+import { plural } from "../words";
 
 // G13: the Recurring page is lists: one list of every live series, soonest
 // next payment first, each with this month's status and a bar of its yearly
@@ -475,7 +476,6 @@ function IrregularList({ rows, asOf }: { rows: IrregularPayee[]; asOf: string })
   );
 }
 
-const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 
 /** G16: what the owner said is not recurring, each with Undo; a series' name opens its view. */
 function NotRecurringList({ rows }: { rows: NotRecurring[] }) {

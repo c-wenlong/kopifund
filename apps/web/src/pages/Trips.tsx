@@ -23,6 +23,7 @@ import { showToast } from "../components/Toast";
 import { useWide } from "../components/useWide";
 import { TRIP_TAG_ICON } from "../icons";
 import { useChartView, ViewSwitch, type ViewOption } from "../components/ViewSwitch";
+import { plural } from "../words";
 
 const LONG_STAY_DAYS = 60;   // the travel stat's default, until the server says otherwise
 
@@ -94,7 +95,6 @@ export function Flags({ trip }: { trip: Pick<Trip, "countries" | "flags"> }) {
 }
 
 const flagText = (t: Trip) => (t.flags ?? []).filter(Boolean).join("");
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 // A recorded trip groups past spending: every row dated inside it (on a
 // wallet, or abroad) is counted on it. G13: saving it moves those rows at
