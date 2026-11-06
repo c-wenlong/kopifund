@@ -85,23 +85,26 @@ extension Matcher {
     }
 
     /// The problem when segment `k` is the first that does not read. A
-    /// field that does not read is "not found after" the words before it;
-    /// so is the next field when the words before it are what is missing.
-    /// Words after the last field that are missing leave that field "not
-    /// found before" them.
+    /// field that does not read is "not found after" the words before it.
+    /// Missing words name the field right beside them: the one they open
+    /// ("not found after"), else the one they close ("not found before").
+    /// Only a direct neighbour counts: across an ignored stretch or other
+    /// words the field has borders of its own, and naming it would point
+    /// the owner at the wrong edit.
     private static func stop(at k: Int, in segs: [AlertPattern.Segment]) -> String {
         if let field = fieldName(segs[k]) {
             let before = k > 0 ? anchorText(segs[k - 1], side: .before) : nil
             return before.map { "\(field) not found after '\($0)'" } ?? "\(field) not found"
         }
-        if let next = segs[(k + 1)...].first(where: { fieldName($0) != nil }).flatMap(fieldName),
+        if k + 1 < segs.count, let next = fieldName(segs[k + 1]),
            let words = anchorText(segs[k], side: .before) {
             return "\(next) not found after '\(words)'"
         }
-        if let prev = segs[..<k].last(where: { fieldName($0) != nil }).flatMap(fieldName),
+        if k > 0, let prev = fieldName(segs[k - 1]),
            let words = anchorText(segs[k], side: .after) {
             return "\(prev) not found before '\(words)'"
         }
+        if let words = anchorText(segs[k], side: .before) { return "'\(words)' not found" }
         return "text does not match"
     }
 

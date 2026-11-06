@@ -224,3 +224,15 @@ private func tagged(_ text: String, _ field: (String) -> PatternBuilder.Field?)
     #expect(Matcher.whyNot(dated, text: text, arrivedOn: leap) == nil)
     #expect(Matcher.whyNot(dated, text: text, arrivedOn: plain) == "date not readable")
 }
+
+@Test func missingWordsNameTheFieldRightBesideThem() {
+    // "Ref" closes the payee; the amount across the ignored reference has
+    // its own label, which is present
+    let p = AlertPattern(
+        name: "Demo Split", direction: .outflow, accountID: "",
+        segments: [.literal("To: "), .payee, .literal("\nRef"), .ignore,
+                   .literal("Amount: "), .amount],
+        sampleText: "To: KOPI CORNER\nRef A1001\nAmount: SGD 4.20")
+    #expect(Matcher.whyNot(p, text: "To: LAMP SHOP\nReceipt E5005\nAmount: SGD 9.10")
+            == "payee not found before 'Ref'")
+}

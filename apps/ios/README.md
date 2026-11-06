@@ -127,8 +127,9 @@ higher priority; an ignored stretch reads anything, so it counts for
 nothing), and the first field it could not read, by the words
 the pattern finds that field between ("Closest: Demo Wallet: payee not found
 after 'To:'"; `Matcher.closest`). The pattern is read one segment at a time
-from its start, so a missing label names the field after it, missing words
-after the last field name that field ("payee not found before 'Ref'"), and a
+from its start, so missing words name the field right beside them: the
+field they open ("payee not found after 'To:'"), else the one they close
+("payee not found before 'Ref'"), never one across an ignored stretch; and a
 shape that reads whole names the value it refused (a source filter, a third
 decimal, another card). A pattern that reads none of the alert is no
 closest. **Edit that pattern** opens the builder on that pattern, its tags
