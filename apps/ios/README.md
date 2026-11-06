@@ -252,7 +252,10 @@ never came through, waits under **Needs details** with what it lacks. It
 cannot be approved, "Approve all" skips it, it never pairs as a duplicate,
 and a sync never posts it to YNAB or to the linked record (a row an older
 build approved goes back to review). Open it and type the amount and payee
-to make it an ordinary pending row, or swipe to delete it; **Delete all**
+to make it an ordinary pending row (it then gets the duplicate check it
+skipped on arrival, on Approve or on leaving its page, so a bank alert for the
+same spend that queued meanwhile parks it instead of posting twice), or swipe
+to delete it; **Delete all**
 clears the section. The first launch of this build deletes, once, the empty
 Wallet captures older builds queued: rows from the Wallet intent with amount
 0, no payee and no alert text that never reached YNAB or the record, and
