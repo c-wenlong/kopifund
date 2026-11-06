@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Download, FileJson, FileSpreadsheet, FileText } from "lucide-react";
 import { useSidebarMode, type SidebarMode } from "../components/sidebarMode";
 import { checkServer, postJSON, useApi, useLink, type ExportDone, type Exports, type ScamChecks, type ScamSettings, type ServerEnding, type ServerInfo, type ServerMode } from "../api";
-import { centsText, formatSgd, parseCents } from "../money";
+import { centsText, formatSgd, isAmountText, parseCents } from "../money";
 import { formatDay } from "../dates";
 import { MoneyInput } from "../components/MoneyInput";
 import { SaveBar } from "../components/SaveBar";
@@ -284,7 +284,6 @@ const isMoney = (k: ScamKey) => MONEY.includes(k);
 const draftOf = (v: ScamSettings): ScamDraft =>
   Object.fromEntries((Object.keys(v) as ScamKey[]).map((k) => [k, isMoney(k) ? centsText(v[k]) : String(v[k])])) as ScamDraft;
 const WHOLE = /^\d+$/;
-const DOLLARS = /^\d+(\.\d{1,2})?$/;
 
 export function ScamChecksCard() {
   const { data, error } = useApi<ScamChecks>("/api/scam-checks");
@@ -295,7 +294,8 @@ export function ScamChecksCard() {
   const d = form.value!;
   if (error) return <Card title="Scam checks"><p className="m-0 text-[13px] text-warn">{error}</p></Card>;
   if (!data || !saved) return null;
-  const bad = (k: ScamKey) => !(isMoney(k) ? DOLLARS : WHOLE).test(d[k]);
+  // an amount takes what every other money box takes (".5" included); the rest are whole numbers
+  const bad = (k: ScamKey) => (isMoney(k) ? !isAmountText(d[k]) : !WHOLE.test(d[k]));
   const set = (k: ScamKey) => (v: string) => form.set({ [k]: v } as Partial<ScamDraft>);
 
   async function save() {

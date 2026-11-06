@@ -7,6 +7,7 @@ import { EmptyState } from "../components/EmptyState";
 import { PageActions } from "../components/PageActions";
 import { Segmented } from "../components/Segmented";
 import { Select } from "../components/Select";
+import { TextInput } from "../components/TextInput";
 import { LOAD_FIRST, Loading, NoStatementsYet, Problem } from "../components/States";
 import { Tabs } from "../components/Tabs";
 import { showToast } from "../components/Toast";
@@ -376,8 +377,8 @@ function NameForm({ label, submit, initial = "", onSave, onCancel }: {
   return (
     <form className="my-2 flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); if (name.trim()) onSave(name.trim()); }}
       onKeyDown={(e) => { if (e.key === "Escape") onCancel(); }}>
-      <input aria-label={label} placeholder={label} value={name} onChange={(e) => setName(e.target.value)} autoFocus
-        className="h-8 min-w-40 flex-1 rounded-md border border-line bg-panel px-2 text-[13px]" />
+      <TextInput aria-label={label} placeholder={label} value={name} onChange={(e) => setName(e.target.value)} autoFocus
+        className="min-w-40 flex-1 text-[13px]" />
       <button type="submit" disabled={pending} className={primary}>{submit}</button>
       <button type="button" onClick={onCancel} className={button}>Cancel</button>
     </form>
