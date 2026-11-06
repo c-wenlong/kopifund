@@ -256,3 +256,17 @@ describe("a date of birth saved from another tab", () => {
     await expectFree();
   });
 });
+
+describe("a profile that does not load", () => {
+  it("says why, and Try again asks the server again and draws the page", async () => {
+    let up = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => up ? json(profile) : json({ error: "The record is locked." }, 500));
+    render(<Profile />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("The record is locked.");
+    expect(screen.queryByLabelText("Date of birth")).not.toBeInTheDocument();
+    up = true;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByLabelText("Date of birth")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
