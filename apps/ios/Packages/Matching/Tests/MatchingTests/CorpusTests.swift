@@ -185,7 +185,7 @@ final class CorpusTests: XCTestCase {
 
     // MARK: - template 2: a card SMS
 
-    static func cardSMS(amount: String = "SGD44.53", card: String = "6529",
+    static func cardSMS(amount: String = "SGD38.17", card: String = "3141",
                         merchant: String = "GOLDEN SPOON EATERY", when: String = "26 Oct 11:24",
                         tail: String = "was completed.") -> String {
         "A card txn of \(amount) from MERLION/HBR card ending \(card) to \(merchant) on \(when) (SGT) \(tail)"
@@ -194,11 +194,11 @@ final class CorpusTests: XCTestCase {
     static let smsTemplate = Template(
         name: "Merlion card SMS",
         sample: cardSMS(),
-        tags: [(.amount, "SGD44.53", ""), (.account, "6529", ""),
+        tags: [(.amount, "SGD38.17", ""), (.account, "3141", ""),
                (.payee, "GOLDEN SPOON EATERY", ""), (.date, "26 Oct", "EATERY")],
         variants: [
             Variant(label: "the sample", text: cardSMS(),
-                    expect: Expect(payee: "GOLDEN SPOON EATERY", amount: "44.53", date: day(10, 26))),
+                    expect: Expect(payee: "GOLDEN SPOON EATERY", amount: "38.17", date: day(10, 26))),
             Variant(label: "other merchant and amount",
                     text: cardSMS(amount: "SGD3.20", merchant: "TOAST CORNER"),
                     expect: Expect(payee: "TOAST CORNER", amount: "3.20", date: day(10, 26))),
@@ -207,26 +207,26 @@ final class CorpusTests: XCTestCase {
                     expect: Expect(payee: "HOMEFIX HARDWARE", amount: "2450.00", date: day(10, 26))),
             Variant(label: "other date and time",
                     text: cardSMS(merchant: "TOAST CORNER", when: "2 Nov 07:03"),
-                    expect: Expect(payee: "TOAST CORNER", amount: "44.53", date: day(11, 2))),
+                    expect: Expect(payee: "TOAST CORNER", amount: "38.17", date: day(11, 2))),
             Variant(label: "merchant with & and a dash",
                     text: cardSMS(merchant: "MEI - NOODLES & RICE"),
-                    expect: Expect(payee: "MEI - NOODLES & RICE", amount: "44.53", date: day(10, 26))),
+                    expect: Expect(payee: "MEI - NOODLES & RICE", amount: "38.17", date: day(10, 26))),
             Variant(label: "merchant with an apostrophe and a full stop",
                     text: cardSMS(merchant: "AH HUAT'S KOPI PTE. LTD"),
-                    expect: Expect(payee: "AH HUAT'S KOPI PTE. LTD", amount: "44.53", date: day(10, 26))),
+                    expect: Expect(payee: "AH HUAT'S KOPI PTE. LTD", amount: "38.17", date: day(10, 26))),
             Variant(label: "merchant with digits, a slash and brackets",
                     text: cardSMS(merchant: "MART 24/7 (JURONG)"),
-                    expect: Expect(payee: "MART 24/7 (JURONG)", amount: "44.53", date: day(10, 26))),
+                    expect: Expect(payee: "MART 24/7 (JURONG)", amount: "38.17", date: day(10, 26))),
             Variant(label: "merchant with the word on",
                     text: cardSMS(merchant: "CAFE ON THE HILL"),
-                    expect: Expect(payee: "CAFE ON THE HILL", amount: "44.53", date: day(10, 26))),
+                    expect: Expect(payee: "CAFE ON THE HILL", amount: "38.17", date: day(10, 26))),
             Variant(label: "a changed tail",
                     text: cardSMS(merchant: "TOAST CORNER",
                                   tail: "was successful. Not you? Call 6000 1234 now."),
-                    expect: Expect(payee: "TOAST CORNER", amount: "44.53", date: day(10, 26))),
+                    expect: Expect(payee: "TOAST CORNER", amount: "38.17", date: day(10, 26))),
             Variant(label: "no tail",
                     text: cardSMS(merchant: "TOAST CORNER", tail: ""),
-                    expect: Expect(payee: "TOAST CORNER", amount: "44.53", date: day(10, 26))),
+                    expect: Expect(payee: "TOAST CORNER", amount: "38.17", date: day(10, 26))),
         ])
 
     // MARK: - template 3: a short charge SMS
@@ -283,7 +283,7 @@ final class CorpusTests: XCTestCase {
                     text: bankMail(amount: "SGD 1,020.40", merchant: "HOMEFIX HARDWARE", date: "4 Nov 2026"),
                     expect: Expect(payee: "HOMEFIX HARDWARE", amount: "1020.40", date: day(11, 4))),
             Variant(label: "a greeting by name",
-                    text: bankMail(greeting: "Dear TAN BEE LING,", merchant: "TOAST CORNER"),
+                    text: bankMail(greeting: "Dear JANE Q SAMPLE,", merchant: "TOAST CORNER"),
                     expect: Expect(payee: "TOAST CORNER", amount: "4.80", date: day(10, 27))),
             Variant(label: "a forwarded subject",
                     text: bankMail(subject: "Fwd: Transaction Alert", merchant: "TOAST CORNER"),
@@ -330,8 +330,8 @@ final class CorpusTests: XCTestCase {
             Date: 12 Oct 2026 14:05
             """),
         ("another bank's card SMS",
-         "Harbour Bank: SGD44.53 spent on card ending 6529 at GOLDEN SPOON EATERY on 26 Oct. Not you? Call 6000 0000."),
-        ("money received", "You have received SGD 20.00 from TAN AH BENG on 12 Oct 2026 via Quick Transfer."),
+         "Harbour Bank: SGD38.17 spent on card ending 3141 at GOLDEN SPOON EATERY on 26 Oct. Not you? Call 6000 0000."),
+        ("money received", "You have received SGD 20.00 from JOHN Q SAMPLE on 12 Oct 2026 via Quick Transfer."),
         ("a one-time code", "Your OTP is 384920. It expires in 5 minutes. Never share it."),
         ("another wallet's receipt", """
             Payment Receipt

@@ -136,12 +136,12 @@ final class CandidateTests: XCTestCase {
     }
 
     func test_caps_run_becomes_a_suggestion_not_a_pretag() {
-        let text = "Payment made. SGH - DIGESTIVE & LIVE billed your card."
+        let text = "Payment made. HVC - DENTAL & EYE billed your card."
         let c = detect(text)
         let caps = c.first { $0.field == .payee && $0.tokenIndexes.count > 1 }
         XCTAssertNotNil(caps)
         XCTAssertFalse(caps!.confident)
-        XCTAssertEqual(spanText(text, caps!), "SGH - DIGESTIVE & LIVE")
+        XCTAssertEqual(spanText(text, caps!), "HVC - DENTAL & EYE")
     }
 
     func test_no_amount_no_confident_amount() {
@@ -160,15 +160,15 @@ final class CandidateTests: XCTestCase {
     func test_merchant_anchor_beats_bank_anchor() {
         // "from DBS ... to MERCHANT": the merchant's "at/to" anchor ranks
         // above the bank's "from/via" anchor
-        let text = "SGD 4.80 from DBS/POSB card ending 1234 to SGH - DIGESTIVE"
+        let text = "SGD 4.80 from DBS/POSB card ending 1234 to HVC - DENTAL"
         let c = detect(text)
         let payees = c.filter { $0.field == .payee && $0.confident }
         let best = payees.min(by: { $0.rank < $1.rank })
-        XCTAssertEqual(best.map { spanText(text, $0) }, "SGH - DIGESTIVE")
+        XCTAssertEqual(best.map { spanText(text, $0) }, "HVC - DENTAL")
     }
 
     func test_card_clause_stops_a_payee_run() {
-        let text = "SGD 4.80 from DBS/POSB card ending 1234 to SGH"
+        let text = "SGD 4.80 from DBS/POSB card ending 1234 to HVC"
         let c = detect(text)
         let bank = c.first { $0.field == .payee && spanText(text, $0).contains("DBS") }
         XCTAssertEqual(bank.map { spanText(text, $0) }, "DBS/POSB")
@@ -265,9 +265,9 @@ final class CandidateTests: XCTestCase {
     /// out of the kept three: the cap takes the best ranks, not the first
     /// three in text order.
     func test_a_label_payee_survives_a_late_position() {
-        let text = "You paid at KOPITIAM to FRIEND via APP store\nTo:\nCHINESE COOKED FOOD"
+        let text = "You paid at KOPITIAM to FRIEND via APP store\nTo:\nGOLDEN WOK KITCHEN"
         let c = detect(text)
-        XCTAssertTrue(c.contains { $0.field == .payee && spanText(text, $0) == "CHINESE COOKED FOOD" })
+        XCTAssertTrue(c.contains { $0.field == .payee && spanText(text, $0) == "GOLDEN WOK KITCHEN" })
     }
 
     /// An inline payee span must not absorb the next line: the capture

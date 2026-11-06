@@ -194,8 +194,8 @@ accepts (`WFWalletTransactionContentItem`), which earlier copies left out; the
 bundled signed copy is regenerated from it with the command above.
 
 The merchant and card names arrive from Apple's Wallet record, which prints
-them title-cased ("Sgh - Digestive & Live") where the bank's SMS prints the
-raw descriptor ("SGH - DIGESTIVE & LIVE"). The app stores what it is handed;
+them title-cased ("Hvc - Dental & Eye") where the bank's SMS prints the
+raw descriptor ("HVC - DENTAL & EYE"). The app stores what it is handed;
 the Source row on a transaction says which path wrote it.
 
 ## Review and sync
@@ -204,7 +204,7 @@ One spend can arrive over two channels: a Wallet tap and the bank's SMS for
 the same charge each write a row. With no shared id between channels a new
 row counts as the same spend when the amount, currency and day all agree
 with an existing row and the payees match once case and punctuation are
-dropped ("Sgh - Digestive & Live" equals "SGH - DIGESTIVE & LIVE"). The
+dropped ("Hvc - Dental & Eye" equals "HVC - DENTAL & EYE"). The
 poorer of the pair (the one without the bank's raw text) parks itself
 under **Possible duplicates** and never syncs; open it to see the row it
 matched and tap **Not a duplicate** if two real charges tripped the rule.

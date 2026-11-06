@@ -49,7 +49,7 @@ final class AmountGrammarTests: XCTestCase {
         XCTAssertEqual(try roundTrip("You spent RM 45.20 at KEDAI MAKAN on 27 Oct 2026"), Decimal(string: "45.20"))
         XCTAssertEqual(try roundTrip("You charged SGD 4.80 at KOPITIAM on 27 Oct 2026"), Decimal(string: "4.80"))
         XCTAssertEqual(try roundTrip("Paid S$1,234.50 to FAIRMART FINEST today"), Decimal(string: "1234.50"))
-        XCTAssertEqual(try roundTrip("A card txn of SGD44.53 to SGH CLINIC on 26 Oct"), Decimal(string: "44.53"))
+        XCTAssertEqual(try roundTrip("A card txn of SGD38.17 to HVC CLINIC on 26 Oct"), Decimal(string: "38.17"))
         XCTAssertEqual(try roundTrip("Spent US$ 12.00 at BLUE BOTTLE in Tokyo"), Decimal(string: "12.00"))
     }
 
