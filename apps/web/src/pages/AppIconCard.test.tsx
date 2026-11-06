@@ -165,6 +165,35 @@ describe("syncAppIcon", () => {
     stop();
   });
 
+  it("keeps a newer answer when an older one comes back after it", async () => {
+    const answers: ((r: Response) => void)[] = [];
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => { answers.push(resolve); })));
+    const startup = syncAppIcon();
+    const settings = syncAppIcon();
+    await act(async () => {
+      answers[1](json(page("iso")));
+      await settings;
+      answers[0](json(page("sticker")));
+      await startup;
+    });
+    expect(href('link[rel="icon"][type="image/svg+xml"]')).toBe("/app-icons/iso/favicon.svg");
+    expect(window.localStorage.getItem("kopifund.appIcon")).toBe("iso");
+  });
+
+  it("takes a newer answer even when an older one already came back", async () => {
+    const answers: ((r: Response) => void)[] = [];
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => { answers.push(resolve); })));
+    const startup = syncAppIcon();
+    const settings = syncAppIcon();
+    await act(async () => {
+      answers[0](json(page("sticker")));
+      await startup;
+      answers[1](json(page("iso")));
+      await settings;
+    });
+    expect(href('link[rel="icon"][type="image/svg+xml"]')).toBe("/app-icons/iso/favicon.svg");
+  });
+
   it("keeps the default when the server cannot be reached", async () => {
     vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("down"))));
     await syncAppIcon();

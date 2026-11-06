@@ -14,9 +14,13 @@ const EVENT = "kopifund:app-icon";
 // undefined: storage not read yet. Storage is only the copy: when it is
 // blocked the pick still lives here, so the logo moves with the tab's icon.
 let current: string | null | undefined;
-// how many picks this tab has heard of: an answer asked for before the
-// latest one is older than it and must not undo it
-let heardCount = 0;
+// how many picks were saved while this tab was open (its own, or another
+// tab's): a server answer read before the latest one must not undo it
+let saved = 0;
+// the server answers asked for, and the latest one taken: an answer to an
+// older question never replaces the answer to a newer one
+let asked = 0;
+let taken = 0;
 
 function read(): string | null {
   try {
@@ -34,7 +38,9 @@ function known(): string | null {
 /** Forget the pick held in memory, as a fresh page would (tests). */
 export function resetAppIcon() {
   current = undefined;
-  heardCount = 0;
+  saved = 0;
+  asked = 0;
+  taken = 0;
 }
 
 export function iconFile(name: string, file: string): string {
@@ -54,7 +60,6 @@ function showIcon(name: string) {
 
 function heard(name: string) {
   current = name;
-  heardCount += 1;
   showIcon(name);
   window.dispatchEvent(new Event(EVENT));
 }
@@ -76,10 +81,13 @@ function keep(name: string) {
 export async function syncAppIcon(): Promise<void> {
   const last = known();
   if (last) showIcon(last);
-  const asked = heardCount;
+  const question = ++asked;
+  const savedBefore = saved;
   try {
     const page = await getJSON<AppIconPage>("/api/app-icon");
-    if (heardCount === asked && page.chosen !== known()) keep(page.chosen);
+    if (saved !== savedBefore || taken > question) return;
+    taken = question;
+    if (page.chosen !== known()) keep(page.chosen);
   } catch {
     // the server is down or older than the picker: the last pick, or the default, stays
   }
@@ -87,6 +95,7 @@ export async function syncAppIcon(): Promise<void> {
 
 export async function pickAppIcon(name: string): Promise<AppIconPage> {
   const page = await postJSON<AppIconPage>("/api/app-icon", JSON.stringify({ name }));
+  saved += 1;
   keep(page.chosen);
   return page;
 }
@@ -97,7 +106,9 @@ export async function pickAppIcon(name: string): Promise<AppIconPage> {
  */
 export function followAppIcon(): () => void {
   const changed = (e: StorageEvent) => {
-    if (e.key === KEY && e.newValue && e.newValue !== current) heard(e.newValue);
+    if (e.key !== KEY || !e.newValue) return;
+    saved += 1;
+    if (e.newValue !== current) heard(e.newValue);
   };
   window.addEventListener("storage", changed);
   return () => window.removeEventListener("storage", changed);
