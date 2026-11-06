@@ -21,7 +21,7 @@ final class RematchUITests: XCTestCase {
     func testSavingAPatternMovesEveryWaitingAlertOfItsTemplate() throws {
         let app = launchSeeded()
         XCTAssertTrue(app.buttons["Try patterns again"].exists)
-        rematchShot("1-unmatched-before-save")
+        keepShot("1-unmatched-before-save")
 
         app.staticTexts["KOPI CORNER"].tap()
         app.buttons["Teach a pattern"].tap()
@@ -30,45 +30,27 @@ final class RematchUITests: XCTestCase {
 
         let toast = app.staticTexts["toast"]
         XCTAssertTrue(toast.waitForExistence(timeout: 10))
-        rematchShot("2-unmatched-after-save")
+        keepShot("2-unmatched-after-save")
         XCTAssertTrue(toast.label.hasPrefix("4 waiting alerts now match"), toast.label)
         for merchant in ["KOPI CORNER", "NOODLE HOUSE", "BOOK NOOK", "FRUIT STALL"] {
             XCTAssertFalse(app.staticTexts[merchant].exists, merchant)
         }
         XCTAssertTrue(app.staticTexts["LAMP SHOP"].exists)
 
-        app.tabBars.buttons["Inbox"].tap()
+        openTab("Inbox", in: app)
         XCTAssertTrue(app.staticTexts["FRUIT STALL"].waitForExistence(timeout: 5))
-        rematchShot("3-inbox-after-save")
+        keepShot("3-inbox-after-save")
     }
 }
 
-/// Shared by the G24 Unmatched tests.
+/// Shared by the G24 Unmatched tests (RematchUITests, ClosestUITests).
 extension XCTestCase {
-    /// `SHOTS_DIR` (set as TEST_RUNNER_SHOTS_DIR on xcodebuild) keeps each
-    /// screenshot as a PNG too; it is always attached to the result.
-    func rematchShot(_ name: String) {
-        let s = XCUIScreen.main.screenshot()
-        let a = XCTAttachment(screenshot: s)
-        a.name = name
-        a.lifetime = .keepAlways
-        add(a)
-        if let dir = ProcessInfo.processInfo.environment["SHOTS_DIR"], !dir.isEmpty {
-            try? s.pngRepresentation.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name).png"))
-        }
-    }
-
     func launchSeeded() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = RematchUITests.seeds.flatMap { ["-seedUnmatched", $0] }
         app.launch()
-        let tab = app.tabBars.buttons["Unmatched"]
-        XCTAssertTrue(tab.waitForExistence(timeout: 10))
-        // a first launch can drop the first tap while the tab bar settles
-        for _ in 0..<3 where !app.staticTexts["KOPI CORNER"].waitForExistence(timeout: 4) {
-            tab.tap()
-        }
-        XCTAssertTrue(app.staticTexts["KOPI CORNER"].exists)
+        openTab("Unmatched", in: app)
+        XCTAssertTrue(app.staticTexts["KOPI CORNER"].waitForExistence(timeout: 5))
         return app
     }
 }

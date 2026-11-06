@@ -5,24 +5,11 @@ import XCTest
 /// breaks. Invented wallet and merchant only.
 final class PasteSheetUITests: XCTestCase {
 
-    /// `SHOTS_DIR` (set as TEST_RUNNER_SHOTS_DIR on xcodebuild) keeps each
-    /// screenshot as a PNG too; it is always attached to the result.
-    private func keepShot(_ name: String) {
-        let s = XCUIScreen.main.screenshot()
-        let a = XCTAttachment(screenshot: s)
-        a.name = name
-        a.lifetime = .keepAlways
-        add(a)
-        if let dir = ProcessInfo.processInfo.environment["SHOTS_DIR"], !dir.isEmpty {
-            try? s.pngRepresentation.write(to: URL(fileURLWithPath: dir).appendingPathComponent("\(name).png"))
-        }
-    }
-
     func testAMultiLineAlertKeepsItsLines() throws {
         let tag = "PASTE\(Int(Date().timeIntervalSince1970) % 100_000)"
         let app = XCUIApplication()
         app.launch()
-        app.tabBars.buttons["Inbox"].tap()
+        openTab("Inbox", in: app)
         app.buttons["doc.on.clipboard"].tap()
 
         let editor = app.textViews["pasteAlertText"]
@@ -37,7 +24,7 @@ final class PasteSheetUITests: XCTestCase {
         XCTAssertEqual((editor.value as? String)?.components(separatedBy: "\n").count, 5)
         app.buttons["Ingest"].tap()
 
-        app.tabBars.buttons["Unmatched"].tap()
+        openTab("Unmatched", in: app)
         let row = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ OR label == 'Wallet payment'", tag)).firstMatch
         XCTAssertTrue(row.waitForExistence(timeout: 10))
         row.tap()

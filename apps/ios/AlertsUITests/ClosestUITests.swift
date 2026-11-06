@@ -22,7 +22,7 @@ final class ClosestUITests: XCTestCase {
         XCTAssertTrue(closest.waitForExistence(timeout: 10))
         XCTAssertTrue(closest.label.hasPrefix("Closest: KOPI CORNER: payee not found after 'to"),
                       closest.label)
-        rematchShot("4-alert-page-closest")
+        keepShot("4-alert-page-closest")
 
         app.buttons["Edit that pattern"].tap()
         XCTAssertTrue(app.staticTexts["Edit pattern"].waitForExistence(timeout: 10))
@@ -30,6 +30,6 @@ final class ClosestUITests: XCTestCase {
         let verdict = app.staticTexts
             .matching(NSPredicate(format: "label BEGINSWITH 'test alert: no match'")).firstMatch
         XCTAssertTrue(verdict.waitForExistence(timeout: 10))
-        rematchShot("5-edit-that-pattern")
+        keepShot("5-edit-that-pattern")
     }
 }
