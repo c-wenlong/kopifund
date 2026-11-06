@@ -64,12 +64,20 @@ public enum PatternAnchors {
     /// The segments with each edit applied in order, checked the way a
     /// fresh build is: the payee and the card still need a fixed word
     /// beside them. An edit for a field the pattern lacks is skipped.
-    public static func applying(_ edits: [Edit],
-                                to segments: [AlertPattern.Segment]) throws -> [AlertPattern.Segment] {
+    /// `check` false skips that check, for showing edits the owner is
+    /// still typing.
+    public static func applying(_ edits: [Edit], to segments: [AlertPattern.Segment],
+                                check: Bool = true) throws -> [AlertPattern.Segment] {
         var out = segments
         for e in edits {
             guard let i = out.firstIndex(where: { field(of: $0) == e.field }) else { continue }
-            let text = PatternBuilder.collapsed(e.text)
+            var text = PatternBuilder.collapsed(e.text)
+            // the blank line after a payee lets a wrapped name read whole
+            // (Matcher), so an edit keeps it as the builder does
+            if e.field == .payee, e.side == .after,
+               e.text.range(of: #"\A[^\S\n]*\n[^\S\n]*\n"#, options: .regularExpression) != nil {
+                text = "\n" + text
+            }
             let j = e.side == .before ? i - 1 : i + 1
             if out.indices.contains(j), case .literal = out[j] {
                 if text.isEmpty {
@@ -86,7 +94,7 @@ public enum PatternAnchors {
                 !(s == .ignore && k > 0 && out[k - 1] == .ignore)
             }.map(\.1)
         }
-        try PatternBuilder.checkBorders(out)
+        if check { try PatternBuilder.checkBorders(out) }
         return out
     }
 

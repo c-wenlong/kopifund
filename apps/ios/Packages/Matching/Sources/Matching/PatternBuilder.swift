@@ -314,7 +314,9 @@ public struct PatternBuilder {
         }
         var k = 0
         var stable = isStable(ws[0].text) ? 1 : 0
-        if !endsClause(ws[0].text) {
+        // a mark alone (". Thank you") may be punctuation inside a name
+        // ("ST. CLEMENT"), so the words after it stay too
+        if !endsClause(ws[0].text) || !ws[0].text.contains(where: \.isLetter) {
             while k + 1 < ws.count {
                 let w = ws[k + 1]
                 if stable >= stableWords
