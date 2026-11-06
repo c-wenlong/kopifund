@@ -10,6 +10,7 @@ struct PatternListView: View {
     // "always ignore" shapes, listed here so one can be undone without
     // wiping every pattern and transaction
     @State private var ignored: [String] = []
+    @State private var notice = ""
 
     var body: some View {
         NavigationStack {
@@ -55,9 +56,19 @@ struct PatternListView: View {
             .toolbar { Button { showBuilder = true } label: { Image(systemName: "plus") } }
             .sheet(isPresented: $showBuilder) {
                 NavigationStack {
-                    PasteToBuild()
+                    PasteToBuild(onSaved: patternSaved)
                 }
             }
+            .toast($notice)
+        }
+    }
+
+    /// G24: a new pattern can take alerts already waiting in Unmatched.
+    private func patternSaved() {
+        showBuilder = false
+        Task {
+            let message = await PatternRematch.run(context: context).message()
+            notice = message.isEmpty ? "Pattern saved" : "Pattern saved. \(message)"
         }
     }
 
@@ -67,6 +78,7 @@ struct PatternListView: View {
 
     struct PasteToBuild: View {
         @Environment(\.dismiss) private var dismiss
+        var onSaved: () -> Void = {}
         @State private var text = ""
         var body: some View {
             VStack {
@@ -92,7 +104,7 @@ struct PatternListView: View {
                     }
                     Spacer()
                     NavigationLink("Build pattern") {
-                        PatternBuilderView(sampleText: text, source: nil)
+                        PatternBuilderView(sampleText: text, source: nil, onSaved: onSaved)
                     }
                     .disabled(text.isEmpty)
                 }

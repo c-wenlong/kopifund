@@ -17,6 +17,7 @@ struct UnmatchedView: View {
     // a row the pushed AlertView finished with: deleted once the list is
     // back on screen, never while a pushed view still shows it
     @State private var pendingRemoval: UUID?
+    @State private var retrying = false
 
     var body: some View {
         NavigationStack(path: $path) {
@@ -45,7 +46,7 @@ struct UnmatchedView: View {
             .task { await LinkDedupe.sweep(context: context) }
             .navigationDestination(for: UUID.self) { id in
                 if let r = rows.first(where: { $0.id == id }) {
-                    AlertView(record: r) { finished(id, andSay: $0) }
+                    AlertView(record: r) { finished(id, andSay: $0, remove: $1) }
                 }
             }
             .onAppear(perform: removePending)
@@ -60,31 +61,36 @@ struct UnmatchedView: View {
             } message: { _ in
                 Text("Future alerts with the same shape are dropped, from any channel. Patterns lists them to undo.")
             }
-            .overlay(alignment: .top) {
-                if !notice.isEmpty {
-                    Text(notice)
-                        .font(.caption.weight(.medium))
-                        .padding(.horizontal, 14).padding(.vertical, 9)
-                        .background(.thinMaterial, in: Capsule())
-                        .shadow(radius: 6, y: 2)
-                        .padding(.top, 4)
-                        .transition(.move(edge: .top).combined(with: .opacity))
-                        .task(id: notice) {
-                            try? await Task.sleep(for: .seconds(3))
-                            withAnimation { notice = "" }
-                        }
+            .toolbar {
+                // G24: a pattern saved elsewhere, or one that needed an
+                // edit, can take alerts that arrived before it
+                if !rows.isEmpty {
+                    Button(retrying ? "Trying..." : "Try patterns again", action: tryPatterns)
+                        .disabled(retrying)
                 }
             }
-            .animation(.default, value: notice.isEmpty)
+            // an open alert's row left for the Inbox (a pattern saved from
+            // the Patterns tab): its page has nothing left to show
+            .onChange(of: rows.map(\.id)) { _, ids in
+                if let open = path.last, !ids.contains(open), pendingRemoval != open {
+                    path.removeAll()
+                }
+            }
+            .toast($notice)
         }
     }
 
     /// AlertView is done with its row: pop back to the list first, then
     /// delete. Deleting the model a pushed view shows blanked that view (its
     /// destination resolved to nothing) or crashed it on the next render.
-    private func finished(_ id: UUID, andSay toast: String) {
-        pendingRemoval = id
+    private func finished(_ id: UUID, andSay toast: String, remove: Bool = true) {
         notice = toast
+        guard remove else {
+            // still unmatched: back to the list, the row stays
+            path.removeAll()
+            return
+        }
+        pendingRemoval = id
         if path.contains(id) {
             // its own page is still open: pop, and onAppear deletes it
             path.removeAll()
@@ -104,6 +110,17 @@ struct UnmatchedView: View {
                 context.delete(r)
                 try? context.save()
             }
+        }
+    }
+
+    /// Every saved pattern over every waiting alert, through the ingest
+    /// path; the toast says how many moved to the Inbox.
+    private func tryPatterns() {
+        retrying = true
+        Task {
+            let result = await PatternRematch.run(context: context)
+            retrying = false
+            notice = result.message(asked: true)
         }
     }
 
