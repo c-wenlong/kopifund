@@ -1,5 +1,9 @@
+import type { ReactNode } from "react";
 import { CircleAlert, LoaderCircle } from "lucide-react";
-import { OFFLINE, revalidate } from "../api";
+import { OFFLINE, revalidate, type Loaded as Answer } from "../api";
+import { onLinkClick } from "../router";
+import { buttonClass } from "./Button";
+import { EmptyState } from "./EmptyState";
 
 export function Loading({ what = "Loading" }: { what?: string }) {
   return (
@@ -74,4 +78,36 @@ export function NoResult({ status, error, what, hint = "Run the analysis from th
 }) {
   if (error && status !== 404) return <Problem message={error} retry />;
   return <Problem message={`No ${what} result yet.`} hint={hint} />;
+}
+
+/**
+ * Audit: a view's first answer, once for every view. While it is on its way,
+ * Loading says `what`; when it failed, or came back with nothing, the problem
+ * (or `missing`) with Try again; once it is here, `children` draws it.
+ * `className` wraps the first two where the view sits inside a padded box.
+ */
+export function Loaded<T>({ state, what, missing = "Nothing to show", hint, className, children }: {
+  state: Answer<T>; what: string; missing?: string; hint?: string; className?: string;
+  children: (data: T) => ReactNode;
+}) {
+  const wrap = (n: ReactNode) => (className ? <div className={className}>{n}</div> : n);
+  if (state.loading && !state.data) return wrap(<Loading what={what} />);
+  if (state.error || !state.data) return wrap(<Problem message={state.error ?? missing} hint={hint} retry />);
+  return children(state.data);
+}
+
+/** The hint under a page that has nothing to show before any statement is loaded. */
+export const LOAD_FIRST = "Load your statements first, from the Upload page.";
+
+/**
+ * Audit: the record holds no statement yet, so a page has nothing to draw:
+ * its `title`, what comes with the first statements, and the way to Upload.
+ */
+export function NoStatementsYet({ title, what }: { title: string; what: string }) {
+  return (
+    <EmptyState title={title}
+      action={<a href="/upload" onClick={onLinkClick("/upload")} className={buttonClass("secondary")}>Load your statements</a>}>
+      {what} come with your first statements.
+    </EmptyState>
+  );
 }

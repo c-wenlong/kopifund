@@ -6,21 +6,21 @@ import {
 } from "../api";
 import { formatAmount, formatSgd } from "../money";
 import { BankMark } from "../components/BankMark";
-import { Button, buttonClass } from "../components/Button";
+import { Button } from "../components/Button";
 import { Combobox } from "../components/Combobox";
 import { EmptyState } from "../components/EmptyState";
 import { Pager, usePager } from "../components/Pager";
 import { PinForm, pinDirty, pinnedText, savePin, undoRuleWrite, type PinDraft } from "../components/PinRow";
 import { draftParams, ruleOf, type Draft } from "../components/RuleEditor";
 import { Select } from "../components/Select";
-import { Loading, Problem } from "../components/States";
+import { Loading, NoStatementsYet, Problem } from "../components/States";
 import { HEAD_ROW, ROW, TABLE_CARD, TH } from "../components/tableKit";
 import { Tile } from "../components/Tile";
 import { showToast } from "../components/Toast";
 import { useWide } from "../components/useWide";
 import { useAction } from "../components/useAction";
 import { formatDate, formatDay, formatMonth, formatRange, formatWeekday } from "../dates";
-import { onLinkClick, useUnsavedGuard } from "../router";
+import { useUnsavedGuard } from "../router";
 import { pageParam, useUrlPage, useUrlParams } from "../useUrlParams";
 import type { GroupKind, NeedClass } from "../types.gen";
 import { KIND_ICON, KindIcon, NEED_ICON, EYE_ICON, SCAM_FLAG_ICON, SCAM_ICON, TRIP_ICON } from "../icons";
@@ -348,10 +348,7 @@ export function Transactions() {
       {data && data.total === 0 && (
         anyFilter
           ? <EmptyState title="Nothing matches" action={<ClearFilters onClick={clearFilters} bordered />}>No transaction passes every filter.</EmptyState>
-          : <EmptyState title="No transactions yet"
-              action={<a href="/upload" onClick={onLinkClick("/upload")} className={buttonClass("secondary")}>Load your statements</a>}>
-              Transactions come with your first statements.
-            </EmptyState>
+          : <NoStatementsYet title="No transactions yet" what="Transactions" />
       )}
       {data && data.total > 0 && (
         <>

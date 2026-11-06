@@ -5,7 +5,6 @@ import { Bar, CartesianGrid, ComposedChart, Line, ReferenceLine, ResponsiveConta
 import { useApi, type BucketStyle } from "../api";
 import { formatSgd, type Cents } from "../money";
 import { navigate, onLinkClick } from "../router";
-import { buttonClass } from "../components/Button";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { Segmented } from "../components/Segmented";
@@ -15,7 +14,7 @@ import {
 } from "../components/chartKit";
 import { CollapsibleRows, COLLAPSED_ROWS } from "../components/CollapsibleRows";
 import { bucketLook, BucketMark } from "../components/BucketMark";
-import { CardSkeleton, Problem } from "../components/States";
+import { CardSkeleton, NoStatementsYet, Problem } from "../components/States";
 import { useChartView, ViewSwitch, viewsOf, type ChartView } from "../components/ViewSwitch";
 import { formatDate, formatDay, shiftMonth } from "../dates";
 import { useUrlParams } from "../useUrlParams";
@@ -118,12 +117,7 @@ export function SpendingExplorer() {
   if (probe.loading) return <CardSkeleton height={300} what="Loading your spending" />;
   if (probe.error) return <Problem message={probe.error} retry />;
   if (!probe.data?.available || !last || !from) {
-    return (
-      <EmptyState title="No spending in the record yet"
-        action={<a href="/upload" onClick={onLinkClick("/upload")} className={buttonClass("secondary")}>Load your statements</a>}>
-        Spending comes with your first statements.
-      </EmptyState>
-    );
+    return <NoStatementsYet title="No spending in the record yet" what="Spending" />;
   }
   // only figures that answer the controls on screen: a pending or failed
   // request must not leave the last answer showing under new labels

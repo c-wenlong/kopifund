@@ -17,7 +17,7 @@ import { MoneyInput } from "../components/MoneyInput";
 import { SaveBar } from "../components/SaveBar";
 import { Select } from "../components/Select";
 import { StatusChip, type StatusTone } from "../components/StatusChip";
-import { Loading, Problem } from "../components/States";
+import { Loaded, Loading, Problem } from "../components/States";
 import { HEAD_ROW, TH } from "../components/tableKit";
 import { Progress, Tile, TileGrid } from "../components/Tile";
 import { useWide } from "../components/useWide";
@@ -87,21 +87,20 @@ export function Recurring() {
 }
 
 function Lists() {
-  const { data, error, loading } = useApi<RecurringPage>("/api/recurring");
-  if (loading && !data) return <Loading what="Loading your recurring payments" />;
-  if (error || !data) return <Problem message={error ?? "No recurring payments yet."} retry />;
-  if (!data.ready)
-    return <Problem message="No recurring payments result yet." hint="Run the analysis from the Upload page, or `make analyse`." />;
-  const up = data.coming_up;
+  const state = useApi<RecurringPage>("/api/recurring");
   return (
-    <div className="flex flex-col gap-3">
-      <p className="m-0 text-[12px] text-ink-3">As of {formatDay(up.as_of)}</p>
-      <Totals up={up} />
-      <SeriesList rows={[...data.active, ...data.paused]} coming={up.rows} totals={data.totals} asOf={up.as_of} />
-      {data.stopped.length > 0 && <StoppedList rows={data.stopped} asOf={up.as_of} />}
-      {data.irregular.length > 0 && <IrregularList rows={data.irregular} asOf={up.as_of} />}
-      {data.not_recurring.length > 0 && <NotRecurringList rows={data.not_recurring} />}
-    </div>
+    <Loaded state={state} what="Loading your recurring payments" missing="No recurring payments yet.">{(data) => !data.ready
+      ? <Problem message="No recurring payments result yet." hint="Run the analysis from the Upload page, or `make analyse`." />
+      : (
+        <div className="flex flex-col gap-3">
+          <p className="m-0 text-[12px] text-ink-3">As of {formatDay(data.coming_up.as_of)}</p>
+          <Totals up={data.coming_up} />
+          <SeriesList rows={[...data.active, ...data.paused]} coming={data.coming_up.rows} totals={data.totals} asOf={data.coming_up.as_of} />
+          {data.stopped.length > 0 && <StoppedList rows={data.stopped} asOf={data.coming_up.as_of} />}
+          {data.irregular.length > 0 && <IrregularList rows={data.irregular} asOf={data.coming_up.as_of} />}
+          {data.not_recurring.length > 0 && <NotRecurringList rows={data.not_recurring} />}
+        </div>
+      )}</Loaded>
   );
 }
 
