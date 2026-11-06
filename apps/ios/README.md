@@ -31,9 +31,19 @@ There is no backend of ours, no analytics, and no third-party dependency.
 ```sh
 brew install xcodegen   # once
 cd apps/ios
+echo 'DEVELOPMENT_TEAM = <your team id>' > Local.xcconfig   # once, for a device build
 xcodegen
-open Alerts.xcodeproj   # set your own signing team on the Alerts target
+open Alerts.xcodeproj
 ```
+
+Your signing team lives in `Local.xcconfig`, which git ignores, so it never
+reaches the public repo. `Signing.xcconfig` (tracked) sets an empty team and
+includes `Local.xcconfig` when it exists; every target reads it, so a device
+build signs with your team without touching `project.yml` or the generated
+project. The team id is the 10 characters shown under Membership at
+developer.apple.com, or in Xcode's Signing & Capabilities team list. Without
+the file a device build fails with "No Account for Team"; simulator builds
+need no team.
 
 Run package tests with `swift test` inside any of `Packages/Matching`,
 `Packages/YNABClient`, `Packages/KopifundClient`, `Packages/Storage` or `Packages/Intents`, or build the app for a simulator with
@@ -41,8 +51,8 @@ Run package tests with `swift test` inside any of `Packages/Matching`,
 
 Signing: the bundle ids are `com.kopifund.alerts` and
 `com.kopifund.alerts.ShareExtension`; both use the app group
-`group.com.kopifund.alerts`. Point the targets at your team and keep or
-change the ids, whichever your account allows.
+`group.com.kopifund.alerts`. Set your team in `Local.xcconfig` (above) and
+keep or change the ids, whichever your account allows.
 
 ## Setup
 
