@@ -23,7 +23,7 @@ import { useAction } from "../components/useAction";
 import { useUnsavedGuard } from "../router";
 import { tierLabel } from "../ruleWords";
 import { KindLabel, PAYEE_KIND_ICON, STEP_STATUS_ICON } from "../icons";
-import { useUrlParams } from "../useUrlParams";
+import { pageParam, useUrlPage, useUrlParams } from "../useUrlParams";
 
 type Show = "all" | "pins" | "problems";
 // `n` tells two drafts apart, so choosing another one remounts the form with it; `start` is what it opened on
@@ -88,22 +88,12 @@ export function Rules() {
   const shown = view === "payee" ? groups.length : flat.length;
   // G13: pages of groups (by payee) or of rules (in order); a new search, filter or view starts at page 1.
   // The total is unknown until the rules load, so the page read from the address is not clamped to 1 meanwhile.
-  const urlPage = Math.max(1, Math.floor(Number(params.get("page"))) || 1);
+  const urlPage = pageParam(params);
   const filters = [view, q, show, category].join("\n");
   const pager = usePager("rules", s ? shown : undefined, filters, urlPage);
-  // the page and the address follow each other: a click on a page number writes it, an address that names
-  // another page or other filters (Back, a link) moves the list to its page. A filter changed here drops the
-  // page from the address as it writes (above), so new filters with the page unchanged come from a link.
-  const seen = useRef({ page: urlPage, filters });
-  useEffect(() => {
-    if (urlPage !== seen.current.page || filters !== seen.current.filters) {
-      seen.current = { page: urlPage, filters };
-      if (urlPage !== pager.page) pager.setPage(urlPage);
-    } else if (s && pager.page !== urlPage) {
-      seen.current = { page: pager.page, filters };
-      patch({ page: pager.page > 1 ? String(pager.page) : null });
-    }
-  }, [urlPage, filters, pager, patch, s]);
+  // A filter changed here drops the page from the address as it writes (above), so new filters with the page
+  // unchanged come from a link, and the list opens on the page it names.
+  useUrlPage(pager, urlPage, patch, { filters, ready: !!s });
   // G18 (U4): the payees awaiting a rule page like every other long list
   const needsPager = usePager("rules-needs", s?.needs.length ?? 0);
   // a link to a category that has since been renamed or deleted would filter out every rule behind a dropdown that says "All"
