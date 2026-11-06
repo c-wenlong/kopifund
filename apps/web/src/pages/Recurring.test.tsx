@@ -6,7 +6,7 @@ import { notifyChanged } from "../api";
 import type { ActiveSeries, ComingUpRow, RecurringPage, SeriesView } from "../api";
 import { ComingUpItem, DotStrip, mergeSeries, Recurring, stepOn, URGENCY } from "./Recurring";
 import { leadingIcon } from "../test-icons";
-import { json, stubMatchMedia } from "../test-helpers";
+import { expectAsks, expectFree, json, settle, stubMatchMedia } from "../test-helpers";
 
 // invented payees and amounts
 // G16: a row's series id and name follow its payee unless the test says otherwise
@@ -517,7 +517,6 @@ describe("Recurring, friendlier than lists of text", () => {
 
 // ---------------------------------------------------------------- G16: one series' own view
 
-const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 const VIEW: SeriesView = {
   id: "payee:Gym:5000", name: "Gym", payee: "Gym", link: { payee: "Gym", named: "1", hide_transfers: "0", synthetic: "0", out: "1" },
   cadence: "monthly", category: "Fitness", investing: false, amount: 5000, state: "active", late: false,
@@ -679,7 +678,7 @@ describe("A series' own view, G16", () => {
     await act(async () => release());
     await waitFor(() => expect(now.amount).toBe(5500));
     // the series read again after the save does not put 55 over it
-    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    await settle();
     const region = screen.getByRole("region", { name: "Gym" });
     expect(within(region).getByLabelText("Usual amount")).toHaveValue(before);
     expect(within(region).getByText("Unsaved changes")).toBeInTheDocument();
@@ -721,7 +720,7 @@ describe("A series' own view, G16", () => {
     await act(async () => posts.shift()!());
     await waitFor(() => expect(reads.length).toBeGreaterThan(0));
     await act(async () => { while (reads.length) reads.shift()!(); });
-    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    await settle();
     expect(now.amount).toBe(6000);
     expect(amount()).toHaveValue("55");
     expect(within(screen.getByRole("region", { name: "Gym" })).getByText("Unsaved changes")).toBeInTheDocument();
@@ -750,7 +749,7 @@ describe("A series' own view, G16", () => {
     fireEvent.change(within(region()).getByLabelText("Usual amount"), { target: { value: "55" } });
     fireEvent.click(within(region()).getByRole("button", { name: "Save" }));
     // a save on its way may still fail: leaving asks until it lands
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
     fireEvent.change(within(region()).getByLabelText("Usual amount"), { target: { value: "60" } });
     hold = true;
     await waitFor(() => expect(release).not.toBeNull());
@@ -759,7 +758,7 @@ describe("A series' own view, G16", () => {
     await waitFor(() => expect(within(region()).getByRole("button", { name: "Discard" })).toBeEnabled());
     fireEvent.click(within(region()).getByRole("button", { name: "Discard" }));
     expect(within(region()).getByLabelText("Usual amount")).toHaveValue("55");
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
     expect(within(region()).queryByText("Unsaved changes")).not.toBeInTheDocument();
     await act(async () => { while (reads.length) reads.shift()!(); });
     expect(within(region()).getByLabelText("Usual amount")).toHaveValue("55");
@@ -777,7 +776,7 @@ describe("A series' own view, G16", () => {
     // another tab makes it weekly, on Tuesdays
     now = { ...VIEW, cadence: "weekly", day: 2, edit: { ...VIEW.edit, cadence: "weekly", day: 2 } };
     await act(async () => notifyChanged());
-    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    await settle();
     const region = screen.getByRole("region", { name: "Gym" });
     // the day typed is a day of the month: it stays with the monthly cadence it was typed under
     expect(within(region).getByRole("button", { name: "How often" })).toHaveTextContent("Monthly");

@@ -17,6 +17,7 @@ or a paste box inside the app.
 | `Packages/KopifundClient` | The phone link (G25): pairs with the Mac's Kopifund server over Tailscale with a device token, reads its profile, transactions, categories and overview, and posts approved alert rows to it |
 | `Packages/Storage` | SwiftData models, the shared App Group store, and the suppressed alert-shape set |
 | `Packages/Intents` | `Ingest Alert` and `Ingest Wallet Transaction` App Intents |
+| `Packages/TestSupport` | Test-only: `MockProtocol`, the URLSession stand-in the YNABClient, KopifundClient and Intents tests share |
 | `Alerts` | The SwiftUI app: Inbox, Unmatched, Alert reader, Pattern builder, Settings |
 | `ShareExtension` | Share-sheet target that runs the same ingest path |
 | `project.yml` | XcodeGen spec; `xcodegen` regenerates `Alerts.xcodeproj` |
