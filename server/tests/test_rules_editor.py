@@ -11,7 +11,8 @@ from unittest import mock
 from finance.parsers import categorise
 from finance import rules_app, rules_editor
 from finance.paths import REPO_RULES, rules_history_dir
-from test_app_writes import DataFolder, record
+from support import DataFolder
+from test_app_writes import record
 from test_db import row
 
 HEADER = "match_on,pattern,payee,kind,country,category,notes,account_no,recurring\n"
@@ -30,6 +31,7 @@ class Editor(DataFolder):
         self.conn = record(pay("s1", "2026-08-25"), pay("s2", "2026-07-25"),
                            row("k3", "-4.20", date="2026-08-20", merchant="KOPITIAM 0456 TPY",
                                payee="", category="", rule=""))
+        self.addCleanup(self.conn.close)
         self.dir = self.root / "rules"
         self.dir.mkdir()
         self.put("keys.csv", "key,s1,Acme Co,Employer,SGP,Salary,August pay,,\n"

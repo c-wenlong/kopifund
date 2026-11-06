@@ -33,6 +33,7 @@ class AppSidecarTest(unittest.TestCase):
         self.addCleanup(lambda: child.poll() is None and child.kill())
         self.addCleanup(child.stdout.close)
         self.addCleanup(child.stderr.close)
+        self.addCleanup(child.stdin.close)
         return child
 
     def test_the_fixed_port_is_clear_of_make_serve(self):

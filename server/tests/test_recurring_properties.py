@@ -5,16 +5,46 @@ the end that either bill could take, top-ups and one-off purchases beside them, 
 payments skipped, early or late. Each history is checked for what must hold
 whatever its shape, not for one expected answer."""
 import isolate  # noqa: F401  first: no test writes the real record or cache
+import itertools
 import random
 import unittest
+from collections import Counter
 from datetime import date, timedelta
 
 from finance import home, recurring
 from analytics.stats import recurring_detector as rd
-from test_recurring import detected
+from test_recurring import detected, detected_result
 
-SEEDS = 300
+SEEDS = 300                      # the histories history() makes; test_recurring_cents holds a result for each
 PAYEE = "Multico"
+
+# The seeds the three stale-stat properties run on. Each once ran on every seed
+# of a stride of these 300 (the odd ones, every third, the even ones). Each
+# list keeps the seeds of its stride that between them ran every step from one
+# line to the next of the recurring code (finance/cadence.py, recurring.py,
+# series.py, home.py and the detector) that the whole stride ran, traced once
+# over the old run, and enough more that each pair of the shapes `shape` names
+# shows at least twice (or as often as the stride has it); every mutant of
+# finance/recurring.py's stale-stat reading that failed the whole stride failed
+# these too. test_the_seeds_kept_cover_every_pair_of_shapes holds the second
+# whatever history() becomes; after a change to it, trace and pick again.
+# test_seeded_histories keeps all 300: there one seed alone catches some
+# changes to finance/cadence.py's thresholds.
+KEPT = {
+    "backfill": [
+        3, 5, 7, 13, 15, 21, 23, 29, 31, 33, 35, 43, 47, 53, 55, 59, 61, 63, 65, 75, 77, 79, 81, 83, 103,
+        117, 121, 125, 139, 155, 175, 177, 187, 191, 195, 199, 205, 207, 219, 229, 233, 241, 245, 249, 251,
+        267, 269, 275, 281, 283, 291],
+    "page": [
+        3, 6, 12, 15, 18, 21, 30, 42, 48, 63, 72, 75, 78, 81, 99, 108, 117, 120, 123, 129, 138, 162, 171,
+        177, 186, 195, 204, 207, 210, 216, 219, 225, 228, 231, 234, 246, 249, 258, 264, 267, 270, 279, 282,
+        285, 291, 297],
+    "stale": [
+        0, 4, 12, 14, 16, 18, 22, 30, 42, 44, 46, 48, 50, 54, 58, 68, 70, 78, 82, 86, 98, 108, 120, 128, 130,
+        134, 158, 162, 172, 176, 178, 184, 186, 204, 206, 212, 214, 216, 218, 230, 234, 236, 244, 248, 250,
+        258, 272, 282, 296, 298],
+}
+STRIDES = {"backfill": range(1, SEEDS, 2), "page": range(0, SEEDS, 3), "stale": range(0, SEEDS, 2)}
 
 
 def month_day(i, day):
@@ -86,6 +116,42 @@ def history(seed):
     return rows, subs, end
 
 
+def shape(seed, prop):
+    """What a seed's history holds, as (name, value) pairs, for the property
+    `prop` (a KEPT key): its plans and cadences, each plan's prices (how many,
+    rising, falling, back to the first, new at the end, still billing at the
+    end), top-ups, one-off purchases and the record's length, and what the
+    property does with the seed (how far back the stale stat ran, marked
+    recurring or not)."""
+    rows, subs, end = history(seed)
+    mine = [r for r in rows if r[0] == PAYEE]
+    billed = {d for s in subs for d in s["prices"]}
+    extra = [r for r in mine if r[1] not in billed]
+    first = min(date.fromisoformat(r[1]) for r in mine)
+    out = {"plans": len(subs), "cadences": "+".join(s["cadence"] for s in subs),
+           "top-ups": any(r[2] == "-10.00" for r in extra), "purchases": any(r[2] != "-10.00" for r in extra),
+           "long": (end.year * 12 + end.month) - (first.year * 12 + first.month) >= 18}
+    for i, sub in enumerate(subs):
+        prices = list(sub["prices"].values())
+        out |= {f"{i} levels": min(len(set(prices)), 3),
+                f"{i} rises": any(b > a for a, b in zip(prices, prices[1:])),
+                f"{i} drops": any(b < a for a, b in zip(prices, prices[1:])),
+                f"{i} returns": any(b == prices[0] != a for a, b in zip(prices, prices[1:])),
+                f"{i} new at the end": len(prices) > 1 and prices[-1] not in prices[:-1],
+                f"{i} billing at the end": any(d[:7] == end.isoformat()[:7] for d in sub["prices"])}
+    if prop == "stale":
+        out["back"] = 1 + seed % 2
+    if prop == "page":
+        out |= {"cut": "first quarter" if seed % 3 == 0 else f"back {1 + seed % 2}", "flagged": bool(seed % 2)}
+    return set(out.items())
+
+
+def pairs(seed, prop):
+    """Every shape of the seed, and every two of them together."""
+    one = sorted(shape(seed, prop), key=str)
+    return {(a,) for a in one} | set(itertools.combinations(one, 2))
+
+
 class Histories(unittest.TestCase):
     def check(self, seed):
         rows, subs, end = history(seed)
@@ -133,7 +199,7 @@ class Histories(unittest.TestCase):
         back = 1 + seed % 2
         cut = date(end.year + (end.month - 1 - back) // 12, (end.month - 1 - back) % 12 + 1, 28).isoformat()
         older = [r for r in rows if r[1] <= cut and r[0] == PAYEE] + [("Club", cut, "-12.00")]
-        _, stale = detected(*older)
+        stale = detected_result(*older)
         conn, fresh = detected(*rows)
         try:
             def credit(res):
@@ -155,7 +221,7 @@ class Histories(unittest.TestCase):
         rows, subs, end = history(seed)
         mine = sorted(r for r in rows if r[0] == PAYEE)
         cut = mine[len(mine) // 4][1] if mine else end.isoformat()
-        _, stat = detected(*[r for r in rows if r[1] >= cut or r[0] != PAYEE])
+        stat = detected_result(*[r for r in rows if r[1] >= cut or r[0] != PAYEE])
         conn, _ = detected(*rows)
         try:
             data = stat["recurring-detector"]["data"]
@@ -173,12 +239,12 @@ class Histories(unittest.TestCase):
 
     def test_a_backfilled_record_credits_no_charge_twice(self):
         failed = []
-        for seed in range(1, SEEDS, 2):
+        for seed in KEPT["backfill"]:
             try:
                 self.check_backfill(seed)
             except AssertionError as e:
                 failed.append((seed, str(e)[:300]))
-        self.assertEqual(failed, [], f"{len(failed)} of {SEEDS // 2} seeds failed")
+        self.assertEqual(failed, [], f"{len(failed)} of {len(KEPT['backfill'])} seeds failed")
 
     def check_page_equal(self, seed):
         """The page read with a stale stat (one or two months of rows loaded since it ran, or
@@ -195,7 +261,7 @@ class Histories(unittest.TestCase):
         # every other history has its payee marked recurring by the rules, so the list of
         # marked payees with no regular spacing is compared too
         flagged = [PAYEE] if seed % 2 else []
-        _, stale = detected(*older, flagged=flagged)
+        stale = detected_result(*older, flagged=flagged)
         conn, fresh = detected(*rows, flagged=flagged)
         try:
             was = recurring.page(conn, stale, today=end)
@@ -210,21 +276,21 @@ class Histories(unittest.TestCase):
 
     def test_a_stale_stat_reads_as_a_fresh_one_on_the_page(self):
         failed = []
-        for seed in range(0, SEEDS, 3):
+        for seed in KEPT["page"]:
             try:
                 self.check_page_equal(seed)
             except AssertionError as e:
                 failed.append((seed, str(e)[:300]))
-        self.assertEqual(failed, [], f"{len(failed)} of {len(range(0, SEEDS, 3))} seeds failed")
+        self.assertEqual(failed, [], f"{len(failed)} of {len(KEPT['page'])} seeds failed")
 
     def test_a_stale_result_credits_charges_as_a_fresh_one_does(self):
         failed = []
-        for seed in range(0, SEEDS, 2):
+        for seed in KEPT["stale"]:
             try:
                 self.check_stale(seed)
             except AssertionError as e:
                 failed.append((seed, str(e)[:300]))
-        self.assertEqual(failed, [], f"{len(failed)} of {SEEDS // 2} seeds failed")
+        self.assertEqual(failed, [], f"{len(failed)} of {len(KEPT['stale'])} seeds failed")
 
     def test_seeded_histories(self):
         failed = []
@@ -234,6 +300,15 @@ class Histories(unittest.TestCase):
             except AssertionError as e:
                 failed.append((seed, str(e)[:300]))
         self.assertEqual(failed, [], f"{len(failed)} of {SEEDS} seeds failed")
+
+    def test_the_seeds_kept_cover_every_pair_of_shapes(self):
+        for prop, stride in STRIDES.items():
+            with self.subTest(prop):
+                self.assertLessEqual(set(KEPT[prop]), set(stride))
+                every = Counter(p for seed in stride for p in pairs(seed, prop))
+                kept = Counter(p for seed in KEPT[prop] for p in pairs(seed, prop))
+                short = {p for p, n in every.items() if kept[p] < min(2, n)}
+                self.assertEqual(short, set(), "pick the seeds again (KEPT): these shapes are run too seldom")
 
 
 if __name__ == "__main__":

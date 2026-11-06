@@ -9,6 +9,7 @@ from unittest import mock
 import serve
 from finance import api, categories, planning
 from test_categories import DataFolder, record
+import support
 
 TRIP = {"name": "Japan", "start": "2026-08-01", "end": "2026-08-07", "countries": ["JPN"],
         "notes": "", "extra_keys": []}
@@ -23,7 +24,7 @@ class Ids(DataFolder):
 
     def write(self, path, body):
         with mock.patch("finance.api.config", lambda: None), mock.patch("finance.stats_rebuild.refresh_stats"):
-            return serve.write(path, {}, json.dumps(body).encode())
+            return support.write(path, {}, json.dumps(body).encode())
 
     def cat(self, name):
         return self.conn.execute("SELECT id FROM category WHERE name = ?", (name,)).fetchone()[0]

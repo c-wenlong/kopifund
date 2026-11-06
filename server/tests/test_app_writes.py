@@ -4,46 +4,30 @@ import csv
 import os
 import subprocess
 import sys
-import tempfile
 import time
 import tomllib
 import unittest
+from contextlib import closing
 from decimal import Decimal
 from pathlib import Path
 from unittest import mock
 
 from finance.parsers import categorise
 from finance import db, export, planning, rules_app, rules_editor, setup
-from test_db import SNAP, block, parsed, row
+from support import DataFolder, build_record, payees
+from test_db import row
 
 
 def record(*more):
-    conn = db.connect(":memory:")
-    db.import_user_tables(conn, {k: [dict(x) for x in v] for k, v in SNAP.items()},
-                          plan={"dca": 100, "to": "2027-06"})
-    db.load_parsed(conn, parsed([block()], [
-        row("k1", "-12.50"), row("k2", "-17.00", merchant="KOPITIAM 0123 AMK", payee="",
-                                 category="", rule=""), *more]),
-        payees=[{"name": "Grab", "kind": "Merchant", "country": "SGP"}])
-    return conn
-
-
-class DataFolder(unittest.TestCase):
-    """A temporary KOPIFUND_DATA for the test, so nothing touches the real one."""
-
-    def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory()
-        self.root = Path(self.tmp.name)
-        p = mock.patch.dict(os.environ, {"KOPIFUND_DATA": str(self.root),
-                                         "KOPIFUND_DB": str(self.root / "kopifund.db")})
-        p.start()
-        self.addCleanup(p.stop)
-        self.addCleanup(self.tmp.cleanup)
+    return build_record([row("k1", "-12.50"), row("k2", "-17.00", merchant="KOPITIAM 0123 AMK", payee="",
+                                                  category="", rule=""), *more],
+                        plan={"dca": 100, "to": "2027-06"}, payees=payees(["Grab"]))
 
 
 class PlanningTest(unittest.TestCase):
     def setUp(self):
         self.conn = record()
+        self.addCleanup(self.conn.close)
 
     def test_budgets_show_planned_and_actual_in_cents(self):
         b = planning.budgets(self.conn, "2026-08")
@@ -217,6 +201,7 @@ class RulesTest(DataFolder):
     def setUp(self):
         super().setUp()
         self.conn = record()
+        self.addCleanup(self.conn.close)
 
     def test_unmatched_rows_come_with_a_suggestion(self):
         needs = rules_app.needs_rule(self.conn)
@@ -342,6 +327,7 @@ class PinTest(DataFolder):
         # a second row printing the same text, which a pin must leave alone
         self.conn = record(row("k3", "-40.00", date="2026-08-20", merchant="KOPITIAM 0123 AMK",
                                payee="", category="", rule=""))
+        self.addCleanup(self.conn.close)
 
     def pin(self, **kw):
         return rules_app.pin(self.conn, {"key": "k2", "category": "Transport", **kw})
@@ -502,6 +488,7 @@ class PinTest(DataFolder):
         self.pin()
         self.assertEqual(rules_app.history()[0]["summary"], "Set the 3 Aug 2026 row −S$17.00 to Transport")
         foreign = record(row("k4", "-1234.50", currency="USD", date="2026-09-30", merchant="OVERSEAS CAFE"))
+        self.addCleanup(foreign.close)
         rules_app.pin(foreign, {"key": "k4", "category": "Transport"})
         self.assertEqual(rules_app.history()[0]["summary"],
                          "Set the 30 Sep 2026 row −USD 1,234.50 to Transport")
@@ -548,8 +535,11 @@ class PinTest(DataFolder):
 
 
 class ExportTest(DataFolder):
+    def record(self):
+        return self.enterContext(closing(record()))
+
     def test_an_export_is_a_dated_folder_of_csv_and_json(self):
-        out = export.export(record(), {"travel": {"id": "travel"}})
+        out = export.export(self.record(), {"travel": {"id": "travel"}})
         folder = Path(out["folder"])
         self.assertTrue(folder.is_relative_to(self.root / "exports"))
         self.assertIn("transactions.csv", out["files"])
@@ -562,7 +552,7 @@ class ExportTest(DataFolder):
     def test_every_stat_also_exports_its_rows_as_csv(self):
         results = {"travel": {"id": "travel", "chart": {"source": "trips"},
                               "data": {"trips": [{"name": "A", "spend": 12.5}], "other": [{"x": 1}]}}}
-        out = export.export(record(), results)
+        out = export.export(self.record(), results)
         with (Path(out["folder"]) / "stat-travel.csv").open() as f:
             self.assertEqual(list(csv.DictReader(f)), [{"name": "A", "spend": "12.5"}])
 
@@ -576,12 +566,12 @@ class ExportTest(DataFolder):
     def test_two_exports_in_one_second_get_two_folders(self):
         from datetime import datetime
         when = datetime(2026, 10, 1, 12, 0, 0)
-        a, b = export.export(record(), {}, now=when), export.export(record(), {}, now=when)
+        a, b = export.export(self.record(), {}, now=when), export.export(self.record(), {}, now=when)
         self.assertNotEqual(a["folder"], b["folder"])
         self.assertIsNotNone(export.path_of(b["stamp"], "transactions.csv"))
 
     def test_download_paths_cannot_leave_the_export(self):
-        out = export.export(record(), {})
+        out = export.export(self.record(), {})
         self.assertIsNotNone(export.path_of(out["stamp"], "transactions.csv"))
         for stamp, name in ((out["stamp"], "../config.toml"), ("..", "x.csv"), (out["stamp"], "a/b.csv")):
             self.assertIsNone(export.path_of(stamp, name))
@@ -600,6 +590,7 @@ class SetupTest(DataFolder):
         self.assertEqual(cfg["analytics"]["tiger_folder"], "")
         self.assertEqual(oct(os.stat(self.root).st_mode & 0o777), "0o700")
         conn = db.connect(self.root / "kopifund.db")
+        self.addCleanup(conn.close)
         self.assertEqual(conn.execute("SELECT COUNT(*) FROM category").fetchone()[0], out["categories"])
 
     def test_it_never_overwrites_an_existing_setup(self):

@@ -23,7 +23,8 @@ from analytics.stats import common as c
 from analytics_fixture import settings, snapshot as fixture_snapshot
 from finance import api, dashboard, db, spending
 from finance.db import SYNTHETIC_TYPE
-from test_db import SNAP, block, parsed, row
+import support
+from test_db import block, row
 
 EMERGENCY = {"name": "Emergency fund", "bucket": "Transfer", "group": "Savings",
              "need_class": "Savings", "sort_order": 235}
@@ -81,19 +82,16 @@ def _rows():
 
 
 def record():
-    conn = db.connect(":memory:")
-    snap = {k: [dict(x) for x in v] for k, v in SNAP.items()}
-    snap["categories"] = [dict(x) for x in db.shipped_categories()] + [dict(EMERGENCY)]
-    db.import_user_tables(conn, snap)
     keyed = []
     for key, day, amount, extra in _rows():
         extra = dict(extra)
         payee = extra.pop("payee", "")
         keyed.append(row(key, amount, date=day, payee=payee, merchant=extra.pop("merchant", payee.upper() or f"SHOP {key}"),
                          rule="r1", **extra))
-    db.load_parsed(conn, parsed([block(), FOREIGN], keyed), payees=[
-        {"name": p, "kind": "Merchant", "country": "SGP"}
-        for p in ("Acme", "Landlord", "Market", "Noodle Bar", "Bean", "Gadget", "Mystery", "Hostel", "Broker", "Clinic", "Gym")])
+    conn = support.build_record(
+        keyed, user=support.user_tables(categories=[*db.shipped_categories(), EMERGENCY]), blocks=[block(), FOREIGN],
+        payees=support.payees(("Acme", "Landlord", "Market", "Noodle Bar", "Bean", "Gadget", "Mystery", "Hostel",
+                               "Broker", "Clinic", "Gym")))
     # the trip: the hostel and one meal are overseas
     conn.execute("UPDATE txn SET trip_id = (SELECT id FROM trip LIMIT 1) WHERE txn_key IN ('s13', 's14', 's15')")
     return conn
