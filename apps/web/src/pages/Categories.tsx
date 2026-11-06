@@ -7,10 +7,9 @@ import { EmptyState } from "../components/EmptyState";
 import { PageActions } from "../components/PageActions";
 import { Segmented } from "../components/Segmented";
 import { Select } from "../components/Select";
-import { Loading, Problem } from "../components/States";
+import { LOAD_FIRST, Loading, NoStatementsYet, Problem } from "../components/States";
 import { Tabs } from "../components/Tabs";
 import { showToast } from "../components/Toast";
-import { onLinkClick } from "../router";
 import type { BucketIcon, NeedClass, SeriesColour } from "../types.gen";
 import { KindLabel, NEED_ICON } from "../icons";
 import { bucketLook, BucketMark } from "../components/BucketMark";
@@ -98,15 +97,8 @@ export function Categories() {
   }, [data, stale, inUrl, patch]);
 
   if (loading && !data) return <Loading what="Loading your categories" />;
-  if (error) return <Problem message={error} hint="Load your statements first, from the Upload page." retry />;
-  if (!data) {
-    return (
-      <EmptyState title="No categories yet"
-        action={<a href="/upload" onClick={onLinkClick("/upload")} className={button}>Load your statements</a>}>
-        Categories come with your first statements.
-      </EmptyState>
-    );
-  }
+  if (error) return <Problem message={error} hint={LOAD_FIRST} retry />;
+  if (!data) return <NoStatementsYet title="No categories yet">Categories come with your first statements.</NoStatementsYet>;
   const groups = data.groups;
   // G13: what each spending bucket takes of the month, for the bar under its name
   const withData = (g: CategoryGroup) => g.categories.filter((c) => c.transactions > 0 && c.monthly != null);

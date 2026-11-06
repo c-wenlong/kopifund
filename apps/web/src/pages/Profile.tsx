@@ -7,21 +7,21 @@ import { Button, buttonClass } from "../components/Button";
 import { Card } from "../components/Card";
 import { CollapsibleRows, COLLAPSED_ROWS } from "../components/CollapsibleRows";
 import { DateField } from "../components/DateField";
-import { Loading, Problem } from "../components/States";
+import { Loaded } from "../components/States";
 import { onLinkClick, useUnsavedGuard } from "../router";
 
 export function Profile() {
-  const { data, error, loading } = useApi<ProfileT>("/api/profile");
-  if (loading) return <Loading what="Loading your profile" />;
-  if (error || !data) return <Problem message={error ?? "No profile"} retry />;
+  const state = useApi<ProfileT>("/api/profile");
   return (
-    <div className="flex flex-col gap-3">
-      <AboutYou about={data.about} />
-      <Accounts list={data.accounts} folders={data.folders} />
-      <p className="m-0 px-1 text-[12px] text-ink-3">
-        {data.data_folder} · {data.transactions.toLocaleString("en-SG")} transactions · Notion mirror {data.notion_enabled ? "on" : "off"}
-      </p>
-    </div>
+    <Loaded state={state} what="Loading your profile" missing="No profile">{(data) => (
+      <div className="flex flex-col gap-3">
+        <AboutYou about={data.about} />
+        <Accounts list={data.accounts} folders={data.folders} />
+        <p className="m-0 px-1 text-[12px] text-ink-3">
+          {data.data_folder} · {data.transactions.toLocaleString("en-SG")} transactions · Notion mirror {data.notion_enabled ? "on" : "off"}
+        </p>
+      </div>
+    )}</Loaded>
   );
 }
 

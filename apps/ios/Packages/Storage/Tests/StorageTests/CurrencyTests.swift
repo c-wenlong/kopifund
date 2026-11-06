@@ -104,3 +104,21 @@ func nonCodesAreRefused(raw: String) {
     #expect(Currency.compatible("SGD", "sgd"))
     #expect(!Currency.compatible("SGD", "USD"))
 }
+
+// cents print through integers, and read as "%.2f" of the dollars did
+@Test func centsPrintAsUnitsAndTwoDigits() {
+    for c in [0, 5, 50, 99, 100, 450, 1234, -5, -450, 100_000_000_000_00, -1] {
+        #expect(Cents.text(c) == String(format: "%.2f", Double(c) / 100))
+    }
+    #expect(Cents.text(Int.min).hasPrefix("-"))
+    #expect(Cents.signedText(-123_456, currency: "SGD") == "-SGD 1234.56")
+    #expect(Cents.signedText(705, currency: "USD") == "+USD 7.05")
+    #expect(Cents.signedText(0, currency: "SGD") == "+SGD 0.00")
+}
+
+@Test func aRowPrintsItsDirectionAsTheSign() {
+    let r = row("SGD")
+    #expect(r.amountText == "-SGD 12.00")
+    r.direction = "inflow"
+    #expect(r.amountText == "+SGD 12.00")
+}
