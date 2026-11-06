@@ -6,7 +6,7 @@ import { ServerBanner } from "./components/ServerBanner";
 import { NoResult, Problem } from "./components/States";
 import { Toaster, showToast } from "./components/Toast";
 import { Sidebar } from "./components/Sidebar";
-import { json, stubMatchMedia } from "./test-helpers";
+import { json, settle, stubMatchMedia } from "./test-helpers";
 
 // G13: the server is down, the shared toast, and the shell's titles and not-found page.
 
@@ -286,7 +286,7 @@ describe("the shell", () => {
     window.history.pushState(null, "", "/nowhere");
     render(<App />);
     await screen.findByText("There is no page at this address.");
-    await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+    await settle();
     up = false;
     await act(async () => { await expect(postJSON("/api/budgets", "{}")).rejects.toThrow(); });
     const banner = await screen.findByRole("alert");

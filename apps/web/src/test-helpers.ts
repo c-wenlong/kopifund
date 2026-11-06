@@ -1,7 +1,7 @@
 // What the tests share. vitest.config (vite.config.ts) restores every mock, global
 // and env var after each test, so nothing here needs an afterEach of its own.
-import { act } from "@testing-library/react";
-import { beforeEach, vi } from "vitest";
+import { act, waitFor } from "@testing-library/react";
+import { beforeEach, expect, vi } from "vitest";
 
 /** A fetch answer: `body` as JSON, `status` 200 unless given, `headers` (an ETag, say) added to the JSON content type. */
 export function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
@@ -51,3 +51,32 @@ export const navigate = vi.fn();
 export function withNavigate<T extends object>(actual: T): T & { navigate: (to: string) => void } {
   return { ...actual, navigate: (to: string) => navigate(to) };
 }
+
+/**
+ * Let every promise already on its way finish: a few turns of the event loop inside act, so a mocked fetch
+ * (which answers in promise steps, not on a clock) has landed and the page has drawn what it will. For
+ * "and nothing else happens"; to wait for something that should happen, use findBy or waitFor.
+ */
+export async function settle() {
+  for (let turn = 0; turn < 3; turn++) await act(async () => { await new Promise<void>((r) => setTimeout(r, 0)); });
+}
+
+/**
+ * setTimeout on a fake clock, for a test that waits out a pause (a debounce, a poll) without sitting through it.
+ * The clock also ticks on its own, which testing-library's waitFor and findBy need to finish; `pass(ms)`
+ * jumps it on. Restored to the real one after the test.
+ */
+export function fakeClock() {
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
+  return { pass: (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); }) };
+}
+
+/** Whether leaving the page now would ask first: what the browser does on a closing tab or a reload. */
+export const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
+
+/**
+ * The page's guard against leaving is set and lifted in an effect, which React runs after the screen has
+ * drawn: a test that has just seen "Saved" may look before the guard is lifted. These wait for it.
+ */
+export const expectAsks = () => waitFor(() => expect(leaveAsks()).toBe(true));
+export const expectFree = () => waitFor(() => expect(leaveAsks()).toBe(false));

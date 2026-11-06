@@ -3,7 +3,7 @@ import { App } from "./App";
 import { cacheable, type Overview } from "./api";
 import { bottomItems, bottomPages, isUnder, pages } from "./nav";
 import { NAV_PANELS, ROUTES, routeFor, titleFor } from "./routes";
-import { json, stubMatchMedia } from "./test-helpers";
+import { json, settle, stubMatchMedia } from "./test-helpers";
 
 // G19: the route table (routes.tsx) feeds the sidebar, the page titles and the
 // prefetch lists. These tests open every page and check the table against what
@@ -66,7 +66,7 @@ describe("the route table", () => {
     const want = [...(route.api ?? [])].sort();
     await waitFor(() => expect(asked(route)).toEqual(want));
     // nothing else turns up a moment later
-    await new Promise((r) => setTimeout(r, 60));
+    await settle();
     expect(asked(route)).toEqual(want);
   });
 

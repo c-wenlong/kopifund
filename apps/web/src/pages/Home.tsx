@@ -1,5 +1,5 @@
 import { useApi, type Change, type ComingUp, type ComingUpRow, type NetWorth, type Overview, type SpendingChart as Chart } from "../api";
-import { axisSgd, formatSgd, type Cents } from "../money";
+import { formatSgd, type Cents } from "../money";
 import { navigate, onLinkClick } from "../router";
 import { formatDate, formatDay, formatMonth } from "../dates";
 import { Card } from "../components/Card";
@@ -111,7 +111,6 @@ function Trace({ months, of, what }: { months: NetWorth["months"]; of: "total" |
     label={`${what}, ${formatMonth(first.month)} ${formatSgd(first[of] as Cents)} to ${formatMonth(last.month)} ${formatSgd(last[of] as Cents)}`} />;
 }
 
-export { axisSgd };
 
 
 // The card opens on four rows, so they are listed most pressing first (Recurring's URGENCY): a bill late

@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { afterEach } from "vitest";
+import { afterEach, vi } from "vitest";
 import { clearApiCache, resetLink } from "./api";
 import { clearToasts } from "./components/Toast";
 import { clearModelCache } from "./components/ModelField";
@@ -12,6 +12,7 @@ import { resetRouter } from "./router";
 // every other module's state: the router's guards and held move, the Sheets
 // the LeaveBar counts, and the filters a page published to the copilot.
 afterEach(() => {
+  vi.useRealTimers();
   clearApiCache();
   resetLink();
   clearToasts();
