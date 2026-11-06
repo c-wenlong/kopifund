@@ -100,21 +100,9 @@ struct TransactionsView: View {
                 Text(problem).font(.caption).foregroundStyle(.red)
             }
             ForEach(rows) { r in
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
-                        Text(r.payee.isEmpty ? (r.description.isEmpty ? r.merchant : r.description) : r.payee)
-                            .font(.body).lineLimit(1)
-                        Spacer()
-                        Text(money(r)).font(.body.monospacedDigit())
-                    }
-                    HStack {
-                        Text(caption(r)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        Spacer()
-                        if let flag = r.flags.first {
-                            Text(flag.text).font(.caption).foregroundStyle(.orange)
-                        }
-                    }
-                }
+                LedgerRow(title: r.payee.isEmpty ? (r.description.isEmpty ? r.merchant : r.description) : r.payee,
+                          amount: money(r), caption: caption(r),
+                          note: r.flags.first.map { ($0.text, .orange) }, lineLimit: 1)
             }
             if let page, rows.count < page.total {
                 Button(loading ? "Loading…" : "Load more") {
