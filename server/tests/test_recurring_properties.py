@@ -18,20 +18,19 @@ from test_recurring import detected, detected_result
 SEEDS = 300                      # the histories history() makes; test_recurring_cents holds a result for each
 PAYEE = "Multico"
 
-# The seeds each property runs on. Each property once ran on every seed of a
-# stride of these 300 (all of them, the odd ones, every third, the even ones),
-# nine seconds together. Each list keeps the seeds of its stride that between
-# them ran every step from one line to the next of the recurring code
-# (finance/cadence.py, recurring.py, series.py, home.py and the detector) that
-# the whole stride ran, traced once over the old run, and enough more that
-# each pair of the shapes `shape` names shows at least twice (or as often as
-# the stride has it). test_the_seeds_kept_cover_every_pair_of_shapes holds the
-# second whatever history() becomes; after a change to it, trace and pick again.
+# The seeds the three stale-stat properties run on. Each once ran on every seed
+# of a stride of these 300 (the odd ones, every third, the even ones). Each
+# list keeps the seeds of its stride that between them ran every step from one
+# line to the next of the recurring code (finance/cadence.py, recurring.py,
+# series.py, home.py and the detector) that the whole stride ran, traced once
+# over the old run, and enough more that each pair of the shapes `shape` names
+# shows at least twice (or as often as the stride has it); every mutant of
+# finance/recurring.py's stale-stat reading that failed the whole stride failed
+# these too. test_the_seeds_kept_cover_every_pair_of_shapes holds the second
+# whatever history() becomes; after a change to it, trace and pick again.
+# test_seeded_histories keeps all 300: there one seed alone catches some
+# changes to finance/cadence.py's thresholds.
 KEPT = {
-    "histories": [
-        3, 4, 5, 6, 7, 8, 15, 16, 21, 22, 23, 30, 35, 39, 47, 48, 50, 55, 58, 59, 61, 63, 65, 67, 68, 73, 77,
-        81, 82, 83, 86, 103, 117, 120, 121, 130, 134, 139, 155, 162, 178, 184, 199, 205, 206, 212, 216, 217,
-        219, 229, 233, 234, 249, 250, 251, 258, 260, 267, 275, 281, 298],
     "backfill": [
         3, 5, 7, 13, 15, 21, 23, 29, 31, 33, 35, 43, 47, 53, 55, 59, 61, 63, 65, 75, 77, 79, 81, 83, 103,
         117, 121, 125, 139, 155, 175, 177, 187, 191, 195, 199, 205, 207, 219, 229, 233, 241, 245, 249, 251,
@@ -45,8 +44,7 @@ KEPT = {
         134, 158, 162, 172, 176, 178, 184, 186, 204, 206, 212, 214, 216, 218, 230, 234, 236, 244, 248, 250,
         258, 272, 282, 296, 298],
 }
-STRIDES = {"histories": range(SEEDS), "backfill": range(1, SEEDS, 2), "page": range(0, SEEDS, 3),
-           "stale": range(0, SEEDS, 2)}
+STRIDES = {"backfill": range(1, SEEDS, 2), "page": range(0, SEEDS, 3), "stale": range(0, SEEDS, 2)}
 
 
 def month_day(i, day):
@@ -296,12 +294,12 @@ class Histories(unittest.TestCase):
 
     def test_seeded_histories(self):
         failed = []
-        for seed in KEPT["histories"]:
+        for seed in range(SEEDS):
             try:
                 self.check(seed)
             except AssertionError as e:
                 failed.append((seed, str(e)[:300]))
-        self.assertEqual(failed, [], f"{len(failed)} of {len(KEPT['histories'])} seeds failed")
+        self.assertEqual(failed, [], f"{len(failed)} of {SEEDS} seeds failed")
 
     def test_the_seeds_kept_cover_every_pair_of_shapes(self):
         for prop, stride in STRIDES.items():
