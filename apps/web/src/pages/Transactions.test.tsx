@@ -7,7 +7,7 @@ import { HIDE_TRANSFERS_KEY, Transactions } from "./Transactions";
 import { leadingIcon } from "../test-icons";
 import { choose } from "../test-select";
 import { Toaster } from "../components/Toast";
-import { expectAsks, expectFree, fakeClock, json, leaveAsks, settle, stubMatchMedia } from "../test-helpers";
+import { expectAsks, expectFree, fakeClock, json, settle, stubMatchMedia } from "../test-helpers";
 
 // what the server sends for the days on a page: each day's rows, money in and money out
 type StubRow = { date: string; amount_sgd: number | null };
@@ -265,7 +265,7 @@ describe("Transactions", () => {
     await expectAsks();
     fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
     await waitFor(() => expect(screen.queryByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).not.toBeInTheDocument());
-    await waitFor(() => expect(leaveAsks()).toBe(false));
+    await expectFree();
   });
 
   it("still asks before leaving when Less or Close hides a typed form, since the page keeps what was typed", async () => {
@@ -364,7 +364,7 @@ describe("Transactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Less" }));
     await waitFor(() => expect(fail).not.toBeNull());
     await act(async () => fail!());
-    await waitFor(() => expect(leaveAsks()).toBe(false));
+    await expectFree();
   });
 
   it("keeps asking about a form reopened and typed into while its earlier save fails", async () => {
@@ -431,13 +431,13 @@ describe("Transactions", () => {
     const box = await screen.findByRole("combobox", { name: "Category for the 12 Sep 2026 row" });
     fireEvent.change(box, { target: { value: "Shop" } });
     fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Shopping" }));
-    await waitFor(() => expect(leaveAsks()).toBe(true));
+    await expectAsks();
     fireEvent.click(screen.getByRole("button", { name: "Less" }));
     await expectAsks();
     // the chip saves Shopping, all the hidden form held
     fireEvent.click(screen.getByRole("button", { name: /Set the category of the 12 Sep 2026 row/ }));
     fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Shopping" }));
-    await waitFor(() => expect(leaveAsks()).toBe(false));
+    await expectFree();
   });
 
   it("opens More again clean after a save, with no question about leaving", async () => {
@@ -451,7 +451,7 @@ describe("Transactions", () => {
     await waitFor(() => expect(screen.queryByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     expect(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).toHaveValue("");
-    await waitFor(() => expect(leaveAsks()).toBe(false));
+    await expectFree();
   });
 
   it("opens on the row's category, and picking it again saves nothing", async () => {

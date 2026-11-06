@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import { NetWorth, TotalTip } from "./NetWorth";
 import { revalidate, type Growth, type NetWorth as NetWorthT, type Suggestions } from "../api";
 import { choose } from "../test-select";
-import { expectAsks, expectFree, json, leaveAsks, settle, useSizedCharts } from "../test-helpers";
+import { expectAsks, expectFree, json, settle, useSizedCharts } from "../test-helpers";
 
 vi.mock("../router", async (actual) => ({
   ...(await import("../test-helpers")).withNavigate(await actual()), onLinkClick: () => () => {},
@@ -246,7 +246,7 @@ describe("Net worth page", () => {
       const name = await screen.findByRole("textbox", { name: "Name, income row 1" });
       fireEvent.change(name, { target: { value: "Typed here" } });
       save("Renamed elsewhere");
-      await waitFor(() => expect(leaveAsks()).toBe(true));
+      await expectAsks();
       expect(screen.getByRole("textbox", { name: "Name, income row 1" })).toHaveValue("Typed here");
       expect(screen.getByRole("status")).toHaveTextContent("Unsaved changes");
     });

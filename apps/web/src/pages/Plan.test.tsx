@@ -3,7 +3,7 @@ import { revalidate } from "../api";
 import { describe, expect, it, vi } from "vitest";
 import { Plan, fractionToPercent, percentToFraction } from "./Plan";
 import { Toaster } from "../components/Toast";
-import { expectAsks, expectFree, json, leaveAsks } from "../test-helpers";
+import { expectAsks, expectFree, json } from "../test-helpers";
 
 // A plan with every list filled, its money in cents as GET /api/plan sends it
 // (G17). Every figure and name here is invented.
@@ -796,7 +796,7 @@ describe("the plan when another tab saves it", () => {
     fireEvent.change(screen.getByLabelText("Insurance premiums (S$ a month)"), { target: { value: "70" } });
     plan.insurance_minor = 8_000;
     act(() => revalidate());
-    await waitFor(() => expect(leaveAsks()).toBe(true));
+    await expectAsks();
     expect(screen.getByLabelText("Insurance premiums (S$ a month)")).toHaveValue("70");
   });
 });

@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { UploadPage } from "./Upload";
 import { leadingIcon } from "../test-icons";
 import type { CheckReport, LoadResult } from "../api";
-import { expectAsks, expectFree, json, leaveAsks } from "../test-helpers";
+import { expectAsks, expectFree, json } from "../test-helpers";
 
 const status = {
   folders: [
@@ -268,7 +268,7 @@ describe("Upload page", () => {
       fireEvent.mouseDown(screen.getByRole("option", { name: /YouTrip/ }));
       fireEvent.click(waiting.getByRole("button", { name: "Save here" }));
       await screen.findByText(/Saved as statements\/youtrip-sek/);
-      await waitFor(() => expect(leaveAsks()).toBe(false));
+      await expectFree();
     });
 
     it("stays waiting with the reason in the danger colour when the account chosen refuses it", async () => {

@@ -4,7 +4,7 @@ import { choose } from "../test-select";
 import { notifyChanged } from "../api";
 import type { AiKey, AiSettings } from "../types.gen";
 import { AiCard } from "./AiCard";
-import { expectAsks, json } from "../test-helpers";
+import { expectAsks, expectFree, json } from "../test-helpers";
 
 // G22: the AI card on Settings: provider, models, the key (never shown), Test and consent.
 
@@ -374,11 +374,11 @@ describe("the AI card when a write is refused", () => {
     expect(within(c).getByText("Unsaved changes")).toBeInTheDocument();
     expect(within(c).getByRole("checkbox", { name: "Send matching rows to Anthropic" })).toBeChecked();
     expect(within(c).getByRole("button", { name: "Save" })).toBeEnabled();
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
     state.on = false;
     fireEvent.click(within(c).getByRole("button", { name: "Save" }));
     expect(await within(c).findByText("Saved")).toBeInTheDocument();
-    await waitFor(() => expect(leaveAsks()).toBe(false));
+    await expectFree();
   });
 
   it("clears the reason when the edit is changed or discarded", async () => {

@@ -8,7 +8,7 @@ import { Toaster } from "../components/Toast";
 import { choose } from "../test-select";
 import { navigate } from "../router";
 import { useUrlParams } from "../useUrlParams";
-import { expectFree, json, leaveAsks, settle, stubMatchMedia } from "../test-helpers";
+import { expectAsks, expectFree, json, settle, stubMatchMedia } from "../test-helpers";
 
 // another reader of the address, as the copilot panel is: it sends every query parameter as the page's filters
 function AddressProbe() {
@@ -590,7 +590,7 @@ describe("Rules", () => {
     const form = await screen.findByRole("textbox", { name: "Pattern for new rule" });
     await expectFree();
     fireEvent.change(form, { target: { value: "KOPI*" } });
-    await waitFor(() => expect(leaveAsks()).toBe(true));
+    await expectAsks();
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
     await expectFree();
     // a rule opened for editing is unsaved only once something in it changes
@@ -599,7 +599,7 @@ describe("Rules", () => {
     const pattern = await screen.findByRole("textbox", { name: /^Pattern for / });
     await expectFree();
     fireEvent.change(pattern, { target: { value: "KOPITIAM 0*" } });
-    await waitFor(() => expect(leaveAsks()).toBe(true));
+    await expectAsks();
   });
 
   it("asks before leaving while a rule's save is on its way, though nothing in it changed", async () => {
@@ -616,10 +616,10 @@ describe("Rules", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit merchant KOPITIAM*" }));
     await expectFree();
     fireEvent.click(await screen.findByRole("button", { name: "Save rule" }));
-    await waitFor(() => expect(leaveAsks()).toBe(true));
+    await expectAsks();
     refuse();
     expect(await screen.findByRole("alert")).toBeInTheDocument();
-    await waitFor(() => expect(leaveAsks()).toBe(false));
+    await expectFree();
   });
 
   it("does not let a save from a cancelled editor reach the next one opened", async () => {
