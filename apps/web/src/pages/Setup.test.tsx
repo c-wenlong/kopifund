@@ -17,8 +17,6 @@ const state = { needed: true, data_folder: "/Users/x/.kopifund",
   ] };
 
 describe("Setup", () => {
-  afterEach(() => vi.restoreAllMocks());
-
   it("will not create anything until a provider is chosen, and says why on the button", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     render(<Setup state={state} onDone={() => {}} />);

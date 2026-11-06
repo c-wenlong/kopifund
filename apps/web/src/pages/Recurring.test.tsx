@@ -6,6 +6,7 @@ import { notifyChanged } from "../api";
 import type { ActiveSeries, ComingUpRow, RecurringPage, SeriesView } from "../api";
 import { ComingUpItem, DotStrip, mergeSeries, Recurring, stepOn } from "./Recurring";
 import { leadingIcon } from "../test-icons";
+import { json, stubMatchMedia } from "../test-helpers";
 
 // invented payees and amounts
 // G16: a row's series id and name follow its payee unless the test says otherwise
@@ -66,28 +67,19 @@ function stubFetch(page: RecurringPage = PAGE) {
   const urls: string[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string) => {
     urls.push(url);
-    return new Response(JSON.stringify(page), { status: 200 });
+    return json(page);
   }));
   return urls;
 }
 
 const section = (name: string) => screen.getByRole("region", { name });
 
-const REAL_MEDIA = window.matchMedia;
-function setWide(wide: boolean) {
-  window.matchMedia = ((query: string) => ({
-    matches: wide, media: query, onchange: null, addEventListener: () => {}, removeEventListener: () => {},
-    addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
-  })) as unknown as typeof window.matchMedia;
-}
 const href = (el: HTMLElement) => el.closest("a")?.getAttribute("href");
 
 const rowsOf = (name = "Active") => within(section(name)).getAllByRole("listitem");
 const nameOf = (li: HTMLElement) => within(li).getAllByRole("link")[0].textContent;
 
 describe("Recurring", () => {
-  afterEach(() => { vi.unstubAllGlobals(); window.matchMedia = REAL_MEDIA; });
-
   it("lists each payee once, soonest next payment first, with this month's status", async () => {
     stubFetch();
     render(<Recurring />);
@@ -166,7 +158,7 @@ describe("Recurring", () => {
   });
 
   it("names an extra charge with its amount on the chip, which opens that charge, G16", async () => {
-    setWide(true);
+    stubMatchMedia(true);
     const extra = up({ expected: "2026-09-20", estimated: false, status: "extra", paid_on: "2026-09-20", paid_amount: 2100,
       link: { key: "k-extra", hide_transfers: "0" } });
     const merged = mergeSeries([PAGE.active[0]], [up({}), extra])[0];
@@ -181,17 +173,17 @@ describe("Recurring", () => {
     // G18: the chip leads with the extra charge's own icon
     expect(leadingIcon(within(chip).getByText("Extra S$21.00"))).toBe("circle-plus");
     // and so does Home's Coming up row, as an icon alone on a phone
-    setWide(false);
+    stubMatchMedia(false);
     const { unmount } = render(<ul><ComingUpItem r={extra} /></ul>);
     expect(screen.getByRole("img", { name: "Extra" }).querySelector("svg")?.getAttribute("class")).toContain("lucide-circle-plus");
     unmount();
-    setWide(true);
+    stubMatchMedia(true);
     // the month's bills leave it out: 2 of 4 paid, not 3 of 5
     expect(screen.getByText(/of S\$1,385 committed, 2 of 4 payments/)).toBeInTheDocument();
   });
 
   it("shows an extra charge on Home's Coming up as its own row, G16", () => {
-    setWide(true);
+    stubMatchMedia(true);
     render(<ul><ComingUpItem r={up({ expected: "2026-09-20", estimated: false, status: "extra", paid_on: "2026-09-20", paid_amount: 2100 })} /></ul>);
     expect(screen.getByText("Extra")).toBeInTheDocument();
     expect(screen.getByText("S$21.00")).toBeInTheDocument();
@@ -360,8 +352,6 @@ const MORE: RecurringPage = {
 };
 
 describe("Recurring, friendlier than lists of text", () => {
-  afterEach(() => { vi.unstubAllGlobals(); window.matchMedia = REAL_MEDIA; });
-
   it("draws each irregular payee as a strip of dots, one per payment, with the dates in tooltips", async () => {
     stubFetch(MORE);
     render(<Recurring />);
@@ -423,7 +413,7 @@ describe("Recurring, friendlier than lists of text", () => {
   });
 
   describe("on a phone", () => {
-    beforeEach(() => setWide(false));
+    beforeEach(() => stubMatchMedia(false));
 
     it("turns Stopped into stacked rows, no table to scroll; Active is rows on every width", async () => {
       stubFetch();
@@ -457,7 +447,7 @@ describe("Recurring, friendlier than lists of text", () => {
 
   describe("Coming up links, G13", () => {
     it("opens the one payment a paid row shows, and a due or late row its series (G16)", () => {
-      setWide(true);
+      stubMatchMedia(true);
       render(<ul>
         <ComingUpItem r={up({})} />
         <ComingUpItem r={up({ payee: "Phone", status: "due", paid_on: null, paid_amount: null, link: null })} />
@@ -485,7 +475,7 @@ describe("Recurring, friendlier than lists of text", () => {
     });
 
     it("renders the paid chip as a link to this month's payment on the Recurring list", async () => {
-      setWide(true);
+      stubMatchMedia(true);
       stubFetch();
       render(<Recurring />);
       const chip = await screen.findByRole("link", { name: /^Paid: this month's payment to Gym$/ });
@@ -494,14 +484,14 @@ describe("Recurring, friendlier than lists of text", () => {
   });
 
   it("keeps the year and the status word on a wide screen", () => {
-    setWide(true);
+    stubMatchMedia(true);
     render(<ul><ComingUpItem r={up({ status: "late", paid_on: null, paid_amount: null })} /></ul>);
     expect(screen.getByText("Late")).toBeInTheDocument();
     expect(screen.getByText("~5 Sep 2026")).toBeInTheDocument();
   });
 
   it("leads each status, cadence and Investing tag with its icon, the word beside it (G18)", async () => {
-    setWide(true);
+    stubMatchMedia(true);
     stubFetch();
     render(<Recurring />);
     await screen.findByText("Paid in Sep 2026");
@@ -517,7 +507,7 @@ describe("Recurring, friendlier than lists of text", () => {
   });
 
   it("shows a phone's Coming up status as its icon in place of a dot, named by its word (G18)", () => {
-    setWide(false);
+    stubMatchMedia(false);
     render(<ul><ComingUpItem r={up({ status: "different", paid_amount: 8000 })} /></ul>);
     const mark = screen.getByRole("img", { name: "Different amount" });
     expect(mark.querySelector("svg")?.getAttribute("class")).toContain("lucide-equal-not");
@@ -551,20 +541,20 @@ function stubSeries(view: SeriesView | null = VIEW, page: RecurringPage = PAGE) 
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === "POST") {
       posts.push({ url, body: JSON.parse(String(init.body)) });
-      return new Response(JSON.stringify(view), { status: 200 });
+      return json(view);
     }
     if (url.startsWith("/api/recurring/series")) {
-      return view ? new Response(JSON.stringify(view), { status: 200 })
-        : new Response(JSON.stringify({ error: "No series has that id now" }), { status: 404 });
+      return view ? json(view)
+        : json({ error: "No series has that id now" }, 404);
     }
-    return new Response(JSON.stringify(page), { status: 200 });
+    return json(page);
   }));
   return posts;
 }
 
 describe("A series' own view, G16", () => {
   beforeEach(() => window.history.replaceState(null, "", `/recurring?series=${encodeURIComponent(VIEW.id)}`));
-  afterEach(() => { vi.unstubAllGlobals(); window.history.replaceState(null, "", "/"); });
+  afterEach(() => { window.history.replaceState(null, "", "/"); });
 
   it("opens on Recurring itself, with the form at the top and its schedule and payments under it", async () => {
     stubSeries();
@@ -611,7 +601,6 @@ describe("A series' own view, G16", () => {
       .toEqual(["/transactions?key=k1&hide_transfers=0", "/transactions?key=k2&hide_transfers=0"]);
     expect(within(section("Schedule")).getAllByRole("listitem")).toHaveLength(2);
     expect(warn.mock.calls.flat().join(" ")).not.toMatch(/same key/);
-    warn.mockRestore();
   });
 
   it("marks a payment against the owner's amount, not the detected one", async () => {
@@ -643,11 +632,11 @@ describe("A series' own view, G16", () => {
         return new Promise<Response>((done) => {
           release = () => {
             now = { ...VIEW, amount: body.amount ?? VIEW.amount, edit: { ...VIEW.edit, amount: body.amount } };
-            done(new Response(JSON.stringify(now), { status: 200 }));
+            done(json(now));
           };
         });
       }
-      return new Response(JSON.stringify(url.startsWith("/api/recurring/series") ? now : PAGE), { status: 200 });
+      return json(url.startsWith("/api/recurring/series") ? now : PAGE);
     }));
     render(<Recurring />);
     const head = await screen.findByRole("region", { name: "Gym" });
@@ -672,11 +661,11 @@ describe("A series' own view, G16", () => {
         return new Promise<Response>((done) => {
           release = () => {
             now = { ...VIEW, amount: body.amount ?? VIEW.amount, edit: { ...VIEW.edit, amount: body.amount } };
-            done(new Response(JSON.stringify(now), { status: 200 }));
+            done(json(now));
           };
         });
       }
-      return new Response(JSON.stringify(url.startsWith("/api/recurring/series") ? now : PAGE), { status: 200 });
+      return json(url.startsWith("/api/recurring/series") ? now : PAGE);
     }));
     render(<Recurring />);
     const head = await screen.findByRole("region", { name: "Gym" });
@@ -701,7 +690,7 @@ describe("A series' own view, G16", () => {
     const reads: (() => void)[] = [];
     let now = VIEW;
     let hold = false;
-    const answer = () => new Response(JSON.stringify(now), { status: 200 });
+    const answer = () => json(now);
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === "POST") {
         const body = JSON.parse(String(init.body));
@@ -710,7 +699,7 @@ describe("A series' own view, G16", () => {
           done(answer());
         }));
       }
-      if (!url.startsWith("/api/recurring/series")) return new Response(JSON.stringify(PAGE), { status: 200 });
+      if (!url.startsWith("/api/recurring/series")) return json(PAGE);
       // once held, a read of the series waits, and answers with the series as it is when let go
       return hold ? new Promise<Response>((done) => reads.push(() => done(answer()))) : answer();
     }));
@@ -743,7 +732,7 @@ describe("A series' own view, G16", () => {
     const reads: (() => void)[] = [];
     let now = VIEW;
     let hold = false;
-    const answer = () => new Response(JSON.stringify(now), { status: 200 });
+    const answer = () => json(now);
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === "POST") {
         const body = JSON.parse(String(init.body));
@@ -752,7 +741,7 @@ describe("A series' own view, G16", () => {
           done(answer());
         }; });
       }
-      if (!url.startsWith("/api/recurring/series")) return new Response(JSON.stringify(PAGE), { status: 200 });
+      if (!url.startsWith("/api/recurring/series")) return json(PAGE);
       return hold ? new Promise<Response>((done) => reads.push(() => done(answer()))) : answer();
     }));
     render(<Recurring />);
@@ -780,7 +769,7 @@ describe("A series' own view, G16", () => {
   it("keeps a typed day with its cadence when another tab saves a cadence of the other kind", async () => {
     let now = VIEW;
     vi.stubGlobal("fetch", vi.fn(async (url: string) =>
-      new Response(JSON.stringify(url.startsWith("/api/recurring/series") ? now : PAGE), { status: 200 })));
+      json(url.startsWith("/api/recurring/series") ? now : PAGE)));
     render(<Recurring />);
     const head = await screen.findByRole("region", { name: "Gym" });
     // the 20th of the month, typed
@@ -799,7 +788,7 @@ describe("A series' own view, G16", () => {
   it("moves a day and cadence left alone together when another tab saves both", async () => {
     let now = { ...VIEW, day: 2, edit: { ...VIEW.edit, day: 2 } };
     vi.stubGlobal("fetch", vi.fn(async (url: string) =>
-      new Response(JSON.stringify(url.startsWith("/api/recurring/series") ? now : PAGE), { status: 200 })));
+      json(url.startsWith("/api/recurring/series") ? now : PAGE)));
     render(<Recurring />);
     await screen.findByRole("region", { name: "Gym" });
     // another tab makes the 2nd of the month a weekly Tuesday: the same "2" in the day box
@@ -813,7 +802,7 @@ describe("A series' own view, G16", () => {
   it("moves an amount typed as the saved one in other words along with another tab's save", async () => {
     let now = VIEW;
     vi.stubGlobal("fetch", vi.fn(async (url: string) =>
-      new Response(JSON.stringify(url.startsWith("/api/recurring/series") ? now : PAGE), { status: 200 })));
+      json(url.startsWith("/api/recurring/series") ? now : PAGE)));
     render(<Recurring />);
     const head = await screen.findByRole("region", { name: "Gym" });
     fireEvent.change(within(head).getByLabelText("Usual amount"), { target: { value: "50.00" } });
@@ -848,7 +837,7 @@ describe("A series' own view, G16", () => {
     let n = 0;
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
       if (init?.method === "POST") n = 1;
-      return new Response(JSON.stringify(answers[n]), { status: 200 });
+      return json(answers[n]);
     }));
     render(<Recurring />);
     const head = await screen.findByRole("region", { name: "Gym" });
@@ -883,8 +872,6 @@ describe("A series' own view, G16", () => {
 });
 
 describe("Not recurring on Recurring, G16", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("marks an irregular payee not recurring, lists what is not recurring, and Undo takes each back", async () => {
     const page: RecurringPage = { ...PAGE, not_recurring: [
       { id: null, name: "Club", payee: "Club", cadence: "", category: "", amount: null, last_seen: null },

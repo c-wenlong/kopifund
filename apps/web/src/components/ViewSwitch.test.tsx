@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Card } from "./Card";
 import { useChartView, ViewSwitch, viewsOf, type ChartView } from "./ViewSwitch";
 
@@ -11,8 +11,6 @@ function Harness({ id = "t" }: { id?: string }) {
 }
 
 describe("ViewSwitch", () => {
-  afterEach(() => { localStorage.clear(); vi.restoreAllMocks(); });
-
   it("is a radio group with one tab stop, and the arrow keys move and choose", () => {
     render(<Harness />);
     const group = screen.getByRole("radiogroup", { name: "Chart view" });

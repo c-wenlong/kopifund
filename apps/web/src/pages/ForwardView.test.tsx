@@ -1,17 +1,7 @@
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ForwardChart, ForwardViewCard, lowPoint, points, underZero } from "./ForwardView";
-
-// Give ResponsiveContainer a real size: jsdom has no layout, and a chart of
-// width 0 draws nothing, so neither the marker nor the hover would exist.
-class SizedObserver {
-  constructor(private cb: ResizeObserverCallback) {}
-  observe(el: Element) {
-    this.cb([{ target: el, contentRect: { width: 800, height: 400 } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
-  }
-  unobserve() {}
-  disconnect() {}
-}
+import { json, useSizedCharts } from "../test-helpers";
 
 // Every figure here is invented. `month` is a month as the stat writes it since
 // G20: each figure in integer cents under `<name>_minor` and no dollars at all.
@@ -31,12 +21,7 @@ const months = [
 ];
 
 describe("forward view", () => {
-  const real = globalThis.ResizeObserver;
-  beforeEach(() => { globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver; });
-  afterEach(() => {
-    globalThis.ResizeObserver = real;
-    vi.unstubAllGlobals();
-  });
+  useSizedCharts();
 
   it("reads the stat's cents, which add up to the month's net", () => {
     const [oct, nov] = points(months);
@@ -109,21 +94,21 @@ describe("forward view", () => {
   });
 
   it("waits for the next analysis when the result's months carry no cents", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+    vi.stubGlobal("fetch", vi.fn(async () => json({
       id: "forward-view", title: "Forward view to Feb 2027", chart: { type: "line", x: "month", series: ["cash"], source: "months" },
       data: { months: [dollars("2026-10", 5000)], low_point: { month: "2026-10", cash_minor: 500_000 }, below_zero: [] },
       findings: [], caveats: [],
-    }), { status: 200 })));
+    })));
     render(<ForwardViewCard />);
     expect(await screen.findByText("No forward view result yet.")).toBeInTheDocument();
   });
 
   it("shows no Details toggle and none of the stat's findings", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({
+    vi.stubGlobal("fetch", vi.fn(async () => json({
       id: "forward-view", title: "Forward view to Feb 2027", chart: { type: "line", x: "month", series: ["cash_minor"], source: "months", unit: "sgd_minor" },
       data: { months, low_point: { month: "2027-01", cash_minor: 123_456 }, below_zero: [] },
       findings: ["An invented finding about the low point."], caveats: ["An invented caveat."],
-    }), { status: 200 })));
+    })));
     render(<ForwardViewCard />);
     expect(await screen.findByRole("heading", { name: "Forward view to Feb 2027" })).toBeInTheDocument();
     expect(await screen.findByText(/in Jan 2027/)).toHaveTextContent("Lowest S$1,235 in Jan 2027");

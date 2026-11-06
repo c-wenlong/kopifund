@@ -8,6 +8,7 @@ import { Toaster } from "../components/Toast";
 import { choose } from "../test-select";
 import { navigate } from "../router";
 import { useUrlParams } from "../useUrlParams";
+import { json, stubMatchMedia } from "../test-helpers";
 
 // another reader of the address, as the copilot panel is: it sends every query parameter as the page's filters
 function AddressProbe() {
@@ -70,7 +71,7 @@ function stubFetch(state: RulesState = STATE, preview: RulePreview = PREVIEW) {
       : url === "/api/rules/undo" ? { undone: STATE.history[0].summary, relinked: { changed: 6, written: 6 } }
       : url === "/api/rules/apply" ? { relinked: { changed: 4, written: 4 } }
       : { removed: true, change: "t1", relinked: { changed: 1, written: 1 } };
-    return new Response(JSON.stringify(body), { status: 200 });
+    return json(body);
   }));
   return calls;
 }
@@ -93,8 +94,8 @@ const pages = () => screen.getByRole("navigation", { name: "Rules pages" });
 const rowsOf = () => screen.getAllByRole("button", { name: /^Show the rules for / }).map((b) => b.getAttribute("aria-label"));
 
 describe("Rules", () => {
-  beforeEach(() => { window.localStorage.clear(); window.history.replaceState(null, "", "/rules"); });
-  afterEach(() => { vi.unstubAllGlobals(); window.history.replaceState(null, "", "/"); });
+  beforeEach(() => { window.history.replaceState(null, "", "/rules"); });
+  afterEach(() => { window.history.replaceState(null, "", "/"); });
 
   it("shows one row per payee, and its pins when opened", async () => {
     stubFetch();
@@ -559,35 +560,25 @@ describe("Rules", () => {
 
   it("keeps an unsaved edit when the window crosses 768px and the editor is drawn again", async () => {
     stubFetch();
-    let wide = true;
-    const listeners = new Set<() => void>();
-    vi.stubGlobal("matchMedia", (media: string) => ({
-      get matches() { return wide; }, media,
-      addEventListener: (_: string, l: () => void) => listeners.add(l), removeEventListener: (_: string, l: () => void) => listeners.delete(l),
-    }));
+    const screenWidth = stubMatchMedia(true);
     render(<Rules />);
     fireEvent.click(await screen.findByRole("button", { name: "Show the rules for Kopitiam" }));
     fireEvent.click(screen.getByRole("button", { name: "Edit merchant KOPITIAM*" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Payee for rule KOPITIAM*" }), { target: { value: "Kopi Corner" } });
     expect(screen.getByRole("table")).toBeInTheDocument();
-    act(() => { wide = false; listeners.forEach((l) => l()); });
+    screenWidth.change(false);
     expect(screen.queryByRole("table")).not.toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Payee for rule KOPITIAM*" })).toHaveValue("Kopi Corner");
   });
 
   it("shows a save that fails after the window crossed 768px in the editor now on screen", async () => {
-    let wide = true;
-    const listeners = new Set<() => void>();
-    vi.stubGlobal("matchMedia", (media: string) => ({
-      get matches() { return wide; }, media,
-      addEventListener: (_: string, l: () => void) => listeners.add(l), removeEventListener: (_: string, l: () => void) => listeners.delete(l),
-    }));
+    const screenWidth = stubMatchMedia(true);
     let refuse: () => void = () => {};
     const slow = new Promise<void>((r) => { refuse = r; });
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
-      if (url === "/api/rules") return new Response(JSON.stringify(STATE), { status: 200 });
-      if (url.startsWith("/api/rules/preview")) return new Response(JSON.stringify(PREVIEW), { status: 200 });
-      if (url === "/api/rules/save") { await slow; return new Response(JSON.stringify({ error: "Another tab changed that line." }), { status: 409 }); }
+      if (url === "/api/rules") return json(STATE);
+      if (url.startsWith("/api/rules/preview")) return json(PREVIEW);
+      if (url === "/api/rules/save") { await slow; return json({ error: "Another tab changed that line." }, 409); }
       return new Response("{}", { status: 200 });
     }));
     render(<Rules />);
@@ -595,7 +586,7 @@ describe("Rules", () => {
     fireEvent.click(screen.getByRole("button", { name: "Edit merchant KOPITIAM*" }));
     fireEvent.click(await screen.findByRole("button", { name: "Save rule" }));
     expect(await screen.findByRole("button", { name: "Saving…" })).toBeDisabled();
-    act(() => { wide = false; listeners.forEach((l) => l()); });
+    screenWidth.change(false);
     // the editor drawn again still says it is saving, and then shows what went wrong
     expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
     refuse();
@@ -626,9 +617,9 @@ describe("Rules", () => {
     let refuse: () => void = () => {};
     const slow = new Promise<void>((r) => { refuse = r; });
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
-      if (url === "/api/rules") return new Response(JSON.stringify(STATE), { status: 200 });
-      if (url.startsWith("/api/rules/preview")) return new Response(JSON.stringify(PREVIEW), { status: 200 });
-      if (url === "/api/rules/save") { await slow; return new Response(JSON.stringify({ error: "Another tab changed that line." }), { status: 409 }); }
+      if (url === "/api/rules") return json(STATE);
+      if (url.startsWith("/api/rules/preview")) return json(PREVIEW);
+      if (url === "/api/rules/save") { await slow; return json({ error: "Another tab changed that line." }, 409); }
       return new Response("{}", { status: 200 });
     }));
     render(<Rules />);
@@ -649,11 +640,11 @@ describe("Rules", () => {
     let read: () => void = () => {};
     const answered = new Promise<void>((r) => { read = r; });
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
-      if (url === "/api/rules") return new Response(JSON.stringify(STATE), { status: 200 });
-      if (url.startsWith("/api/rules/preview")) return new Response(JSON.stringify(PREVIEW), { status: 200 });
+      if (url === "/api/rules") return json(STATE);
+      if (url.startsWith("/api/rules/preview")) return json(PREVIEW);
       if (url === "/api/rules/save") {
         await slow;
-        const refusal = new Response(JSON.stringify({ error: "Another tab changed that line." }), { status: 409 });
+        const refusal = json({ error: "Another tab changed that line." }, 409);
         const text = refusal.text.bind(refusal);
         refusal.text = () => text().finally(read);
         return refusal;
@@ -697,7 +688,7 @@ describe("Rules", () => {
 
   describe("on a phone", () => {
     beforeEach(() => {
-      vi.stubGlobal("matchMedia", (media: string) => ({ matches: false, media, addEventListener() {}, removeEventListener() {} }));
+      stubMatchMedia(false);
     });
 
     it("lists each payee as two lines in place of a table, with no column to clip", async () => {

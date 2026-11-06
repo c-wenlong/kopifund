@@ -1,5 +1,5 @@
 import { act, cleanup, createEvent, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Categories } from "./Categories";
 import { leadingIcon } from "../test-icons";
 import { choose } from "../test-select";
@@ -7,6 +7,7 @@ import { Toaster } from "../components/Toast";
 import type { CategoriesState, CategoryEntry, NeedClass } from "../api";
 import { navigate } from "../router";
 import { useUrlParams } from "../useUrlParams";
+import { json } from "../test-helpers";
 
 // another reader of the address, as the copilot panel is
 function AddressProbe() {
@@ -39,19 +40,17 @@ function stubFetch() {
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === "POST") {
       posts.push({ url, body: JSON.parse(init.body as string) });
-      return new Response(JSON.stringify({ ok: true }), { status: 200 });
+      return json({ ok: true });
     }
-    return new Response(JSON.stringify(STATE), { status: 200 });
+    return json(STATE);
   }));
   return posts;
 }
 
 describe("Categories", () => {
   beforeEach(() => {
-    window.localStorage.clear();
     window.history.replaceState(null, "", "/categories");
   });
-  afterEach(() => vi.unstubAllGlobals());
 
   it("shows one tab per bucket and only the selected bucket's categories", async () => {
     stubFetch();
@@ -121,14 +120,12 @@ describe("Categories", () => {
 
   it("keeps working when this browser's storage is blocked", async () => {
     stubFetch();
-    const get = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
-    const set = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked"); });
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked"); });
     render(<><Categories /><Toaster /></>);
     fireEvent.click(await screen.findByRole("tab", { name: "Lifestyle 1" }));
     expect(screen.getByText("Shopping")).toBeInTheDocument();
     expect(window.location.search).toBe("?bucket=Lifestyle");
-    get.mockRestore();
-    set.mockRestore();
   });
 
   it("stays on the tab after a category moves out, and the list loses it", async () => {
@@ -142,9 +139,9 @@ describe("Categories", () => {
         const from = state.groups.find((g) => g.categories.some((c) => c.id === body.id))!;
         const [c] = from.categories.splice(from.categories.findIndex((c) => c.id === body.id), 1);
         state.groups.find((g) => g.id === body.group_id)!.categories.push(c);
-        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        return json({ ok: true });
       }
-      return new Response(JSON.stringify(state), { status: 200 });
+      return json(state);
     }));
     render(<><Categories /><Toaster /></>);
     choose(await screen.findByLabelText("Move Coffee to"), "Lifestyle");
@@ -240,9 +237,9 @@ describe("Categories", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === "POST") {
         posts.push({ url, body: JSON.parse(init.body as string) });
-        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        return json({ ok: true });
       }
-      return new Response(JSON.stringify(state), { status: 200 });
+      return json(state);
     }));
     render(<><Categories /><Toaster /></>);
     fireEvent.click(await screen.findByRole("button", { name: "Delete Pets" }));
@@ -259,7 +256,7 @@ describe("Categories", () => {
   it("asks where to move a category that has no transactions but a budget or a rule", async () => {
     const state: CategoriesState = structuredClone(STATE);
     state.groups[0].categories.push({ id: ID.Pets, name: "Pets", need_class: "Want", cost_type: "Variable", group: "Variable", transactions: 0, monthly: null, budgets: 1, rules: 0, personal_rules: 0 });
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(state), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn(async () => json(state)));
     render(<Categories />);
     fireEvent.click(await screen.findByRole("button", { name: "Delete Pets" }));
     expect(screen.getByLabelText("Move Pets's transactions to")).toBeInTheDocument();
@@ -272,9 +269,9 @@ describe("Categories", () => {
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
       if (init?.method === "POST") {
         state.groups = state.groups.filter((g) => g.name !== "Pets");
-        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        return json({ ok: true });
       }
-      return new Response(JSON.stringify(state), { status: 200 });
+      return json(state);
     }));
     window.history.replaceState(null, "", "/categories?bucket=Pets");
     render(<Categories />);
@@ -298,7 +295,7 @@ describe("Categories", () => {
   it("shows a bucket's total even when refunds take it below zero", async () => {
     const state: CategoriesState = structuredClone(STATE);
     state.groups[1].categories = [cat("Shopping", "Want", 12, -4000)];
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(state), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn(async () => json(state)));
     render(<Categories />);
     fireEvent.click(await screen.findByRole("tab", { name: "Lifestyle 1" }));
     expect(screen.getByText("1 category, −S$40 a month")).toBeInTheDocument();
@@ -336,8 +333,8 @@ describe("Categories", () => {
 
   it("says so when the change is saved but the rules could not follow", async () => {
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => init?.method === "POST"
-      ? new Response(JSON.stringify({ name: "Kopi", rule_files: 0, rules_note: "your rules still say Coffee, which keeps working: disk full" }), { status: 200 })
-      : new Response(JSON.stringify(STATE), { status: 200 })));
+      ? json({ name: "Kopi", rule_files: 0, rules_note: "your rules still say Coffee, which keeps working: disk full" })
+      : json(STATE)));
     render(<><Categories /><Toaster /></>);
     fireEvent.click(await screen.findByRole("button", { name: "Rename Coffee" }));
     const input = screen.getByLabelText("New name for Coffee");
@@ -355,9 +352,9 @@ describe("Categories", () => {
       if (init?.method === "POST") {
         posts.push(url);
         await slow;
-        return new Response(JSON.stringify({ name: "Kopi" }), { status: 200 });
+        return json({ name: "Kopi" });
       }
-      return new Response(JSON.stringify(STATE), { status: 200 });
+      return json(STATE);
     }));
     render(<><Categories /><Toaster /></>);
     fireEvent.click(await screen.findByRole("button", { name: "Rename Coffee" }));
@@ -378,9 +375,9 @@ describe("Categories", () => {
       if (init?.method === "POST") {
         posts.push(`${url} ${init.body}`);
         if (posts.length === 1) await slow;
-        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        return json({ ok: true });
       }
-      return new Response(JSON.stringify(STATE), { status: 200 });
+      return json(STATE);
     }));
     render(<><Categories /><Toaster /></>);
     choose(await screen.findByLabelText("Move Coffee to"), "Lifestyle");
@@ -401,9 +398,9 @@ describe("Categories", () => {
       if (init?.method === "POST") {
         posts.push(url);
         await slow;
-        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        return json({ ok: true });
       }
-      return new Response(JSON.stringify(STATE), { status: 200 });
+      return json(STATE);
     }));
     render(<><Categories /><Toaster /></>);
     fireEvent.click(await screen.findByRole("button", { name: "Move bucket Food down" }));
@@ -419,9 +416,9 @@ describe("Categories", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === "POST") {
         posts.push({ url, body: JSON.parse(init.body as string) });
-        return new Response(JSON.stringify({ error: "That category is called Kopi now, not Coffee: reload the page" }), { status: 422 });
+        return json({ error: "That category is called Kopi now, not Coffee: reload the page" }, 422);
       }
-      return new Response(JSON.stringify(STATE), { status: 200 });
+      return json(STATE);
     }));
     render(<><Categories /><Toaster /></>);
     fireEvent.click(within(await screen.findByRole("radiogroup", { name: "Need class for Coffee" })).getByRole("radio", { name: "Need" }));
@@ -431,8 +428,8 @@ describe("Categories", () => {
 
   it("shows why a change was refused", async () => {
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => init?.method === "POST"
-      ? new Response(JSON.stringify({ error: "there is already a category called 'Groceries'" }), { status: 422 })
-      : new Response(JSON.stringify(STATE), { status: 200 })));
+      ? json({ error: "there is already a category called 'Groceries'" }, 422)
+      : json(STATE)));
     render(<><Categories /><Toaster /></>);
     fireEvent.click(await screen.findByRole("button", { name: "Rename Coffee" }));
     const input = screen.getByLabelText("New name for Coffee");
@@ -446,9 +443,9 @@ describe("Categories", () => {
       if (init?.method === "POST") {
         const { ids } = JSON.parse(init.body as string) as { ids: number[] };
         state.groups.sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id));
-        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        return json({ ok: true });
       }
-      return new Response(JSON.stringify(state), { status: 200 });
+      return json(state);
     }));
     render(<><Categories /><Toaster /></>);
     fireEvent.click(await screen.findByRole("tab", { name: "Lifestyle 1" }));
@@ -468,9 +465,9 @@ describe("Categories", () => {
           state.groups.find((g) => g.id === body.move_to_id)!.categories.push(...state.groups[gone].categories);
           state.groups.splice(gone, 1);
         }
-        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        return json({ ok: true });
       }
-      return new Response(JSON.stringify(state), { status: 200 });
+      return json(state);
     }));
     render(<><Categories /><Toaster /></>);
     fireEvent.click(await screen.findByRole("tab", { name: "Lifestyle 1" }));
@@ -515,9 +512,9 @@ describe("Categories", () => {
         const saved = (body.new_name ?? body.name).split(/\s+/).join(" ");
         if (url.endsWith("/add")) state.groups.splice(2, 0, { id: PETS_BUCKET, name: saved, kind: "spend", fixed: false, icon: "shapes", colour: null, shown: "c12", categories: [] });
         else state.groups.find((g) => g.name === body.name)!.name = saved;
-        return new Response(JSON.stringify({ name: saved }), { status: 200 });
+        return json({ name: saved });
       }
-      return new Response(JSON.stringify(state), { status: 200 });
+      return json(state);
     }));
     render(<><Categories /><Toaster /></>);
     fireEvent.click(await screen.findByRole("button", { name: "Add bucket" }));
@@ -543,9 +540,9 @@ describe("Categories", () => {
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
       if (init?.method === "POST") {
         state.groups.splice(2, 0, { id: PETS_BUCKET, name: "Pets", kind: "spend", fixed: false, icon: "shapes", colour: null, shown: "c12", categories: [] });
-        return new Response(JSON.stringify({ ok: true }), { status: 200 });
+        return json({ ok: true });
       }
-      return new Response(JSON.stringify(state), { status: 200 });
+      return json(state);
     }));
     render(<><Categories /><Toaster /></>);
     fireEvent.click(await screen.findByRole("button", { name: "Add bucket" }));
@@ -596,7 +593,7 @@ describe("Categories", () => {
   it("offers a neutral empty state, not a problem, for an empty bucket", async () => {
     const state: CategoriesState = structuredClone(STATE);
     state.groups.splice(1, 0, { id: PETS_BUCKET, name: "Pets", kind: "spend", fixed: false, icon: "shapes", colour: null, shown: "c12", categories: [] });
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(state), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn(async () => json(state)));
     window.history.replaceState(null, "", "/categories?bucket=Pets");
     render(<Categories />);
     expect(await screen.findByText("No categories yet")).toBeInTheDocument();
@@ -607,7 +604,7 @@ describe("Categories", () => {
   });
 
   it("offers a neutral empty state with an Add a bucket action when there are no buckets at all", async () => {
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ ...STATE, groups: [] }), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn(async () => json({ ...STATE, groups: [] })));
     render(<Categories />);
     expect(await screen.findByText("No categories yet")).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
@@ -633,9 +630,9 @@ describe("Categories", () => {
         const body = JSON.parse(init.body as string);
         posts.push({ url, body });
         const swapped = body.colour === "c2" ? "Lifestyle" : null;
-        return new Response(JSON.stringify({ id: ID.Food, name: "Food", icon: "utensils", colour: body.colour ?? null, shown: "c1", swapped }), { status: 200 });
+        return json({ id: ID.Food, name: "Food", icon: "utensils", colour: body.colour ?? null, shown: "c1", swapped });
       }
-      return new Response(JSON.stringify(STATE), { status: 200 });
+      return json(STATE);
     }));
     render(<><Categories /><Toaster /></>);
     fireEvent.click(await screen.findByRole("button", { name: "Icon and colour for Food" }));
@@ -672,9 +669,9 @@ describe("Categories", () => {
         const body = JSON.parse(init.body as string);
         posts.push(body);
         if (posts.length === 1) await new Promise<void>((r) => { release = r; });
-        return new Response(JSON.stringify({ id: ID.Food, name: "Food", icon: "utensils", colour: body.colour, shown: body.colour, swapped: null }), { status: 200 });
+        return json({ id: ID.Food, name: "Food", icon: "utensils", colour: body.colour, shown: body.colour, swapped: null });
       }
-      return new Response(JSON.stringify(STATE), { status: 200 });
+      return json(STATE);
     }));
     render(<><Categories /><Toaster /></>);
     fireEvent.click(await screen.findByRole("button", { name: "Icon and colour for Food" }));
@@ -694,9 +691,9 @@ describe("Categories", () => {
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
       if (init?.method === "POST") {
         await new Promise<void>((r) => { release = r; });
-        return new Response(JSON.stringify({ id: ID.Food, name: "Food", icon: "coffee", colour: null, shown: "c1", swapped: null }), { status: 200 });
+        return json({ id: ID.Food, name: "Food", icon: "coffee", colour: null, shown: "c1", swapped: null });
       }
-      return new Response(JSON.stringify(STATE), { status: 200 });
+      return json(STATE);
     }));
     render(<><Categories /><Toaster /></>);
     fireEvent.click(await screen.findByRole("button", { name: "Icon and colour for Food" }));
