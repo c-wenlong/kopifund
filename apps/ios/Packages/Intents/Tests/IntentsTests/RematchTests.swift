@@ -175,3 +175,19 @@ private let four = [walletAlert("KOPI CORNER", "4.20", "A1001"),
                .init(unmatchedID: UUID(), patternName: "Card spend")]
     #expect(r.message() == "2 waiting alerts now match your patterns")
 }
+
+@Test @MainActor func withEveryPatternDeletedTheOldReasonsGo() async throws {
+    let container = try Store.memory()
+    let (defaults, name) = scratchDefaults()
+    defer { defaults.removePersistentDomain(forName: name) }
+    try await parked(["Card alert: a charge of SGD 9.00 was made at LAMP SHOP."], in: container, defaults: defaults)
+    let context = ModelContext(container)
+    let record = try #require(try context.fetch(FetchDescriptor<UnmatchedRecord>()).first)
+    record.reasons = "Old pattern: text does not match"
+    try context.save()
+
+    let result = try await Ingest.rematchUnmatched(container: container, defaults: defaults)
+
+    #expect(result.stillUnmatched == 1)
+    #expect(try ModelContext(container).fetch(FetchDescriptor<UnmatchedRecord>()).first?.reasons == "")
+}

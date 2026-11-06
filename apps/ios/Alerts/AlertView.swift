@@ -140,7 +140,11 @@ struct AlertView: View {
     private func rematch() async -> (String, Bool) {
         let id = record.id
         let text = record.text
-        let result = await PatternRematch.run(context: context, keeping: id)
+        let result: RematchResult
+        switch await PatternRematch.run(context: context, keeping: id) {
+        case .success(let r): result = r
+        case .failure(let error): return ("Pattern saved. " + PatternRematch.failed(error), false)
+        }
         let moved = result.moved.contains { $0.unmatchedID == id }
         let others = result.moved.count - (moved ? 1 : 0)
         if moved {

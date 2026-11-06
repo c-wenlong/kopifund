@@ -43,6 +43,7 @@ struct AlertsApp: App {
                     try? ctx.save()
                 }
             }
+            #if DEBUG
             // G24: a UI test parks alerts in Unmatched with one
             // `-seedUnmatched <text>` per alert, as if each arrived before
             // any pattern could read it
@@ -62,6 +63,7 @@ struct AlertsApp: App {
                 }
                 try? ctx.save()
             }
+            #endif
         } catch {
             // never fall back to an in-memory store: rows saved there would
             // vanish on the next launch with no warning

@@ -87,10 +87,9 @@ extension Ingest {
             .filter { $0.inKopifund != true }
             .map { Waiting(id: $0.id, text: $0.text, source: $0.source,
                            receivedAt: $0.receivedAt, arrivedOn: $0.arrivedOn) }
-        guard !patterns.isEmpty, !waiting.isEmpty else {
-            result.stillUnmatched = waiting.count
-            return result
-        }
+        // no patterns still passes: each miss's reasons then empty out,
+        // rather than naming patterns since deleted
+        guard !waiting.isEmpty else { return result }
         let outcomes = await Task.detached(priority: .userInitiated) {
             waiting.map {
                 Matcher.match(text: $0.text, source: $0.source, receivedAt: $0.receivedAt,
@@ -105,6 +104,12 @@ extension Ingest {
             let id = w.id
             guard let record = try context.fetch(FetchDescriptor<UnmatchedRecord>(
                 predicate: #Predicate { $0.id == id })).first else { continue }
+            // the record may have covered it while the matcher ran
+            // (LinkDedupe's sweep): it stays put, as it would have before
+            if record.inKopifund == true {
+                result.stillUnmatched += 1
+                continue
+            }
             switch outcome {
             case .matched(let t):
                 if Suppression.contains(AlertShape.signature(of: w.text), in: defaults) {

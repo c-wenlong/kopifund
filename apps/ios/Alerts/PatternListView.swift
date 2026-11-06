@@ -69,8 +69,13 @@ struct PatternListView: View {
     private func patternSaved() {
         showBuilder = false
         Task {
-            let message = await PatternRematch.run(context: context).message()
-            notice = message.isEmpty ? "Pattern saved" : "Pattern saved. \(message)"
+            switch await PatternRematch.run(context: context) {
+            case .success(let result):
+                let message = result.message()
+                notice = message.isEmpty ? "Pattern saved" : "Pattern saved. \(message)"
+            case .failure(let error):
+                notice = "Pattern saved. " + PatternRematch.failed(error)
+            }
         }
     }
 

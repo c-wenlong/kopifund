@@ -120,9 +120,12 @@ struct UnmatchedView: View {
     private func tryPatterns() {
         retrying = true
         Task {
-            let result = await PatternRematch.run(context: context)
+            let run = await PatternRematch.run(context: context)
             retrying = false
-            notice = result.message(asked: true)
+            switch run {
+            case .success(let result): notice = result.message(asked: true)
+            case .failure(let error): notice = PatternRematch.failed(error)
+            }
         }
     }
 

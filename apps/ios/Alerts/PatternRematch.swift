@@ -11,12 +11,22 @@ import Intents
 enum PatternRematch {
     /// `keeping` is the Unmatched row an open alert page shows: its spend
     /// queues, and the page's list deletes the row once the page is gone.
-    static func run(context: ModelContext, keeping: UUID? = nil) async -> RematchResult {
-        guard let container = try? Store.container(),
-              let result = try? await Ingest.rematchUnmatched(container: container, keeping: keeping)
-        else { return RematchResult() }
-        if result.queuedApproved { Task { await SyncService.flush(context: context) } }
-        return result
+    /// A store that cannot be read or saved is a failure the caller says
+    /// out loud, never an empty pass that reads as "nothing matches".
+    static func run(context: ModelContext, keeping: UUID? = nil) async -> Result<RematchResult, Error> {
+        do {
+            let result = try await Ingest.rematchUnmatched(container: try Store.container(),
+                                                           keeping: keeping)
+            if result.queuedApproved { Task { await SyncService.flush(context: context) } }
+            return .success(result)
+        } catch {
+            return .failure(error)
+        }
+    }
+
+    /// The toast for a pass that could not run.
+    static func failed(_ error: Error) -> String {
+        "Couldn't try the patterns again: \(error.localizedDescription)"
     }
 }
 
