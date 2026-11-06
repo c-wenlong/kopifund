@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { AppIconCard } from "./AppIconCard";
-import { syncAppIcon, useAppIconLogo } from "../components/appIcon";
+import { followAppIcon, syncAppIcon, useAppIconLogo } from "../components/appIcon";
 import { json, settle } from "../test-helpers";
 
 const SETS = [
@@ -64,6 +64,60 @@ describe("App icon card", () => {
     expect(await screen.findByText("Not an app icon")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Sticker/ })).toBeChecked();
     expect(href('link[rel="icon"][type="image/svg+xml"]')).toBe("/favicon.svg");
+  });
+});
+
+describe("App icon card, saves that race and picks made elsewhere", () => {
+  it("takes no second pick while one is saving, so a failed save puts back only a saved pick", async () => {
+    const answers: ((r: Response) => void)[] = [];
+    vi.stubGlobal("fetch", vi.fn((_url: string, init?: RequestInit) => {
+      if (init?.method === "POST") {
+        posts.push(init.body as string);
+        return new Promise<Response>((resolve) => { answers.push(resolve); });
+      }
+      return Promise.resolve(json(page("sticker")));
+    }));
+    render(<AppIconCard />);
+    fireEvent.click(await screen.findByRole("radio", { name: /Iso/ }));
+    expect(screen.getByRole("radio", { name: /Riso/ })).toBeDisabled();
+    fireEvent.click(screen.getByRole("radio", { name: /Riso/ }));
+    expect(posts).toEqual([JSON.stringify({ name: "iso" })]);
+    await act(async () => {
+      for (const answer of answers) answer(json({ error: "Not an app icon" }, 422));
+    });
+    expect(await screen.findByText("Not an app icon")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Sticker/ })).toBeChecked();
+    expect(screen.getByRole("radio", { name: /Riso/ })).toBeEnabled();
+  });
+
+  it("follows a pick another tab makes after this one picked", async () => {
+    stubFetch();
+    const stop = followAppIcon();
+    render(<><AppIconCard /><Logo /></>);
+    fireEvent.click(await screen.findByRole("radio", { name: /Iso/ }));
+    await settle();
+    expect(screen.getByRole("radio", { name: /Iso/ })).toBeChecked();
+    // another tab saves riso: the browser tells this one through a storage event
+    act(() => {
+      window.localStorage.setItem("kopifund.appIcon", "riso");
+      window.dispatchEvent(new StorageEvent("storage", { key: "kopifund.appIcon", newValue: "riso" }));
+    });
+    expect(screen.getByRole("radio", { name: /Riso/ })).toBeChecked();
+    expect(screen.getByRole("img", { name: "logo" })).toHaveAttribute("src", "/app-icons/riso/logo.svg");
+    expect(href('link[rel="icon"][type="image/svg+xml"]')).toBe("/app-icons/riso/favicon.svg");
+    stop();
+  });
+
+  it("moves the logo with the tab's icon when the browser blocks storage", async () => {
+    stubFetch();
+    vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => { throw new Error("blocked"); });
+    render(<><AppIconCard /><Logo /></>);
+    fireEvent.click(await screen.findByRole("radio", { name: /Iso/ }));
+    await settle();
+    expect(href('link[rel="icon"][type="image/svg+xml"]')).toBe("/app-icons/iso/favicon.svg");
+    expect(screen.getByRole("img", { name: "logo" })).toHaveAttribute("src", "/app-icons/iso/logo.svg");
+    expect(screen.getByRole("radio", { name: /Iso/ })).toBeChecked();
   });
 });
 

@@ -1500,7 +1500,11 @@ once as the record's `app_icon` setting (`POST /api/app-icon`; `GET` answers
 the sets, the default and the pick, and a pick of a set `sets.json` no longer
 lists reads as the default). The web app then points the tab's icon, the
 Add to Home Screen icon and the logo at the set's folder, and keeps the pick
-in the browser too, so a reload shows it before the server answers. The PWA
+in the browser too, so a reload shows it before the server answers. While a
+pick saves the other rows wait, so a refused save puts back the saved pick.
+The tab holds its pick in memory and storage is only the copy: with storage
+blocked the logo still moves with the tab's icon. A pick saved in another tab
+of the same browser moves this tab's card, icon and logo at once. The PWA
 manifest keeps the default: an app already on a home screen keeps the icon it
 was added with. In the desktop app `serve.py --app` prints `KOPIFUND_ICON
 <set>` once it is listening and after every pick, and the shell makes that
