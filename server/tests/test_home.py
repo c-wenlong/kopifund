@@ -265,7 +265,7 @@ class EyeLines(unittest.TestCase):
         self.assertEqual((words(cash_trend_6m=50000), words(cash_trend_6m=0)), ([], []))
         self.assertEqual(words(irregular=1)[0][0], "1 payee marked recurring has no regular spacing")
         self.assertEqual(words(needs_rule=1)[0][0], "1 statement text needs a rule")
-        self.assertEqual(words(pending=1), [("1 spend from the phone waits for a statement", "/settings")])
+        self.assertEqual(words(pending=1), [("1 spend from the phone waits for a statement", "/settings?phone_rows=waiting")])
         self.assertEqual(words(pending=3)[0][0], "3 spends from the phone wait for a statement")
         self.assertEqual(words(upload={"id": 3, "state": "problems", "problems": 1})[0][0],
                          "The last upload has 1 problem to fix")

@@ -433,11 +433,23 @@ class ServerControlTest(Server):
                              (200, {"ok": True, "waiting_for": [], "timeout": serve.DRAIN_TIMEOUT}, [fn]), path)
 
     def test_a_stopping_server_refuses_new_writes_and_still_answers_reads(self):
-        with mock.patch.object(serve, "_STOPPING", True):
+        # The client has its answer before the request's thread drops its
+        # count, so the count is read only once that thread has ended. The
+        # pause after each answer holds that gap open: a bare read of
+        # _INFLIGHT straight after the GET fails here every time.
+        send = self.server.RequestHandlerClass.send_body
+
+        def send_then_pause(handler, *args, **kwargs):
+            send(handler, *args, **kwargs)
+            handler.wfile.flush()
+            time.sleep(0.3)
+        with mock.patch.object(self.server.RequestHandlerClass, "send_body", send_then_pause), \
+                mock.patch.object(serve, "_STOPPING", True):
             status, body = self.post("/api/trips", {"name": "Bali"})
             self.assertEqual(status, 503)
             self.assertIn("stopping", body["error"])
             self.assertEqual(self.get("/api/server")[0], 200)
+            self.assertEqual(serve._drain(timeout=5), [])
         self.assertEqual(serve._INFLIGHT, {})
 
     def test_stop_waits_for_a_load_in_flight_then_ends(self):
@@ -485,6 +497,9 @@ class ServerControlTest(Server):
             self.assertEqual(serve._drain(timeout=5), [])
 
     def test_a_read_still_running_at_the_deadline_is_named(self):
+        # patch.dict snapshots and restores the live counter, so a request
+        # from an earlier test still ending would come back as a phantom
+        self.assertEqual(serve._drain(timeout=5), [])
         with mock.patch.dict(serve._INFLIGHT, {("GET", "/api/exports/x/y.csv"): 1}):
             self.assertEqual(serve._running_work(), [])      # the card names no reads
             self.assertEqual(serve._drain(timeout=0.2), ["1 read"])

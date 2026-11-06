@@ -162,7 +162,7 @@ def needs_your_eye(conn, results, up, folders=(), today=None, listing=(), rec=No
         "missing_fx": conn.execute("SELECT COUNT(*) FROM v_missing_fx").fetchone()[0],
         "stale_accounts": stale_accounts(conn, today or date.today(), folders, listing),
         # G25: phone rows still waiting for a statement to confirm them
-        "pending": pending.waiting_count(conn),
+        "pending": pending.waiting_count(conn, today),
     }
     eye["lines"] = eye_lines(eye)
     return eye
@@ -270,7 +270,7 @@ def eye_lines(e):
     # the quiet lines; the Settings card is where a row is dismissed
     if e["pending"]:
         line("pending", f"{_n(e['pending'], 'spend from the phone waits', 'spends from the phone wait')} "
-             "for a statement", "/settings")
+             "for a statement", "/settings?phone_rows=waiting")
     if e["irregular"] > 0:
         line("irregular", f"{_n(e['irregular'], 'payee marked recurring has', 'payees marked recurring have')} "
              "no regular spacing", "/recurring")
