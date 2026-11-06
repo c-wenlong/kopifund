@@ -46,9 +46,9 @@ describe("Loaded", () => {
 
 describe("NoStatementsYet", () => {
   it("says what comes with the first statements and links to Upload", () => {
-    render(<NoStatementsYet title="No transactions yet" what="Transactions" />);
-    expect(screen.getByText("No transactions yet")).toBeInTheDocument();
-    expect(screen.getByText("Transactions come with your first statements.")).toBeInTheDocument();
+    render(<NoStatementsYet title="No spending in the record yet">Spending comes with your first statements.</NoStatementsYet>);
+    expect(screen.getByText("No spending in the record yet")).toBeInTheDocument();
+    expect(screen.getByText("Spending comes with your first statements.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Load your statements" })).toHaveAttribute("href", "/upload");
   });
 });

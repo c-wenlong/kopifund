@@ -98,7 +98,7 @@ export function Categories() {
 
   if (loading && !data) return <Loading what="Loading your categories" />;
   if (error) return <Problem message={error} hint={LOAD_FIRST} retry />;
-  if (!data) return <NoStatementsYet title="No categories yet" what="Categories" />;
+  if (!data) return <NoStatementsYet title="No categories yet">Categories come with your first statements.</NoStatementsYet>;
   const groups = data.groups;
   // G13: what each spending bucket takes of the month, for the bar under its name
   const withData = (g: CategoryGroup) => g.categories.filter((c) => c.transactions > 0 && c.monthly != null);

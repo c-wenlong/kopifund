@@ -117,7 +117,7 @@ export function SpendingExplorer() {
   if (probe.loading) return <CardSkeleton height={300} what="Loading your spending" />;
   if (probe.error) return <Problem message={probe.error} retry />;
   if (!probe.data?.available || !last || !from) {
-    return <NoStatementsYet title="No spending in the record yet" what="Spending" />;
+    return <NoStatementsYet title="No spending in the record yet">Spending comes with your first statements.</NoStatementsYet>;
   }
   // only figures that answer the controls on screen: a pending or failed
   // request must not leave the last answer showing under new labels

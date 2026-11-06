@@ -348,7 +348,7 @@ export function Transactions() {
       {data && data.total === 0 && (
         anyFilter
           ? <EmptyState title="Nothing matches" action={<ClearFilters onClick={clearFilters} bordered />}>No transaction passes every filter.</EmptyState>
-          : <NoStatementsYet title="No transactions yet" what="Transactions" />
+          : <NoStatementsYet title="No transactions yet">Transactions come with your first statements.</NoStatementsYet>
       )}
       {data && data.total > 0 && (
         <>

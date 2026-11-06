@@ -101,13 +101,14 @@ export const LOAD_FIRST = "Load your statements first, from the Upload page.";
 
 /**
  * Audit: the record holds no statement yet, so a page has nothing to draw:
- * its `title`, what comes with the first statements, and the way to Upload.
+ * its `title`, the sentence saying what comes with the first statements, and
+ * the way to Upload.
  */
-export function NoStatementsYet({ title, what }: { title: string; what: string }) {
+export function NoStatementsYet({ title, children }: { title: string; children: ReactNode }) {
   return (
     <EmptyState title={title}
       action={<a href="/upload" onClick={onLinkClick("/upload")} className={buttonClass("secondary")}>Load your statements</a>}>
-      {what} come with your first statements.
+      {children}
     </EmptyState>
   );
 }
