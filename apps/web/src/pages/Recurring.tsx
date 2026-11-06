@@ -97,7 +97,7 @@ function Lists() {
   const state = useApi<RecurringPage>("/api/recurring");
   return (
     <Loaded state={state} what="Loading your recurring payments" missing="No recurring payments yet.">{(data) => !data.ready
-      ? <Problem message="No recurring payments result yet." hint="Run the analysis from the Upload page, or `make analyse`." />
+      ? <Problem message="No recurring payments result yet." hint="Run the analysis from the Upload page." />
       : (
         <div className="flex flex-col gap-3">
           <p className="m-0 text-[12px] text-ink-3">As of {formatDay(data.coming_up.as_of)}</p>
