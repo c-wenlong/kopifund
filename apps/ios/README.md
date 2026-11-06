@@ -102,6 +102,18 @@ tagged; the save button says what is still missing rather than sitting grey.
 The same `Matcher.test` powers the live read, so what the preview shows is
 what intake does.
 
+Saving a pattern re-reads every alert waiting in Unmatched, not just the one
+it was taught from (`Ingest.rematchUnmatched`): the saved patterns run over
+each alert off the main thread, through the same path a fresh alert takes,
+so a match lands in the Inbox with the duplicate and currency checks a new
+capture gets, and a miss stays with its "Why nothing matched" re-read
+against today's patterns. A toast says how many moved ("4 waiting alerts now
+match Demo Wallet"). An alert already in the Inbox (same text, same arrival)
+leaves Unmatched without a second row, two passes never run at once, and an
+alert the record already covers ("in kopifund") or whose shape is ignored
+stays where it is. **Try patterns again** at the top of Unmatched runs the
+same pass by hand.
+
 A field is found by the stable words right around it, not by every word of
 the alert: the literal before a field keeps its nearest words on the field's
 line (at most two words that do not change, never past an earlier clause's
@@ -182,8 +194,8 @@ accepts (`WFWalletTransactionContentItem`), which earlier copies left out; the
 bundled signed copy is regenerated from it with the command above.
 
 The merchant and card names arrive from Apple's Wallet record, which prints
-them title-cased ("Sgh - Digestive & Live") where the bank's SMS prints the
-raw descriptor ("SGH - DIGESTIVE & LIVE"). The app stores what it is handed;
+them title-cased ("Hvc - Dental & Eye") where the bank's SMS prints the
+raw descriptor ("HVC - DENTAL & EYE"). The app stores what it is handed;
 the Source row on a transaction says which path wrote it.
 
 ## Review and sync
@@ -192,7 +204,7 @@ One spend can arrive over two channels: a Wallet tap and the bank's SMS for
 the same charge each write a row. With no shared id between channels a new
 row counts as the same spend when the amount, currency and day all agree
 with an existing row and the payees match once case and punctuation are
-dropped ("Sgh - Digestive & Live" equals "SGH - DIGESTIVE & LIVE"). The
+dropped ("Hvc - Dental & Eye" equals "HVC - DENTAL & EYE"). The
 poorer of the pair (the one without the bank's raw text) parks itself
 under **Possible duplicates** and never syncs; open it to see the row it
 matched and tap **Not a duplicate** if two real charges tripped the rule.

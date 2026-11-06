@@ -61,7 +61,7 @@ public enum Candidates {
 
     // MARK: - amounts
 
-    /// Money shapes: `SGD 4.80`, `S$4.50`, `$4.50`, `SGD44.53`, `4.80 SGD`,
+    /// Money shapes: `SGD 4.80`, `S$4.50`, `$4.50`, `SGD38.17`, `4.80 SGD`,
     /// `1,234.50`. A plain integer is weak (phones, refs and card digits are
     /// integers too), so it only ever becomes a suggestion, never a pre-tag.
     /// The amount-only path: list rows flagging likely money should not pay
@@ -80,7 +80,7 @@ public enum Candidates {
                 if t.text.range(of: #"^\d{5,}$"#, options: .regularExpression) != nil { score -= 3 }
             } else if t.kind == .word,
                       t.text.range(of: #"^[A-Z]{2,3}\d+$"#, options: .regularExpression) != nil {
-                // "SGD44": the letters ride on the number, split from its
+                // "SGD38": the letters ride on the number, split from its
                 // ".53" as punct + number. Without that decimal part it is
                 // as likely a reference ("AB123456") as money, so it is
                 // not proposed at all.
@@ -94,7 +94,7 @@ public enum Candidates {
             }
 
             // absorb a currency on the left: "SGD 4.80", "S$ 4.50", "$ 4.50";
-            // "SGD44.53" already carries its own
+            // "SGD38.17" already carries its own
             if t.kind == .number, let l = prevNonSpace(span.first!, in: tokens) {
                 let lt = tokens[l]
                 if lt.kind == .word, lt.text.range(of: #"^[A-Z]{2,3}$"#, options: .regularExpression) != nil {
@@ -256,7 +256,7 @@ public enum Candidates {
         }
 
         // fallback suggestion: a run of 2+ ALL-CAPS words reads merchant-like.
-        // Whitespace and joiners ("SGH - DIGESTIVE") ride inside the run.
+        // Whitespace and joiners ("HVC - DENTAL") ride inside the run.
         var run: [Int] = []
         var words = 0
         func flush() {
