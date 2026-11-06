@@ -12,7 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Drawer, TopBar } from "./components/MobileNav";
 import { useEyeListRequests } from "./components/NeedsYourEye";
 import { useWide } from "./components/useWide";
-import { syncAppIcon } from "./components/appIcon";
+import { followAppIcon, syncAppIcon } from "./components/appIcon";
 import { LeaveBar } from "./components/LeaveBar";
 import { buttonClass } from "./components/Button";
 import type { SetupState } from "./api";
@@ -32,7 +32,7 @@ function HeaderLink({ to, icon: Icon, label }: { to: string; icon: LucideIcon; l
 export function App() {
   const [version, setVersion] = useState(0);
   const setup = useApi<SetupState>(`/api/setup?v=${version}`, { quiet: true });
-  useEffect(() => { void syncAppIcon(); }, []);
+  useEffect(() => { void syncAppIcon(); return followAppIcon(); }, []);
   if (setup.data?.needed) return <><Setup state={setup.data} onDone={() => setVersion((v) => v + 1)} /><Toaster /></>;
   return <><Shell key={version} /><Toaster /></>;
 }

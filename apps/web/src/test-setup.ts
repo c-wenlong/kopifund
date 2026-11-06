@@ -6,11 +6,13 @@ import { clearModelCache } from "./components/ModelField";
 import { resetSheets } from "./components/LeaveBar";
 import { resetPublished } from "./copilot/pageFilters";
 import { resetRouter } from "./router";
+import { resetAppIcon } from "./components/appIcon";
 
 // G13: the API cache lives as long as the module, so each test starts from an
 // empty one (and an empty kept copy), as a fresh page would. Audit: so does
 // every other module's state: the router's guards and held move, the Sheets
-// the LeaveBar counts, and the filters a page published to the copilot.
+// the LeaveBar counts, the filters a page published to the copilot, and the
+// app icon pick a tab holds.
 afterEach(() => {
   vi.useRealTimers();
   clearApiCache();
@@ -20,6 +22,7 @@ afterEach(() => {
   resetRouter();
   resetSheets();
   resetPublished();
+  resetAppIcon();
   try {
     window.localStorage.clear();
   } catch {
