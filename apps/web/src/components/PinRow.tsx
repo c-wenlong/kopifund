@@ -7,6 +7,7 @@ import { BankMark } from "./BankMark";
 import { Button } from "./Button";
 import { Combobox } from "./Combobox";
 import { Select } from "./Select";
+import { TextInput } from "./TextInput";
 import { Loading } from "./States";
 import { showToast } from "./Toast";
 
@@ -133,14 +134,14 @@ export function PinForm({ row, categories, kinds, onPinned, draft, onDraft, onDi
       <div className="flex flex-wrap items-center gap-2 text-[13px]">
         <Combobox label={`Category for ${what}`} value={category} options={categories}
           placeholder="Choose a category" className="w-48" onChange={setCategory} />
-        <input value={payee} placeholder="Payee (optional)" aria-label={`Payee for ${what}`}
-          onChange={(e) => setPayee(e.target.value)} className="h-8 w-40 rounded-md border border-line bg-panel px-2" />
+        <TextInput value={payee} placeholder="Payee (optional)" aria-label={`Payee for ${what}`}
+          onChange={(e) => setPayee(e.target.value)} className="w-40" />
         {payee.trim() && (
           <Select label={`Kind for ${what}`} placeholder="Kind" value={kind} onChange={setKind} className="w-32"
             options={kinds.map((k) => ({ value: k, label: k }))} />
         )}
-        <input value={note} placeholder="Why (optional), e.g. a wedding gift" aria-label={`Note for ${what}`}
-          onChange={(e) => setNote(e.target.value)} className="h-8 min-w-0 flex-1 basis-48 rounded-md border border-line bg-panel px-2" />
+        <TextInput value={note} placeholder="Why (optional), e.g. a wedding gift" aria-label={`Note for ${what}`}
+          onChange={(e) => setNote(e.target.value)} className="min-w-0 flex-1 basis-48" />
         <Button variant="primary" disabled={saving || !category} onClick={() => void save()}>
           {saving ? "Saving…" : "Save for this row"}
         </Button>

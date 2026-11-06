@@ -5,6 +5,7 @@ import { formatDay } from "../dates";
 import { Button } from "./Button";
 import { Combobox } from "./Combobox";
 import { Select } from "./Select";
+import { TextInput } from "./TextInput";
 import { StatusChip } from "./StatusChip";
 import { TIER_TESTS, tierLabel } from "../ruleWords";
 
@@ -119,7 +120,6 @@ export function RuleEditor({ rule, initial, tiers, tierFiles, categories, kinds,
   const where = rule?.shared
     ? `Shared rule, read only. Saving adds a rule to your ${file} that matches first, ahead of it.`
     : rule && rule.file !== file ? `Moves to your ${file}.` : null;
-  const input = "h-8 w-full rounded-md border border-line bg-panel px-2";
 
   return (
     <div className="flex flex-col gap-2 text-[13px]">
@@ -138,8 +138,8 @@ export function RuleEditor({ rule, initial, tiers, tierFiles, categories, kinds,
                 options={tiers.filter((t) => t !== "key" || draft.match_on === "key").map((t) => ({ value: t, label: tierLabel(t) }))} />
             </Field>
             <Field label={`Text to match, in ${TIER_TESTS[draft.match_on] ?? draft.match_on}`} wide>
-              <input value={draft.pattern} aria-label={`Pattern for ${what}`} placeholder="KOPITIAM*"
-                onChange={(e) => set({ pattern: e.target.value })} className={input} />
+              <TextInput value={draft.pattern} aria-label={`Pattern for ${what}`} placeholder="KOPITIAM*"
+                onChange={(e) => set({ pattern: e.target.value })} className="w-full" />
             </Field>
           </>
         )}
@@ -148,23 +148,23 @@ export function RuleEditor({ rule, initial, tiers, tierFiles, categories, kinds,
             placeholder="Choose a category" onChange={(category) => set({ category })} />
         </Field>
         <Field label="Payee">
-          <input value={draft.payee} aria-label={`Payee for ${what}`} placeholder="None"
-            onChange={(e) => set({ payee: e.target.value })} className={input} />
+          <TextInput value={draft.payee} aria-label={`Payee for ${what}`} placeholder="None"
+            onChange={(e) => set({ payee: e.target.value })} className="w-full" />
         </Field>
         <Field label="Kind">
           <Select label={`Kind for ${what}`} placeholder="Kind" value={draft.kind} disabled={!draft.payee.trim()}
             onChange={(v) => set({ kind: v })} className="w-full" options={kinds.map((k) => ({ value: k, label: k }))} />
         </Field>
         <Field label="Country">
-          <input value={draft.country} aria-label={`Country for ${what}`} placeholder="SGP" maxLength={3}
-            onChange={(e) => set({ country: e.target.value.toUpperCase() })} className={input} />
+          <TextInput value={draft.country} aria-label={`Country for ${what}`} placeholder="SGP" maxLength={3}
+            onChange={(e) => set({ country: e.target.value.toUpperCase() })} className="w-full" />
         </Field>
         <label className="flex items-center gap-2 self-end pb-1.5">
           <input type="checkbox" checked={draft.recurring} onChange={(e) => set({ recurring: e.target.checked })} />
           Recurring
         </label>
         <Field label="Notes" full>
-          <input value={draft.notes} aria-label={`Notes for ${what}`} onChange={(e) => set({ notes: e.target.value })} className={input} />
+          <TextInput value={draft.notes} aria-label={`Notes for ${what}`} onChange={(e) => set({ notes: e.target.value })} className="w-full" />
         </Field>
       </div>
 
