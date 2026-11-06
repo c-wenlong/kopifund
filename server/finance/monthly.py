@@ -29,6 +29,7 @@ from pathlib import Path
 from . import account_names, db, local, sync
 from .parsers import layouts as registry
 from .paths import cache_dir
+from .pdftext import pdf_text as _text   # one name, so a test can stand in for pdftotext
 
 INBOX = "inbox"
 MAX_PDF_BYTES = 20 * 1024 * 1024
@@ -63,11 +64,6 @@ def folders(cfg):
 
 
 # ---------------------------------------------------------------- upload
-
-def _text(pdf):
-    return subprocess.run(["pdftotext", "-layout", str(pdf), "-"], capture_output=True,
-                          text=True, check=True).stdout
-
 
 def canonical_name(parser, pdf, wallet="", today=None):
     """(year folder, file name) for a statement, read from its own text by
