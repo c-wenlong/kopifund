@@ -2051,10 +2051,12 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
   back to page 1, a total that shrinks leaves the last page that exists, and
   under 640px the numbers shrink to the first, current and last page (1 ... 94
   ... 188) with a "Go to page" box that jumps anywhere. The current page carries
-  `aria-current`. A page can keep its page in the address: `usePager(list,
-  total, resetOn, initialPage, { urlKey: "page" })` reads `?page=3` on the way in and writes
-  it (page 1 leaves it off, other query keys stay, no history entry is added)
-  as the page changes. A list of ten rows or fewer shows no pager. Transactions
+  `aria-current`. A page can keep its page in the address: it passes
+  `pageParam(params)` (`?page=3`) to `usePager` as the page to open on, and
+  `useUrlPage(pager, urlPage, patch)` (`apps/web/src/useUrlParams.ts`) writes
+  the page as it changes (page 1 leaves it off, other query keys stay, no
+  history entry is added) and moves the list when the address names another
+  page (Back, a link). Rules and Transactions keep their page this way. A list of ten rows or fewer shows no pager. Transactions
   and Past uploads page on the server (`limit` and `offset`, with the total);
   the others page what the browser already holds: Rules (groups by payee, or
   rules in order), the payees awaiting a rule, the Upload check's rows to add

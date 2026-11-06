@@ -9,14 +9,13 @@ import { Card } from "../components/Card";
 import { clearModelCache, ModelField } from "../components/ModelField";
 import { SaveBar } from "../components/SaveBar";
 import { useAction } from "../components/useAction";
+import { useDraft } from "../components/useDraft";
 import { Select } from "../components/Select";
-import { useUnsavedGuard } from "../router";
 import type { AiKey, AiSettings, AiTest } from "../types.gen";
 
 // G22: a provider is one of `providers`, or a custom one config.toml names (shown by its name, and set up
 // there: its model and key are config.toml's, so the card offers no model field or key box for it)
 type Draft = { provider: string | null; model: string; copilot_model: string; send_rows: boolean };
-const KEYS: (keyof Draft)[] = ["provider", "model", "copilot_model", "send_rows"];
 // G22: AI turned off in Settings reads as Off, whatever provider config.toml names
 const savedOf = (a: AiSettings): Draft => ({
   provider: a.enabled ? a.provider : null, model: a.model, copilot_model: a.copilot_model, send_rows: a.send_rows,
@@ -39,24 +38,9 @@ export function AiCard() {
   const { error } = ai;
   // an answer without the providers (an older server, a test's stand-in) is no answer to draw
   const data = Array.isArray(ai.data?.providers) ? ai.data : null;
-  const [draft, setDraft] = useState<Partial<Draft> | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
-  // a save on its way: what is typed meanwhile is an edit, even back to the old saved value
-  const inFlight = useRef(false);
-  const latest = useRef(ai.data);
-  latest.current = ai.data;
-  // what the last save sent, standing for the saved values from when it is sent until the settings are read
-  // again after it lands: an edit is measured against what is being, or has just been, saved
-  // (`landedOn` is the answer on screen when the save landed: any newer one was read after it)
-  const [sending, setSending] = useState<{ sent: Draft; landed: boolean; landedOn?: unknown } | null>(null);
-  const fromServer = data ? savedOf(data) : null;
-  const standing = !!sending && (!sending.landed || sending.landedOn === ai.data);
-  const saved = fromServer && standing ? { ...fromServer, ...sending.sent } : fromServer;
-  const d = { ...saved, ...draft } as Draft;
-  const dirty = !!saved && KEYS.some((k) => d[k] !== saved[k]);
-  // a save on its way holds the page until it lands: one that fails leaves the edit unsaved
-  useUnsavedGuard(dirty || (!!sending && !sending.landed));
+  const form = useDraft<Draft>(data ? savedOf(data) : null, ai.data);
+  const { saved, dirty, saving, problem, set } = form;
+  const d = form.value!;
 
   // the panel's "Open Settings" lands on this card
   const shown = !!data;
@@ -79,54 +63,17 @@ export function AiCard() {
   // default), so an inherited one is visible; another provider picked here shows its defaults until saved
   const inUse = !!d.provider && d.provider === saved.provider && d.model === saved.model;
   const needsModel = inUse && !custom && !data.copilot_model_in_use && !d.copilot_model.trim() && !d.model.trim();
-  const set = (patch: Partial<Draft>) => {
-    setDraft((now) => {
-      const next = { ...now, ...patch };
-      // a value set back to what is saved is no longer an edit, unless that value is about to change
-      if (!inFlight.current) for (const k of KEYS) if (k in next && next[k] === saved[k]) delete next[k];
-      return Object.keys(next).length ? next : null;
-    });
-    setProblem(null);
-  };
-
-  async function save() {
-    setSaving(true);
-    inFlight.current = true;
-    const sent = { ...d };
-    setSending({ sent, landed: false });
-    try {
-      // Off sends only the provider: the models and consent stay saved for the day AI is turned on again
-      const fields = { model: d.model.trim(), copilot_model: d.copilot_model.trim(), send_rows: d.send_rows };
-      // G22: a custom provider is config.toml's: picking it hands back to config.toml, models and all
-      await postJSON<AiSettings>("/api/ai/settings", JSON.stringify(d.provider === null ? { provider: null }
-        : custom ? { provider: d.provider, send_rows: d.send_rows } : { provider: d.provider, ...fields }));
-      // G18: the fields the save covered are saved; one changed while it was on its way stays an edit
-      setDraft((now) => {
-        const left = Object.fromEntries(Object.entries(now ?? {}).filter(([k, v]) => v !== sent[k as keyof Draft]));
-        return Object.keys(left).length ? left : null;
-      });
-      setSending((s) => (s?.sent === sent ? { sent, landed: true, landedOn: latest.current } : s));
-    } catch (e) {
-      setSending((s) => (s?.sent === sent ? null : s));
-      // nothing was saved: a box set back to the saved value while the save was on its way is no edit now
-      const now = latest.current;
-      if (Array.isArray(now?.providers)) {
-        const server = savedOf(now);
-        setDraft((dr) => {
-          const left = Object.fromEntries(Object.entries(dr ?? {}).filter(([k, v]) => v !== server[k as keyof Draft]));
-          return Object.keys(left).length ? left : null;
-        });
-      }
-      setProblem((e as Error).message);
-    } finally {
-      inFlight.current = false;
-      setSaving(false);
-    }
-  }
+  // Off sends only the provider: the models and consent stay saved for the day AI is turned on again.
+  // G22: a custom provider is config.toml's: picking it hands back to config.toml, models and all
+  const save = () => form.save((sent) => {
+    const fields = { model: sent.model.trim(), copilot_model: sent.copilot_model.trim(), send_rows: sent.send_rows };
+    return postJSON<AiSettings>("/api/ai/settings", JSON.stringify(sent.provider === null ? { provider: null }
+      : custom ? { provider: sent.provider, send_rows: sent.send_rows } : { provider: sent.provider, ...fields }));
+  });
 
   return (
     <Card title="AI" id="ai" actions={
-      <SaveBar dirty={dirty} saving={saving} onSave={() => void save()} onDiscard={() => { setDraft(null); setProblem(null); }} />}>
+      <SaveBar dirty={dirty} saving={saving} onSave={() => void save()} onDiscard={form.discard} />}>
       <div className="flex flex-col gap-3">
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <label className="flex min-w-0 flex-col gap-1 text-[12px] text-ink-2">

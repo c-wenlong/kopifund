@@ -289,7 +289,7 @@ class NoSummaryPrinted(unittest.TestCase):
         from unittest import mock
         texts = {"all.pdf": self.stripped()}
         with tempfile.TemporaryDirectory() as out, \
-                mock.patch.object(rv.shutil, "which", return_value="/bin/pdftotext"), \
+                mock.patch("shutil.which", return_value="/bin/pdftotext"), \
                 mock.patch.object(rv, "collect_pdfs", return_value=list(texts)), \
                 mock.patch.object(rv, "pdf_to_text", side_effect=lambda p, write: texts[p]), \
                 mock.patch.object(sys, "argv", ["parse_revolut.py", "--out", out]), \
