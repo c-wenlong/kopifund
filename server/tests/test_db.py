@@ -422,7 +422,7 @@ class SchemaVersionTest(unittest.TestCase):
         import hashlib
         self.assertEqual(
             (db.SCHEMA_VERSION, hashlib.sha256(db.schema().encode()).hexdigest()),
-            (7, "adb75a3f512944a80b2eb28588719aff10d2f6f8ce0d0d7e7e3d3708ef8b6624"))
+            (8, "2b9584bcf65b650be4092daae9174b7af73203c0131ce8488911e25a186eb482"))
 
     def test_a_version_1_record_gains_the_upload_history(self):
         import sqlite3

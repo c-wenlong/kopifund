@@ -134,8 +134,10 @@ def load(cfg, conn, parsed, kind="load"):
                                 complete=complete, kind=kind)
         db.load_statements_meta(conn, cfg.root, pdfs, pdf_parsers(cfg))
         db.load_broker_and_cpf(conn, portfolio, cpf)
-        # G25: the phone's waiting rows confirm against what this load landed
+        # G25: the phone's waiting rows confirm against what this load landed,
+        # then any whose wait is over expire
         counts["phone rows matched"] = pending.confirm(conn)
+        counts["phone rows expired"] = pending.expire(conn)
     counts["trips assigned"] = len(trip_of)
     counts["complete"] = complete
     return counts

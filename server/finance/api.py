@@ -624,13 +624,25 @@ def get_link_check(req):
 
 
 def get_link_pending(req):
-    """The phone rows the Settings card lists, each named for the paired
-    phone that sent it. Loopback only: the link path answers only the
-    reads in serve.py's LINK_READS."""
-    from . import link, pending
-    names = {d["id"]: d["name"] for d in link.list_devices()}
+    """Every phone row ever posted, for the Settings card and its history,
+    each named for the paired phone that sent it. A row whose wait is over
+    is expired first (pending.expire), so the history never shows it as
+    waiting. Loopback only: the link path answers only the reads in
+    serve.py's LINK_READS."""
+    from . import pending
     conn = req.maybe_record()
-    return {"rows": pending.rows(conn, names) if conn else []}
+    if conn is None:
+        return {"rows": [], "expire_days": pending.EXPIRE_DAYS}
+    return pending_answer(conn)
+
+
+def pending_answer(conn):
+    """GET /api/link/pending's answer, and every pending write's: the rows,
+    with any whose wait is over expired first, and the wait in days."""
+    from . import link, pending
+    pending.expire(conn)
+    names = {d["id"]: d["name"] for d in link.list_devices()}
+    return {"rows": pending.rows(conn, names), "expire_days": pending.expire_days(conn)}
 
 
 # ---------------------------------------------------------------- G26: the dashboard

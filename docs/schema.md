@@ -552,7 +552,7 @@ still points at it.
 
 <!-- sqlite-schema: begin, written by docs/gen_schema.py -->
 
-Schema version 7 (`PRAGMA user_version`). Every table is STRICT.
+Schema version 8 (`PRAGMA user_version`). Every table is STRICT.
 
 ### `currency`
 
@@ -702,10 +702,11 @@ Schema version 7 (`PRAGMA user_version`). Every table is STRICT.
 | `amount_minor` | INTEGER | yes |  |  |  |  |  |
 | `currency` | TEXT | yes |  |  |  |  |  |
 | `payee` | TEXT | yes | '' |  |  |  |  |
-| `state` | TEXT | yes | 'waiting' |  |  |  |  |
+| `state` | TEXT | yes | 'waiting' |  |  |  | waiting, matched, dismissed, expired |
 | `matched_txn_key` | TEXT |  |  |  |  |  |  |
 | `rejected` | TEXT | yes | '[]' |  |  |  |  |
 | `created_at` | TEXT | yes |  |  |  |  |  |
+| `state_changed_at` | TEXT | yes | '' |  |  |  |  |
 
 ### `statement_file`
 
