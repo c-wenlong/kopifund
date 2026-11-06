@@ -154,13 +154,12 @@ final class LinkUITests: XCTestCase {
         app.launch()
         pair(app, payload: linkURL(try await pairToken()))
 
-        // one line: a newline in the alert's field submits its default
-        // action and the dialog closes mid-typing
+        // G24: the paste box is a sheet with a multi-line editor
         let spend = try await recordSpend()
         let alert = "Transaction Alerts We refer to your PayLah! Scan & Pay Transfer dated \(spend.day). We are pleased to confirm that the transaction was completed. Date & Time: \(spend.day) 14:55 (SGT) Amount: \(spend.amount) To: \(spend.payee)"
         app.tabBars.buttons["Inbox"].tap()
         app.buttons["doc.on.clipboard"].tap()
-        let field = app.textFields["Alert text"]
+        let field = app.textViews["pasteAlertText"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.tap()
         field.typeText(alert)
