@@ -53,6 +53,7 @@ export function useDraft<T extends Values>(fromServer: T | null, answer: unknown
   async function save(send: (sent: T) => Promise<unknown>) {
     if (!value) return;
     const sent = { ...value };
+    setProblem(null);
     setSaving(true);
     inFlight.current = true;
     setSending({ sent, landed: false });
