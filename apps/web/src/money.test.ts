@@ -1,4 +1,7 @@
-import { axisSgd, centsText, formatAmount, formatPlain, formatSgd, parseCents } from "./money";
+import { axisSgd, centsText, formatAmount, formatSgd, parseCents, unformatMoney, wholeDollars } from "./money";
+import { fmt } from "./stats/hint";
+import { CENTS_UNIT } from "./stats/money";
+import { isMoneyText } from "./components/MoneyInput";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -58,11 +61,39 @@ describe("axisSgd", () => {
     expect(axisSgd(-200_000)).toBe("−S$2k");
     expect(axisSgd(-20)).toBe("S$0");
   });
+  it("moves to millions once a tick rounds to a thousand k", () => {
+    expect(axisSgd(99_996_000)).toBe("S$1M");
+    expect(axisSgd(-99_996_000)).toBe("−S$1M");
+    expect(axisSgd(99_940_000)).toBe("S$999.4k");
+    expect(axisSgd(99_960)).toBe("S$1k");
+  });
 });
 
-describe("formatPlain", () => {
-  it("drops the currency for compact lists", () => {
-    expect(formatPlain(1_355_100)).toBe("13,551");
+// Audit: one rounding rule for whole dollars, finance/money.py's: half up on the size, away from zero,
+// and no minus on what rounds to nothing. Every money figure the app draws goes through formatSgd.
+describe("one rounding rule", () => {
+  it("rounds a half away from zero on both sides", () => {
+    expect(wholeDollars(150)).toBe(2);
+    expect(wholeDollars(-150)).toBe(-2);
+    expect(wholeDollars(250)).toBe(3);
+    expect(wholeDollars(-250)).toBe(-3);
+    expect(wholeDollars(149)).toBe(1);
+    expect(wholeDollars(-149)).toBe(-1);
+    expect(Object.is(wholeDollars(-40), 0)).toBe(true);
+  });
+  it("writes a refund the same in a tile and in a chart", () => {
+    expect(formatSgd(-150)).toBe("−S$2");
+    expect(formatSgd(-250)).toBe("−S$3");
+    expect(formatSgd(250)).toBe("S$3");
+    for (const c of [-150, -250, -40, -50, 0, 49, 50, 123_456, -123_456, 99_950]) {
+      expect(fmt(c, CENTS_UNIT), String(c)).toBe(formatSgd(c));
+      expect(fmt(c, CENTS_UNIT, true), String(c)).toBe(formatSgd(c, { decimals: true }));
+    }
+  });
+  it("puts no minus on what rounds to nothing", () => {
+    expect(formatSgd(-40)).toBe("S$0");
+    expect(fmt(-40, CENTS_UNIT)).toBe("S$0");
+    expect(formatSgd(-50)).toBe("−S$1");
   });
 });
 
@@ -87,6 +118,21 @@ describe("parseCents (G17)", () => {
   });
   it("round-trips with centsText", () => {
     for (const c of [0, 5, 50, 100, 123_450, 600_050, 100_000_000]) expect(parseCents(centsText(c))).toBe(c);
+  });
+});
+
+// Audit: the money box and parseCents read one grammar, so a box that passes isMoneyText is one parseCents reads
+describe("one money-text grammar", () => {
+  it("strips commas and spaces the same way", () => {
+    expect(unformatMoney(" 6,000.50 ")).toBe("6000.50");
+  });
+  it("agrees with parseCents on what is a number", () => {
+    const texts = ["12", "12.", "12.5", ".5", "1,234.56", " 2 500 ", "12.345", "12.340", "", " ", ".", "1.2.3", "-5", "1e3", "abc", "S$5", "1k5"];
+    for (const t of texts) {
+      const c = parseCents(t);
+      const finer = /\.\d{2}\d*[1-9]/.test(unformatMoney(t));
+      expect(isMoneyText(t), t).toBe(c !== null && (!Number.isNaN(c) || finer));
+    }
   });
 });
 

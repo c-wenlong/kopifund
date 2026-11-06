@@ -11,8 +11,8 @@ import { EmptyState } from "../components/EmptyState";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { Problem } from "../components/States";
 import { Sheet } from "../components/Sheet";
-import { showToast } from "../components/Toast";
-import { formatDay } from "../dates";
+import { useAction } from "../components/useAction";
+import { formatStampDay } from "../dates";
 import { onLinkClick } from "../router";
 import type { AiSettings, CopilotPage, CopilotThreads } from "../types.gen";
 import { AnswerChart, AnswerLink, AnswerSteps, AnswerText, ConfirmCard, contextLine, pageContext } from "./parts";
@@ -292,14 +292,13 @@ function AnswerTurn({ turn: t, copilot, page, latest, onFollow }: {
 
 function Threads({ copilot, extra }: { copilot: Copilot; extra?: ReactNode }) {
   const list = useApi<CopilotThreads>("/api/copilot/threads");
-  const [busy, setBusy] = useState<string | null>(null);
+  const { busy, run } = useAction();
   // G22: a removal changes nothing a view reads (NO_CHANGE), so the list it answers is the one shown,
   // until the list is asked for again and answers anew
   const [after, setAfter] = useState<{ was: CopilotThreads | null; now: CopilotThreads } | null>(null);
   const shownList = after && after.was === list.data ? after.now : list.data;
   async function remove(id: string) {
-    setBusy(id);
-    try {
+    await run(id, async () => {
       const now = await postJSON<CopilotThreads>("/api/copilot/threads/remove", JSON.stringify({ id }));
       if (Array.isArray(now?.threads)) setAfter({ was: list.data, now });
       refreshViews(["/api/copilot/threads"]);
@@ -307,11 +306,7 @@ function Threads({ copilot, extra }: { copilot: Copilot; extra?: ReactNode }) {
       if (copilot.thread === id) copilot.reset();
       // the reset closes the list; reopen it so the removal shows in place
       copilot.setHistory(true);
-    } catch (e) {
-      showToast({ tone: "error", message: (e as Error).message });
-    } finally {
-      setBusy(null);
-    }
+    }, { toast: true });
   }
   const threads = shownList?.threads ?? [];
   return (
@@ -332,7 +327,7 @@ function Threads({ copilot, extra }: { copilot: Copilot; extra?: ReactNode }) {
               <button type="button" onClick={() => void copilot.open(t.id)}
                 className="flex min-w-0 flex-1 flex-col items-start rounded py-0.5 text-left hover:underline">
                 <span className={`w-full truncate ${t.id === copilot.thread ? "font-medium" : ""}`}>{t.title}</span>
-                <span className="num text-[11px] text-ink-3">{formatDay(t.updated_at.slice(0, 10))}</span>
+                <span className="num text-[11px] text-ink-3">{formatStampDay(t.updated_at)}</span>
               </button>
               <Button size="icon" variant="ghost" aria-label={`Remove ${t.title}`} disabled={busy === t.id}
                 onClick={() => void remove(t.id)}>

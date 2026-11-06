@@ -59,16 +59,16 @@ closing_sgd = closing x fx_to_sgd.
 import argparse
 import csv
 import re
-import shutil
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
+from finance.pdftext import pdf_to_text, require as require_pdftotext
 from .common import period_name, plain
 from .parse_statements import (statement_folders, BAL_COLS, BALANCE_STATES, MONTHS,
                               TXN_COLS, add_keys, balance_summary,
                               collect_pdfs, direction, duplicate_periods, money,
-                              pdf_to_text, report_duplicate_periods, validate, warn)
+                              report_duplicate_periods, validate, warn)
 # the city and country tables live in places.py, which the Revolut and Wise
 # parsers import too; re-exported here so places.split_country is still reachable
 # as parse_youtrip.split_country
@@ -473,8 +473,7 @@ def main():
                     help="do not save the .txt dump beside each PDF")
     args = ap.parse_args()
 
-    if not shutil.which("pdftotext"):
-        sys.exit("pdftotext not found (brew install poppler)")
+    require_pdftotext()
     pdfs = collect_pdfs(args.paths or statement_folders("youtrip-"))
     if args.wallet:
         want = WALLETS.get(args.wallet.lower(), args.wallet.upper())

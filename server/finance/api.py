@@ -433,8 +433,7 @@ def get_countries(req):
 
 
 def get_run_status(req):
-    import shutil
-    from . import local, monthly
+    from . import local, monthly, pdftext
     cfg = req.cfg
     runs = []
     conn = req.maybe_record()
@@ -443,7 +442,7 @@ def get_run_status(req):
             "SELECT kind, started_at, status, inserted, updated, archived FROM sync_run "
             "ORDER BY id DESC LIMIT 5")]
     return {"folders": monthly.folders(cfg), "notion_enabled": local.notion_enabled(cfg),
-            "pdftotext": bool(shutil.which("pdftotext")), "runs": runs}
+            "pdftotext": pdftext.installed(), "runs": runs}
 
 
 def get_uploads(req):

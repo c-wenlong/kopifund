@@ -7,25 +7,25 @@
 // It is controlled by text. What is typed stays exactly what is typed, so
 // "17." can be on its way to "17.5"; the caller decides whether the text is a
 // number (`isMoneyText`) and what to do when it is not. G17: an amount's text
-// becomes cents through money.ts (parseCents), never through a float.
+// becomes cents through money.ts (parseCents), never through a float, and
+// parseCents is NaN for a shape that is finer than a cent ("12.345"), so a
+// caller checks that too before it saves. Audit: the grammar and the comma
+// stripping are money.ts's, one copy for the box and for parseCents.
 import { useState } from "react";
+import { isMoneyShape, unformatMoney } from "../money";
 
-// digits with an optional decimal point: "12", "12.", "12.5", ".5"
-const SHAPE = /^(\d+(\.\d*)?|\.\d+)$/;
-
-/** "6,000.50" as "6000.50": the text the server and the arithmetic read. */
-export const unformatMoney = (s: string): string => s.replace(/[,\s]/g, "");
+export { unformatMoney };
 
 /** True when the text, less any commas, is digits with at most one decimal point. */
-export const isMoneyText = (s: string): boolean => SHAPE.test(unformatMoney(s));
+export const isMoneyText = (s: string): boolean => isMoneyShape(s);
 
 /** The same with an optional minus in front: a rate can be under zero, an amount cannot. */
-export const isSignedText = (s: string): boolean => SHAPE.test(unformatMoney(s).replace(/^-/, ""));
+export const isSignedText = (s: string): boolean => isMoneyShape(unformatMoney(s).replace(/^-/, ""));
 
 /** "6000.5" as "6,000.5": the whole part grouped by thousands, the rest as typed. Text that is not a number comes back as it was. */
 export function groupMoney(s: string): string {
   const t = unformatMoney(s);
-  if (!SHAPE.test(t)) return s;
+  if (!isMoneyShape(t)) return s;
   const [whole, ...rest] = t.split(".");
   return [whole.replace(/\B(?=(\d{3})+(?!\d))/g, ","), ...rest].join(".");
 }

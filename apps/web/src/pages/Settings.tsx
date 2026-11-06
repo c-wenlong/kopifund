@@ -12,6 +12,7 @@ import { StatusChip } from "../components/StatusChip";
 import { COLLAPSED_ROWS, CollapsibleRows } from "../components/CollapsibleRows";
 import { PageActions } from "../components/PageActions";
 import { useWide } from "../components/useWide";
+import { useAction } from "../components/useAction";
 import { SERVER_ICON, type ServerState } from "../icons";
 import { useUnsavedGuard } from "../router";
 import { AiCard } from "./AiCard";
@@ -240,22 +241,12 @@ function FileIcon({ name }: { name: string }) {
 function ExportCard() {
   const [version, setVersion] = useState(0);
   const list = useApi<Exports>(`/api/exports?v=${version}`);
-  const [busy, setBusy] = useState(false);
   const [done, setDone] = useState<ExportDone | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  async function run() {
-    setBusy(true);
-    setError(null);
-    try {
-      setDone(await postJSON<ExportDone>("/api/export"));
-      setVersion((v) => v + 1);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
+  const { running: busy, error, run: act } = useAction();
+  const run = () => act("export", async () => {
+    setDone(await postJSON<ExportDone>("/api/export"));
+    setVersion((v) => v + 1);
+  });
 
   const latest = list.data?.exports[0];
   return (
@@ -382,19 +373,8 @@ export function ScamChecksCard() {
 }
 
 function MarkedFine({ rows }: { rows: ScamChecks["marked_fine"] }) {
-  const [busy, setBusy] = useState<string | null>(null);
-  const [failed, setFailed] = useState<{ key: string; message: string } | null>(null);
-  async function again(key: string) {
-    setBusy(key);
-    setFailed(null);
-    try {
-      await postJSON("/api/scam-checks/fine", JSON.stringify({ key, fine: false }));
-    } catch (e) {
-      setFailed({ key, message: (e as Error).message });
-    } finally {
-      setBusy(null);
-    }
-  }
+  const { busy, failed, run } = useAction();
+  const again = (key: string) => run(key, () => postJSON("/api/scam-checks/fine", JSON.stringify({ key, fine: false })));
   return (
     <section aria-label="Marked fine" className="mt-3">
       <h3 className="m-0 mb-1.5 text-[13px] font-semibold">Marked fine</h3>

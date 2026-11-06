@@ -415,7 +415,7 @@ class Folder(unittest.TestCase):
             (folder / "2021").mkdir()
             pdf = folder / "2021" / "1-12.pdf"
             pdf.write_bytes(b"%PDF-1.4")
-            with mock.patch.object(pt.subprocess, "run") as run:
+            with mock.patch("subprocess.run") as run:
                 run.return_value = mock.Mock(stdout=raw("old-layout"))
                 s = pt.parse_pdf(pdf, folder)
             self.assertEqual(run.call_args[0][0][:2], ["pdftotext", "-layout"])
@@ -429,7 +429,7 @@ class Folder(unittest.TestCase):
             folder = Path(tmp)
             pdf = folder / "1-12.pdf"
             pdf.write_bytes(b"%PDF-1.4")
-            with mock.patch.object(pt.subprocess, "run") as run:
+            with mock.patch("subprocess.run") as run:
                 run.return_value = mock.Mock(stdout=raw("old-layout"))
                 pt.parse_pdf(pdf, folder, write_text=False)
             self.assertFalse((folder / "1-12.txt").exists())

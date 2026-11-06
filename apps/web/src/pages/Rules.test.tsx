@@ -654,8 +654,8 @@ describe("Rules", () => {
       if (url === "/api/rules/save") {
         await slow;
         const refusal = new Response(JSON.stringify({ error: "Another tab changed that line." }), { status: 409 });
-        const json = refusal.json.bind(refusal);
-        refusal.json = () => json().finally(read);
+        const text = refusal.text.bind(refusal);
+        refusal.text = () => text().finally(read);
         return refusal;
       }
       return new Response("{}", { status: 200 });
