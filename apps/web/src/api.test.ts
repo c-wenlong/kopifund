@@ -173,7 +173,7 @@ describe("useApi's cache", () => {
       const tag = (init?.headers as Record<string, string> | undefined)?.["If-None-Match"] ?? null;
       s.asked.push({ url, tag });
       if (tag === `"${s.n}"`) return new Response(null, { status: 304, headers: { ETag: tag } });
-      return new Response(JSON.stringify({ n: s.n, url }), { status: 200, headers: { ETag: `"${s.n}"` } });
+      return json({ n: s.n, url }, 200, { ETag: `"${s.n}"` });
     });
     vi.stubGlobal("fetch", fetch);
     return s;
@@ -232,7 +232,7 @@ describe("useApi's cache", () => {
     vi.stubGlobal("fetch", vi.fn(async () => {
       const mine = n;
       if (mine === 1) await held;
-      return new Response(JSON.stringify({ n: mine }), { status: 200, headers: { ETag: `"${mine}"` } });
+      return json({ n: mine }, 200, { ETag: `"${mine}"` });
     }));
     prefetch(["/api/growth"]);                       // asked for, still on its way
     n = 2;
@@ -255,7 +255,7 @@ describe("useApi's cache", () => {
         n = 3;                                       // the rebuild wrote new results
         return json({ running: false });
       }
-      return new Response(JSON.stringify({ n }), { status: 200, headers: { ETag: `"${n}"` } });
+      return json({ n }, 200, { ETag: `"${n}"` });
     }));
     const card = renderHook(() => useApi<{ n: number }>("/api/results/eating-out"));
     await waitFor(() => expect(card.result.current.data?.n).toBe(1));

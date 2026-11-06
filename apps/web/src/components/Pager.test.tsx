@@ -1,7 +1,7 @@
 import "@testing-library/jest-dom/vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Pager, clampPage, compactItems, pageCount, pageItems, usePager } from "./Pager";
 import { stubMatchMedia } from "../test-helpers";
 
