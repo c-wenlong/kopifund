@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Settings } from "./Settings";
 import { leadingIcon } from "../test-icons";
 import { ServerBanner } from "../components/ServerBanner";
-import { fakeClock, json, stubMatchMedia } from "../test-helpers";
+import { expectAsks, expectFree, fakeClock, json, stubMatchMedia } from "../test-helpers";
 
 const scamChecks = {
   settings: { big_transfer: 50_000, repeat_count: 3, repeat_days: 14, new_payee_days: 30,
@@ -57,7 +57,6 @@ function stubFetch({ health = true, exports = [{ stamp: "2026-10-12", files: ["t
 }
 
 // G18: true when the page would hold a reload or a closed tab behind the browser's question
-const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 
 describe("Scam checks card", () => {
   beforeEach(() => { posts.length = 0; });
@@ -72,7 +71,7 @@ describe("Scam checks card", () => {
     expect(screen.getByRole("textbox", { name: "Test charge up to" })).toHaveValue("2");
     fireEvent.change(screen.getByRole("textbox", { name: "Test charge up to" }), { target: { value: "1.50" } });
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(posts.some((p) => p.url === "/api/scam-checks/settings")).toBe(true));
     expect(JSON.parse(posts.find((p) => p.url === "/api/scam-checks/settings")!.body!))
@@ -212,14 +211,14 @@ describe("Scam checks saved from another tab", () => {
     act(() => revalidate());
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Big transfer" })).toHaveValue("600"));
     expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
     fireEvent.change(big, { target: { value: "650" } });
     scamChecks.settings.big_transfer = 70_000;
     scamChecks.settings.repeat_days = 21;
     act(() => revalidate());
     await waitFor(() => expect(screen.getByRole("textbox", { name: "Repeated within" })).toHaveValue("21"));
     expect(screen.getByRole("textbox", { name: "Big transfer" })).toHaveValue("650");
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
   });
 
   it("a box typed back to its saved value leaves nothing unsaved", async () => {
@@ -229,7 +228,7 @@ describe("Scam checks saved from another tab", () => {
     fireEvent.change(big, { target: { value: "650" } });
     fireEvent.change(big, { target: { value: "500" } });
     expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
   });
 
   it("keeps typing made while a save is on its way, back to the old saved value included", async () => {
@@ -257,7 +256,7 @@ describe("Scam checks saved from another tab", () => {
     expect(screen.getByRole("textbox", { name: "Big transfer" })).toHaveValue("500");
     expect(screen.getByRole("textbox", { name: "Repeated within" })).toHaveValue("21");
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
   });
 });
 

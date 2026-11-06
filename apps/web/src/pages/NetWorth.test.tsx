@@ -4,14 +4,13 @@ import { describe, expect, it, vi } from "vitest";
 import { NetWorth, TotalTip } from "./NetWorth";
 import { revalidate, type Growth, type NetWorth as NetWorthT, type Suggestions } from "../api";
 import { choose } from "../test-select";
-import { json, useSizedCharts } from "../test-helpers";
+import { expectAsks, expectFree, json, leaveAsks, settle, useSizedCharts } from "../test-helpers";
 
 vi.mock("../router", async (actual) => ({
   ...(await import("../test-helpers")).withNavigate(await actual()), onLinkClick: () => () => {},
 }));
 
 // G18: true when the page would hold a reload or a closed tab behind the browser's question
-const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 
 // Every figure, name and date here is invented.
 const netWorth: NetWorthT = {
@@ -171,7 +170,7 @@ describe("Net worth page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Add income" }));
     expect(rowsOf()).toHaveLength(2);
     expect(screen.getByRole("status")).toHaveTextContent("Unsaved changes");
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
     choose(screen.getByLabelText("Type, income row 2"), "Side income");
     expect(screen.getByLabelText("Pays CPF, income row 2")).not.toBeChecked();      // side income: no CPF
     expect(screen.queryByLabelText("Bonus month, income row 2")).not.toBeInTheDocument();
@@ -182,7 +181,7 @@ describe("Net worth page", () => {
     expect(rowsOf()).toHaveLength(1);
     expect(screen.getByRole("textbox", { name: "Name, income row 1" })).toHaveValue("Invented job");
     expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
   });
 
   // G18: what is typed while a save is on its way is a new edit, even typed back to the old saved value
@@ -208,9 +207,11 @@ describe("Net worth page", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Name, income row 1" }), { target: { value: "Invented job" } });
     await act(async () => release());
     await waitFor(() => expect(screen.queryByRole("button", { name: "Saving" })).not.toBeInTheDocument());
+    // the save sets off a reload of the figures: let it land, since what is unsaved is measured against it
+    await settle();
     expect(screen.getByRole("textbox", { name: "Name, income row 1" })).toHaveValue("Invented job");
     expect(screen.getByText("Unsaved changes")).toBeInTheDocument();
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
   });
 
   // G18: unsaved means typed here, never "the record moved under an untouched form"
@@ -235,7 +236,7 @@ describe("Net worth page", () => {
       save("Renamed elsewhere");
       await waitFor(() => expect(screen.getByRole("textbox", { name: "Name, income row 1" })).toHaveValue("Renamed elsewhere"));
       expect(screen.queryByText("Unsaved changes")).not.toBeInTheDocument();
-      expect(leaveAsks()).toBe(false);
+      await expectFree();
     });
 
     it("a form with typing in it keeps the typing, still unsaved", async () => {
@@ -257,10 +258,10 @@ describe("Net worth page", () => {
       const name = await screen.findByRole("textbox", { name: "Name, income row 1" });
       fireEvent.change(name, { target: { value: "Typed here" } });
       fireEvent.change(name, { target: { value: "Invented job" } });
-      expect(leaveAsks()).toBe(false);
+      await expectFree();
       save("Renamed elsewhere");
       await waitFor(() => expect(screen.getByRole("textbox", { name: "Name, income row 1" })).toHaveValue("Renamed elsewhere"));
-      expect(leaveAsks()).toBe(false);
+      await expectFree();
     });
   });
 
@@ -296,7 +297,7 @@ describe("Net worth page", () => {
     expect(body.investing).toEqual([{ from: null, amount_minor: 45_000 }]);
     expect((body.projection as Record<string, unknown>).expected_pct).toBe("6");
     await waitFor(() => expect(fact("Investing")).toHaveTextContent("S$450 a month"));
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
     // the dialog opens again on what is saved
     await openInputs();
     expect(screen.getByRole("textbox", { name: "Amount a month (S$), investing step 1" })).toHaveValue("450");
@@ -432,7 +433,7 @@ describe("Net worth page", () => {
     expect(last).toMatchObject({ horizon: "20y", dollars: "future" });
     expect(posts.some((p) => p.url === "/api/growth/preview")).toBe(false);
     expect(dialog()).not.toBeInTheDocument();
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
   });
 
   it("puts a switch back when its save is refused", async () => {
@@ -442,7 +443,7 @@ describe("Net worth page", () => {
     fireEvent.click(await screen.findByRole("radio", { name: "20Y" }));
     await waitFor(() => expect(screen.getByRole("radio", { name: "10Y" })).toHaveAttribute("aria-checked", "true"));
     expect(fact("Horizon")).toHaveTextContent("10 years");
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
   });
 
   // G18 review: each save of a switch is answered only when the test says, ok or refused
@@ -980,7 +981,7 @@ describe("the inputs strip and its dialog", () => {
     fireEvent.click(screen.getByTestId("sheet-scrim"));
     fireEvent.click(screen.getByRole("button", { name: "Leave" }));
     expect(dialog()).not.toBeInTheDocument();
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
     expect(fact("Investing")).toHaveTextContent("S$300 a month");
     // opened again, the dialog holds what is saved, not what was left behind
     await openInputs();

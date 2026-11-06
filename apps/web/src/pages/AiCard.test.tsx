@@ -4,7 +4,7 @@ import { choose } from "../test-select";
 import { notifyChanged } from "../api";
 import type { AiKey, AiSettings } from "../types.gen";
 import { AiCard } from "./AiCard";
-import { json } from "../test-helpers";
+import { expectAsks, json } from "../test-helpers";
 
 // G22: the AI card on Settings: provider, models, the key (never shown), Test and consent.
 
@@ -36,7 +36,6 @@ function stub(first: AiSettings, after: (url: string, body: Record<string, unkno
   }));
 }
 
-const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 const card = async () => (await screen.findByRole("heading", { name: "AI" })).closest("section")!;
 
 describe("the AI card's key", () => {
@@ -190,7 +189,7 @@ describe("the AI card's settings", () => {
     fireEvent.change(within(c).getByRole("combobox", { name: "Ask Kopifund model" }), { target: { value: "claude-opus-4-1" } });
     fireEvent.click(within(c).getByRole("button", { name: "Save" }));
     // a save on its way may still fail: leaving asks until it lands
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
     // the consent ticked and unticked while the save is on its way
     const consent = within(c).getByRole("checkbox", { name: "Send matching rows to Anthropic" });
     fireEvent.click(consent);
@@ -199,7 +198,7 @@ describe("the AI card's settings", () => {
     await act(async () => fail!());
     expect(await within(c).findByText("disk full")).toBeInTheDocument();
     // it failed: the model typed is still unsaved
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
     // another tab turns the consent on: the card follows, since nothing here holds it off
     now = settings(keychain, { send_rows: true });
     await act(async () => notifyChanged());

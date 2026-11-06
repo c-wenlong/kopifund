@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from "@testing-librar
 import { UploadPage } from "./Upload";
 import { leadingIcon } from "../test-icons";
 import type { CheckReport, LoadResult } from "../api";
-import { json } from "../test-helpers";
+import { expectAsks, expectFree, json, leaveAsks } from "../test-helpers";
 
 const status = {
   folders: [
@@ -80,7 +80,6 @@ function serve(routes: Routes = {}) {
   });
 }
 
-const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 const pdf = (name: string) => new File(["%PDF"], name, { type: "application/pdf" });
 const stepper = () => within(screen.getByRole("list", { name: "Steps" }));
 const stateOf = (key: string) => stepper().getAllByRole("listitem").find((li) => li.getAttribute("data-step") === key)?.getAttribute("data-state");
@@ -260,11 +259,11 @@ describe("Upload page", () => {
       serve({ check: () => report({ to_add_count: 2 }) });
       render(<UploadPage />);
       expect(await screen.findByLabelText("Choose PDFs", { selector: "input" })).toBeEnabled();
-      expect(leaveAsks()).toBe(false);
+      await expectFree();
       await add("two.pdf");
       const waiting = within(await screen.findByRole("list", { name: "Files that need an account" }));
       // the PDF is held in this page only: leaving would drop it with nothing saved
-      expect(leaveAsks()).toBe(true);
+      await expectAsks();
       fireEvent.click(waiting.getByRole("button", { name: "Account" }));
       fireEvent.mouseDown(screen.getByRole("option", { name: /YouTrip/ }));
       fireEvent.click(waiting.getByRole("button", { name: "Save here" }));

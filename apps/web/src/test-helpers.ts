@@ -1,7 +1,7 @@
 // What the tests share. vitest.config (vite.config.ts) restores every mock, global
 // and env var after each test, so nothing here needs an afterEach of its own.
-import { act } from "@testing-library/react";
-import { beforeEach, vi } from "vitest";
+import { act, waitFor } from "@testing-library/react";
+import { beforeEach, expect, vi } from "vitest";
 
 /** A fetch answer: `body` as JSON, `status` 200 unless given, `headers` (an ETag, say) added to the JSON content type. */
 export function json(body: unknown, status = 200, headers: Record<string, string> = {}): Response {
@@ -70,3 +70,13 @@ export function fakeClock() {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"], shouldAdvanceTime: true });
   return { pass: (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); }) };
 }
+
+/** Whether leaving the page now would ask first: what the browser does on a closing tab or a reload. */
+export const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
+
+/**
+ * The page's guard against leaving is set and lifted in an effect, which React runs after the screen has
+ * drawn: a test that has just seen "Saved" may look before the guard is lifted. These wait for it.
+ */
+export const expectAsks = () => waitFor(() => expect(leaveAsks()).toBe(true));
+export const expectFree = () => waitFor(() => expect(leaveAsks()).toBe(false));
