@@ -57,8 +57,18 @@ extension Cents {
     /// as printed.
     public static func chipText(printed: String) -> String {
         let raw = printed.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let amount = Amounts.read(raw), let cents = from(amount.magnitude) else { return raw }
-        return (amount.currency.map { "\($0) " } ?? "") + digits(UInt(cents.magnitude))
+        guard let amount = Amounts.read(raw), let figure = figure(amount.magnitude, currency: amount.currency)
+        else { return raw }
+        return figure
+    }
+
+    /// A read amount with the currency it printed, as the lists print it:
+    /// "SGD 6.40" for 6.4 in SGD, "6.40" with no currency. Nil past
+    /// `ceiling`. Audit: the builder's live test printed the raw Decimal
+    /// ("6.4") under a card that printed "6.40"; both read through here.
+    public static func figure(_ amount: Decimal, currency: String?) -> String? {
+        guard let cents = from(amount) else { return nil }
+        return (currency.map { "\($0) " } ?? "") + text(cents)
     }
 
     /// The cents a typed figure means ("5.8" and "5,8" are 580, "12" is 1200), nil for
