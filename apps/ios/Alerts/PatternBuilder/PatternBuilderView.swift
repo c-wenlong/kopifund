@@ -107,7 +107,7 @@ struct PatternBuilderView: View {
                                 defaultCategoryID: $defaultCategoryID, sourceMatch: $sourceMatch,
                                 priority: $priority, autoApprove: $autoApprove,
                                 accountOptions: accountOptions, categoryOptions: categoryOptions,
-                                showAccount: DestinationState.hasToken,
+                                showAccount: DestinationState.shared.hasToken,
                                 anchors: anchorList, onEditAnchor: editAnchor) {
                     if name != autoName { nameTouched = true }
                 }
@@ -123,7 +123,7 @@ struct PatternBuilderView: View {
         .toolbar(.hidden, for: .tabBar)
         .safeAreaInset(edge: .bottom) {
             BuilderDock(spans: spans, armed: $selected, blocking: canSave ? nil : blockingText,
-                        destination: DestinationState.summary, onSave: save)
+                        destination: DestinationState.shared.summary, onSave: save)
         }
         .onChange(of: draft.tags) {
             anchorEdits = []

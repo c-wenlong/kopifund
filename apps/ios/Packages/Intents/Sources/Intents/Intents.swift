@@ -119,7 +119,9 @@ public enum Ingest {
         let shared = defaults?.string(forKey: "defaultAccountID") ?? ""
         let accountID = shared.isEmpty
             ? ((try context.fetch(FetchDescriptor<PatternRecord>())
-                .sorted { $0.priority > $1.priority }.first?.accountID) ?? "")
+                // G24: a pattern's account is optional, so the first one
+                // that has one
+                .sorted { $0.priority > $1.priority }.first { !$0.accountID.isEmpty }?.accountID) ?? "")
             : shared
         let row = TransactionRecord(walletAmountCents: cents,
                                     merchant: merchant, card: card,

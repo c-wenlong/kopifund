@@ -33,7 +33,7 @@ struct InboxView: View {
                             .foregroundStyle(.red)
                     }
                 }
-                rowSection("Pending", pending, footer: DestinationState.summary)
+                rowSection("Pending", pending, footer: DestinationState.shared.summary)
                 needsDetailsSection
                 rowSection("Possible duplicates", duplicates)
                 // covered by a loaded statement row: parked like a
@@ -94,7 +94,7 @@ struct InboxView: View {
                 ForEach(section) { row in
                     NavigationLink(value: row.id) {
                         Row(row: row, accountName: accountNames[row.accountID],
-                            linked: LinkState.shared.isLinked, ynab: DestinationState.ynab)
+                            linked: LinkState.shared.isLinked, ynab: DestinationState.shared.ynab)
                     }
                 }
             } header: {
@@ -115,7 +115,7 @@ struct InboxView: View {
                 ForEach(needsDetails) { row in
                     NavigationLink(value: row.id) {
                         Row(row: row, accountName: accountNames[row.accountID],
-                            linked: LinkState.shared.isLinked, ynab: DestinationState.ynab)
+                            linked: LinkState.shared.isLinked, ynab: DestinationState.shared.ynab)
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: true) {
                         Button("Delete", role: .destructive) { delete([row]) }

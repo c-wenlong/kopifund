@@ -116,13 +116,13 @@ struct TransactionDetailView: View {
             if row.state == "pending", row.missingDetails == nil, heldFor == nil {
                 // G24: Approve says where the row goes, the words Save uses
                 Section {
-                    Text(DestinationState.summary).font(.caption).foregroundStyle(.secondary)
+                    Text(DestinationState.shared.summary).font(.caption).foregroundStyle(.secondary)
                 } header: {
                     Text("On approve")
                 }
             }
             if let note = Destination.note(state: row.state, linked: LinkState.shared.isLinked,
-                                           ynab: DestinationState.ynab,
+                                           ynab: DestinationState.shared.ynab,
                                            sentToKopifund: row.kopifundSent != nil) {
                 Section("Where it is") { Text(note).font(.caption).foregroundStyle(.secondary) }
             }

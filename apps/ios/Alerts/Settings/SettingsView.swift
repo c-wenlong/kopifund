@@ -36,7 +36,10 @@ struct SettingsView: View {
                         .textContentType(.password)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
-                        .onChange(of: token) { KeychainToken.set(token) }
+                        .onChange(of: token) {
+                            KeychainToken.set(token)
+                            DestinationState.shared.reload()
+                        }
                     Button("Fetch plans & accounts") { Task { await fetch() } }
                         .disabled(token.isEmpty)
                     if !plans.isEmpty {
@@ -46,6 +49,7 @@ struct SettingsView: View {
                         }
                         .onChange(of: planID) {
                             planName = plans.first { $0.id == planID }?.name ?? ""
+                            DestinationState.shared.reload()
                             PlanCurrency.forget()   // G24 audit: read anew for this plan
                             Task { await fetchAccounts() }
                         }
@@ -75,6 +79,7 @@ struct SettingsView: View {
                     Button("Revoke token", role: .destructive) {
                         token = ""
                         KeychainToken.set(nil)
+                        DestinationState.shared.reload()
                     }
                 }
             }
