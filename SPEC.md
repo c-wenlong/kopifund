@@ -1778,6 +1778,16 @@ The approved mockup is [docs/design/home-mockup.png](docs/design/home-mockup.png
     generic one.
   - A card still loading is a fixed-height skeleton, so the cards below do not
     jump when its figures arrive.
+  - **Destructive actions** follow one rule. One that can be taken back acts
+    at once and offers Undo in its toast (deleting a rule, removing a trip, a
+    row's category). One that cannot be taken back as a whole
+    asks with a second press: the first press arms the button, which then says
+    what a second press within four seconds does ("Press again to remove");
+    leaving the button or waiting disarms it (removing the AI key, revoking a
+    phone, dismissing every waiting phone row). `useArmed`
+    (`apps/web/src/components/useArmed.ts`) is that rule. One that needs a
+    choice as well asks inline with the choice and a Cancel (deleting a
+    category or a bucket picks where its rows go; stopping the server).
   - A toast is a short message at the bottom of the screen in a polite live
     region (an error is an alert), gone after a few seconds, with an optional
     Undo. Toasts sit straight under the page's body, above an open Sheet and
