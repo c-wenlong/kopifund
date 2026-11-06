@@ -119,14 +119,13 @@ enum LinkDedupe {
               let read = Amounts.read(span(amountC)),
               let dateC = cands.first(where: { $0.field == .date && $0.confident }),
               let format = Dates.detectFormat(span(dateC)),
-              let date = Dates.parse(span(dateC), as: format, receivedOn: receivedOn)
+              let date = Dates.parse(span(dateC), as: format, receivedOn: receivedOn),
+              // the same rounding intake uses; a figure past counting marks nothing
+              let cents = Cents.from(read.magnitude)
         else { return nil }
-        var cents = Decimal()
-        var scaled = read.magnitude * 100
-        NSDecimalRound(&cents, &scaled, 0, .plain)
         let payee = cands.filter { $0.field == .payee && $0.confident }
             .sorted { $0.rank < $1.rank }.first.map { span($0) } ?? ""
-        return (NSDecimalNumber(decimal: cents).intValue, read.currency ?? planCurrency,
+        return (cents, read.currency ?? planCurrency,
                 date, payee)
     }
 }

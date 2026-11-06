@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import type { IncomeSuggestion } from "./api";
-import { chipKind, chipText, coversLast, dollarsText, incomeText, claims, typedValue, unclaimed } from "./suggest";
+import { chipKind, chipText, coversLast, dollarsText, incomeText, claims, typedValue } from "./suggest";
 
 // Every name and figure here is invented.
 const pay = (over: Partial<IncomeSuggestion> = {}): IncomeSuggestion => ({
   name: "Invented Co", type: "employment", from: "2025-03-14", last: "2026-09-28", take_home: 400_000, gross: 500_000,
   cpf: true, basis: "gross", bonus_months: null, bonus_month: null, ...over,
 });
+/** The pay no row claims, read off `claims`. */
+const unclaimed = (rows: Parameters<typeof claims>[0], list: IncomeSuggestion[]) => {
+  const held = claims(rows, list);
+  return list.filter((s) => !held.includes(s));
+};
 const row = (over: Partial<Parameters<typeof claims>[0][number]> = {}) => ({ name: "", type: "employment", from: "2025-01-01", to: "", gross: "", ...over });
 
 describe("chipKind", () => {
@@ -40,6 +45,8 @@ describe("typedValue", () => {
 describe("the words and the figure on a chip", () => {
   it("writes cents as the whole dollars a box takes", () => {
     expect(dollarsText(262_745)).toBe("2627");
+    // Audit: the same rule as every other money figure, half away from zero
+    expect(dollarsText(-150)).toBe("-2");
     expect(dollarsText(100_000)).toBe("1000");
     expect(dollarsText(55_050)).toBe("551");
     expect(dollarsText(0)).toBe("0");

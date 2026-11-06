@@ -1,5 +1,6 @@
 import SwiftUI
 import KopifundClient
+import Storage
 
 /// G25: the Kopifund tab: the record the phone is paired to read. Accounts
 /// come from /api/profile; the Transactions browser pages /api/transactions.
@@ -99,21 +100,9 @@ struct TransactionsView: View {
                 Text(problem).font(.caption).foregroundStyle(.red)
             }
             ForEach(rows) { r in
-                VStack(alignment: .leading, spacing: 2) {
-                    HStack {
-                        Text(r.payee.isEmpty ? (r.description.isEmpty ? r.merchant : r.description) : r.payee)
-                            .font(.body).lineLimit(1)
-                        Spacer()
-                        Text(money(r)).font(.body.monospacedDigit())
-                    }
-                    HStack {
-                        Text(caption(r)).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        Spacer()
-                        if let flag = r.flags.first {
-                            Text(flag.text).font(.caption).foregroundStyle(.orange)
-                        }
-                    }
-                }
+                LedgerRow(title: r.payee.isEmpty ? (r.description.isEmpty ? r.merchant : r.description) : r.payee,
+                          amount: money(r), caption: caption(r),
+                          note: r.flags.first.map { ($0.text, .orange) }, lineLimit: 1)
             }
             if let page, rows.count < page.total {
                 Button(loading ? "Loading…" : "Load more") {
@@ -135,10 +124,8 @@ struct TransactionsView: View {
     /// SGD when the record has it (a payment with no SGD value keeps its own
     /// currency's figure). Cents become dollars only for display.
     private func money(_ r: TransactionRow) -> String {
-        if let sgd = r.amountSGD {
-            return "\(sgd < 0 ? "-" : "+")SGD \(String(format: "%.2f", Double(abs(sgd)) / 100))"
-        }
-        return "\(r.amount < 0 ? "-" : "+")\(r.currency) \(String(format: "%.2f", Double(abs(r.amount)) / 100))"
+        if let sgd = r.amountSGD { return Cents.signedText(sgd, currency: "SGD") }
+        return Cents.signedText(r.amount, currency: r.currency)
     }
 
     @State private var generation = 0

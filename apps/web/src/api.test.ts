@@ -1,14 +1,16 @@
 import { renderHook, waitFor, act } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { MAX_KEPT, OFFLINE, REVALIDATE_EVERY, getJSON, notifyChanged, postJSON, prefetch, rereadAfter, resetLink, revalidate, useApi, useLink } from "./api";
+import { fakeClock, json, settle } from "./test-helpers";
+
+// everything the page has kept in localStorage, as one string
+const kept = () => Object.keys(window.localStorage).map((k) => window.localStorage.getItem(k)).join("\n");
 
 describe("useApi", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("reloads after any successful write, keeping the old data on screen meanwhile", async () => {
     let n = 0;
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) =>
-      new Response(JSON.stringify(init?.method === "POST" ? { ok: true } : { n: ++n }), { status: 200 })));
+      json(init?.method === "POST" ? { ok: true } : { n: ++n })));
     const { result } = renderHook(() => useApi<{ n: number }>("/api/overview"));
     await waitFor(() => expect(result.current.data).toEqual({ n: 1 }));
     await act(async () => { await postJSON("/api/run/load"); });
@@ -20,9 +22,9 @@ describe("useApi", () => {
     let n = 0;
     let asked = 0;
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
-      if (init?.method === "POST") return new Response(JSON.stringify({ stats: "rebuilding" }), { status: 200 });
-      if (url === "/api/stats/rebuild") return new Response(JSON.stringify({ running: ++asked < 2 }), { status: 200 });
-      return new Response(JSON.stringify({ n: ++n }), { status: 200 });
+      if (init?.method === "POST") return json({ stats: "rebuilding" });
+      if (url === "/api/stats/rebuild") return json({ running: ++asked < 2 });
+      return json({ n: ++n });
     }));
     const { result } = renderHook(() => useApi<{ n: number }>("/api/results/category-breakdown"));
     await waitFor(() => expect(result.current.data).toEqual({ n: 1 }));
@@ -36,12 +38,12 @@ describe("useApi", () => {
     let n = 0;
     let asked = 0;
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
-      if (init?.method === "POST") return new Response(JSON.stringify({ stats: "rebuilding" }), { status: 200 });
+      if (init?.method === "POST") return json({ stats: "rebuilding" });
       if (url === "/api/stats/rebuild") {
         asked += 1;
-        return asked === 1 ? new Response("{}", { status: 500 }) : new Response(JSON.stringify({ running: false }), { status: 200 });
+        return asked === 1 ? new Response("{}", { status: 500 }) : json({ running: false });
       }
-      return new Response(JSON.stringify({ n: ++n }), { status: 200 });
+      return json({ n: ++n });
     }));
     const { result } = renderHook(() => useApi<{ n: number }>("/api/overview"));
     await waitFor(() => expect(result.current.data).toEqual({ n: 1 }));
@@ -57,7 +59,7 @@ describe("useApi", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === "POST") return new Response("{}", { status: 200 });
       asked.push(url);
-      return new Response(JSON.stringify({ n: ++n }), { status: 200 });
+      return json({ n: ++n });
     }));
     const overview = renderHook(() => useApi<{ n: number }>("/api/overview"));
     const rules = renderHook(() => useApi<{ n: number }>("/api/rules"));
@@ -79,7 +81,7 @@ describe("useApi", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === "POST") return new Response("{}", { status: 200 });
       asked.push(url);
-      return new Response(JSON.stringify({ n: ++n }), { status: 200 });
+      return json({ n: ++n });
     }));
     const layouts = renderHook(() => useApi<{ n: number }>("/api/dashboard/layouts"));
     const widget = renderHook(() => useApi<{ n: number }>("/api/dashboard/query?q=1"));
@@ -102,7 +104,7 @@ describe("useApi", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === "POST") return new Response("{}", { status: 200 });
       asked.push(url);
-      return new Response(JSON.stringify({ n: ++n }), { status: 200 });
+      return json({ n: ++n });
     }));
     await act(async () => { await postJSON("/api/dashboard/layouts/main", "{}"); });
     expect(JSON.parse(window.localStorage.getItem("kopifund:api-refresh")!).paths).toEqual(["/api/dashboard/layouts"]);
@@ -135,7 +137,7 @@ describe("useApi", () => {
     vi.stubGlobal("fetch", vi.fn((url: string, init?: RequestInit) => {
       if (init?.method === "POST") return Promise.resolve(new Response("{}", { status: 200 }));
       if (url.startsWith("/api/overview") && ++overviews === 1) return new Promise<Response>((r) => { release = r; });
-      return Promise.resolve(new Response(JSON.stringify({ n: overviews }), { status: 200 }));
+      return Promise.resolve(json({ n: overviews }));
     }));
     const { result } = renderHook(() => useApi<{ n: number }>("/api/overview?before-check"));
     await waitFor(() => expect(overviews).toBe(1));
@@ -144,7 +146,7 @@ describe("useApi", () => {
     await waitFor(() => expect(overviews).toBe(2));
     await waitFor(() => expect(result.current.data).toEqual({ n: 2 }));
     // the old answer arriving late is neither shown nor kept
-    await act(async () => { release(new Response(JSON.stringify({ n: 1 }), { status: 200 })); });
+    await act(async () => { release(json({ n: 1 })); });
     expect(result.current.data).toEqual({ n: 2 });
     const later = renderHook(() => useApi<{ n: number }>("/api/overview?before-check"));
     expect(later.result.current.data).toEqual({ n: 2 });
@@ -153,7 +155,7 @@ describe("useApi", () => {
   it("does not ask again after a write that changes nothing the overview reads (a suggestion)", async () => {
     let n = 0;
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) =>
-      new Response(JSON.stringify(init?.method === "POST" ? {} : { n: ++n }), { status: 200 })));
+      json(init?.method === "POST" ? {} : { n: ++n })));
     const { result } = renderHook(() => useApi<{ n: number }>("/api/overview"));
     await waitFor(() => expect(result.current.data).toEqual({ n: 1 }));
     await act(async () => { await postJSON("/api/rules/suggest"); });
@@ -163,8 +165,6 @@ describe("useApi", () => {
 
 // G13: the cache. A served answer carries an ETag; asking again with it gets a 304.
 describe("useApi's cache", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   // a server whose answer to every GET is {n}, tagged with n; `bump` is a write
   function server() {
     const s = { n: 1, asked: [] as { url: string; tag: string | null }[] };
@@ -176,7 +176,7 @@ describe("useApi's cache", () => {
       const tag = (init?.headers as Record<string, string> | undefined)?.["If-None-Match"] ?? null;
       s.asked.push({ url, tag });
       if (tag === `"${s.n}"`) return new Response(null, { status: 304, headers: { ETag: tag } });
-      return new Response(JSON.stringify({ n: s.n, url }), { status: 200, headers: { ETag: `"${s.n}"` } });
+      return json({ n: s.n, url }, 200, { ETag: `"${s.n}"` });
     });
     vi.stubGlobal("fetch", fetch);
     return s;
@@ -197,7 +197,7 @@ describe("useApi's cache", () => {
     await waitFor(() => expect(s.asked).toHaveLength(2));
     expect(s.asked[1]).toEqual({ url: "/api/net-worth", tag: '"1"' });
     // a 304 keeps the very object on screen
-    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    await settle();
     expect(again.result.current.data).toBe(shown);
   });
 
@@ -235,13 +235,13 @@ describe("useApi's cache", () => {
     vi.stubGlobal("fetch", vi.fn(async () => {
       const mine = n;
       if (mine === 1) await held;
-      return new Response(JSON.stringify({ n: mine }), { status: 200, headers: { ETag: `"${mine}"` } });
+      return json({ n: mine }, 200, { ETag: `"${mine}"` });
     }));
     prefetch(["/api/growth"]);                       // asked for, still on its way
     n = 2;
     notifyChanged();                                 // the write lands
     release();
-    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    await settle();
     const page = renderHook(() => useApi<{ n: number }>("/api/growth"));
     expect(page.result.current.data).toBeNull();
     await waitFor(() => expect(page.result.current.data?.n).toBe(2));
@@ -251,14 +251,14 @@ describe("useApi's cache", () => {
     let n = 1;
     let asked = 0;
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
-      if (init?.method === "POST") return new Response(JSON.stringify({ stats: "rebuilding" }), { status: 200 });
+      if (init?.method === "POST") return json({ stats: "rebuilding" });
       if (url === "/api/stats/rebuild") {
         asked += 1;
-        if (asked === 1) return new Response(JSON.stringify({ running: true }), { status: 200 });
+        if (asked === 1) return json({ running: true });
         n = 3;                                       // the rebuild wrote new results
-        return new Response(JSON.stringify({ running: false }), { status: 200 });
+        return json({ running: false });
       }
-      return new Response(JSON.stringify({ n }), { status: 200, headers: { ETag: `"${n}"` } });
+      return json({ n }, 200, { ETag: `"${n}"` });
     }));
     const card = renderHook(() => useApi<{ n: number }>("/api/results/eating-out"));
     await waitFor(() => expect(card.result.current.data?.n).toBe(1));
@@ -271,6 +271,7 @@ describe("useApi's cache", () => {
   });
 
   it("asks a live GET afresh every time and paints nothing kept", async () => {
+    const clock = fakeClock();
     const s = server();
     const one = renderHook(() => useApi<{ n: number }>("/api/run/status"));
     await waitFor(() => expect(one.result.current.data?.n).toBe(1));
@@ -279,18 +280,18 @@ describe("useApi's cache", () => {
     expect(again.result.current).toMatchObject({ data: null, loading: true });
     await waitFor(() => expect(again.result.current.data?.n).toBe(1));
     expect(s.asked.map((a) => a.tag)).toEqual([null, null]);
-    await act(async () => { await new Promise((r) => setTimeout(r, 500)); });   // past the save's wait
+    await clock.pass(500);   // past the save's wait
     for (const k of Object.keys(window.localStorage)) expect(window.localStorage.getItem(k)).not.toContain("/api/run/status");
   });
 
   it("drops a refused answer from the kept copy too, so a reload does not paint it", async () => {
     let ok = true;
     vi.stubGlobal("fetch", vi.fn(async () => ok
-      ? new Response(JSON.stringify({ n: 1 }), { status: 200, headers: { ETag: '"1"' } })
-      : new Response(JSON.stringify({ error: "no kopifund.db yet" }), { status: 404 })));
+      ? json({ n: 1 }, 200, { ETag: '"1"' })
+      : json({ error: "no kopifund.db yet" }, 404)));
     const one = renderHook(() => useApi<{ n: number }>("/api/overview"));
     await waitFor(() => expect(one.result.current.data?.n).toBe(1));
-    await act(async () => { await new Promise((r) => setTimeout(r, 500)); });   // saved
+    await waitFor(() => expect(kept()).toContain("/api/overview"));   // saved
     one.unmount();
     ok = false;
     const again = renderHook(() => useApi<{ n: number }>("/api/overview"));
@@ -305,17 +306,18 @@ describe("useApi's cache", () => {
   });
 
   it("keeps at most MAX_KEPT answers in memory, the least recently read going first", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
     const s = server();
     const url = (i: number) => `/api/transactions?offset=${i}`;
     const first = renderHook(() => useApi<{ n: number }>(url(0)));
     await waitFor(() => expect(first.result.current.data?.n).toBe(1));
     first.unmount();
     for (let i = 1; i <= MAX_KEPT; i++) {
-      await new Promise((r) => setTimeout(r, 2));                   // each read a moment later
+      vi.advanceTimersByTime(2);                                    // each read a moment later
       prefetch([url(i)]);
       await waitFor(() => expect(s.asked).toHaveLength(i + 1));
     }
-    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    await settle();
     // the oldest is gone, the newest still paints at once
     expect(renderHook(() => useApi<{ n: number }>(url(0))).result.current.data).toBeNull();
     expect(renderHook(() => useApi<{ n: number }>(url(MAX_KEPT))).result.current.data?.n).toBe(1);
@@ -325,8 +327,8 @@ describe("useApi's cache", () => {
   it("drops a kept answer the server now refuses", async () => {
     let ok = true;
     vi.stubGlobal("fetch", vi.fn(async () => ok
-      ? new Response(JSON.stringify({ n: 1 }), { status: 200, headers: { ETag: '"1"' } })
-      : new Response(JSON.stringify({ error: "no kopifund.db yet" }), { status: 404 })));
+      ? json({ n: 1 }, 200, { ETag: '"1"' })
+      : json({ error: "no kopifund.db yet" }, 404)));
     const one = renderHook(() => useApi<{ n: number }>("/api/overview"));
     await waitFor(() => expect(one.result.current.data?.n).toBe(1));
     one.unmount();
@@ -346,7 +348,7 @@ describe("useApi's cache", () => {
     await waitFor(() => expect(s.asked).toHaveLength(1));
     const page = renderHook(() => useApi<{ n: number }>("/api/recurring"));
     expect(page.result.current.data?.n).toBe(1);
-    await act(async () => { await new Promise((r) => setTimeout(r, 10)); });
+    await settle();
     prefetch(["/api/recurring"]);                    // confirmed moments ago: not asked again
     expect(s.asked.filter((a) => a.url === "/api/recurring")).toHaveLength(2);
   });
@@ -355,7 +357,7 @@ describe("useApi's cache", () => {
     server();
     const one = renderHook(() => useApi<{ n: number }>("/api/plan"));
     await waitFor(() => expect(one.result.current.data?.n).toBe(1));
-    await act(async () => { await new Promise((r) => setTimeout(r, 500)); });   // saved after a short wait
+    await waitFor(() => expect(kept()).toContain("/api/plan"));   // saved after a short wait
     const key = Object.keys(window.localStorage).find((k) => k.startsWith("kopifund:api:"))!;
     expect(window.localStorage.getItem(key)).toContain("/api/plan");
 
@@ -384,11 +386,6 @@ describe("useApi's cache", () => {
 });
 
 describe("useApi revalidating when the window comes back", () => {
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
-  });
-
   // the clock jumps on, since a real wait of several seconds is not worth a test
   let clock = Date.now();
   const later = (ms: number) => {
@@ -406,7 +403,7 @@ describe("useApi revalidating when the window comes back", () => {
 
   it("asks again when the tab turns visible, and shows what changed meanwhile", async () => {
     let n = 0;
-    const fetcher = served(() => new Response(JSON.stringify({ n: ++n }), { status: 200 }));
+    const fetcher = served(() => json({ n: ++n }));
     const { result } = renderHook(() => useApi<{ n: number }>("/api/overview"));
     await waitFor(() => expect(result.current.data).toEqual({ n: 1 }));
     later(REVALIDATE_EVERY + 1);
@@ -419,7 +416,7 @@ describe("useApi revalidating when the window comes back", () => {
 
   it("asks again when the window gets the focus", async () => {
     let n = 0;
-    served(() => new Response(JSON.stringify({ n: ++n }), { status: 200 }));
+    served(() => json({ n: ++n }));
     const { result } = renderHook(() => useApi<{ n: number }>("/api/overview"));
     await waitFor(() => expect(result.current.data).toEqual({ n: 1 }));
     later(REVALIDATE_EVERY + 1);
@@ -429,7 +426,7 @@ describe("useApi revalidating when the window comes back", () => {
 
   it("does not ask when the tab is hidden, or twice in a few seconds", async () => {
     let n = 0;
-    const fetcher = served(() => new Response(JSON.stringify({ n: ++n }), { status: 200 }));
+    const fetcher = served(() => json({ n: ++n }));
     const { result } = renderHook(() => useApi<{ n: number }>("/api/overview"));
     await waitFor(() => expect(result.current.data).toEqual({ n: 1 }));
     later(REVALIDATE_EVERY + 1);
@@ -455,7 +452,7 @@ describe("useApi revalidating when the window comes back", () => {
     vi.stubGlobal("fetch", vi.fn(async (_url: string, init?: RequestInit) => {
       const tag = (init?.headers as Record<string, string> | undefined)?.["If-None-Match"] ?? null;
       seen.push(tag);
-      return tag ? new Response(null, { status: 304 }) : new Response(JSON.stringify({ n: 1 }), { status: 200, headers: { ETag: '"a"' } });
+      return tag ? new Response(null, { status: 304 }) : json({ n: 1 }, 200, { ETag: '"a"' });
     }));
     const { result } = renderHook(() => useApi<{ n: number }>("/api/overview"));
     await waitFor(() => expect(result.current.data).toEqual({ n: 1 }));
@@ -470,7 +467,7 @@ describe("useApi revalidating when the window comes back", () => {
     let up = true;
     vi.stubGlobal("fetch", vi.fn(async () => {
       if (!up) throw new TypeError("network down");
-      return new Response(JSON.stringify({ n: 1 }), { status: 200 });
+      return json({ n: 1 });
     }));
     const { result } = renderHook(() => useApi<{ n: number }>("/api/overview"));
     await waitFor(() => expect(result.current.data).toEqual({ n: 1 }));
@@ -483,7 +480,7 @@ describe("useApi revalidating when the window comes back", () => {
   });
 
   it("does not empty the cache: a page opened afterwards still paints at once", async () => {
-    served(() => new Response(JSON.stringify({ n: 1 }), { status: 200 }));
+    served(() => json({ n: 1 }));
     const one = renderHook(() => useApi<{ n: number }>("/api/overview"));
     await waitFor(() => expect(one.result.current.data).toEqual({ n: 1 }));
     later(REVALIDATE_EVERY + 1);
@@ -497,7 +494,6 @@ describe("useApi revalidating when the window comes back", () => {
 
 describe("a connection that drops after the headers came", () => {
   afterEach(() => {
-    vi.unstubAllGlobals();
     resetLink();
   });
 
@@ -518,7 +514,7 @@ describe("a connection that drops after the headers came", () => {
 
   it("keeps the figures on screen and marks them old when the answer was kept", async () => {
     let drop = false;
-    vi.stubGlobal("fetch", vi.fn(async () => (drop ? dropped() : new Response(JSON.stringify({ n: 1 }), { status: 200 }))));
+    vi.stubGlobal("fetch", vi.fn(async () => (drop ? dropped() : json({ n: 1 }))));
     const { result } = renderHook(() => ({ api: useApi<{ n: number }>("/api/overview"), link: useLink() }));
     await waitFor(() => expect(result.current.api.data).toEqual({ n: 1 }));
     drop = true;

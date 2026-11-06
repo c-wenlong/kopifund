@@ -1,11 +1,9 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { PieState } from "./PieState";
 import type { CategoriesState, WidgetAnswer, WidgetQuery } from "../../../types.gen";
+import { json, navigate } from "../../../test-helpers";
 
-const navigate = vi.fn();
-vi.mock("../../../router", async (importActual) => ({
-  ...(await importActual<typeof import("../../../router")>()), navigate: (to: string) => navigate(to),
-}));
+vi.mock("../../../router", async (actual) => (await import("../../../test-helpers")).withNavigate(await actual()));
 
 // invented figures only
 const QUERY: WidgetQuery = { source: "spending", metric: "spend", dimension: "bucket" };
@@ -37,8 +35,8 @@ const CATS: CategoriesState = {
 function stubApi(answer: unknown = ANSWER, status = 200) {
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
-    if (url.startsWith("/api/categories")) return new Response(JSON.stringify(CATS), { status: 200 });
-    return new Response(JSON.stringify(answer), { status });
+    if (url.startsWith("/api/categories")) return json(CATS);
+    return json(answer, status);
   }));
 }
 
@@ -49,13 +47,7 @@ function stubSize(width = 640, height = 240) {
 }
 
 beforeEach(() => {
-  navigate.mockClear();
   stubApi();
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
 });
 
 describe("PieState", () => {
@@ -99,14 +91,14 @@ describe("PieState", () => {
     });
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      if (url.startsWith("/api/categories")) return new Response(JSON.stringify(CATS), { status: 200 });
+      if (url.startsWith("/api/categories")) return json(CATS);
       const q = JSON.parse(decodeURIComponent(url.slice(url.indexOf("=") + 1)));
       const answers: Record<string, WidgetAnswer> = {
         need: month("need", [100_000, 120_000]),
         want: month("want", [80_000, 90_000]),
         savings: month("savings", [50_000, 60_000]),
       };
-      return new Response(JSON.stringify(answers[q.metric as string]), { status: 200 });
+      return json(answers[q.metric as string]);
     }));
     render(<PieState config={{
       title: "Needs, wants, savings",
@@ -137,7 +129,7 @@ describe("PieState", () => {
 
   it("holds a card-shaped placeholder while the answer loads", () => {
     vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
-      if (String(input).startsWith("/api/categories")) return new Response(JSON.stringify(CATS), { status: 200 });
+      if (String(input).startsWith("/api/categories")) return json(CATS);
       return new Promise<Response>(() => {});
     }));
     render(<PieState config={{ title: "Spending by bucket", query: QUERY }} />);

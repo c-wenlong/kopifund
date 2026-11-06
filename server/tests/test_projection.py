@@ -40,6 +40,7 @@ def conn():
 class OldPlans(unittest.TestCase):
     def test_a_segment_from_before_g14_reads_as_employment_named_by_its_note(self):
         c = conn()
+        self.addCleanup(c.close)
         planning.set_plan(c, {"dca": 300, "income": [
             {"from": "2026-01-01", "to": "2026-12-31", "gross": 4000, "cpf": True, "note": "first job"}]})
         rows = planning.income_rows(planning.get_plan(c))
@@ -49,6 +50,7 @@ class OldPlans(unittest.TestCase):
 
     def test_the_old_dca_is_the_first_step_and_is_not_rewritten_on_read(self):
         c = conn()
+        self.addCleanup(c.close)
         planning.set_plan(c, {"dca": 300})
         self.assertEqual(planning.investing_steps(planning.get_plan(c)), [{"from": None, "amount": 300.0}])
         raw = dict(c.execute("SELECT key, value FROM plan").fetchall())
@@ -56,6 +58,7 @@ class OldPlans(unittest.TestCase):
 
     def test_saving_the_inputs_retires_the_dca(self):
         c = conn()
+        self.addCleanup(c.close)
         planning.set_plan(c, {"dca": 300, "to": "2027-06"})
         planning.save_inputs(c, {"investing": [{"from": "", "amount": "300"}, {"from": "2027-01", "amount": "450.50"}]})
         plan = planning.get_plan(c)
@@ -72,6 +75,7 @@ class OldPlans(unittest.TestCase):
 
     def test_the_plan_page_round_trips_the_new_keys(self):
         c = conn()
+        self.addCleanup(c.close)
         planning.save_inputs(c, {"income": [{"name": "A", "type": "side", "from": "2026-01-01", "to": "",
                                              "gross": "1200"}],
                                  "investing": [{"from": None, "amount": "100"}],
@@ -86,6 +90,7 @@ class OldPlans(unittest.TestCase):
 class PlanPageSave(unittest.TestCase):
     def test_an_older_copy_from_the_plan_page_cannot_put_old_rows_back(self):
         c = conn()
+        self.addCleanup(c.close)
         planning.set_plan(c, {"dca": 100, "insurance": 10,
                               "income": [{"from": "2026-01-01", "to": "2026-06-30", "gross": 1000, "note": "old"}]})
         stale = planning.get_plan(c)                          # what a Plan tab loaded
@@ -150,6 +155,7 @@ class NewFields(unittest.TestCase):
 
     def test_a_refused_save_keeps_the_old_plan(self):
         c = conn()
+        self.addCleanup(c.close)
         planning.set_plan(c, {"dca": 100})
         with self.assertRaises(planning.PlanRefused):
             planning.save_inputs(c, {"investing": [{"from": "soon", "amount": 1}]})

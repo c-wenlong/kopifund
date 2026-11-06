@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import { kpiOf, KpiState } from "./KpiState";
 import type { WidgetAnswer, WidgetQuery } from "../../../types.gen";
+import { json } from "../../../test-helpers";
 
 // invented figures only
 const QUERY: WidgetQuery = { source: "spending", metric: "spend", dimension: "month" };
@@ -20,11 +21,10 @@ const BY_PART: WidgetAnswer = {
 };
 
 function stubApi(answer: unknown = BY_MONTH, status = 200) {
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(answer), { status })));
+  vi.stubGlobal("fetch", vi.fn(async () => json(answer, status)));
 }
 
 beforeEach(() => stubApi());
-afterEach(() => vi.unstubAllGlobals());
 
 describe("kpiOf", () => {
   it("reads the latest figure, the one before it, and the run", () => {

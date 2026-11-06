@@ -9,7 +9,7 @@ import { useMemo } from "react";
 import { useApi, type Loaded } from "../../../api";
 import { bucketLook } from "../../../components/BucketMark";
 import { REST_COLOUR, seriesColour } from "../../../components/chartKit";
-import { formatSgd, MINUS, type Cents } from "../../../money";
+import { formatSgd, MINUS, wholeDollars, type Cents } from "../../../money";
 import { fmt, label, tickLabel } from "../../../stats/hint";
 import type { BucketStyle, CategoriesState, WidgetAnswer, WidgetQuery, WidgetSeries, WidgetUnit } from "../../../types.gen";
 import { useWidgetData } from "../../../widgets";
@@ -126,14 +126,19 @@ export const unitOf = (answers: readonly WidgetAnswer[]): WidgetUnit => answers[
 
 /** A figure in the answer's unit: cents written as money, everything else in its own unit. */
 export function fmtValue(v: number, unit: WidgetUnit | string): string {
-  return unit === "sgd_minor" ? formatSgd(v as Cents) : fmt(v, unit, true);
+  // Audit: through the stat cards' fmt, which rounds a worked-out figure (an average) to whole cents first
+  return unit === "sgd_minor" ? fmt(v, unit) : fmt(v, unit, true);
 }
 
 /** A change with its sign: "+S$12", "−S$12", "+5.0%", "+0.4 mo". */
 export function signedValue(delta: number, unit: WidgetUnit | string): string {
-  const sign = delta >= 0 ? "+" : MINUS;
   const a = Math.abs(delta);
-  if (unit === "sgd_minor") return `${sign}${formatSgd(a as Cents)}`;
+  if (unit === "sgd_minor") {
+    // Audit: the sign of the whole dollars shown (money.ts's rule), so a change of 40 cents reads "S$0", never "−S$0"
+    const dollars = wholeDollars(delta < 0 ? -Math.round(-delta) : Math.round(delta));
+    return `${dollars > 0 ? "+" : dollars < 0 ? MINUS : ""}${formatSgd(Math.abs(dollars) * 100 as Cents)}`;
+  }
+  const sign = delta >= 0 ? "+" : MINUS;
   if (unit === "fraction") return `${sign}${oneDec.format(a * 100)}%`;
   if (unit === "percent") return `${sign}${oneDec.format(a)}%`;
   if (unit === "months") return `${sign}${oneDec.format(a)} mo`;

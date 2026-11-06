@@ -1,12 +1,13 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { Home, axisSgd, comingUpRows, lastBar } from "./Home";
+import { Home, comingUpRows, lastBar } from "./Home";
+import { axisSgd } from "../money";
 import { colourFor, stackRows } from "./SpendingExplorer";
 import { Sidebar } from "../components/Sidebar";
 import type { ComingUpRow, EyeLine, NeedsYourEye, Overview } from "../api";
 import { leadingIcon } from "../test-icons";
+import { json, navigate, useSizedCharts } from "../test-helpers";
 
-const navigate = vi.fn();
-vi.mock("../router", async (importActual) => ({ ...(await importActual<typeof import("../router")>()), navigate: (to: string) => navigate(to) }));
+vi.mock("../router", async (actual) => (await import("../test-helpers")).withNavigate(await actual()));
 
 // invented figures
 const row = (payee: string, expected: string, status: ComingUpRow["status"], extra: Partial<ComingUpRow> = {}): ComingUpRow => ({
@@ -140,12 +141,11 @@ describe("Home tiles, the figure's own tone", () => {
     const months = Array.from({ length: 14 }, (_, i) => ({
       month: `${i < 4 ? 2025 : 2026}-${String(((i + 8) % 12) + 1).padStart(2, "0")}`, total: 1_000_000 + i * 10_000, cash: 500_000 - i * 5_000,
     }));
-    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ parts: ["cash"], months }), { status: 200 })));
+    vi.stubGlobal("fetch", vi.fn(async () => json({ parts: ["cash"], months })));
     render(<Home overview={overview} />);
     const net = await screen.findByRole("img", { name: /^Net worth, .* to .*/ });
     expect(net.querySelector("polyline")!.getAttribute("points")!.split(" ")).toHaveLength(12);
     expect(screen.getByRole("img", { name: /^Cash, / })).toBeInTheDocument();
-    vi.unstubAllGlobals();
   });
 });
 
@@ -301,20 +301,8 @@ describe("Home spending axis", () => {
   });
 });
 
-// Recharts draws nothing into a box of width 0, which is all jsdom gives it
-class SizedObserver {
-  constructor(private cb: ResizeObserverCallback) {}
-  observe(el: Element) {
-    this.cb([{ target: el, contentRect: { width: 800, height: 400 } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
-  }
-  unobserve() {}
-  disconnect() {}
-}
-
 describe("Home spending chart views", () => {
-  const real = globalThis.ResizeObserver;
-  beforeEach(() => { globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver; localStorage.clear(); });
-  afterEach(() => { globalThis.ResizeObserver = real; localStorage.clear(); });
+  useSizedCharts();
 
   const card = () => screen.getByRole("heading", { name: "Spending, last 12 months" }).closest("section")!;
   const bars = () => card().querySelectorAll(".recharts-bar-rectangle").length;
@@ -341,7 +329,6 @@ describe("Home spending chart views", () => {
   });
 
   it("opens the rows a bar adds up, with the explorer's own filters: its bucket in that month, or the whole month", async () => {
-    navigate.mockReset();
     render(<Home overview={overview} />);
     await waitFor(() => expect(bars()).toBe(6));
     fireEvent.click(card().querySelectorAll(".recharts-bar-rectangle path")[1]);

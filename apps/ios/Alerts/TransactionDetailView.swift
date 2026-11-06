@@ -21,7 +21,6 @@ struct TransactionDetailView: View {
     var body: some View {
         Form {
             Section("Transaction") {
-                if row.state == "synced" { EmptyView() }
                 TextField("Payee", text: $row.payee)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
@@ -89,7 +88,7 @@ struct TransactionDetailView: View {
                 // says it is a real charge
                 Section("Possible duplicate") {
                     if let sib = sibling {
-                        Text("Matches \(sib.payee) · \(money(sib)) · via \(sib.source ?? "unknown")")
+                        Text("Matches \(sib.payee) · \(sib.amountText) · via \(sib.source ?? "unknown")")
                             .font(.caption).foregroundStyle(.secondary)
                     } else {
                         Text("Matches another queued transaction")
@@ -206,11 +205,6 @@ struct TransactionDetailView: View {
         guard let id = row.duplicateOf else { return }
         sibling = try? context.fetch(FetchDescriptor<TransactionRecord>(
             predicate: #Predicate { $0.id == id })).first
-    }
-
-    private func money(_ r: TransactionRecord) -> String {
-        let sign = r.direction == "outflow" ? "-" : "+"
-        return "\(sign)\(r.currency) \(String(format: "%.2f", Double(r.amountCents) / 100))"
     }
 
     /// The typed plan-currency figure as cents, nil until a positive one

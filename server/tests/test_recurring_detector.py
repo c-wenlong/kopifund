@@ -7,17 +7,15 @@ from datetime import date, timedelta
 
 from analytics.stats import recurring_detector as rd
 from finance.money import to_cents
+from support import snapshot_txn
 
 # invented payees, amounts and bank text throughout
 
 
 def tx(day, amount, payee="", text=None, category="Subscriptions", account="111-1", bucket="Spend"):
     day = day.isoformat() if isinstance(day, date) else day
-    return {"key": f"{payee or text}-{day}-{amount}", "date": day, "month": day[:7],
-            "amount_minor": to_cents(-amount), "amount_sgd_minor": to_cents(-amount), "currency": "SGD",
-            "flow_class": "External", "synthetic": False, "bucket": bucket, "need_class": "Want",
-            "payee": payee, "category": category, "merchant_raw": text if text is not None else payee.upper(),
-            "counterparty": "", "memo": "", "account_no": account, "bank_txn_type": "POS"}
+    return snapshot_txn(f"{payee or text}-{day}-{amount}", day, to_cents(-amount), payee, text=text,
+                        category=category, account=account, bucket=bucket)
 
 
 def snap(rows, flagged=(), periods=()):

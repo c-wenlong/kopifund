@@ -22,6 +22,7 @@ from pathlib import Path
 
 from analytics.stats import recurring_detector as rd
 from finance.money import label, to_cents
+from support import snapshot_txn
 
 GOLDEN = json.loads((Path(__file__).parent / "fixtures" / "recurring" / "cents_golden.json").read_text())
 EXACT = ("id", "status", "cadence", "occurrences", "rows", "first_seen", "last_seen", "amount_varies")
@@ -141,11 +142,7 @@ class TheReadersTakeTheCentsResult(unittest.TestCase):
 
 
 def tx(day, cents, payee, category="Subscriptions"):
-    return {"key": f"{payee}-{day}-{cents}", "date": day, "month": day[:7], "amount_sgd_minor": -cents,
-            "amount_minor": -cents, "currency": "SGD", "flow_class": "External", "synthetic": False,
-            "bucket": "Spend", "need_class": "Want", "payee": payee, "category": category,
-            "merchant_raw": payee.upper(), "counterparty": "", "memo": "", "account_no": "111-1",
-            "bank_txn_type": "POS"}
+    return snapshot_txn(f"{payee}-{day}-{cents}", day, -cents, payee, category=category)
 
 
 def random_rows(rnd):

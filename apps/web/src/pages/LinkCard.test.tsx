@@ -1,8 +1,12 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { LinkDevice, LinkDevices, PendingRow } from "../types.gen";
 import { LinkCard } from "./LinkCard";
+import { json } from "../test-helpers";
+import { zoneSwitch } from "../test-zone";
+
+const setZone = zoneSwitch();
 
 // G25: the Link a phone card: mint the pair QR, list the phones, revoke one,
 // and run the phone rows' waiting -> matched or dismissed states.
@@ -31,7 +35,7 @@ function stub(first: LinkDevices, post: Record<string, object> = {}, firstPendin
       if (out) {
         if ("devices" in out) now = out as LinkDevices;
         if ("rows" in out) pendNow = (out as { rows: PendingRow[] }).rows;
-        return new Response(JSON.stringify(out), { status: 200 });
+        return json(out);
       }
       // a pending write moves its row the way the hub would, then answers the list
       if (path === "/api/link/pending/dismiss" || path === "/api/link/pending/restore") {
@@ -39,17 +43,15 @@ function stub(first: LinkDevices, post: Record<string, object> = {}, firstPendin
         const to = path.endsWith("dismiss") ? "dismissed" : "waiting";
         pendNow = pendNow.map((r) => (r.import_id === import_id
           ? { ...r, state: to, matched_txn_key: to === "waiting" ? null : r.matched_txn_key } : r));
-        return new Response(JSON.stringify({ rows: pendNow }), { status: 200 });
+        return json({ rows: pendNow });
       }
-      return new Response(JSON.stringify({}), { status: 200 });
+      return json({});
     }
     gets.push(url);
-    if (path === "/api/link/pending") return new Response(JSON.stringify({ rows: pendNow }), { status: 200 });
-    return new Response(JSON.stringify(now), { status: 200 });
+    if (path === "/api/link/pending") return json({ rows: pendNow });
+    return json(now);
   }));
 }
-
-afterEach(() => vi.unstubAllGlobals());
 
 const card = async () => (await screen.findByRole("heading", { name: "Link a phone" })).closest("section")!;
 
@@ -86,9 +88,9 @@ describe("the Link a phone card", () => {
     fetchMock.mockImplementation(async (url, init) => {
       if (url === "/api/link/pending/dismiss-all") {
         posts.push({ url: url as string, body: {} });
-        return new Response(JSON.stringify({ rows: [pending({ state: "dismissed" }),
+        return json({ rows: [pending({ state: "dismissed" }),
           pending({ import_id: "kfp_2", payee: "Kopitiam", state: "dismissed" }),
-          pending({ import_id: "kfp_3", payee: "Old", state: "matched", matched_txn_key: "k9" })] }), { status: 200 });
+          pending({ import_id: "kfp_3", payee: "Old", state: "matched", matched_txn_key: "k9" })] });
       }
       return base(url as string, init);
     });
@@ -114,6 +116,19 @@ describe("the Link a phone card", () => {
     expect(posts).toHaveLength(0);
     await userEvent.click(within(c).getByRole("button", { name: "Press again to revoke Test iPhone" }));
     await waitFor(() => expect(posts).toEqual([{ url: "/api/link/devices/revoke", body: { id: "dev_1" } }]));
+  });
+
+  it("says the day a phone was paired in this device's time", async () => {
+    // the server writes the Mac's local time with no offset (link.py), read as local
+    stub(devices([phone({ paired_at: "2026-10-03T23:30:00" })]));
+    const { unmount } = render(<LinkCard />);
+    expect(await within(await card()).findByText("paired 3 Oct 2026")).toBeInTheDocument();
+    unmount();
+    // a stamp with an offset is moved into this device's time, as every other stamp in the app
+    setZone("Asia/Singapore");
+    stub(devices([phone({ paired_at: "2026-10-03T22:30:00+00:00" })]));
+    render(<LinkCard />);
+    expect(await within(await card()).findByText("paired 4 Oct 2026")).toBeInTheDocument();
   });
 
   it("polls the device list while a code is on screen", async () => {
@@ -173,7 +188,7 @@ describe("the Link a phone card", () => {
     const ok = globalThis.fetch;
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) =>
       url.split("?")[0] === "/api/link/pending"
-        ? new Response(JSON.stringify({ error: "the record is busy" }), { status: 422 })
+        ? json({ error: "the record is busy" }, 422)
         : ok(url, init)));
     render(<LinkCard />);
     const c = await card();

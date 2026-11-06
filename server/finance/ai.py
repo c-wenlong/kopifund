@@ -451,11 +451,12 @@ def _request(url, headers, body=None, timeout=TIMEOUT):
         with _OPENER.open(req, timeout=timeout) as r:
             return json.loads(r.read())
     except urllib.error.HTTPError as e:
-        if 300 <= e.code < 400:
-            raise AIError(f"The AI provider answered {e.code}, a redirect to another address, which Kopifund "
-                          "does not follow with the key: check the provider's base_url") from None
-        # read the whole (small) error body so its JSON parses, then keep the message short
-        detail = e.read(20_000).decode("utf-8", "replace")
+        with e:  # the error is the provider's reply: close it, not leave it for the collector
+            if 300 <= e.code < 400:
+                raise AIError(f"The AI provider answered {e.code}, a redirect to another address, which Kopifund "
+                              "does not follow with the key: check the provider's base_url") from None
+            # read the whole (small) error body so its JSON parses, then keep the message short
+            detail = e.read(20_000).decode("utf-8", "replace")
         try:
             detail = json.loads(detail)["error"]["message"]
         except (ValueError, KeyError, TypeError):

@@ -1,15 +1,12 @@
 import { renderHook, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { ApiError, clearApiCache, getJSON, KEEP_FOR, KEPT_KEY, OFFLINE, postJSON, restoreKept, UNREADABLE, UNREADABLE_WRITE, useApi, watchStatsRebuild } from "./api";
+import { json } from "./test-helpers";
 
 // Audit: an answer the app cannot read says so plainly, and a write whose answer cannot be
 // read is not reported as saved.
 
 const html = (status = 200) => new Response("<html>Sign in to the network</html>", { status, headers: { "Content-Type": "text/html" } });
-const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
-
-afterEach(() => vi.unstubAllGlobals());
-
 describe("postJSON", () => {
   it("fails a success whose body is not JSON, rather than resolving it as {}", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => html()));
@@ -138,6 +135,7 @@ describe("the copy kept in localStorage", () => {
 // Audit: a test that ends mid-rebuild used to leave the watch on, so the next test's watch never started
 describe("test isolation", () => {
   it("lets a new stats watch start after a reset", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout"] });
     let asked = 0;
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       if (url === "/api/stats/rebuild") asked += 1;
@@ -147,9 +145,8 @@ describe("test isolation", () => {
     clearApiCache();
     asked = 0;
     watchStatsRebuild(10, 1);
-    await waitFor(() => expect(asked).toBeGreaterThan(0));
-    // the first watch stopped at the reset: only the second one asked, once
-    await new Promise((r) => setTimeout(r, 60));
+    // the first watch stopped at the reset: only the second one asked, once, however long it runs on
+    await vi.advanceTimersByTimeAsync(70);
     expect(asked).toBe(1);
   });
 });
