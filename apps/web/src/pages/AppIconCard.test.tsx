@@ -44,7 +44,9 @@ describe("App icon card", () => {
     const sticker = await screen.findByRole("radio", { name: /Sticker \(default\)/ });
     expect(sticker).toBeChecked();
     expect(screen.getByText("A cup on a stack of coins, on green")).toBeInTheDocument();
-    expect(screen.getByRole("img", { name: "logo" })).toHaveAttribute("src", "/logo.svg");
+    // opening the card asks the server, which names sticker: the logo is sticker's own copy
+    await settle();
+    expect(screen.getByRole("img", { name: "logo" })).toHaveAttribute("src", "/app-icons/sticker/logo.svg");
     fireEvent.click(screen.getByRole("radio", { name: /Iso/ }));
     // the radio is ticked at once, before the server has answered: the pick is kept only when it has
     await waitFor(() => expect(window.localStorage.getItem("kopifund.appIcon")).toBe("iso"));
@@ -63,7 +65,7 @@ describe("App icon card", () => {
     fireEvent.click(await screen.findByRole("radio", { name: /Riso/ }));
     expect(await screen.findByText("Not an app icon")).toBeInTheDocument();
     expect(screen.getByRole("radio", { name: /Sticker/ })).toBeChecked();
-    expect(href('link[rel="icon"][type="image/svg+xml"]')).toBe("/favicon.svg");
+    expect(href('link[rel="icon"][type="image/svg+xml"]')).toBe("/app-icons/sticker/favicon.svg");
   });
 });
 
@@ -108,6 +110,17 @@ describe("App icon card, saves that race and picks made elsewhere", () => {
     stop();
   });
 
+  it("shows the server's pick, not an older one this tab heard of, and a refused pick goes back to it", async () => {
+    window.localStorage.setItem("kopifund.appIcon", "riso");
+    stubFetch({ chosen: "iso", refuse: true });
+    render(<AppIconCard />);
+    await settle();
+    expect(screen.getByRole("radio", { name: /Iso/ })).toBeChecked();
+    fireEvent.click(screen.getByRole("radio", { name: /Sticker/ }));
+    expect(await screen.findByText("Not an app icon")).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: /Iso/ })).toBeChecked();
+  });
+
   it("moves the logo with the tab's icon when the browser blocks storage", async () => {
     stubFetch();
     vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => { throw new Error("blocked"); });
@@ -134,6 +147,22 @@ describe("syncAppIcon", () => {
     });
     expect(href('link[rel="icon"][type="image/svg+xml"]')).toBe("/app-icons/iso/favicon.svg");
     expect(window.localStorage.getItem("kopifund.appIcon")).toBe("iso");
+  });
+
+  it("drops a late answer when another tab's pick arrived while it was on its way", async () => {
+    let answer: (r: Response) => void = () => {};
+    vi.stubGlobal("fetch", vi.fn(() => new Promise<Response>((resolve) => { answer = resolve; })));
+    const stop = followAppIcon();
+    const done = syncAppIcon();
+    window.localStorage.setItem("kopifund.appIcon", "iso");
+    window.dispatchEvent(new StorageEvent("storage", { key: "kopifund.appIcon", newValue: "iso" }));
+    await act(async () => {
+      answer(json(page("sticker")));
+      await done;
+    });
+    expect(href('link[rel="icon"][type="image/svg+xml"]')).toBe("/app-icons/iso/favicon.svg");
+    expect(window.localStorage.getItem("kopifund.appIcon")).toBe("iso");
+    stop();
   });
 
   it("keeps the default when the server cannot be reached", async () => {

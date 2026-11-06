@@ -1504,7 +1504,9 @@ in the browser too, so a reload shows it before the server answers. While a
 pick saves the other rows wait, so a refused save puts back the saved pick.
 The tab holds its pick in memory and storage is only the copy: with storage
 blocked the logo still moves with the tab's icon. A pick saved in another tab
-of the same browser moves this tab's card, icon and logo at once. The PWA
+of the same browser moves this tab's card, icon and logo at once. Opening the
+card asks the server afresh, so a pick saved in another browser shows there,
+and a server answer read before a newer pick reached the tab is dropped. The PWA
 manifest keeps the default: an app already on a home screen keeps the icon it
 was added with. In the desktop app `serve.py --app` prints `KOPIFUND_ICON
 <set>` once it is listening and after every pick, and the shell makes that

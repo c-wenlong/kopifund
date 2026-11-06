@@ -2,10 +2,10 @@
 // picked (POST /api/app-icon). The pick moves the tab's icon and the logo
 // beside the app's name at once, and the Dock icon in the Mac app; the
 // iPhone app picks its own in its Settings (SPEC.md, "App icon").
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useApi } from "../api";
 import { Card } from "../components/Card";
-import { iconFile, pickAppIcon, useAppIconChoice } from "../components/appIcon";
+import { iconFile, pickAppIcon, syncAppIcon, useAppIconChoice } from "../components/appIcon";
 import type { AppIconPage } from "../types.gen";
 
 export function AppIconCard() {
@@ -16,6 +16,9 @@ export function AppIconCard() {
   const [problem, setProblem] = useState<string | null>(null);
   // the pick this tab last heard of: its own saved pick, the server's, or another tab's
   const heard = useAppIconChoice();
+  // opening the card asks the server afresh, so a pick another browser saved
+  // since this tab started shows here (and a refused pick goes back to it)
+  useEffect(() => { void syncAppIcon(); }, []);
   // an answer without the sets (an older server, a test's stand-in) is no answer to draw
   const data = Array.isArray(page.data?.sets) ? page.data : null;
   if (!data) return null;

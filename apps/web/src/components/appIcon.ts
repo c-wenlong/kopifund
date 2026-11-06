@@ -14,6 +14,9 @@ const EVENT = "kopifund:app-icon";
 // undefined: storage not read yet. Storage is only the copy: when it is
 // blocked the pick still lives here, so the logo moves with the tab's icon.
 let current: string | null | undefined;
+// how many picks this tab has heard of: an answer asked for before the
+// latest one is older than it and must not undo it
+let heardCount = 0;
 
 function read(): string | null {
   try {
@@ -31,6 +34,7 @@ function known(): string | null {
 /** Forget the pick held in memory, as a fresh page would (tests). */
 export function resetAppIcon() {
   current = undefined;
+  heardCount = 0;
 }
 
 export function iconFile(name: string, file: string): string {
@@ -50,6 +54,7 @@ function showIcon(name: string) {
 
 function heard(name: string) {
   current = name;
+  heardCount += 1;
   showIcon(name);
   window.dispatchEvent(new Event(EVENT));
 }
@@ -63,13 +68,18 @@ function keep(name: string) {
   heard(name);
 }
 
-/** Show the pick this browser last heard of, then ask the server for the current one. */
+/**
+ * Show the pick this browser last heard of, then ask the server for the current
+ * one. An answer that comes back after a newer pick (this tab's or another's)
+ * is dropped: it was read before that pick was saved.
+ */
 export async function syncAppIcon(): Promise<void> {
   const last = known();
   if (last) showIcon(last);
+  const asked = heardCount;
   try {
     const page = await getJSON<AppIconPage>("/api/app-icon");
-    if (page.chosen !== known()) keep(page.chosen);
+    if (heardCount === asked && page.chosen !== known()) keep(page.chosen);
   } catch {
     // the server is down or older than the picker: the last pick, or the default, stays
   }
