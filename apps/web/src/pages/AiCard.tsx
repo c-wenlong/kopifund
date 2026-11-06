@@ -2,15 +2,17 @@
 // Test, and the copilot's consent switch. The page never gets the key back:
 // it sees where the key is kept and its last four characters. A key typed here
 // leaves the page's state as it is sent.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { postJSON, useApi } from "../api";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { clearModelCache, ModelField } from "../components/ModelField";
 import { SaveBar } from "../components/SaveBar";
 import { useAction } from "../components/useAction";
+import { useArmed } from "../components/useArmed";
 import { useDraft } from "../components/useDraft";
 import { Select } from "../components/Select";
+import { TextInput } from "../components/TextInput";
 import type { AiKey, AiSettings, AiTest } from "../types.gen";
 
 // G22: a provider is one of `providers`, or a custom one config.toml names (shown by its name, and set up
@@ -138,18 +140,15 @@ function KeyRow({ provider, keyInfo }: { provider: string; keyInfo: AiKey | null
   const [typing, setTyping] = useState(false);
   const [text, setText] = useState("");
   const { running: busy, error: problem, run, clear } = useAction();
-  const [armed, setArmed] = useState(false);
-  const disarm = useRef<ReturnType<typeof setTimeout> | null>(null);
-  useEffect(() => () => {
-    if (disarm.current) clearTimeout(disarm.current);
-  }, []);
+  // removing a key cannot be taken back: the first press asks (useArmed)
+  const confirm = useArmed();
   // another provider's key is another matter
   const [seen, setSeen] = useState(provider);
   if (seen !== provider) {
     setSeen(provider);
     setTyping(false);
     setText("");
-    setArmed(false);
+    confirm.disarm();
     clear();
   }
 
@@ -166,21 +165,10 @@ function KeyRow({ provider, keyInfo }: { provider: string; keyInfo: AiKey | null
     });
   }
 
-  async function remove() {
-    // the first press asks; a second within a few seconds removes
-    if (!armed) {
-      setArmed(true);
-      if (disarm.current) clearTimeout(disarm.current);
-      disarm.current = setTimeout(() => setArmed(false), 4000);
-      return;
-    }
-    if (disarm.current) clearTimeout(disarm.current);
-    setArmed(false);
-    await run("remove", async () => {
-      await postJSON<AiSettings>("/api/ai/key/remove", JSON.stringify({ provider }));
-      clearModelCache(provider);
-    });
-  }
+  const remove = () => confirm.press(() => run("remove", async () => {
+    await postJSON<AiSettings>("/api/ai/key/remove", JSON.stringify({ provider }));
+    clearModelCache(provider);
+  }));
 
   return (
     <div className="flex flex-col gap-1">
@@ -188,18 +176,17 @@ function KeyRow({ provider, keyInfo }: { provider: string; keyInfo: AiKey | null
       {has && !typing ? (
         <div className="flex flex-wrap items-center gap-2">
           <span className="num min-w-0 flex-1 text-[13px]">{keyPlace(keyInfo!)}</span>
-          <Button onClick={() => { setTyping(true); setArmed(false); }} disabled={busy}>Replace</Button>
+          <Button onClick={() => { setTyping(true); confirm.disarm(); }} disabled={busy}>Replace</Button>
           {keyInfo!.can_remove && (
-            <Button onClick={() => void remove()} disabled={busy} onBlur={() => setArmed(false)}>
-              {armed ? "Press again to remove" : "Remove"}
+            <Button onClick={remove} disabled={busy} onBlur={confirm.disarm}>
+              {confirm.armed ? "Press again to remove" : "Remove"}
             </Button>
           )}
         </div>
       ) : (
         <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); void saveKey(); }}>
-          <input type="password" aria-label="API key" value={text} onChange={(e) => setText(e.target.value)}
-            autoComplete="off" spellCheck={false} autoFocus={typing}
-            className="h-8 min-w-0 flex-1 rounded-md border border-line bg-panel px-2 text-[13px]" />
+          <TextInput type="password" aria-label="API key" value={text} onChange={(e) => setText(e.target.value)}
+            autoComplete="off" spellCheck={false} autoFocus={typing} className="min-w-0 flex-1 text-[13px]" />
           <Button type="submit" variant="primary" disabled={busy || !text.trim()}>Save key</Button>
           {has && <Button onClick={() => { setTyping(false); setText(""); }} disabled={busy}>Cancel</Button>}
         </form>

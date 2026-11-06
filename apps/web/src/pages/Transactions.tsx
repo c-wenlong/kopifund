@@ -9,6 +9,7 @@ import { BankMark } from "../components/BankMark";
 import { Button } from "../components/Button";
 import { Combobox } from "../components/Combobox";
 import { EmptyState } from "../components/EmptyState";
+import { FilterChip } from "../components/FilterChip";
 import { Pager, usePager } from "../components/Pager";
 import { PinForm, pinDirty, pinnedText, savePin, undoRuleWrite, type PinDraft } from "../components/PinRow";
 import { draftParams, ruleOf, type Draft } from "../components/RuleEditor";
@@ -24,6 +25,7 @@ import { useUnsavedGuard } from "../router";
 import { pageParam, useUrlPage, useUrlParams } from "../useUrlParams";
 import type { GroupKind, NeedClass } from "../types.gen";
 import { KIND_ICON, KindIcon, NEED_ICON, EYE_ICON, SCAM_FLAG_ICON, SCAM_ICON, TRIP_ICON } from "../icons";
+import { plural, sentence } from "../words";
 
 // G13: transfers (wallet top-ups, moves between your own accounts) are hidden
 // unless the browser has saved the opposite. The saved choice is per browser;
@@ -88,7 +90,7 @@ export function scopeParts(s: Scope): { text: string; icons: LucideIcon[] }[] {
     : kinds.map((k) => KIND_ICON[k]);
   const parts: [string | false | null | undefined, LucideIcon[]][] = [
     [s.trip && `Trip: ${s.trip}`, [TRIP_ICON]],
-    [counted && `${counted.charAt(0).toUpperCase()}${counted.slice(1)}${kinds.length || need.length ? " only" : ""}`, countedIcons],
+    [counted && `${sentence(counted)}${kinds.length || need.length ? " only" : ""}`, countedIcons],
     [s.bucket && `Bucket: ${s.bucket}`, []],
     [s.categories && `Categories: ${names(s.categories)}`, []],
     [s.notCategories && `Not categories: ${names(s.notCategories)}`, []],
@@ -297,45 +299,29 @@ export function Transactions() {
           onChange={(v) => patch({ account: v })} />
       </div>
       {scoped && (
-        <div className="flex items-center gap-2 text-[12px] text-ink-2">
-          <span className="rounded-full bg-tile px-2.5 py-0.5">
-            {/* G18: each part led by the icons of the kinds it names; the words stay one run of text */}
-            {scopeParts(scope).map((p, i) => (
-              <Fragment key={p.text}>
-                {i > 0 && " · "}
-                {p.icons.map((icon, j) => <KindIcon key={j} icon={icon} className="mr-1 inline align-[-2px]" />)}
-                {p.text}
-              </Fragment>
-            ))}
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => patch({ ...NO_SCOPE, ...(scope.standIn ? { synthetic: null } : {}) })}>Clear</Button>
-        </div>
+        <FilterChip onClear={() => patch({ ...NO_SCOPE, ...(scope.standIn ? { synthetic: null } : {}) })}>
+          {/* G18: each part led by the icons of the kinds it names; the words stay one run of text */}
+          {scopeParts(scope).map((p, i) => (
+            <Fragment key={p.text}>
+              {i > 0 && " · "}
+              {p.icons.map((icon, j) => <KindIcon key={j} icon={icon} className="mr-1 inline align-[-2px]" />)}
+              {p.text}
+            </Fragment>
+          ))}
+        </FilterChip>
       )}
       {(payee || keyCount > 0 || paymentsOnly) && (
-        <div className="flex items-center gap-2 text-[12px] text-ink-2">
-          <span className="rounded-full bg-tile px-2.5 py-0.5">
-            {[payee && `Payee: ${payee}`, keyCount > 0 && (keyCount === 1 ? "One payment" : `${keyCount.toLocaleString("en-SG")} payments`),
-              paymentsOnly && "Money out only"]
-              .filter(Boolean).join(" · ")}
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => patch({ payee: null, named: null, key: null, out: null })}>Clear</Button>
-        </div>
+        <FilterChip onClear={() => patch({ payee: null, named: null, key: null, out: null })}>
+          {[payee && `Payee: ${payee}`, keyCount > 0 && (keyCount === 1 ? "One payment" : `${keyCount.toLocaleString("en-SG")} payments`),
+            paymentsOnly && "Money out only"]
+            .filter(Boolean).join(" · ")}
+        </FilterChip>
       )}
       {scam && (
-        <div className="flex items-center gap-2 text-[12px] text-ink-2">
-          <span className="inline-flex items-center gap-1 rounded-full bg-warn-bg px-2.5 py-0.5 text-warn">
-            <KindIcon icon={SCAM_FLAG_ICON} />Flagged as a possible scam
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => patch({ flag: null })}>Clear</Button>
-        </div>
+        <FilterChip tone="warn" icon={SCAM_FLAG_ICON} onClear={() => patch({ flag: null })}>Flagged as a possible scam</FilterChip>
       )}
       {noFx && (
-        <div className="flex items-center gap-2 text-[12px] text-ink-2">
-          <span className="inline-flex items-center gap-1 rounded-full bg-warn-bg px-2.5 py-0.5 text-warn">
-            <KindIcon icon={EYE_ICON.missing_fx} />No SGD value
-          </span>
-          <Button variant="ghost" size="sm" onClick={() => patch({ missing_fx: null })}>Clear</Button>
-        </div>
+        <FilterChip tone="warn" icon={EYE_ICON.missing_fx} onClear={() => patch({ missing_fx: null })}>No SGD value</FilterChip>
       )}
       {error && <Problem message={error} />}
       {loading && !data && <Loading what="Loading transactions" />}
@@ -359,7 +345,7 @@ export function Transactions() {
               <Tile label="Money in" value={formatSgd(data.in_sgd ?? 0, { decimals: true })} />
               <Tile label="Money out" value={formatSgd(Math.abs(data.out_sgd ?? 0), { decimals: true })} />
               <Tile label="Net" value={formatSgd(data.sum_sgd, { decimals: true })}
-                note={`${data.total.toLocaleString("en-SG")} transaction${data.total === 1 ? "" : "s"}${hideTransfers ? ", transfers hidden" : ""}`} />
+                note={`${plural(data.total, "transaction")}${hideTransfers ? ", transfers hidden" : ""}`} />
             </div>
           </div>
           {wide ? (
@@ -675,7 +661,7 @@ function RowPanel({ txnKey, drafts, shownForms, onUnsaved, onSaving, pin, onClos
           <button type="button" disabled={busy} onClick={() => void applySimilar()}
             className="num inline-flex items-center gap-1.5 rounded-full border border-line bg-panel px-3 py-1 hover:bg-hover disabled:opacity-40">
             <Plus size={13} aria-hidden />
-            Apply to {similar.toLocaleString("en-SG")} similar {similar === 1 ? "row" : "rows"}
+            Apply to {plural(similar, "similar row")}
           </button>
         )}
         <button type="button" aria-expanded={more} onClick={() => setMore(!more)}

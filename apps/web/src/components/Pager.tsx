@@ -2,6 +2,7 @@ import { useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { buttonLook } from "./Button";
 import { Select } from "./Select";
+import { TextInput } from "./TextInput";
 
 // G13: one pager for every long list. "1 to 25 of 312", previous and next,
 // page numbers with ellipses for a long run, and a rows-per-page choice that
@@ -170,9 +171,9 @@ export function Pager({ pager, label = "Pages", locked = false }: { pager: Pager
         </button>
         {phone && (
           <form onSubmit={go} className="flex items-center gap-1">
-            <input value={jump} onChange={(e) => setJump(e.target.value.replace(/\D/g, ""))} inputMode="numeric" enterKeyHint="go"
+            <TextInput value={jump} onChange={(e) => setJump(e.target.value.replace(/\D/g, ""))} inputMode="numeric" enterKeyHint="go"
               aria-label="Go to page" placeholder="Go to page" disabled={locked} title={locked ? LOCKED : undefined}
-              className="num h-8 w-24 rounded-md border border-line bg-panel px-2 text-[13px] text-ink placeholder:text-ink-3" />
+              className="num w-24 text-[13px] text-ink placeholder:text-ink-3" />
             <button type="submit" className={button} disabled={locked || jump === ""}>Go</button>
           </form>
         )}

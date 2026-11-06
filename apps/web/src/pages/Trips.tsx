@@ -8,6 +8,7 @@ import { axisSgd, formatSgd, type Cents } from "../money";
 import { formatRange, isoDay } from "../dates";
 import { navigate, onLinkClick } from "../router";
 import { Button } from "../components/Button";
+import { TextInput } from "../components/TextInput";
 import { Card } from "../components/Card";
 import { Chip } from "../components/Chip";
 import { BAR_GRID, cutName, GRID, nameTick, Swatch, TipBox, TipRow, X_AXIS, Y_AXIS, Y_NAMES } from "../components/chartKit";
@@ -22,8 +23,8 @@ import { showToast } from "../components/Toast";
 import { useWide } from "../components/useWide";
 import { TRIP_TAG_ICON } from "../icons";
 import { useChartView, ViewSwitch, type ViewOption } from "../components/ViewSwitch";
+import { plural } from "../words";
 
-const input = "h-8 w-full rounded-md border border-line bg-panel px-2";
 const LONG_STAY_DAYS = 60;   // the travel stat's default, until the server says otherwise
 
 // G17: an edit carries the trip's id, which the save names it by, and the name it had, which the server checks
@@ -94,7 +95,6 @@ export function Flags({ trip }: { trip: Pick<Trip, "countries" | "flags"> }) {
 }
 
 const flagText = (t: Trip) => (t.flags ?? []).filter(Boolean).join("");
-const plural = (n: number, one: string, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 
 // A recorded trip groups past spending: every row dated inside it (on a
 // wallet, or abroad) is counted on it. G13: saving it moves those rows at
@@ -211,7 +211,7 @@ export function Trips() {
             className="grid grid-cols-1 gap-2 text-[13px] sm:grid-cols-2">
             {err && <p className="m-0 text-warn sm:col-span-2" role="alert">{err}</p>}
             <label className="flex flex-col gap-1 sm:col-span-2">Name
-              <input required value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} className={input} />
+              <TextInput required value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} className="w-full" />
             </label>
             <DateRangeFields start={draft.start} end={draft.end} startLabel="First day" endLabel="Last day" startRequired
               onChange={(start, end) => setDraft({ ...draft, start, end })} />
@@ -220,7 +220,7 @@ export function Trips() {
               {countryList.error && <p className="m-0 mt-1 text-warn" role="alert">The country list did not load: {countryList.error}</p>}
             </div>
             <label className="flex flex-col gap-1 sm:col-span-2">Notes
-              <input value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} className={input} />
+              <TextInput value={draft.notes} onChange={(e) => setDraft({ ...draft, notes: e.target.value })} className="w-full" />
             </label>
           </form>
         )}

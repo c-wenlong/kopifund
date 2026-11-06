@@ -2,11 +2,12 @@ import { createContext, useContext, useEffect, useRef, useState, type DragEvent,
 import { ArrowDown, ArrowUp, GripVertical, Pencil, Plus, Trash2 } from "lucide-react";
 import { postJSON, useApi, type CategoriesState, type CategoryEntry, type CategoryGroup } from "../api";
 import { formatSgd } from "../money";
-import { buttonClass } from "../components/Button";
+import { buttonClass, IconButton } from "../components/Button";
 import { EmptyState } from "../components/EmptyState";
 import { PageActions } from "../components/PageActions";
 import { Segmented } from "../components/Segmented";
 import { Select } from "../components/Select";
+import { TextInput } from "../components/TextInput";
 import { LOAD_FIRST, Loading, NoStatementsYet, Problem } from "../components/States";
 import { Tabs } from "../components/Tabs";
 import { showToast } from "../components/Toast";
@@ -15,6 +16,7 @@ import { KindLabel, NEED_ICON } from "../icons";
 import { bucketLook, BucketMark } from "../components/BucketMark";
 import { useUrlParams } from "../useUrlParams";
 import { BucketStylePicker } from "../components/BucketStylePicker";
+import { plural, sentence } from "../words";
 
 // G8: categories on their own page, grouped into buckets. Every change lands
 // in the record at once and moves everything that hangs off the category:
@@ -23,7 +25,6 @@ import { BucketStylePicker } from "../components/BucketStylePicker";
 // it sends (where it goes included), so a row renamed in another tab, or an id
 // SQLite handed to a newer row, is refused rather than written.
 
-const iconButton = "rounded p-1 text-ink-3 hover:bg-hover hover:text-ink disabled:pointer-events-none disabled:opacity-30";
 const button = buttonClass("secondary");
 const primary = buttonClass("primary");
 
@@ -33,7 +34,6 @@ const KIND_NOTE: Record<string, string> = { income: "Money in, not spending", tr
 const kindNote = (to: CategoryGroup, from: CategoryGroup) =>
   to.kind === from.kind ? undefined : to.kind === "spend" ? "counts as spending" : "not spending";
 
-const plural = (n: number, one: string, many = `${one}s`) => `${n.toLocaleString("en-SG")} ${n === 1 ? one : many}`;
 
 // The tab shown is remembered in the address (?bucket=, so a link opens it) and
 // in this browser. The address wins, and is read on every render, so a link or
@@ -135,7 +135,7 @@ export function Categories() {
       if (out.rules_note) {
         // the change is saved, but the rules could not follow it: say so
         // rather than claim they did
-        showToast({ tone: "error", message: `Saved. ${out.rules_note.charAt(0).toUpperCase()}${out.rules_note.slice(1)}.` });
+        showToast({ tone: "error", message: `Saved. ${sentence(out.rules_note)}.` });
       } else if (out.swapped) {
         showToast({ message: `Swapped colours with ${out.swapped}.` });
       } else if (done) {
@@ -320,11 +320,11 @@ function GroupHeader({ group, first, last, index, others, onStyle, monthly, shar
         {KIND_NOTE[group.kind] && <p className="m-0 text-[12px] text-ink-3">{KIND_NOTE[group.kind]}</p>}
       </div>
       <div className="flex shrink-0 items-center">
-        <button type="button" aria-label={`Move bucket ${group.name} up`} disabled={first || settling} onClick={onUp} className={iconButton}><ArrowUp size={14} /></button>
-        <button type="button" aria-label={`Move bucket ${group.name} down`} disabled={last || settling} onClick={onDown} className={iconButton}><ArrowDown size={14} /></button>
-        <button type="button" aria-label={`Rename bucket ${group.name}`} onClick={onRename} className={iconButton}><Pencil size={14} /></button>
+        <IconButton label={`Move bucket ${group.name} up`} disabled={first || settling} onClick={onUp}><ArrowUp size={14} /></IconButton>
+        <IconButton label={`Move bucket ${group.name} down`} disabled={last || settling} onClick={onDown}><ArrowDown size={14} /></IconButton>
+        <IconButton label={`Rename bucket ${group.name}`} onClick={onRename}><Pencil size={14} /></IconButton>
         {!group.fixed && (
-          <button type="button" aria-label={`Delete bucket ${group.name}`} onClick={onDelete} className={iconButton}><Trash2 size={14} /></button>
+          <IconButton label={`Delete bucket ${group.name}`} onClick={onDelete}><Trash2 size={14} /></IconButton>
         )}
       </div>
     </div>
@@ -359,10 +359,10 @@ function CategoryRow({ cat, group, groups, needClasses, first, last, onNeed, onM
         options={groups.map((g) => ({ value: String(g.id), label: g.name, note: kindNote(g, group) }))}
         onChange={(v) => { const to = groups.find((g) => String(g.id) === v); if (to) onMove(to); }} />
       <div className="flex items-center">
-        <button type="button" aria-label={`Move ${cat.name} up`} disabled={first || settling} onClick={onUp} className={iconButton}><ArrowUp size={13} /></button>
-        <button type="button" aria-label={`Move ${cat.name} down`} disabled={last || settling} onClick={onDown} className={iconButton}><ArrowDown size={13} /></button>
-        <button type="button" aria-label={`Rename ${cat.name}`} onClick={onRename} className={iconButton}><Pencil size={13} /></button>
-        <button type="button" aria-label={`Delete ${cat.name}`} onClick={onDelete} className={iconButton}><Trash2 size={13} /></button>
+        <IconButton label={`Move ${cat.name} up`} disabled={first || settling} onClick={onUp}><ArrowUp size={13} /></IconButton>
+        <IconButton label={`Move ${cat.name} down`} disabled={last || settling} onClick={onDown}><ArrowDown size={13} /></IconButton>
+        <IconButton label={`Rename ${cat.name}`} onClick={onRename}><Pencil size={13} /></IconButton>
+        <IconButton label={`Delete ${cat.name}`} onClick={onDelete}><Trash2 size={13} /></IconButton>
       </div>
     </div>
   );
@@ -376,8 +376,8 @@ function NameForm({ label, submit, initial = "", onSave, onCancel }: {
   return (
     <form className="my-2 flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); if (name.trim()) onSave(name.trim()); }}
       onKeyDown={(e) => { if (e.key === "Escape") onCancel(); }}>
-      <input aria-label={label} placeholder={label} value={name} onChange={(e) => setName(e.target.value)} autoFocus
-        className="h-8 min-w-40 flex-1 rounded-md border border-line bg-panel px-2 text-[13px]" />
+      <TextInput aria-label={label} placeholder={label} value={name} onChange={(e) => setName(e.target.value)} autoFocus
+        className="min-w-40 flex-1 text-[13px]" />
       <button type="submit" disabled={pending} className={primary}>{submit}</button>
       <button type="button" onClick={onCancel} className={button}>Cancel</button>
     </form>
