@@ -3,6 +3,7 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import { outcome, PastUploads, statusText, stoppedAt } from "./PastUploads";
 import { leadingIcon } from "../test-icons";
 import type { UploadStepOutline } from "../api";
+import { json } from "../test-helpers";
 
 const step = (id: number, name: UploadStepOutline["step"], status: UploadStepOutline["status"], summary = ""): UploadStepOutline =>
   ({ id, step: name, status, summary, started_at: "2026-10-12T06:00:00+00:00", finished_at: "2026-10-12T06:00:05+00:00" });
@@ -29,10 +30,6 @@ const detail = {
   ],
 };
 const status = { folders: [{ path: "statements/dbs-multiplier", name: "dbs-multiplier", parser: "dbs", wallet: "", title: "DBS Multiplier", bank: "dbs" }], notion_enabled: false, pdftotext: true, runs: [] };
-
-function reply(body: unknown) {
-  return new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
-}
 
 describe("stoppedAt", () => {
   it("names the furthest step and how it went", () => {
@@ -68,12 +65,9 @@ describe("statusText", () => {
 });
 
 describe("PastUploads", () => {
-  beforeEach(() => window.localStorage.clear());
-  afterEach(() => vi.restoreAllMocks());
-
   const serve = () => vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
     const u = String(url);
-    return reply(u.startsWith("/api/uploads?") ? list : u === "/api/run/status" ? status : detail);
+    return json(u.startsWith("/api/uploads?") ? list : u === "/api/run/status" ? status : detail);
   });
 
   it("lists each attempt with its steps and opens one to show inputs and outputs", async () => {
@@ -128,8 +122,8 @@ describe("PastUploads", () => {
     let fail = true;
     const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       const u = String(url);
-      if (u === "/api/run/status" && fail) return new Response(JSON.stringify({ error: "Busy" }), { status: 500 });
-      return reply(u.startsWith("/api/uploads?") ? list : u === "/api/run/status" ? status : detail);
+      if (u === "/api/run/status" && fail) return json({ error: "Busy" }, 500);
+      return json(u.startsWith("/api/uploads?") ? list : u === "/api/run/status" ? status : detail);
     });
     const asked = () => spy.mock.calls.filter(([u]) => String(u) === "/api/run/status").length;
     render(<PastUploads />);
@@ -149,7 +143,7 @@ describe("PastUploads", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       const u = String(url);
       const statusWithDbs = { ...status, folders: [...status.folders, { path: "statements/dbs", name: "dbs", parser: "dbs", wallet: "", title: "Dbs", bank: "dbs" }] };
-      return reply(u.startsWith("/api/uploads?") ? list : u === "/api/run/status" ? statusWithDbs : detail);
+      return json(u.startsWith("/api/uploads?") ? list : u === "/api/run/status" ? statusWithDbs : detail);
     });
     render(<PastUploads />);
     const rows = await screen.findAllByRole("button", { expanded: false });
@@ -183,7 +177,7 @@ describe("PastUploads", () => {
     window.localStorage.clear();
     const many = Array.from({ length: 25 }, (_, i) => ({ ...list.attempts[1], id: 100 - i }));
     const fetchSpy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) =>
-      reply(String(url).startsWith("/api/uploads?") ? { attempts: many, next: 76, total: 60 } : detail));
+      json(String(url).startsWith("/api/uploads?") ? { attempts: many, next: 76, total: 60 } : detail));
     render(<PastUploads />);
     expect(await screen.findByText("1 to 25 of 60")).toBeInTheDocument();
     expect(fetchSpy.mock.calls.map(([u]) => u)).toContain("/api/uploads?limit=25&offset=0");
@@ -195,9 +189,40 @@ describe("PastUploads", () => {
   });
 
   it("says so when there is no history yet, with a way to start one", async () => {
-    vi.spyOn(globalThis, "fetch").mockImplementation(async () => reply({ attempts: [], next: null, total: 0 }));
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => json({ attempts: [], next: null, total: 0 }));
     render(<PastUploads />);
     expect(await screen.findByText(/No uploads yet/)).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "Upload statements" })).toHaveAttribute("href", "/upload");
+  });
+});
+
+describe("PastUploads that do not load", () => {
+  it("says why the history failed, and Try again lists the attempts", async () => {
+    let up = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) =>
+      up ? json(String(url).startsWith("/api/uploads?") ? list : status) : json({ error: "The record is locked." }, 500));
+    render(<PastUploads />);
+    expect(await screen.findByRole("alert")).toHaveTextContent("The record is locked.");
+    expect(screen.queryByRole("button", { expanded: false })).not.toBeInTheDocument();
+    up = true;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findAllByRole("button", { expanded: false })).toHaveLength(2);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("says why one attempt's steps failed, inside that row, and Try again shows them", async () => {
+    let steps = false;
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+      const u = String(url);
+      if (u.startsWith("/api/uploads?")) return json(list);
+      if (u === "/api/run/status") return json(status);
+      return steps ? json(detail) : json({ error: "That attempt could not be read." }, 500);
+    });
+    render(<PastUploads />);
+    fireEvent.click((await screen.findAllByRole("button", { expanded: false }))[0]);
+    expect(await screen.findByRole("alert")).toHaveTextContent("That attempt could not be read.");
+    steps = true;
+    fireEvent.click(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Statement doesn't add up")).toBeInTheDocument();
   });
 });

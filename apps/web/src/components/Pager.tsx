@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState, useSyncExternalStore, type FormEvent } from "react";
+import { useRef, useState, useSyncExternalStore, type FormEvent } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { buttonLook } from "./Button";
 import { Select } from "./Select";
+import { TextInput } from "./TextInput";
 
 // G13: one pager for every long list. "1 to 25 of 312", previous and next,
 // page numbers with ellipses for a long run, and a rows-per-page choice that
@@ -63,23 +64,6 @@ function subscribeNarrow(onChange: () => void) {
 const narrow = () => typeof window.matchMedia === "function" && window.matchMedia(NARROW).matches;
 const useNarrow = () => useSyncExternalStore(subscribeNarrow, narrow);
 
-// the page held in the address bar under `key`, if it holds one
-function readUrlPage(key: string | undefined): number | null {
-  if (!key) return null;
-  const n = Number(new URLSearchParams(window.location.search).get(key));
-  return Number.isInteger(n) && n >= 1 ? n : null;
-}
-
-function writeUrlPage(key: string, page: number) {
-  const url = new URL(window.location.href);
-  if (page <= 1) url.searchParams.delete(key);
-  else url.searchParams.set(key, String(page));
-  const next = url.pathname + url.search + url.hash;
-  if (next !== window.location.pathname + window.location.search + window.location.hash) {
-    window.history.replaceState(window.history.state, "", next);
-  }
-}
-
 export type PagerState = {
   list: string;
   total: number;
@@ -97,19 +81,14 @@ export type PagerState = {
  * shrinks. `resetOn` is a string that changes with the filters: when it does,
  * the list goes back to page 1. `list` names the remembered page size.
  * `initialPage` is the page a link opens on (a list that keeps its page in the
- * address itself).
- *
- * Or `{ urlKey }`, which has the hook keep the page in the address bar for the
- * list (`?page=3`; page 1 leaves it off) so a reload, a link or the Back button
- * returns to the same page. Other query keys are left alone, and a page named
- * in the address wins over `initialPage`. Pass `undefined` for `total` while the
- * rows load, so a page read from the address is not clamped to 1 before they arrive.
+ * address: useUrlPage in useUrlParams.ts keeps the two in step). Pass
+ * `undefined` for `total` while the rows load, so a page read from the address
+ * is not clamped to 1 before they arrive.
  */
 export function usePager(
-  list: string, total: number | undefined, resetOn = "", initialPage = 1, options: { urlKey?: string } = {},
+  list: string, total: number | undefined, resetOn = "", initialPage = 1,
 ): PagerState {
-  const { urlKey } = options;
-  const [page, setPageState] = useState(() => readUrlPage(urlKey) ?? Math.max(1, Math.floor(initialPage) || 1));
+  const [page, setPageState] = useState(() => Math.max(1, Math.floor(initialPage) || 1));
   const [size, setSizeState] = useState(() => readSize(list));
   const [seen, setSeen] = useState(resetOn);
   // set during render, so the list never draws (or fetches) the old page for a new filter
@@ -123,16 +102,6 @@ export function usePager(
   const shown = total === undefined ? Math.max(1, current) : clampPage(current, known, size);
   // keep the clamped page, so a total that grows again does not bring back a page the list left
   if (shown !== page) setPageState(shown);
-  useEffect(() => {
-    if (urlKey) writeUrlPage(urlKey, shown);
-  }, [urlKey, shown]);
-  // Back or Forward (or a link to the bare path) changes the address under a mounted list
-  useEffect(() => {
-    if (!urlKey) return;
-    const onPop = () => setPageState(readUrlPage(urlKey) ?? 1);
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, [urlKey]);
   return {
     list, total: known, page: shown, size, offset: (shown - 1) * size,
     setPage: (p) => setPageState(total === undefined ? Math.max(1, p) : clampPage(p, known, size)),
@@ -202,9 +171,9 @@ export function Pager({ pager, label = "Pages", locked = false }: { pager: Pager
         </button>
         {phone && (
           <form onSubmit={go} className="flex items-center gap-1">
-            <input value={jump} onChange={(e) => setJump(e.target.value.replace(/\D/g, ""))} inputMode="numeric" enterKeyHint="go"
+            <TextInput value={jump} onChange={(e) => setJump(e.target.value.replace(/\D/g, ""))} inputMode="numeric" enterKeyHint="go"
               aria-label="Go to page" placeholder="Go to page" disabled={locked} title={locked ? LOCKED : undefined}
-              className="num h-8 w-24 rounded-md border border-line bg-panel px-2 text-[13px] text-ink placeholder:text-ink-3" />
+              className="num w-24 text-[13px] text-ink placeholder:text-ink-3" />
             <button type="submit" className={button} disabled={locked || jump === ""}>Go</button>
           </form>
         )}

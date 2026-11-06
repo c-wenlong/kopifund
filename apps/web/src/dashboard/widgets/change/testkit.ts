@@ -1,26 +1,9 @@
-// G26: what the change widgets' tests share: a sized ResizeObserver so
-// Recharts draws in jsdom, a fetch stub that answers widget queries, and the
+// G26: what the change widgets' tests share: a fetch stub that answers widget queries, and the
 // invented answers the widgets plot. Every figure is made up, in cents.
 import { vi } from "vitest";
 import { canonicalJson, widgetQueryUrl } from "../../../widgets";
 import type { WidgetAnswer, WidgetQuery } from "../../../types.gen";
-
-export class SizedObserver {
-  constructor(private cb: ResizeObserverCallback) {}
-  observe(el: Element) {
-    this.cb([{ target: el, contentRect: { width: 800, height: 400 } } as unknown as ResizeObserverEntry],
-      this as unknown as ResizeObserver);
-  }
-  unobserve() {}
-  disconnect() {}
-}
-
-/** ResizeObserver swapped for one that gives every chart 800x400, for the test's duration. */
-export function useSizedCharts() {
-  const real = globalThis.ResizeObserver;
-  beforeEach(() => { globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver; });
-  afterEach(() => { globalThis.ResizeObserver = real; });
-}
+import { json } from "../../../test-helpers";
 
 /** A fetch that answers every widget query from `answers` (by the query's JSON), a 400 for anything else. */
 export function stubQueries(answers: [WidgetQuery, WidgetAnswer | { error: string }][]) {
@@ -30,9 +13,9 @@ export function stubQueries(answers: [WidgetQuery, WidgetAnswer | { error: strin
     seen.push(url);
     const q = decodeURIComponent(new URL(url, "http://t").searchParams.get("q") ?? "");
     const a = byQuery.get(q);
-    if (!a) return new Response(JSON.stringify({ error: `no stub for ${q}` }), { status: 400 });
-    if ("error" in a) return new Response(JSON.stringify({ error: a.error }), { status: 400 });
-    return new Response(JSON.stringify(a), { status: 200 });
+    if (!a) return json({ error: `no stub for ${q}` }, 400);
+    if ("error" in a) return json({ error: a.error }, 400);
+    return json(a);
   }));
   return seen;
 }

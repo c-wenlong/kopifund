@@ -2,6 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { useApi, type DashboardWidget } from "../api";
 import { Grid, WIDGET_FAILED } from "./Grid";
+import { json } from "../test-helpers";
 
 // Audit: a widget that throws as it draws stays in its own card; the board,
 // the other widgets and the card's Remove button keep working. All names and figures are invented.
@@ -30,10 +31,6 @@ beforeEach(() => {
   vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
-afterEach(() => {
-  vi.restoreAllMocks();
-});
-
 it("holds a widget that throws to its own card", () => {
   const onRemove = vi.fn();
   render(<Grid widgets={[widget("a", "bad", 0), widget("b", "good", 4)]} interactive={false}
@@ -48,7 +45,7 @@ it("holds a widget that throws to its own card", () => {
 // Greptile on #43: a reset alone mounted the widget on the kept answer it had just failed on
 it("draws the widget from the server's new answer on Try again, not the kept bad one", async () => {
   let answer: unknown = {};
-  vi.spyOn(globalThis, "fetch").mockImplementation(async () => new Response(JSON.stringify(answer), { status: 200 }));
+  vi.spyOn(globalThis, "fetch").mockImplementation(async () => json(answer));
   render(<Grid widgets={[widget("a", "reads", 0)]} interactive={false} onArrange={() => {}} onRemove={() => {}} />);
   expect(await screen.findByText(WIDGET_FAILED)).toBeInTheDocument();
   answer = { series: [1, 2] };
