@@ -147,7 +147,7 @@ final class BuilderEdgeTests: XCTestCase {
                        "spend at ")
         XCTAssertEqual(PatternBuilder.anchorBefore("Dear Customer, you charged "), "you charged ")
         XCTAssertEqual(PatternBuilder.anchorBefore(" from MERLION/HBR card ending "), "card ending ")
-        XCTAssertEqual(PatternBuilder.anchorBefore(" card ending 6529 to "), "ending 6529 to ",
+        XCTAssertEqual(PatternBuilder.anchorBefore(" card ending 3141 to "), "ending 3141 to ",
                        "digits fold, so they do not count")
         XCTAssertEqual(PatternBuilder.anchorBefore("Your Scan & Pay Transfer dated "), "Transfer dated ")
         XCTAssertEqual(PatternBuilder.anchorBefore("completed.\nDate & Time:\n"), "Date & Time:\n",
@@ -316,15 +316,15 @@ final class MatcherTests: XCTestCase {
     /// verbatim (all caps kept), the currency read off the amount, and the
     /// tagged card digits land in the hint.
     func test_a_dbs_style_alert_keeps_case_currency_and_card() throws {
-        let sample = "A card txn of SGD44.53 from DBS/POSB card ending 6529 to SGH - DIGESTIVE & LIVE on 26 Oct 11:24 (SGT) was completed."
+        let sample = "A card txn of SGD38.17 from DBS/POSB card ending 3141 to HVC - DENTAL & EYE on 26 Oct 11:24 (SGT) was completed."
         let tokens = Tokenizer.tokenize(sample)
         var tags: [Int: PatternBuilder.Field] = [:]
         for (i, t) in tokens.enumerated() {
             switch t.text {
-            case "SGD44", "53": tags[i] = .amount
-            case "." where i > 0 && tokens[i - 1].text == "SGD44": tags[i] = .amount
-            case "6529": tags[i] = .account
-            case "SGH", "-", "DIGESTIVE", "&", "LIVE": tags[i] = .payee
+            case "SGD38", "17": tags[i] = .amount
+            case "." where i > 0 && tokens[i - 1].text == "SGD38": tags[i] = .amount
+            case "3141": tags[i] = .account
+            case "HVC", "-", "DENTAL", "&", "EYE": tags[i] = .payee
             case "26", "Oct": tags[i] = .date
             case "11", ":", "24": tags[i] = .ignore
             default: break
@@ -334,13 +334,13 @@ final class MatcherTests: XCTestCase {
                                                spans: PatternBuilder.spans(from: tags, tokens: tokens))
         let p = AlertPattern(name: "DBS card", direction: .outflow, accountID: "a",
                              segments: segs, sampleText: sample)
-        let next = "A card txn of SGD10.00 from DBS/POSB card ending 6529 to NTUC FAIRPRICE on 27 Oct 09:01 (SGT) was completed."
+        let next = "A card txn of SGD10.00 from DBS/POSB card ending 3141 to NTUC FAIRPRICE on 27 Oct 09:01 (SGT) was completed."
         switch Matcher.match(text: next, source: "sms", receivedAt: Date(), patterns: [p]) {
         case .matched(let t):
             XCTAssertEqual(t.payee, "NTUC FAIRPRICE")
             XCTAssertEqual(t.amount, Decimal(string: "10.00"))
             XCTAssertEqual(t.currency, "SGD")
-            XCTAssertEqual(t.accountHint, "6529")
+            XCTAssertEqual(t.accountHint, "3141")
             XCTAssertEqual(t.alertText, next)
             XCTAssertEqual(t.source, "sms")
             XCTAssertEqual(t.date.day, 27)
@@ -352,14 +352,14 @@ final class MatcherTests: XCTestCase {
 
 final class DedupTests: XCTestCase {
     func test_normalised_payee_drops_case_and_punctuation() {
-        XCTAssertEqual(Dedup.normalizedPayee("SGH - DIGESTIVE & LIVE"), "sghdigestivelive")
-        XCTAssertEqual(Dedup.normalizedPayee("Sgh - Digestive & Live"), "sghdigestivelive")
+        XCTAssertEqual(Dedup.normalizedPayee("HVC - DENTAL & EYE"), "hvcdentaleye")
+        XCTAssertEqual(Dedup.normalizedPayee("Hvc - Dental & Eye"), "hvcdentaleye")
     }
 
     func test_payee_similarity() {
-        XCTAssertTrue(Dedup.similarPayee("Sgh - Digestive & Live", "SGH - DIGESTIVE & LIVE"))
+        XCTAssertTrue(Dedup.similarPayee("Hvc - Dental & Eye", "HVC - DENTAL & EYE"))
         XCTAssertTrue(Dedup.similarPayee("AMAZON SG", "Amazon.sg Marketplace"))
-        XCTAssertFalse(Dedup.similarPayee("SGH", "Grab"))
+        XCTAssertFalse(Dedup.similarPayee("HVC", "Grab"))
         XCTAssertFalse(Dedup.similarPayee("7-Eleven", "Shell"))
     }
 
@@ -370,11 +370,11 @@ final class DedupTests: XCTestCase {
         var cal = Calendar(identifier: .gregorian); cal.timeZone = zone
         let lateTap = cal.date(from: DateComponents(year: 2026, month: 10, day: 26, hour: 23))!
         XCTAssertTrue(Dedup.likelyDuplicate(
-            amountCents: 4453, currency: "SGD", date: CalendarDate(lateTap, in: zone),
-            payee: "Sgh - Digestive & Live",
-            otherAmountCents: 4453, otherCurrency: "SGD",
+            amountCents: 3817, currency: "SGD", date: CalendarDate(lateTap, in: zone),
+            payee: "Hvc - Dental & Eye",
+            otherAmountCents: 3817, otherCurrency: "SGD",
             otherDate: CalendarDate(year: 2026, month: 10, day: 26)!,
-            otherPayee: "SGH - DIGESTIVE & LIVE"))
+            otherPayee: "HVC - DENTAL & EYE"))
     }
 
     func test_same_day_same_amount_different_payee_is_not_a_dupe() {
@@ -388,11 +388,11 @@ final class DedupTests: XCTestCase {
         let day = CalendarDate(year: 2026, month: 10, day: 26)!
         let next = day.adding(days: 2)
         XCTAssertFalse(Dedup.likelyDuplicate(
-            amountCents: 4453, currency: "SGD", date: day, payee: "SGH",
-            otherAmountCents: 4453, otherCurrency: "SGD", otherDate: next, otherPayee: "SGH"))
+            amountCents: 3817, currency: "SGD", date: day, payee: "HVC",
+            otherAmountCents: 3817, otherCurrency: "SGD", otherDate: next, otherPayee: "HVC"))
         XCTAssertFalse(Dedup.likelyDuplicate(
-            amountCents: 4453, currency: "SGD", date: day, payee: "SGH",
-            otherAmountCents: 4454, otherCurrency: "SGD", otherDate: day, otherPayee: "SGH"))
+            amountCents: 3817, currency: "SGD", date: day, payee: "HVC",
+            otherAmountCents: 3818, otherCurrency: "SGD", otherDate: day, otherPayee: "HVC"))
     }
 }
 
@@ -401,17 +401,17 @@ final class DedupTests: XCTestCase {
 final class RecordCoverTests: XCTestCase {
     private let day = CalendarDate(year: 2026, month: 4, day: 24)!
 
-    private func spend(_ amount: Int = -4453, _ currency: String = "SGD",
+    private func spend(_ amount: Int = -3817, _ currency: String = "SGD",
                        payee: String = "", raw: String = "") -> Dedup.RecordSpend {
         Dedup.RecordSpend(amountCents: amount, currency: currency, date: day,
                           payee: payee, raw: raw)
     }
 
     func test_cover_matches_on_payee_or_raw() {
-        let record = [spend(payee: "SGH - Digestive & Live"),
+        let record = [spend(payee: "HVC - Dental & Eye"),
                       spend(-999, payee: "else", raw: "GRAB *RIDE 12.34 SINGAPORE")]
-        XCTAssertEqual(Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
-                                       date: day, payee: "Sgh Digestive Live",
+        XCTAssertEqual(Dedup.coveredBy(amountCents: 3817, currency: "SGD", direction: "outflow",
+                                       date: day, payee: "Hvc Dental Eye",
                                        in: record, taken: []), 0)
         // the row's payee may be empty when the alert still reads its raw merchant
         XCTAssertEqual(Dedup.coveredBy(amountCents: 999, currency: "SGD", direction: "outflow",
@@ -420,39 +420,39 @@ final class RecordCoverTests: XCTestCase {
     }
 
     func test_sign_amount_currency_and_day_all_have_to_agree() {
-        let record = [spend(payee: "SGH")]
+        let record = [spend(payee: "HVC")]
         // an outflow alert never takes an inflow row at the same amount
-        XCTAssertNil(Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
-                                     date: day, payee: "SGH",
-                                     in: [spend(4453, payee: "SGH")], taken: []))
-        XCTAssertNil(Dedup.coveredBy(amountCents: 4453, currency: "USD", direction: "outflow",
-                                     date: day, payee: "SGH", in: record, taken: []))
-        XCTAssertNil(Dedup.coveredBy(amountCents: 4454, currency: "SGD", direction: "outflow",
-                                     date: day, payee: "SGH", in: record, taken: []))
-        XCTAssertNil(Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
-                                     date: day.adding(days: 1), payee: "SGH",
+        XCTAssertNil(Dedup.coveredBy(amountCents: 3817, currency: "SGD", direction: "outflow",
+                                     date: day, payee: "HVC",
+                                     in: [spend(3817, payee: "HVC")], taken: []))
+        XCTAssertNil(Dedup.coveredBy(amountCents: 3817, currency: "USD", direction: "outflow",
+                                     date: day, payee: "HVC", in: record, taken: []))
+        XCTAssertNil(Dedup.coveredBy(amountCents: 3818, currency: "SGD", direction: "outflow",
+                                     date: day, payee: "HVC", in: record, taken: []))
+        XCTAssertNil(Dedup.coveredBy(amountCents: 3817, currency: "SGD", direction: "outflow",
+                                     date: day.adding(days: 1), payee: "HVC",
                                      in: record, taken: []))
         // two real purchases at one amount on one day: the payee still has to agree
-        XCTAssertNil(Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
+        XCTAssertNil(Dedup.coveredBy(amountCents: 3817, currency: "SGD", direction: "outflow",
                                      date: day, payee: "NTUC", in: record, taken: []))
     }
 
     func test_one_record_spend_covers_one_alert() {
-        let record = [spend(payee: "SGH"), spend(payee: "SGH")]
-        let first = Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
-                                    date: day, payee: "SGH", in: record, taken: [])
+        let record = [spend(payee: "HVC"), spend(payee: "HVC")]
+        let first = Dedup.coveredBy(amountCents: 3817, currency: "SGD", direction: "outflow",
+                                    date: day, payee: "HVC", in: record, taken: [])
         XCTAssertEqual(first, 0)
-        let second = Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
-                                     date: day, payee: "SGH", in: record, taken: [0])
+        let second = Dedup.coveredBy(amountCents: 3817, currency: "SGD", direction: "outflow",
+                                     date: day, payee: "HVC", in: record, taken: [0])
         XCTAssertEqual(second, 1, "the second alert takes the next row, not the taken one")
-        XCTAssertNil(Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
-                                     date: day, payee: "SGH", in: record, taken: [0, 1]))
+        XCTAssertNil(Dedup.coveredBy(amountCents: 3817, currency: "SGD", direction: "outflow",
+                                     date: day, payee: "HVC", in: record, taken: [0, 1]))
     }
 
     func test_empty_payee_never_covers() {
-        XCTAssertNil(Dedup.coveredBy(amountCents: 4453, currency: "SGD", direction: "outflow",
+        XCTAssertNil(Dedup.coveredBy(amountCents: 3817, currency: "SGD", direction: "outflow",
                                      date: day, payee: "",
-                                     in: [spend(payee: "SGH")], taken: []))
+                                     in: [spend(payee: "HVC")], taken: []))
     }
 }
 
@@ -469,7 +469,7 @@ final class AmountAndDateTests: XCTestCase {
     }
 
     func test_amount_currencies() {
-        XCTAssertEqual(Amounts.read("SGD44.53")?.currency, "SGD")
+        XCTAssertEqual(Amounts.read("SGD38.17")?.currency, "SGD")
         XCTAssertEqual(Amounts.read("S$4.50")?.currency, "SGD")
         XCTAssertEqual(Amounts.read("$4.50")?.currency, "SGD")
         XCTAssertEqual(Amounts.read("US$9.00")?.currency, "USD")
