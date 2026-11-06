@@ -135,13 +135,19 @@ describe("InputsEditor", () => {
     expect(screen.getAllByRole("row", { name: /Income row/ })).toHaveLength(1);
   });
 
-  it("adds and removes investing steps", () => {
-    render(<Editor />);
+  it("adds an investing step, and removes the one asked for, the others keeping their figures", () => {
+    const seen = vi.fn();
+    render(<Editor seen={seen} />);
     fireEvent.click(screen.getByRole("button", { name: /Add step/ }));
     expect(screen.getByRole("group", { name: "Investing step 3" })).toBeInTheDocument();
+    expect((seen.mock.calls.at(-1)![0] as Draft).investing).toHaveLength(3);
     fireEvent.click(screen.getByRole("button", { name: "Remove investing step 1" }));
     expect(screen.queryByRole("group", { name: "Investing step 3" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("group", { name: /^Investing step/ })).toHaveLength(2);
+    // the first step (300 a month from the start) went; the old second one is step 1 now, and the new blank one step 2
+    expect((seen.mock.calls.at(-1)![0] as Draft).investing).toEqual([
+      { from: "2026-07", amount: "450.50" }, { from: expect.stringMatching(/^\d{4}-\d{2}$/), amount: "" },
+    ]);
+    expect(screen.getByLabelText("Amount a month (S$), investing step 1")).toHaveValue("450.50");
   });
 
   it("puts what is wrong under the row it is about, and marks the box", () => {

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ForwardChart, ForwardViewCard, lowPoint, points, underZero } from "./ForwardView";
 import { json, useSizedCharts } from "../test-helpers";
@@ -144,6 +144,7 @@ describe("forward view", () => {
 });
 
 describe("a forward view that does not load", () => {
+  useSizedCharts();
   const result = {
     id: "forward-view", title: "Forward view to Feb 2027", chart: { type: "line", x: "month", series: ["cash_minor"], source: "months", unit: "sgd_minor" },
     data: { months, low_point: { month: "2027-01", cash_minor: 123_456 }, below_zero: [] }, findings: [], caveats: [],
@@ -152,11 +153,14 @@ describe("a forward view that does not load", () => {
   it("says why, and Try again asks the server again and draws the chart", async () => {
     let up = false;
     vi.stubGlobal("fetch", vi.fn(async () => up ? json(result) : json({ error: "The stats are being rebuilt." }, 500)));
-    render(<ForwardViewCard />);
+    const { container } = render(<ForwardViewCard />);
     expect(await screen.findByRole("alert")).toHaveTextContent("The stats are being rebuilt.");
     up = true;
     fireEvent.click(screen.getByRole("button", { name: "Try again" }));
     expect(await screen.findByRole("heading", { name: "Forward view to Feb 2027" })).toBeInTheDocument();
+    // the chart itself is drawn, not only the card around it
+    await waitFor(() => expect(container.querySelector(".recharts-reference-dot")).not.toBeNull());
+    expect(screen.getByRole("img", { name: "Cash by month to Feb 2027, lowest S$1,235 in Jan 2027" })).toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
