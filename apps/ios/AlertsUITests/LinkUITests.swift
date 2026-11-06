@@ -53,18 +53,28 @@ final class LinkUITests: XCTestCase {
     /// 2026", so a row from another year reads right), the amount as
     /// "SGD12.50" and the payee in capitals.
     private func recordSpend() async throws -> (day: String, amount: String, payee: String) {
-        var url = URLComponents(url: hub.appendingPathComponent("api/transactions"),
-                                resolvingAgainstBaseURL: false)!
-        url.queryItems = [URLQueryItem(name: "limit", value: "200")]
-        let (data, _) = try await URLSession.shared.data(from: try XCTUnwrap(url.url))
-        let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        let rows = body?["rows"] as? [[String: Any]] ?? []
         let plain = try NSRegularExpression(pattern: "^[A-Za-z][A-Za-z ]{2,30}$")
-        let row = try XCTUnwrap(rows.first { r in
+        func usable(_ r: [String: Any]) -> Bool {
             let payee = r["payee"] as? String ?? ""
             return r["currency"] as? String == "SGD" && (r["amount"] as? Int ?? 0) < 0
                 && plain.firstMatch(in: payee, range: NSRange(payee.startIndex..., in: payee)) != nil
-        }, "no SGD spend with a plain payee in the hub's record")
+        }
+        // newest first, a page at a time, until a usable row or the end
+        var found: [String: Any]?
+        var offset = 0
+        while found == nil {
+            var url = URLComponents(url: hub.appendingPathComponent("api/transactions"),
+                                    resolvingAgainstBaseURL: false)!
+            url.queryItems = [URLQueryItem(name: "limit", value: "200"),
+                              URLQueryItem(name: "offset", value: String(offset))]
+            let (data, _) = try await URLSession.shared.data(from: try XCTUnwrap(url.url))
+            let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let rows = body?["rows"] as? [[String: Any]] ?? []
+            found = rows.first(where: usable)
+            offset += rows.count
+            if rows.isEmpty || offset >= body?["total"] as? Int ?? 0 { break }
+        }
+        let row = try XCTUnwrap(found, "no SGD spend with a plain payee in the hub's record")
         let read = DateFormatter()
         read.locale = Locale(identifier: "en_US_POSIX")
         read.timeZone = TimeZone(identifier: "UTC")
