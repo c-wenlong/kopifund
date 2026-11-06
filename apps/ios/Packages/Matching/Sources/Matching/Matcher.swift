@@ -356,9 +356,13 @@ public enum Matcher {
         // a tagged card or account is part of the pattern's identity: the
         // digits inside literals flex for references, so the hint is what
         // separates "card ending 1234" from "card ending 5678"
-        if p.segments.contains(.accountHint),
-           let expected = expectedHint(for: p, re: re), trimmedHint != expected {
-            return .failure(MatchError("different card or account"))
+        // G24: a tagged card the sample no longer yields fails closed: a
+        // skipped check would let another card's alerts in
+        if p.segments.contains(.accountHint) {
+            guard let expected = expectedHint(for: p, re: re) else {
+                return .failure(MatchError("the sample's card could not be read"))
+            }
+            if trimmedHint != expected { return .failure(MatchError("different card or account")) }
         }
         return .success(ParsedTransaction(payee: py, amount: parsed.magnitude, date: date,
                                           direction: p.direction, accountHint: trimmedHint,
@@ -394,10 +398,11 @@ public enum Matcher {
     static let restartTries = 4
 
     /// The account or card number the sample printed, recovered by running
-    /// the same regex on it: the value a later alert's hint must equal.
+    /// the same search on it, retries included: the value a later alert's
+    /// hint must equal.
     private static func expectedHint(for p: AlertPattern, re: NSRegularExpression) -> String? {
         let ns = p.sampleText as NSString
-        guard case .found(let m) = search(re, in: p.sampleText) else { return nil }
+        guard case .found(let m) = searchFromEachStart(p, re, in: p.sampleText) else { return nil }
         let r = m.range(withName: "accountHint")
         guard r.location != NSNotFound else { return nil }
         return ns.substring(with: r).trimmingCharacters(in: .whitespacesAndNewlines)

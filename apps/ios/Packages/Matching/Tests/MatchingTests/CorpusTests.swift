@@ -432,4 +432,19 @@ final class CorpusTests: XCTestCase {
         }
         XCTAssertEqual(r.payee, "ST. CLEMENT BAKERY")
     }
+
+    /// Review on #112: a sample holding a cut-off alert ahead of the one
+    /// tagged still yields its card, so another card's alert is refused.
+    func test_a_cut_off_sample_still_pins_its_card() throws {
+        var t = Self.walletPreTagged
+        let cut = "Date & Time:\n12 Oct 14:05 (SGT)\nAmount:\nSGD4.50\n"
+        t.sample = cut + Self.wallet()
+        let p = try Self.teach(t)
+        guard case .success = Self.read(p, Self.wallet(merchant: "TOAST CORNER")) else {
+            return XCTFail("the same mobile should read")
+        }
+        guard case .failure = Self.read(p, Self.wallet(mobile: "9001")) else {
+            return XCTFail("another mobile should not read")
+        }
+    }
 }
