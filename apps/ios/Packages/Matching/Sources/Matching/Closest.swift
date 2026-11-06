@@ -19,23 +19,28 @@ public struct ClosestPattern: Equatable, Sendable {
 
 extension Matcher {
 
-    /// The saved pattern that reads the most of `text` before it stops, and
-    /// where it stopped. Ties go to the higher priority, as matching does.
+    /// The saved pattern that reads the most fields of `text` before it
+    /// stops, and where it stopped; then the one that reads the most
+    /// anchors, then the higher priority, as matching ranks. Ignored
+    /// stretches are no progress: one matches any text, so a pattern the
+    /// builder opened with one would otherwise come "closest" to anything.
     /// Nil when no pattern reads even its first anchor, or one reads the
     /// whole alert (then it is no miss).
     public static func closest(text: String, source: String?, receivedAt: Date,
                                zone: TimeZone = .current, arrivedOn: CalendarDate? = nil,
                                patterns: [AlertPattern]) -> ClosestPattern? {
         var best: ClosestPattern?
-        var bestDepth = 0
+        var bestRank = (fields: 0, anchors: 0)
         for p in patterns.sorted(by: { $0.priority > $1.priority }) {
-            let (problem, depth, fields) = explain(p, text: text, source: source,
-                                                   receivedAt: receivedAt, zone: zone,
-                                                   arrivedOn: arrivedOn) ?? ("", 0, 0)
+            guard let (problem, depth, fields) = explain(p, text: text, source: source,
+                                                         receivedAt: receivedAt, zone: zone,
+                                                         arrivedOn: arrivedOn)
             // a pattern that reads the alert whole leaves nothing to explain
-            if problem.isEmpty { return nil }
-            if depth > bestDepth {
-                bestDepth = depth
+            else { return nil }
+            let anchors = p.segments[..<depth].filter { $0 != .ignore }.count
+            guard anchors > 0 else { continue }
+            if fields > bestRank.fields || (fields == bestRank.fields && anchors > bestRank.anchors) {
+                bestRank = (fields, anchors)
                 best = ClosestPattern(patternID: p.id, patternName: p.name,
                                       problem: problem, fieldsRead: fields)
             }
@@ -45,10 +50,15 @@ extension Matcher {
 
     /// Why `p` does not read `text`, as the field it stops at ("payee not
     /// found after 'To:'"); nil when it reads it. The builder's live test
-    /// says this instead of a bare "text does not match".
+    /// says this instead of a bare "text does not match". A pasted text has
+    /// no source, so the source filter is left out: it would hide the
+    /// field's own refusal behind "source lacks".
     public static func whyNot(_ p: AlertPattern, text: String, receivedAt: Date = Date(),
-                              zone: TimeZone = .current) -> String? {
-        explain(p, text: text, source: nil, receivedAt: receivedAt, zone: zone, arrivedOn: nil)?.0
+                              zone: TimeZone = .current, arrivedOn: CalendarDate? = nil) -> String? {
+        var textOnly = p
+        textOnly.sourceMatch = nil
+        return explain(textOnly, text: text, source: nil, receivedAt: receivedAt, zone: zone,
+                       arrivedOn: arrivedOn)?.0
     }
 
     /// Where one pattern stops on `text`: the problem, how many segments
@@ -133,7 +143,6 @@ extension TagDraft {
         guard let re = try? Matcher.cachedExpression(for: p),
               case .found(let m) = Matcher.searchFromEachStart(p, re, in: p.sampleText)
         else { return nil }
-        let ns = p.sampleText as NSString
         var groups: [(String, Field)] = [("amount", .amount), ("payee", .payee),
                                          ("accountHint", .account)]
         let dates = p.segments.filter { if case .date = $0 { return true }; return false }.count
@@ -143,13 +152,37 @@ extension TagDraft {
             let r = m.range(withName: name)
             guard r.location != NSNotFound,
                   let range = Range(r, in: p.sampleText) else { continue }
-            _ = ns
             for (i, t) in tokens.enumerated() where t.kind != .whitespace
                 && t.range.overlaps(range) {
                 d.tags[i] = field
             }
         }
         return d
+    }
+
+    /// A saved pattern back in the builder: the tags to show, the anchor
+    /// edits on top of their build, and, when those cannot rebuild the
+    /// pattern exactly, the saved segments themselves. Tags cannot carry
+    /// an ignored stretch the owner tagged, and a pattern whose borders
+    /// were edited to read a newer alert may no longer read its own sample
+    /// (then the tags are the detector's). Either way `kept` holds the
+    /// saved segments, which stay the pattern while the tags are untouched,
+    /// so an edit of the name or a setting never changes what it reads.
+    public static func restoring(_ p: AlertPattern, tokens: [Token]) -> RestoredPattern {
+        let detected = TagDraft.detected(in: p.sampleText, tokens: tokens)
+        var draft = detected
+        if let r = restored(from: p, tokens: tokens) {
+            draft.tags = r.tags
+            for i in r.tags.keys { draft.suggestions[i] = nil }
+            if let rebuilt = try? PatternBuilder.segments(in: p.sampleText, tokens: tokens,
+                                                          spans: draft.spans(tokens: tokens)) {
+                let edits = anchorEdits(from: p, rebuilt: rebuilt)
+                if (try? PatternAnchors.applying(edits, to: rebuilt)) == p.segments {
+                    return RestoredPattern(draft: draft, edits: edits, kept: nil)
+                }
+            }
+        }
+        return RestoredPattern(draft: draft, edits: [], kept: p.segments)
     }
 
     /// The anchor edits that turn the tags' fresh build back into `p`'s
@@ -169,5 +202,25 @@ extension TagDraft {
             }
         }
         return edits
+    }
+}
+
+/// G24: a saved pattern reopened in the builder (`TagDraft.restoring`).
+public struct RestoredPattern: Equatable, Sendable {
+    /// The tags and suggestions the builder opens on.
+    public var draft: TagDraft
+    /// Anchor edits on top of the tags' build.
+    public var edits: [PatternAnchors.Edit]
+    /// The saved segments, when the tags cannot rebuild them exactly.
+    public var kept: [AlertPattern.Segment]?
+
+    /// What the anchor edits apply to: the kept segments while `tags` are
+    /// still the ones restored, else what the tags build. A re-tag is the
+    /// owner rebuilding the pattern from the sample.
+    public func base(for tags: [Int: PatternBuilder.Field], text: String,
+                     tokens: [Token]) throws -> [AlertPattern.Segment] {
+        if let kept, tags == draft.tags { return kept }
+        return try PatternBuilder.segments(in: text, tokens: tokens,
+                                           spans: PatternBuilder.spans(from: tags, tokens: tokens))
     }
 }

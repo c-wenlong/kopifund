@@ -115,3 +115,112 @@ private func closest(_ text: String, _ patterns: [AlertPattern] = [wallet, card]
             == "payee not found after 'To:'")
     #expect(Matcher.whyNot(wallet, text: "Wallet payment\nYou paid SGD 9.10\nTo: LAMP SHOP\nRef E5005") == nil)
 }
+
+// MARK: - review fixes
+
+private func tagged(_ text: String, _ field: (String) -> PatternBuilder.Field?)
+    -> (tokens: [Token], tags: [Int: PatternBuilder.Field]) {
+    let tokens = Tokenizer.tokenize(text)
+    var tags: [Int: PatternBuilder.Field] = [:]
+    for (i, t) in tokens.enumerated() where t.kind != .whitespace {
+        if let f = field(t.text) { tags[i] = f }
+    }
+    return (tokens, tags)
+}
+
+@Test func anIgnoredStretchSurvivesReopeningThePattern() throws {
+    // two anchors split by an ignored reference: tags cannot carry the
+    // ignore, so the saved segments stay the pattern until a re-tag
+    let text = "Paid SGD 4.20 ref A1001 To: SHOP"
+    let (tokens, tags) = tagged(text) {
+        switch $0 {
+        case "SGD", "4.20": return .amount
+        case "A1001": return .ignore
+        case "SHOP": return .payee
+        default: return nil
+        }
+    }
+    let segs = try PatternBuilder.segments(in: text, tokens: tokens,
+                                           spans: PatternBuilder.spans(from: tags, tokens: tokens))
+    #expect(segs.contains(.ignore))
+    let saved = AlertPattern(name: "Demo Shop", direction: .outflow, accountID: "",
+                             segments: segs, sampleText: text)
+
+    let r = TagDraft.restoring(saved, tokens: tokens)
+    #expect(r.kept == segs)
+    #expect(r.edits.isEmpty)
+    #expect(try r.base(for: r.draft.tags, text: text, tokens: tokens) == segs)
+    // a re-tag rebuilds from the sample
+    var retagged = r.draft.tags
+    retagged[tokens.firstIndex { $0.text == "A1001" }!] = .ignore
+    #expect(try r.base(for: retagged, text: text, tokens: tokens) == segs)
+}
+
+@Test func bordersEditedPastTheSampleSurviveReopening() throws {
+    // the owner changed "To:" to "Paid to:" for a newer alert, so the
+    // pattern no longer reads its own sample
+    let text = "Wallet payment\nYou paid SGD 4.20\nTo: KOPI CORNER\nRef A1001"
+    let tokens = Tokenizer.tokenize(text)
+    let fresh = try PatternBuilder.segments(
+        in: text, tokens: tokens,
+        spans: TagDraft.detected(in: text, tokens: tokens).spans(tokens: tokens))
+    let segs = try PatternAnchors.applying(
+        [.init(field: .payee, side: .before, text: "Paid to: ")], to: fresh)
+    let saved = AlertPattern(name: "Demo Wallet", direction: .outflow, accountID: "",
+                             segments: segs, sampleText: text)
+    #expect(TagDraft.restored(from: saved, tokens: tokens) == nil)
+
+    let r = TagDraft.restoring(saved, tokens: tokens)
+    #expect(r.kept == segs)
+    #expect(try r.base(for: r.draft.tags, text: text, tokens: tokens) == segs)
+}
+
+@Test func anExactlyRestoredPatternKeepsNothingAside() throws {
+    let text = "Wallet payment\nYou paid SGD 4.20\nTo: KOPI CORNER\nRef A1001"
+    let tokens = Tokenizer.tokenize(text)
+    let built = try PatternBuilder.segments(
+        in: text, tokens: tokens,
+        spans: TagDraft.detected(in: text, tokens: tokens).spans(tokens: tokens))
+    let saved = AlertPattern(name: "Demo Wallet", direction: .outflow, accountID: "",
+                             segments: built, sampleText: text)
+    #expect(TagDraft.restoring(saved, tokens: tokens).kept == nil)
+}
+
+@Test func aLeadingIgnoreIsNoProgress() {
+    // the builder opens a pattern on an ignore when it drops a greeting;
+    // that alone reads any text and must not make the pattern "closest"
+    var greeted = wallet
+    greeted.segments = [.ignore] + wallet.segments
+    #expect(closest("Your sign-in code is 482913. It expires in 10 minutes.", [greeted]) == nil)
+}
+
+@Test func moreFieldsReadBeatsMoreAnchorsRead() {
+    // `wordy` reads three anchors and no field; `wallet` reads its amount
+    let wordy = AlertPattern(
+        name: "Demo Wordy", direction: .outflow, accountID: "", priority: 5,
+        segments: [.literal("Wallet"), .ignore, .literal("payment"), .ignore, .literal("You"),
+                   .ignore, .literal("Paid to:"), .payee, .literal("Ref"), .amount],
+        sampleText: "")
+    let c = closest("Wallet payment\nYou paid SGD 9.10\nTo LAMP SHOP\nRef E5005", [wordy, wallet])
+    #expect(c?.patternID == wallet.id)
+}
+
+@Test func theLiveTestIgnoresTheSourceFilter() {
+    var sourced = wallet
+    sourced.sourceMatch = "wallet-mail"
+    #expect(Matcher.whyNot(sourced, text: "Wallet payment\nYou paid KWD 9.105\nTo: LAMP SHOP\nRef E5005")
+            == "amount KWD 9.105 has 3 decimals; the app keeps cents")
+}
+
+@Test func theLiveTestReadsAYearlessDateOnTheDayItArrived() throws {
+    let dated = AlertPattern(
+        name: "Demo Dated", direction: .outflow, accountID: "",
+        segments: [.literal("On "), .date(.ddMmm), .literal(" you paid "), .amount,
+                   .literal(" to "), .payee, .literal("\nEnd")],
+        sampleText: "On 12 Oct you paid SGD 4.20 to KOPI CORNER\nEnd")
+    let text = "On 29 Feb you paid SGD 9.10 to LAMP SHOP\nEnd"
+    let leap = try #require(CalendarDate(year: 2028, month: 3, day: 2))
+    let plain = try #require(CalendarDate(year: 2027, month: 3, day: 2))
+    #expect(Matcher.whyNot(dated, text: text, arrivedOn: leap) == nil)
+    #expect(Matcher.whyNot(dated, text: text, arrivedOn: plain) == "date not readable")
+}

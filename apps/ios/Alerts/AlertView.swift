@@ -152,7 +152,8 @@ struct AlertView: View {
                 // the builder opens on the pattern's own sample, with this
                 // alert in the live test so the fix shows as it is made
                 PatternBuilderView(sampleText: p.sampleText, source: p.sourceMatch,
-                                   editing: p, initialTestText: record.text) {
+                                   editing: p, initialTestText: record.text,
+                                   initialTestArrivedOn: record.arrivedOn) {
                     Task {
                         let (toast, moved) = await rematch()
                         onFinished(toast, moved)
