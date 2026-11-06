@@ -80,6 +80,16 @@ describe("Scam checks card", () => {
         abroad_min: 2_000, test_max: 150, test_days: 7, twice_min: 2_000, new_sub_days: 60 });
   });
 
+  it("takes an amount written as .5, as every other money box does", async () => {
+    stubFetch();
+    render(<Settings />);
+    fireEvent.change(await screen.findByRole("textbox", { name: "Test charge up to" }), { target: { value: ".5" } });
+    expect(screen.getByRole("textbox", { name: "Test charge up to" })).not.toHaveAttribute("aria-invalid");
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(posts.some((p) => p.url === "/api/scam-checks/settings")).toBe(true));
+    expect(JSON.parse(posts.find((p) => p.url === "/api/scam-checks/settings")!.body!).test_max).toBe(50);
+  });
+
   it("refuses a count that is not a whole number before sending it", async () => {
     stubFetch();
     render(<Settings />);

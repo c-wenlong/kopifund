@@ -11,6 +11,7 @@ import { SaveBar } from "../components/SaveBar";
 import { useAction } from "../components/useAction";
 import { useDraft } from "../components/useDraft";
 import { Select } from "../components/Select";
+import { TextInput } from "../components/TextInput";
 import type { AiKey, AiSettings, AiTest } from "../types.gen";
 
 // G22: a provider is one of `providers`, or a custom one config.toml names (shown by its name, and set up
@@ -197,9 +198,8 @@ function KeyRow({ provider, keyInfo }: { provider: string; keyInfo: AiKey | null
         </div>
       ) : (
         <form className="flex flex-wrap items-center gap-2" onSubmit={(e) => { e.preventDefault(); void saveKey(); }}>
-          <input type="password" aria-label="API key" value={text} onChange={(e) => setText(e.target.value)}
-            autoComplete="off" spellCheck={false} autoFocus={typing}
-            className="h-8 min-w-0 flex-1 rounded-md border border-line bg-panel px-2 text-[13px]" />
+          <TextInput type="password" aria-label="API key" value={text} onChange={(e) => setText(e.target.value)}
+            autoComplete="off" spellCheck={false} autoFocus={typing} className="min-w-0 flex-1 text-[13px]" />
           <Button type="submit" variant="primary" disabled={busy || !text.trim()}>Save key</Button>
           {has && <Button onClick={() => { setTyping(false); setText(""); }} disabled={busy}>Cancel</Button>}
         </form>

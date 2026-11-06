@@ -1,4 +1,4 @@
-import { axisSgd, centsText, formatAmount, formatSgd, parseCents, unformatMoney, wholeDollars } from "./money";
+import { axisSgd, centsText, formatAmount, formatSgd, isAmountText, parseCents, unformatMoney, wholeDollars } from "./money";
 import { fmt } from "./stats/hint";
 import { CENTS_UNIT } from "./stats/money";
 import { isMoneyText } from "./components/MoneyInput";
@@ -133,6 +133,16 @@ describe("one money-text grammar", () => {
       const finer = /\.\d{2}\d*[1-9]/.test(unformatMoney(t));
       expect(isMoneyText(t), t).toBe(c !== null && (!Number.isNaN(c) || finer));
     }
+  });
+});
+
+// Audit: the one rule a money box that must hold an amount checks (Settings' thresholds)
+describe("isAmountText", () => {
+  it("takes what parseCents reads as cents, .5 and 12. included", () => {
+    for (const t of ["12", "12.", ".5", "1,234.56", "0", "1.500"]) expect(isAmountText(t), t).toBe(true);
+  });
+  it("refuses empty, finer than a cent, and what is not dollars and cents", () => {
+    for (const t of ["", " ", ".", "12.345", "-5", "abc", "1.2.3"]) expect(isAmountText(t), t).toBe(false);
   });
 });
 
