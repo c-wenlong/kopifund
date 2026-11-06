@@ -25,7 +25,7 @@ final class PatternBuilderUITests: XCTestCase {
         """
 
     private func openBuilder(_ app: XCUIApplication) {
-        app.tabBars.buttons["Patterns"].tap()
+        openTab("Patterns", in: app)
         app.buttons["plus"].waitForExistence(timeout: 5)
         app.buttons["plus"].tap()
         let editor = app.textViews.firstMatch
