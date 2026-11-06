@@ -21,7 +21,6 @@ struct TransactionDetailView: View {
     var body: some View {
         Form {
             Section("Transaction") {
-                if row.state == "synced" { EmptyView() }
                 TextField("Payee", text: $row.payee)
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
