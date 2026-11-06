@@ -281,7 +281,7 @@ public enum Matcher {
     /// share safely off the main actor.
     private static let expressions = ExpressionCache()
 
-    private static func cachedExpression(for p: AlertPattern) throws -> NSRegularExpression {
+    static func cachedExpression(for p: AlertPattern) throws -> NSRegularExpression {
         // the length prefix keeps a literal's text unambiguous in the key
         let key = p.segments.map { seg -> String in
             switch seg {
@@ -375,7 +375,7 @@ public enum Matcher {
     /// place the template opens (`restart`), at most `restartTries` of them:
     /// a text holding a cut-off alert ahead of a whole one reads the whole
     /// one, where the skips between fields may not cross an opening.
-    private static func searchFromEachStart(_ p: AlertPattern, _ re: NSRegularExpression,
+    static func searchFromEachStart(_ p: AlertPattern, _ re: NSRegularExpression,
                                             in text: String) -> Search {
         let first = search(re, in: text)
         guard case .none = first, let stop = restart(of: p),

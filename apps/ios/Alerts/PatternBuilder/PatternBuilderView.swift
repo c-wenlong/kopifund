@@ -21,6 +21,13 @@ struct PatternBuilderView: View {
     /// The day a saved alert arrived, so the preview reads its yearless
     /// date as intake will on save; nil for a new sample (read as today).
     var arrivedOn: CalendarDate? = nil
+    /// G24: a saved pattern to change instead of a new one: its tags come
+    /// back on its own sample, and Save writes over it.
+    var editing: AlertPattern? = nil
+    /// The alert the live test starts with (the one an edit is for), and
+    /// the day it arrived, so its yearless date reads as rematching will.
+    var initialTestText = ""
+    var initialTestArrivedOn: CalendarDate? = nil
     var onSaved: (() -> Void)? = nil
 
     @Environment(\.modelContext) private var context
@@ -51,6 +58,12 @@ struct PatternBuilderView: View {
     @State private var anchorEdits: [PatternAnchors.Edit] = []
     // keeps a store refresh from re-keying the tab under this draft
     @State private var draftHold = SyncService.DraftHold()
+    // an edited pattern's borders, kept through the re-tag its restored
+    // tags trigger (a re-tag otherwise starts the edits over)
+    @State private var restoringEdits: [PatternAnchors.Edit]?
+    // the pattern being edited as it came back; its saved segments stay
+    // the pattern while its tags are untouched (`RestoredPattern.base`)
+    @State private var restoredPattern: RestoredPattern?
 
     // tokenized once per alert text, not per access: as a computed property
     // every render re-tokenized the alert once per word, so a 4 KB email
@@ -72,11 +85,35 @@ struct PatternBuilderView: View {
         tokens = Tokenizer.tokenize(sampleText)
         // on open the confident guesses land as tags and the rest stay dashed
         draft = TagDraft.detected(in: sampleText, tokens: tokens)
+        if let p = editing { restore(p) }
         selected = TagDraft.nextMissing(in: spans) ?? .amount
         dimmed = AlertText.boilerplateTokenIndexes(in: sampleText, tokens: tokens)
         // nothing tappable lays out no atom, so no frame would end the
         // interval: a blank paste ends it here
         if !tokens.contains(where: \.isTappable) { endOpenInterval(atoms: 0) }
+    }
+
+    /// The pattern being edited, back in the builder: its tags, its
+    /// borders and every setting. The detector's guesses stay as dashed
+    /// suggestions beside the restored tags. A pattern its tags cannot
+    /// rebuild (an ignored stretch, or borders edited past its own sample)
+    /// keeps its saved segments until the owner re-tags.
+    private func restore(_ p: AlertPattern) {
+        let r = TagDraft.restoring(p, tokens: tokens)
+        restoredPattern = r
+        draft = r.draft
+        anchorEdits = r.edits
+        restoringEdits = r.edits
+        name = p.name
+        autoName = p.name
+        nameTouched = true
+        direction = p.direction
+        accountID = p.accountID
+        defaultCategoryID = p.defaultCategoryID ?? ""
+        sourceMatch = p.sourceMatch ?? ""
+        priority = p.priority
+        autoApprove = p.autoApprove
+        testText = initialTestText
     }
 
     private func endOpenInterval(atoms: Int) {
@@ -115,7 +152,7 @@ struct PatternBuilderView: View {
             }
             .padding()
         }
-        .navigationTitle("New pattern")
+        .navigationTitle(editing == nil ? "New pattern" : "Edit pattern")
         .toolbar { progressBadge }
         // the floating tab bar stacked under the dock and the Save button
         // and together they hid a quarter of the screen; the builder is a
@@ -126,7 +163,8 @@ struct PatternBuilderView: View {
                         destination: DestinationState.shared.summary, onSave: save)
         }
         .onChange(of: draft.tags) {
-            anchorEdits = []
+            anchorEdits = restoringEdits ?? []
+            restoringEdits = nil
             // a re-tagged payee renames the pattern too, until the name
             // field itself has been edited
             if !nameTouched, let s = spans.first(where: { $0.field == .payee }) {
@@ -142,7 +180,7 @@ struct PatternBuilderView: View {
             prepare()
             loadAccounts()
             loadCategories()
-            if sourceMatch.isEmpty, let s = source { sourceMatch = s }
+            if editing == nil, sourceMatch.isEmpty, let s = source { sourceMatch = s }
         }
     }
 
@@ -233,7 +271,7 @@ struct PatternBuilderView: View {
     /// one too: the row keeps what the owner typed while the card above
     /// says why it cannot save, so the value to fix stays in view.
     private var anchorList: [PatternAnchors.Anchor] {
-        guard let segs = try? PatternBuilder.segments(in: sampleText, tokens: tokens, spans: spans),
+        guard let segs = try? baseSegments(),
               let shown = try? PatternAnchors.applying(anchorEdits, to: segs, check: false)
         else { return [] }
         return PatternAnchors.anchors(in: shown)
@@ -244,12 +282,21 @@ struct PatternBuilderView: View {
         anchorEdits.append(e)
     }
 
+    /// What the anchor edits apply to: the tags' build, or an edited
+    /// pattern's saved segments while its tags are as restored.
+    private func baseSegments() throws -> [AlertPattern.Segment] {
+        if let r = restoredPattern {
+            return try r.base(for: draft.tags, text: sampleText, tokens: tokens)
+        }
+        return try PatternBuilder.segments(in: sampleText, tokens: tokens, spans: spans)
+    }
+
     private func builtPattern() throws -> AlertPattern {
         // the builder refuses a field tagged twice and an unreadable date
         // span with a BuildError, shown below
-        let segs = try PatternAnchors.applying(
-            anchorEdits, to: PatternBuilder.segments(in: sampleText, tokens: tokens, spans: spans))
-        return AlertPattern(name: name.isEmpty ? "Untitled" : name, direction: direction,
+        let segs = try PatternAnchors.applying(anchorEdits, to: baseSegments())
+        return AlertPattern(id: editing?.id ?? UUID(),
+                            name: name.isEmpty ? "Untitled" : name, direction: direction,
                             accountID: accountID,
                             defaultCategoryID: defaultCategoryID.isEmpty ? nil : defaultCategoryID,
                             sourceMatch: sourceMatch.isEmpty ? nil : sourceMatch,
@@ -271,7 +318,9 @@ struct PatternBuilderView: View {
             // sample pasted verbatim into Live test must still report there
             for (i, text) in ([sampleText] + (testText.isEmpty ? [] : [testText])).enumerated() {
                 let live = i > 0
-                switch Matcher.test(p, text: text, arrivedOn: live ? nil : arrivedOn) {
+                // the alert an edit is for reads on the day it arrived
+                let day = live ? (text == initialTestText ? initialTestArrivedOn : nil) : arrivedOn
+                switch Matcher.test(p, text: text, arrivedOn: day) {
                 case .success(let t):
                     if live {
                         testResult = "test alert reads \(t.payee) · \(t.amount) · \(t.date.formatted(date: .abbreviated, time: .omitted))"
@@ -279,7 +328,9 @@ struct PatternBuilderView: View {
                         matched = t
                     }
                 case .failure(let e):
-                    testResult = live ? "test alert: no match, \(e.reason)"
+                    // G24: the field the live alert stops at, not a bare
+                    // "text does not match"
+                    testResult = live ? "test alert: no match, \(Matcher.whyNot(p, text: text, arrivedOn: day) ?? e.reason)"
                                       : "the pattern does not read this alert, \(e.reason)"
                 }
             }
@@ -293,7 +344,7 @@ struct PatternBuilderView: View {
 
     private func loadAccounts() {
         accountOptions = YNABCache.accounts(in: context, planID: planID).map { ($0.id, $0.name) }
-        if accountID.isEmpty {
+        if accountID.isEmpty, editing == nil {
             accountID = UserDefaults.standard.string(forKey: "defaultAccountID") ?? ""
         }
     }
@@ -305,7 +356,14 @@ struct PatternBuilderView: View {
 
     private func save() {
         do {
-            context.insert(PatternRecord(try builtPattern()))
+            let p = try builtPattern()
+            let id = p.id
+            if editing != nil, let saved = try context.fetch(FetchDescriptor<PatternRecord>(
+                predicate: #Predicate { $0.id == id })).first {
+                saved.update(p)
+            } else {
+                context.insert(PatternRecord(p))
+            }
             try context.save()
             onSaved?()
             dismiss()

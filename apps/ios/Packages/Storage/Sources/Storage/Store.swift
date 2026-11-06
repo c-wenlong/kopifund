@@ -54,6 +54,20 @@ public final class PatternRecord {
         sampleText = p.sampleText
     }
 
+    /// G24: an edited pattern written over its saved record; the id stays,
+    /// so its queued rows still name it.
+    public func update(_ p: AlertPattern) {
+        name = p.name
+        direction = p.direction.rawValue
+        accountID = p.accountID
+        defaultCategoryID = p.defaultCategoryID
+        sourceMatch = p.sourceMatch
+        priority = p.priority
+        autoApprove = p.autoApprove
+        segmentsData = (try? JSONEncoder().encode(p.segments)) ?? Data()
+        sampleText = p.sampleText
+    }
+
     public var pattern: AlertPattern? {
         guard let dir = AlertPattern.Direction(rawValue: direction),
               let segs = try? JSONDecoder().decode([AlertPattern.Segment].self, from: segmentsData)
