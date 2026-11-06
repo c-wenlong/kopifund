@@ -15,34 +15,7 @@ struct PasteAlertSheet: View {
     var body: some View {
         NavigationStack {
             VStack(alignment: .leading, spacing: 12) {
-                ZStack(alignment: .topLeading) {
-                    // TextEditor shows nothing when empty; a hint is needed
-                    if text.isEmpty {
-                        Text("Paste alert text")
-                            .foregroundStyle(.tertiary)
-                            .padding(.horizontal, 5).padding(.vertical, 8)
-                            .allowsHitTesting(false)
-                    }
-                    TextEditor(text: $text)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .scrollContentBackground(.hidden)
-                        .accessibilityIdentifier("pasteAlertText")
-                }
-                .padding(8)
-                .frame(minHeight: 220)
-                .background(Color(.secondarySystemGroupedBackground))
-                .clipShape(RoundedRectangle(cornerRadius: 12))
-
-                Button {
-                    if let s = UIPasteboard.general.string { text = s }
-                } label: {
-                    Label("Paste from clipboard", systemImage: "doc.on.clipboard")
-                }
-                // always enabled: a clipboard filled in another app while
-                // the sheet stays open redraws nothing here, so a check
-                // read at render could stay stale; an empty one changes
-                // nothing
+                PasteEditor(text: $text)
                 Spacer()
             }
             .padding()
