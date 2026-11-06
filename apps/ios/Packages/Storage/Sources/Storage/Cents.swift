@@ -69,7 +69,7 @@ extension Cents {
         // a phone set to a comma-decimal region types "5,80" on the decimal
         // pad; a lone comma is that separator (no thousands grouping is typed)
         if !t.contains("."), t.filter({ $0 == "," }).count == 1 { t = t.replacingOccurrences(of: ",", with: ".") }
-        guard !t.isEmpty, t.allSatisfy({ $0.isASCII && ($0.isNumber || $0 == "." || $0 == ",") }),
+        guard !t.isEmpty, t.allSatisfy({ $0.isASCII && ($0.isNumber || $0 == ".") }),
               t.filter({ $0 == "." }).count <= 1,
               let d = Decimal(string: t, locale: Locale(identifier: "en_US_POSIX"))
         else { return nil }
