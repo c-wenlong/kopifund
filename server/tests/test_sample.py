@@ -25,7 +25,7 @@ from unittest import mock
 
 import importlib.util
 
-from finance import sample
+from finance import atomic, sample
 
 FIXTURES = Path(__file__).parent / "fixtures"
 ROOT = Path(__file__).resolve().parent.parent
@@ -278,11 +278,11 @@ class TheCommand(unittest.TestCase):
         code, _, err = self.run_cli(str(self.pdf), "--out", str(self.dir))
         self.assertEqual(code, 3)
         self.assertIn("is a folder", err)
-        with mock.patch.object(sample.tempfile, "mkstemp", side_effect=PermissionError(13, "Permission denied")):
+        with mock.patch.object(atomic.tempfile, "mkstemp", side_effect=PermissionError(13, "Permission denied")):
             code, _, err = self.run_cli(str(self.pdf), "--out", str(self.dir / "locked" / "x.txt"))
         self.assertEqual(code, 3)
         self.assertIn("Could not write", err)
-        with mock.patch.object(sample.os, "replace", side_effect=OSError(28, "No space left on device")):
+        with mock.patch.object(atomic.os, "replace", side_effect=OSError(28, "No space left on device")):
             code, _, err = self.run_cli(str(self.pdf), "--out", str(self.dir / "full.txt"))
         self.assertEqual(code, 3)
         self.assertIn("No space left", err)

@@ -332,15 +332,6 @@ def month_one_offs(month, one_offs):
     return sum(x["amount_minor"] for x in parts), parts
 
 
-def month_gross(month, segments):
-    """(gross, cpf-liable gross) in cents a month earns from the plan's income
-    rows, each prorated by the calendar days of the month it covers, bonuses
-    and side income included. Rows that overlap add up, which is how a raise
-    mid-month is expressed as two. G14: read through server/analytics/income.py."""
-    pm = pay_for({"income_segments": segments}).at(month)
-    return pm["income"], pm["ow"] + pm["aw_liable"]
-
-
 # What each parameter means, keyed by its name without `_minor`: a note is
 # text, never money, so it never sits under a money field's name.
 NOTES = {

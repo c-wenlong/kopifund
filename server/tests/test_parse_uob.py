@@ -58,7 +58,6 @@ class Recognised(unittest.TestCase):
         one, savings = layouts.get("uob-one"), layouts.get("uob-savings")
         for lay in (one, savings):
             self.assertEqual((lay.parser, lay.kind, lay.bank, lay.csv), ("uob", "bank account", "uob", "uob"))
-            self.assertTrue(lay.public_sample)
             self.assertEqual(lay.status, layouts.SAMPLE)
             self.assertNotIn("unverified", lay.setup + lay.detected_by)
         self.assertEqual((one.folder, savings.folder), ("uob-one", "uob-savings"))

@@ -64,6 +64,7 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 from finance.pdftext import pdf_to_text, require as require_pdftotext
+from .common import period_name, plain
 from .parse_statements import (statement_folders, BAL_COLS, BALANCE_STATES, MONTHS,
                               TXN_COLS, add_keys, balance_summary,
                               collect_pdfs, direction, duplicate_periods, money,
@@ -161,11 +162,6 @@ def desc_part(s):
 def iso(d):
     dd, mon, yr = d.split()
     return f"{int(yr):04d}-{MONTHS[mon]:02d}-{int(dd):02d}"
-
-
-def plain(num):
-    """'1,234.56' -> '1234.56'; leaves the printed precision alone."""
-    return num.replace(",", "")
 
 
 # ---------------------------------------------------------------- extraction
@@ -463,10 +459,6 @@ def synthesise_all(rows, blocks):
 
 
 # ---------------------------------------------------------------- entry point
-
-def period_name(b):
-    return f"{b['account_no']} · {b['currency']} · {b['period_end'][:7]}"
-
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__,

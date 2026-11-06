@@ -95,9 +95,9 @@ one flattening, so the source of the pages cannot change what is in the file.
       "period": {"from": "2026-01-01", "to": "2026-08-31"},
       "overview": {"begin": {...}, "end": {"cash": 420.15, "stock": 12580.4, "total": 13000.55}},
       "cash_report": { "Deposits": 4000.0, ... }, "deposits": [ {"date", "amount", "currency"} ],
-      "withdrawals": [ ... ], "deposits_base": 4000.0, "dividends": [ ... ], "dividends_base": 92.4,
+      "withdrawals": [ ... ], "deposits_base": 4000.0, "dividends_base": 92.4,
       "withholding_tax_base": -27.72, "fees_base": -6.1, "holdings": [ ... ],
-      "holdings_value_base": 12580.4, "trades": [ ... ], "forex": [ ... ],
+      "holdings_value_base": 12580.4,
       "fx_to_base": {"SGD": 0.7867, ...}, "fx_date": "2026-08-31" } ]
   },
   "cpf": {

@@ -32,11 +32,6 @@ things about the layout drive the way this parses:
     (2025 leaves an instrument name and a trade time at the foot of one page),
     so it is held over and merged into the next block.
 
-  * Every Forex and Stock trade is printed twice, once with its symbol and once
-    without. Every year from 2022 does it, not only the newest layout. The
-    symbol-less copy inherits the symbol of the row above it, and the trades
-    are then de-duplicated on date, symbol, quantity and price.
-
 Nothing here is replayed against a balance chain the way the bank statements
 are. The two figures the analytics side reports, Deposits "Total(In Base)" and
 Holdings "Total(In Base)", are read back off the statement rather than summed
@@ -52,6 +47,7 @@ from pathlib import Path
 from finance.paths import current_statements, statements_dir
 from finance.pdftext import pdf_to_text, require as require_pdftotext
 
+from .common import header_spans, money
 from .layouts import CHECKED, Bank, Layout, Seen, register, register_bank
 
 NUM = re.compile(r"^-?[0-9][0-9,]*(?:\.[0-9]+)?$")
@@ -88,16 +84,9 @@ FEE_LABELS = {
     "Settlement Fees", "Clearing Fees", "Exchange Fees", "Custody", "Custody Fees",
 }
 
-SIDES = {"Open", "Close", "Buy", "Sell"}
-
 OVERVIEW_ROWS = {"Beginning Of The Period": "begin", "End Of The Period": "end"}
 # the Account Overview columns, in printed order; the middle two are read past
 OVERVIEW_KEYS = ["cash", "stock", None, None, "dividend_accruals", "total"]
-
-
-def money(s):
-    """A printed number as a float, or None when the cell was empty."""
-    return float(s.replace(",", "")) if s else None
 
 
 def total_of(numbers):
@@ -105,12 +94,6 @@ def total_of(numbers):
 
 
 # ---------------------------------------------------------------- table layout
-
-def header_spans(ln):
-    """The words of a header line, grouped so a single space keeps them
-    together: "Net Cash Value" is one heading, and two spaces start the next."""
-    return [(m.start(), m.end(), m.group()) for m in re.finditer(r"\S+(?: \S+)*", ln)]
-
 
 def word_spans(ln):
     return [(m.start(), m.end(), m.group()) for m in re.finditer(r"\S+", ln)]
@@ -259,20 +242,6 @@ def rejoin(pending, cells):
     return out
 
 
-def trade_date(cells, cols):
-    """The trade date, not the settlement date. Both sit in the row, but Tiger
-    wraps the settlement date over two lines ("2026-01-" then "06") while the
-    trade date always prints whole, in the Trade Time column."""
-    for t in cells.get(cols.find("Trade Time")) or []:
-        if ISO.match(t):
-            return t
-    for label, _, _ in cols.cols:
-        for t in cells.get(label) or []:
-            if ISO.match(t):
-                return t
-    return ""
-
-
 # ---------------------------------------------------------------- sections
 
 def parse_account(recs):
@@ -386,129 +355,6 @@ def parse_holdings(recs):
     return rows, base
 
 
-def parse_dividends(recs):
-    """Dividends: the cash actually paid. Tiger also prints the accrual moving
-    in and back out ("Dividend Accruals Increase" / "Reduction"), which is the
-    same money a second and a third time, so only the Paid phase is kept."""
-    cols, rows, pending = None, [], {}
-    for _, _, lines in recs:
-        if is_header(lines, "Phase", "Shares", "Fees & Tax"):
-            cols = Columns(lines)
-            continue
-        if cols is None:
-            continue
-        if is_note(lines):
-            pending = {}
-            continue
-        cells, pending = rejoin(pending, cols.cells(lines)), {}
-        date = "".join(cells.get(cols.find("Date")) or [])
-        phase = text_of(cells, cols.find("Phase")).strip()
-        net_label = cols.find("Net Cash")
-        if not phase and not numbers_of(cells, net_label):
-            pending = cells                       # half a row, cut by a page break
-        elif phase == "Paid" and ISO.match(date):
-            symbol, _ = symbol_of(text_of(cells, cols.find("Symbol")))
-            rows.append({
-                "date": date,
-                "symbol": symbol,
-                "gross": one_number(cells, cols.find("Cash", "Dividends"), 0.0),
-                "tax": one_number(cells, cols.find("Fees & Tax"), 0.0),
-                "net": one_number(cells, net_label, 0.0),
-                "currency": text_of(cells, cols.find("Currency")).strip(),
-                "phase": phase,
-            })
-    return rows
-
-
-def parse_forex(recs):
-    """Trades, Forex: one row per currency conversion."""
-    cols, rows, last, pending = None, [], "", {}
-    for section, sub, lines in recs:
-        if section != "Trades" or sub != "Forex":
-            continue
-        if is_header(lines, "Symbol(Base.Quote)", "Quantity(Base)"):
-            cols = Columns(lines)
-            continue
-        if cols is None:
-            continue
-        if is_note(lines):
-            pending = {}
-            continue
-        cells, pending = rejoin(pending, cols.cells(lines)), {}
-        first = cols.find("Symbol(Base.Quote)")
-        if is_total(cells, first):
-            continue
-        amount = one_number(cells, cols.find("Amount(Quote)"))
-        if amount is None:
-            pending = cells
-            continue
-        last = pair = text_of(cells, first).strip() or last
-        rows.append({
-            "date": trade_date(cells, cols),
-            "pair": pair,
-            "side": text_of(cells, cols.find("Activity Type")).strip(),
-            "quantity": one_number(cells, cols.find("Quantity(Base)"), 0.0),
-            "price": one_number(cells, cols.find("Trade Price"), 0.0),
-            "amount": amount,
-            "currency": text_of(cells, cols.find("Currency")).strip(),
-        })
-    return dedupe(rows, "pair")
-
-
-def parse_trades(recs):
-    """Trades, Stock: one row per fill. Comm/Fee holds up to five separate
-    charges (commission, platform, settlement, clearing, exchange), each on its
-    own line, so the fee is their sum and matches Tiger's own Total row."""
-    cols, rows, last, pending = None, [], "", {}
-    for section, sub, lines in recs:
-        if section != "Trades" or sub != "Stock":
-            continue
-        if is_header(lines, "Symbol", "Comm/Fee", "GST"):
-            cols = Columns(lines)
-            continue
-        if cols is None:
-            continue
-        if is_note(lines):
-            pending = {}
-            continue
-        cells, pending = rejoin(pending, cols.cells(lines)), {}
-        first = cols.find("Symbol")
-        if is_total(cells, first):
-            continue
-        amount = one_number(cells, cols.find("Amount"))
-        if amount is None:
-            pending = cells
-            continue
-        symbol, _ = symbol_of(text_of(cells, first))
-        last = symbol = symbol or last
-        rows.append({
-            "date": trade_date(cells, cols),
-            "symbol": symbol,
-            "side": next((t for t in cells.get(cols.find("Activity Type")) or []
-                          if t in SIDES), ""),
-            "quantity": one_number(cells, cols.find("Quantity"), 0.0),
-            "price": one_number(cells, cols.find("Trade Price"), 0.0),
-            "amount": amount,
-            "fee": total_of(numbers_of(cells, cols.find("Comm/Fee"))),
-            "gst": one_number(cells, cols.find("GST"), 0.0),
-            "currency": text_of(cells, cols.find("Currency")).strip(),
-        })
-    return dedupe(rows, "symbol")
-
-
-def dedupe(rows, key):
-    """Drop the second print of a trade. Once the symbol-less copy has taken
-    the symbol of the row above it the two are identical, so the first of each
-    (date, symbol, quantity, price) is kept and the rest dropped."""
-    seen, out = set(), []
-    for r in rows:
-        k = (r["date"], r[key], r["quantity"], r["price"])
-        if k not in seen:
-            seen.add(k)
-            out.append(r)
-    return out
-
-
 FX_ROW = re.compile(r"^\s*(?P<ccy>[A-Z]{3})\s+(?P<rate>[0-9][0-9,]*(?:\.[0-9]+)?)\s*$")
 FX_DATE = re.compile(r"^\s*Date\s+(?P<date>\d{4}-\d{2}-\d{2})\s*$")
 
@@ -554,14 +400,11 @@ def parse_text(text, file):
         "deposits": deposits,
         "withdrawals": withdrawals,
         "deposits_base": deposits_base,
-        "dividends": parse_dividends(of("Dividends")),
         "dividends_base": cash.get("Dividends", 0.0),
         "withholding_tax_base": cash.get("Withholding Tax", 0.0),
         "fees_base": total_of([v for k, v in cash.items() if k in FEE_LABELS]),
         "holdings": holdings,
         "holdings_value_base": holdings_base,
-        "trades": parse_trades(recs),
-        "forex": parse_forex(recs),
         "fx_to_base": fx,
         "fx_date": fx_date or period["to"],
     }
@@ -633,10 +476,7 @@ def main():
           + (f", {1 / sgd:,.4f} SGD per {last['base_currency']}"
              f" = {last['holdings_value_base'] / sgd:,.2f} SGD" if sgd else ""))
     print(f"  {sum(len(s['deposits']) for s in statements)} deposits, "
-          f"{sum(len(s['withdrawals']) for s in statements)} withdrawals, "
-          f"{sum(len(s['trades']) for s in statements)} stock trades, "
-          f"{sum(len(s['forex']) for s in statements)} forex trades, "
-          f"{sum(len(s['dividends']) for s in statements)} dividends")
+          f"{sum(len(s['withdrawals']) for s in statements)} withdrawals")
 
     if args.json:
         out = Path(args.json)

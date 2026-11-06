@@ -1112,7 +1112,7 @@ class ForwardView(Recomputation):
         # gross per month follows the plan's income rows; with none, nothing
         for m, row in months.items():
             with self.subTest(m):
-                want = forward_view.month_gross(m, segments)[0] if segments else 0
+                want = forward_view.pay_for({"income_segments": segments}).at(m)["income"] if segments else 0
                 self.assertEqual(m_(row, "gross"), want)
         # the projection runs to the plan's last month, investing the stated
         # amount (or nothing when it is switched off) to the end

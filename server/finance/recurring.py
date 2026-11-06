@@ -150,9 +150,6 @@ class Payment:
             return min(inside, key=lambda a: abs(a - mid)), []
         return sum(self.amounts), list(self.keys)
 
-    def amount_in(self, low, high):
-        return self.charge_in(low, high)[0]
-
 
 def merge(charges, regular):
     """[(day, cents, text, key, account, ...)] as Payments, two charges MERGE_DAYS apart being one."""

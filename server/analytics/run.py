@@ -9,6 +9,7 @@ from datetime import date
 from pathlib import Path
 
 from finance import snapshot as snap
+from finance.atomic import write_private
 from finance.money import in_cents
 from . import stats
 
@@ -82,7 +83,7 @@ def run_stats(s, out_dir, only=(), benchmarks=None, day=None, echo=print):
             echo(f"  {module.ID:24s} FAILED: {type(e).__name__}: {e}")
             continue
         name = f"{module.ID}-{day}.json"
-        snap.write_atomic(out_dir / "results" / name, snap.dumps(res))
+        write_private(out_dir / "results" / name, snap.dumps(res))
         results[module.ID] = res
         written[module.ID] = name
         first = res["findings"][0] if res["findings"] else "(no finding)"

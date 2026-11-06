@@ -1019,15 +1019,6 @@ POST_ROUTES: dict[str, Route] = {
 }
 
 
-def _tagged(tag: str) -> tuple[str, ...]:
-    return tuple(path for path, route in POST_ROUTES.items() if route.tag == tag)
-
-
-PLANNING_WRITES = _tagged("planning")
-RULE_WRITES = _tagged("rules")
-CATEGORY_WRITES = _tagged("categories")
-
-
 class _Router:
     """A table's paths: a plain one is found by name, a pattern by matching
     each <name> against one path segment."""
