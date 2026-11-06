@@ -12,7 +12,7 @@ import { useId } from "react";
 import { Plus, Trash2 } from "lucide-react";
 import type { GrowthInputs, IncomeRow, IncomeSuggestion, ProjectionSettings, SpendHint, Suggestions } from "../api";
 import { addDays, formatMonth, isoMonth, MONTHS } from "../dates";
-import { Button } from "../components/Button";
+import { Button, IconButton } from "../components/Button";
 import { DateField } from "../components/DateField";
 import { Field } from "../components/Field";
 import { EmptyState } from "../components/EmptyState";
@@ -20,7 +20,7 @@ import { isMoneyText, isSignedText, MoneyInput } from "../components/MoneyInput"
 import { MonthField } from "../components/MonthField";
 import { Select } from "../components/Select";
 import { TextInput } from "../components/TextInput";
-import { HEAD_ROW, TH } from "../components/tableKit";
+import { CARD_CELL, CARD_ROW, HEAD_ROW, TH } from "../components/tableKit";
 import { centsText, formatSgd, parseCents, type Cents } from "../money";
 import { SuggestChip } from "../components/SuggestChip";
 import { chipKind, chipText, claims, coversLast, dollarsText, incomeText, typedValue } from "../suggest";
@@ -206,11 +206,7 @@ function AddButton({ onClick, children }: { onClick: () => void; children: React
 }
 
 function RemoveButton({ label, onClick }: { label: string; onClick: () => void }) {
-  return (
-    <button type="button" aria-label={label} onClick={onClick} className="rounded-md p-1 text-ink-3 hover:bg-hover hover:text-ink">
-      <Trash2 size={14} />
-    </button>
-  );
+  return <IconButton label={label} onClick={onClick}><Trash2 size={14} /></IconButton>;
 }
 
 const th = `${TH} px-1 whitespace-nowrap`;
@@ -221,8 +217,6 @@ const td = "px-1 py-1 align-middle";
 // Under 1280px an income row is a small card, each box under its own name
 // (eight columns do not fit beside the sidebar); the card boxes sit two to a
 // line, the name across the top. Nothing scrolls sideways.
-const CARD_ROW = "max-xl:relative max-xl:grid max-md:grid-cols-2 md:max-xl:grid-cols-4 max-xl:gap-x-2 max-xl:gap-y-2 max-xl:rounded-lg max-xl:border max-xl:border-line max-xl:p-3";
-const CARD_CELL = "max-xl:flex max-xl:min-w-0 max-xl:flex-col max-xl:gap-1 max-xl:p-0 max-xl:before:text-[12px] max-xl:before:font-medium max-xl:before:text-ink-2 max-xl:before:content-[attr(data-label)]";
 
 /** One income row on one line, or a small card on a narrow screen; the line under it is for what is wrong with it. */
 function IncomeRowEditor({ row, i, errors, set, remove, chip }: {

@@ -17,3 +17,8 @@ export const TH = "py-1.5 font-medium";
 
 /** A body row: a hairline above it. */
 export const ROW = "border-t border-line";
+
+// Audit: a table whose rows turn into small cards under 1280px (Plan's lists, the growth inputs' income),
+// each cell under its own name (`data-label`): two to a line on a phone, four from 768px.
+export const CARD_ROW = "max-xl:relative max-xl:grid max-md:grid-cols-2 md:max-xl:grid-cols-4 max-xl:gap-2 max-xl:rounded-lg max-xl:border max-xl:border-line max-xl:p-3";
+export const CARD_CELL = "max-xl:flex max-xl:min-w-0 max-xl:flex-col max-xl:gap-1 max-xl:p-0 max-xl:before:text-[12px] max-xl:before:font-medium max-xl:before:text-ink-2 max-xl:before:content-[attr(data-label)]";
