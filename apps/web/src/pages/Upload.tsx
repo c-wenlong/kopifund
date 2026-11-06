@@ -25,6 +25,7 @@ import { UploadStepper } from "../components/UploadStepper";
 import { Loading, Problem } from "../components/States";
 import { StatsPage } from "./StatsPage";
 import { NEEDS_ACCOUNT_ICON, NOT_SUPPORTED_ICON, RUNNING_ICON, STEP_STATUS_ICON } from "../icons";
+import { plural } from "../words";
 
 // G13: a dropped PDF goes to the account its own text names (serve.py,
 // /api/statements/auto). One the server cannot place comes back as
@@ -56,7 +57,6 @@ type Reply = {
 type Busy = "" | "upload" | "check" | "load" | "mirror";
 
 const num = (n: number) => n.toLocaleString("en-SG");
-const plural = (n: number, one: string, many = `${one}s`) => `${num(n)} ${n === 1 ? one : many}`;
 
 /** The account a folder belongs to, by the name the picker shows, and its currency for a wallet. */
 function accountOf(list: Account[], folder: string) {

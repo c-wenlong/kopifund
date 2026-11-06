@@ -10,6 +10,7 @@ import { DateField } from "../components/DateField";
 import { StatusChip, type StatusTone } from "../components/StatusChip";
 import { Loaded } from "../components/States";
 import { onLinkClick, useUnsavedGuard } from "../router";
+import { plural } from "../words";
 
 export function Profile() {
   const state = useApi<ProfileT>("/api/profile");
@@ -105,8 +106,8 @@ function Accounts({ list, folders }: { list: ProfileAccount[]; folders: ProfileT
           <CollapsibleRows rows={rows} limit={COLLAPSED_ROWS.thin} keyOf={(l) => l.key} render={(l) => {
             const details = [
               l.first ? formatRange(l.first, l.last ?? l.first) : "",
-              l.statements ? `${l.statements.toLocaleString("en-SG")} ${l.statements === 1 ? "statement" : "statements"}` : "",
-              l.pdfs ? `${l.pdfs.toLocaleString("en-SG")} ${l.pdfs === 1 ? "PDF" : "PDFs"}` : "",
+              l.statements ? plural(l.statements, "statement") : "",
+              l.pdfs ? plural(l.pdfs, "PDF") : "",
               l.rows ? `${l.rows.toLocaleString("en-SG")} rows` : "",
             ].filter(Boolean);
             const to = l.folder ? `/upload?account=${encodeURIComponent(l.folder)}` : null;

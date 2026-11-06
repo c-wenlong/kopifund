@@ -18,6 +18,7 @@ import { SERVER_ICON, type ServerState } from "../icons";
 import { AiCard } from "./AiCard";
 import { AppIconCard } from "./AppIconCard";
 import { LinkCard } from "./LinkCard";
+import { plural } from "../words";
 
 const options: { value: SidebarMode; label: string }[] = [
   { value: "open", label: "Keep open" },
@@ -89,10 +90,9 @@ const SERVER_MODE: Record<ServerMode, string> = {
 function runningFor(started: number, now: number): string {
   const m = Math.floor(Math.max(0, Math.floor(now / 1000) - started) / 60);
   const h = Math.floor(m / 60), d = Math.floor(h / 24);
-  const word = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;
-  if (d > 0) return h % 24 ? `${word(d, "day")} ${word(h % 24, "hour")}` : word(d, "day");
-  if (h > 0) return m % 60 ? `${word(h, "hour")} ${word(m % 60, "minute")}` : word(h, "hour");
-  return m > 0 ? word(m, "minute") : "under a minute";
+  if (d > 0) return h % 24 ? `${plural(d, "day")} ${plural(h % 24, "hour")}` : plural(d, "day");
+  if (h > 0) return m % 60 ? `${plural(h, "hour")} ${plural(m % 60, "minute")}` : plural(h, "hour");
+  return m > 0 ? plural(m, "minute") : "under a minute";
 }
 
 /** "2 minutes", "30 seconds" */
