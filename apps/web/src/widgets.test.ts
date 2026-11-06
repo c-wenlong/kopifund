@@ -1,7 +1,8 @@
 import { renderHook, waitFor } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { postWidgetQuery, previewScenario, useWidgetData, widgetQueryUrl } from "./widgets";
 import type { WidgetQuery } from "./types.gen";
+import { json } from "./test-helpers";
 
 const SPEND_BY_BUCKET: WidgetQuery = {
   source: "spending",
@@ -16,8 +17,6 @@ const ANSWER = {
 };
 
 describe("useWidgetData", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("asks the query endpoint for the widget's query, as JSON in ?q=", () => {
     const url = widgetQueryUrl(SPEND_BY_BUCKET);
     expect(url.startsWith("/api/dashboard/query?q=")).toBe(true);
@@ -37,7 +36,7 @@ describe("useWidgetData", () => {
     const asked: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       asked.push(url);
-      return new Response(JSON.stringify(ANSWER), { status: 200 });
+      return json(ANSWER);
     }));
     const { result } = renderHook(() => useWidgetData(SPEND_BY_BUCKET));
     await waitFor(() => expect(result.current.data).toEqual(ANSWER));
@@ -46,7 +45,7 @@ describe("useWidgetData", () => {
 
   it("shows the server's error for a bad query rather than blank data", async () => {
     vi.stubGlobal("fetch", vi.fn(async () =>
-      new Response(JSON.stringify({ error: "source is one of spending, monthly-cashflow" }), { status: 400 })));
+      json({ error: "source is one of spending, monthly-cashflow" }, 400)));
     const { result } = renderHook(() =>
       useWidgetData({ ...SPEND_BY_BUCKET, source: "nonsense" as never }));
     await waitFor(() => expect(result.current.error).toContain("source is one of"));
@@ -64,7 +63,7 @@ describe("useWidgetData", () => {
     const seen: { url: string; body: string }[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       seen.push({ url, body: String(init?.body ?? "") });
-      return new Response(JSON.stringify(ANSWER), { status: 200 });
+      return json(ANSWER);
     }));
     await expect(postWidgetQuery(SPEND_BY_BUCKET)).resolves.toEqual(ANSWER);
     expect(seen).toEqual([{ url: "/api/dashboard/query", body: JSON.stringify(SPEND_BY_BUCKET) }]);
@@ -74,7 +73,7 @@ describe("useWidgetData", () => {
     const seen: string[] = [];
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       seen.push(url);
-      return new Response(JSON.stringify({ ...ANSWER, projected_from: 1 }), { status: 200 });
+      return json({ ...ANSWER, projected_from: 1 });
     }));
     const out = await previewScenario({ query: SPEND_BY_BUCKET, months: 3, delta_minor: 100 });
     expect(out.projected_from).toBe(1);

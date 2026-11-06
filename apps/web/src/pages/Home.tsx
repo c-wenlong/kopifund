@@ -1,4 +1,4 @@
-import { useApi, type Change, type ComingStatus, type ComingUp, type ComingUpRow, type NetWorth, type Overview, type SpendingChart as Chart } from "../api";
+import { useApi, type Change, type ComingUp, type ComingUpRow, type NetWorth, type Overview, type SpendingChart as Chart } from "../api";
 import { axisSgd, formatSgd, type Cents } from "../money";
 import { navigate, onLinkClick } from "../router";
 import { formatDate, formatDay, formatMonth } from "../dates";
@@ -8,7 +8,7 @@ import { RangeTrack, Sparkline, Tile, TileGrid, type Tone } from "../components/
 import { useChartView, ViewSwitch, type ChartView } from "../components/ViewSwitch";
 import { CollapsibleRows, COLLAPSED_ROWS } from "../components/CollapsibleRows";
 import { SPEND_KEYS, SPEND_VIEWS, SpendChart, signed } from "./SpendingExplorer";
-import { ComingUpItem } from "./Recurring";
+import { ComingUpItem, URGENCY } from "./Recurring";
 import { EyeList, openEyeList } from "../components/NeedsYourEye";
 
 // G13: Home is four tiles, "Needs your eye" when something does, twelve months
@@ -114,11 +114,8 @@ function Trace({ months, of, what }: { months: NetWorth["months"]; of: "total" |
 export { axisSgd };
 
 
-// what wants a look first: nothing came, then paid at an odd amount, then an
-// extra charge (G16), then still to come, then paid. The card opens on four rows, so this is the order they
-// are listed in; a bill late or due low in the month must not sit under four
-// paid ones.
-const URGENCY: Record<ComingStatus, number> = { late: 0, different: 1, extra: 2, due: 3, paid: 4 };
+// The card opens on four rows, so they are listed most pressing first (Recurring's URGENCY): a bill late
+// or due low in the month must not sit under four paid ones.
 
 /** The rows Home lists, most pressing first and by date within a kind; the most pressing few when there is no room for all. */
 export function comingUpRows(rows: ComingUpRow[], room = COMING_UP_ROWS): ComingUpRow[] {

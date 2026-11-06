@@ -5,8 +5,6 @@ import { Drawer, TopBar } from "./MobileNav";
 import { openEyeList } from "./NeedsYourEye";
 import { Sidebar } from "./Sidebar";
 
-beforeEach(() => window.localStorage.clear());
-
 const panel = () => screen.getByTestId("sidebar-panel");
 
 describe("Sidebar", () => {
@@ -18,7 +16,6 @@ describe("Sidebar", () => {
     expect(fetchSpy.mock.calls.map(([u]) => u)).toEqual([
       "/api/net-worth", "/api/growth", "/api/suggestions", "/api/results/savings-runway", "/api/results/benchmarks-sg",
     ]);
-    vi.unstubAllGlobals();
   });
 
   it("starts open with labels, profile and settings at the bottom", () => {

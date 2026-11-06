@@ -2,11 +2,9 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { treeFor, TreemapState } from "./TreemapState";
 import type { Slice } from "./model";
 import type { CategoriesState, WidgetAnswer, WidgetQuery } from "../../../types.gen";
+import { json, navigate } from "../../../test-helpers";
 
-const navigate = vi.fn();
-vi.mock("../../../router", async (importActual) => ({
-  ...(await importActual<typeof import("../../../router")>()), navigate: (to: string) => navigate(to),
-}));
+vi.mock("../../../router", async (actual) => (await import("../../../test-helpers")).withNavigate(await actual()));
 
 // invented figures only
 const QUERY: WidgetQuery = { source: "spending", metric: "spend", dimension: "category" };
@@ -43,8 +41,8 @@ const CATS: CategoriesState = {
 function stubApi(answer: unknown = ANSWER, status = 200) {
   vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
     const url = String(input);
-    if (url.startsWith("/api/categories")) return new Response(JSON.stringify(CATS), { status: 200 });
-    return new Response(JSON.stringify(answer), { status });
+    if (url.startsWith("/api/categories")) return json(CATS);
+    return json(answer, status);
   }));
 }
 
@@ -57,13 +55,7 @@ function stubSize(width = 640, height = 300) {
 const leaves = () => document.querySelectorAll(".recharts-treemap-depth-2");
 
 beforeEach(() => {
-  navigate.mockClear();
   stubApi();
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
 });
 
 describe("treeFor", () => {

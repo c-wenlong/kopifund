@@ -6,8 +6,6 @@ const row = (key: string, over: Partial<TxnRow> = {}): TxnRow =>
   ({ key, date: "2026-09-03", amount: -1048, currency: "SGD", payee: "Grab", text: "GRAB*", category: "Transport", ...over });
 
 describe("TxnRowsTable", () => {
-  beforeEach(() => window.localStorage.clear());
-
   it("has a header row and writes every amount through formatAmount", () => {
     render(<TxnRowsTable list="t" rows={[
       row("a"),

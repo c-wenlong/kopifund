@@ -6,6 +6,7 @@ import { navigate } from "./router";
 import { APP_FAILED, AppBoundary, PAGE_FAILED } from "./components/ErrorBoundary";
 import type { Route } from "./routes";
 import { useApi, type Loaded } from "./api";
+import { json, stubMatchMedia } from "./test-helpers";
 
 // Audit: a page that throws as it draws used to unmount the whole app. Here the
 // "/settings" page throws while `boom` is set; every other page draws as usual.
@@ -42,20 +43,10 @@ vi.mock("./routes", async (original) => {
   };
 });
 
-function setWide() {
-  window.matchMedia = ((query: string) => ({
-    matches: true, media: query, onchange: null,
-    addEventListener: () => {}, removeEventListener: () => {}, addListener: () => {}, removeListener: () => {},
-    dispatchEvent: () => false,
-  })) as unknown as typeof window.matchMedia;
-}
-
-const original = window.matchMedia;
-
 beforeEach(() => {
   boom = true;
   reads = false;
-  setWide();
+  stubMatchMedia(true);
   window.history.pushState(null, "", "/settings");
   vi.spyOn(globalThis, "fetch").mockImplementation(() => new Promise<Response>(() => {}));
   // React reports each caught error to the console; the test only checks what is drawn
@@ -63,8 +54,6 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  vi.restoreAllMocks();
-  window.matchMedia = original;
   window.history.pushState(null, "", "/");
 });
 
@@ -99,7 +88,7 @@ describe("Try again after a bad answer", () => {
     reads = "plan";
     let answer: unknown = {};
     vi.mocked(globalThis.fetch).mockImplementation(async (url) =>
-      String(url).startsWith("/api/plan") ? new Response(JSON.stringify(answer), { status: 200 }) : new Promise<Response>(() => {}));
+      String(url).startsWith("/api/plan") ? json(answer) : new Promise<Response>(() => {}));
     render(<App />);
     expect(await within(screen.getByRole("main")).findByText(PAGE_FAILED)).toBeInTheDocument();
     answer = { n: 5 };
@@ -115,7 +104,7 @@ describe("Try again after a bad answer the shell holds", () => {
     reads = "overview";
     let answer: unknown = {};
     vi.mocked(globalThis.fetch).mockImplementation(async (url) =>
-      String(url).startsWith("/api/overview") ? new Response(JSON.stringify(answer), { status: 200 }) : new Promise<Response>(() => {}));
+      String(url).startsWith("/api/overview") ? json(answer) : new Promise<Response>(() => {}));
     render(<App />);
     expect(await within(screen.getByRole("main")).findByText(PAGE_FAILED)).toBeInTheDocument();
     answer = { n: 7 };

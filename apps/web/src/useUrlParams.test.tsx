@@ -5,7 +5,6 @@ import { useUrlParams } from "./useUrlParams";
 // Audit: the address is the state of a page's filters; these pin how it is read and written.
 
 afterEach(() => {
-  vi.restoreAllMocks();
   window.history.replaceState(null, "", "/");
 });
 

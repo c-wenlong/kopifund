@@ -6,7 +6,7 @@ import {
 } from "../api";
 import { formatAmount, formatSgd } from "../money";
 import { formatDateTime, formatDay } from "../dates";
-import { Button } from "../components/Button";
+import { Button, IconButton } from "../components/Button";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { StatusChip } from "../components/StatusChip";
@@ -16,14 +16,14 @@ import { NEW_DRAFT, RuleEditor, draftOf, type Draft, type SaveStatus } from "../
 import { Segmented } from "../components/Segmented";
 import { Select } from "../components/Select";
 import { HEAD_ROW, ROW, TABLE_BOX, TH } from "../components/tableKit";
-import { Loading, Problem } from "../components/States";
+import { LOAD_FIRST, Loading, Problem } from "../components/States";
 import { showToast, type ToastAction } from "../components/Toast";
 import { useWide } from "../components/useWide";
 import { useAction } from "../components/useAction";
 import { useUnsavedGuard } from "../router";
 import { tierLabel } from "../ruleWords";
 import { KindLabel, PAYEE_KIND_ICON, STEP_STATUS_ICON } from "../icons";
-import { useUrlParams } from "../useUrlParams";
+import { pageParam, useUrlPage, useUrlParams } from "../useUrlParams";
 
 type Show = "all" | "pins" | "problems";
 // `n` tells two drafts apart, so choosing another one remounts the form with it; `start` is what it opened on
@@ -88,22 +88,12 @@ export function Rules() {
   const shown = view === "payee" ? groups.length : flat.length;
   // G13: pages of groups (by payee) or of rules (in order); a new search, filter or view starts at page 1.
   // The total is unknown until the rules load, so the page read from the address is not clamped to 1 meanwhile.
-  const urlPage = Math.max(1, Math.floor(Number(params.get("page"))) || 1);
+  const urlPage = pageParam(params);
   const filters = [view, q, show, category].join("\n");
   const pager = usePager("rules", s ? shown : undefined, filters, urlPage);
-  // the page and the address follow each other: a click on a page number writes it, an address that names
-  // another page or other filters (Back, a link) moves the list to its page. A filter changed here drops the
-  // page from the address as it writes (above), so new filters with the page unchanged come from a link.
-  const seen = useRef({ page: urlPage, filters });
-  useEffect(() => {
-    if (urlPage !== seen.current.page || filters !== seen.current.filters) {
-      seen.current = { page: urlPage, filters };
-      if (urlPage !== pager.page) pager.setPage(urlPage);
-    } else if (s && pager.page !== urlPage) {
-      seen.current = { page: pager.page, filters };
-      patch({ page: pager.page > 1 ? String(pager.page) : null });
-    }
-  }, [urlPage, filters, pager, patch, s]);
+  // A filter changed here drops the page from the address as it writes (above), so new filters with the page
+  // unchanged come from a link, and the list opens on the page it names.
+  useUrlPage(pager, urlPage, patch, { filters, ready: !!s });
   // G18 (U4): the payees awaiting a rule page like every other long list
   const needsPager = usePager("rules-needs", s?.needs.length ?? 0);
   // a link to a category that has since been renamed or deleted would filter out every rule behind a dropdown that says "All"
@@ -116,7 +106,7 @@ export function Rules() {
   const editingHere = !!editing?.rule && here.includes(editing.rule.id);
 
   if (state.loading && !s) return <Loading what="Loading your rules" />;
-  if (state.error || !s) return <Problem message={state.error ?? "No rules"} hint="Load your statements first, from the Upload page." retry />;
+  if (state.error || !s) return <Problem message={state.error ?? "No rules"} hint={LOAD_FIRST} retry />;
 
   // what a write says goes to a toast, where the click was; a delete offers Undo there
   const act = (write: () => Promise<string | { message: string; action?: ToastAction }>) => run("act", async () => {
@@ -446,15 +436,14 @@ function RuleLine({ rule: r, group, edit, remove, busy }: RowActions & { rule: R
 function Actions({ rule: r, edit, remove, busy }: Pick<RowActions, "edit" | "remove" | "busy"> & { rule: Rule }) {
   return (
     <span className="ml-auto inline-flex gap-1">
-      <button type="button" aria-label={`Edit ${r.tier} ${r.pattern}`} title={r.shared ? "Edit: saved as your own rule" : "Edit"}
-        onClick={() => edit(r, draftOf(r))} className="rounded-md p-1 text-ink-3 hover:bg-hover hover:text-ink">
+      <IconButton label={`Edit ${r.tier} ${r.pattern}`} title={r.shared ? "Edit: saved as your own rule" : "Edit"}
+        onClick={() => edit(r, draftOf(r))}>
         <Pencil size={14} aria-hidden />
-      </button>
+      </IconButton>
       {!r.shared && (
-        <button type="button" aria-label={`Delete ${r.tier} ${r.pattern}`} title="Delete" disabled={busy}
-          onClick={() => remove(r)} className="rounded-md p-1 text-ink-3 hover:bg-hover hover:text-ink disabled:opacity-40">
+        <IconButton label={`Delete ${r.tier} ${r.pattern}`} title="Delete" disabled={busy} onClick={() => remove(r)}>
           <Trash2 size={14} aria-hidden />
-        </button>
+        </IconButton>
       )}
     </span>
   );

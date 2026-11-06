@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { SpendChart, SpendingExplorer, StackTooltip, colourFor, iconFor, percent, signed, type Spending } from "./SpendingExplorer";
 import { BUCKET_ICON } from "../components/BucketMark";
+import { json, useSizedCharts } from "../test-helpers";
 
 const base: Spending = {
   by: "bucket", scope: "sg", bucket_order: ["Food", "Getting around", "Lifestyle"], bucket_style: {},
@@ -14,8 +15,6 @@ const base: Spending = {
   link: { from: "2026-08", to: "2026-09", spend: "1", home: "1" },
   totals: { spend: 60_000, per_month: 30_000, overseas: 11_000 },
 };
-
-const reply = (b: unknown) => new Response(JSON.stringify(b), { status: 200, headers: { "Content-Type": "application/json" } });
 
 // the server's answer to one request: the base figures, over the months asked for
 function answer(url: unknown, body: Spending = base) {
@@ -43,7 +42,7 @@ function answer(url: unknown, body: Spending = base) {
   const shown = months.length ? months : base.months;
   // the server's own link: the range, the scope and the idea of spending, which every figure's rows share
   const link = { from: shown[0], to: shown[shown.length - 1], spend: "1", ...(scope === "sg" ? { home: "1" } : {}) };
-  return reply({ ...body, link, by: q.get("by") ?? "bucket", scope, months: shown,
+  return json({ ...body, link, by: q.get("by") ?? "bucket", scope, months: shown,
     series: body.series.map((x) => ({ ...x, values: (months.length ? months : base.months).map(() => 1000) })) });
 }
 
@@ -57,7 +56,7 @@ describe("SpendingExplorer", () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
       calls += 1;
       // the first answer is the default view on screen; the overseas one fails
-      return calls <= 1 ? answer(url) : new Response(JSON.stringify({ error: "boom" }), { status: 500 });
+      return calls <= 1 ? answer(url) : json({ error: "boom" }, 500);
     });
     render(<SpendingExplorer />);
     expect(await screen.findByText("left out of these figures")).toBeInTheDocument();
@@ -66,8 +65,6 @@ describe("SpendingExplorer", () => {
     expect(screen.queryByText("left out of these figures")).not.toBeInTheDocument();
     expect(screen.queryByText("S$110")).not.toBeInTheDocument();
   });
-
-  afterEach(() => vi.restoreAllMocks());
 
   it("keeps a bucket's colour whatever its rank", () => {
     expect(colourFor("Lifestyle", 0, base)).toBe(colourFor("Lifestyle", 5, base));
@@ -254,8 +251,6 @@ describe("SpendingExplorer", () => {
 });
 
 describe("Where it went shares", () => {
-  afterEach(() => vi.restoreAllMocks());
-
   it("says what share of all spending each bucket and category is", async () => {
     vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => answer(url));
     render(<SpendingExplorer />);
@@ -307,19 +302,8 @@ describe("Where it went shares", () => {
   });
 });
 
-class SizedObserver {
-  constructor(private cb: ResizeObserverCallback) {}
-  observe(el: Element) {
-    this.cb([{ target: el, contentRect: { width: 800, height: 400 } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
-  }
-  unobserve() {}
-  disconnect() {}
-}
-
 describe("SpendChart views", () => {
-  const real = globalThis.ResizeObserver;
-  beforeEach(() => { globalThis.ResizeObserver = SizedObserver as unknown as typeof ResizeObserver; });
-  afterEach(() => { globalThis.ResizeObserver = real; });
+  useSizedCharts();
 
   const d = {
     by: "bucket" as const, bucket_order: ["Food", "Lifestyle"], months: ["2026-08", "2026-09"],

@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { describe, expect, it } from "vitest";
 import { RowsTable } from "./StatCard";
 
 describe("RowsTable", () => {
@@ -11,7 +11,6 @@ describe("RowsTable", () => {
   });
 
   describe("a long table", () => {
-    beforeEach(() => window.localStorage.clear());
     const rows = Array.from({ length: 60 }, (_, i) => ({ month: `row ${i + 1}`, count: i + 1 }));
 
     it("shows 25 rows and a pager, and no pager when it is short", () => {
