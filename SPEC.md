@@ -1351,10 +1351,12 @@ terminal and a browser tab. `apps/desktop/` holds a Tauri v2 shell; nothing in
   the app in `/Applications` keeps serving that version while the checkout
   changes branch; each build replaces the last, older copies are deleted, and
   one Rust cache (`~/Library/Caches/Kopifund/cargo-target`, shared with `make
-  desktop` and `make check`) keeps rebuilds quick. `build_macos.sh` and `make
-  desktop` take one build lock, since they share its bundle folder, and both
-  copy the new app beside the old one and swap it in, so a failed copy leaves
-  the old app. The later
+  desktop` and `make check`) keeps rebuilds quick. Both routes build and
+  install through one script, `apps/desktop/install.sh`: it takes the build
+  lock (the two share the Rust cache's bundle folder; `build_macos.sh` holds
+  it for its whole run and passes it down), builds the shell, and copies the
+  new app beside the old one and swaps it in, so a failed copy leaves the old
+  app. Only `build_macos.sh` asks it to quit the open app first. The later
   lines bundle Python and `pdftotext`, sign and notarise the app, add updates
   from GitHub Releases, and build for Windows.
 
