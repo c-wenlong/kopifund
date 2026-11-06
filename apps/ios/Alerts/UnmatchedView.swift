@@ -165,7 +165,7 @@ private struct UnmatchedRow: View {
             .first(where: { $0.confident }),
               let lo = c.tokenIndexes.min(), let hi = c.tokenIndexes.max()
         else { return nil }
-        return text[tokens[lo].range.lowerBound..<tokens[hi].range.upperBound]
-            .trimmingCharacters(in: .whitespaces)
+        // the Inbox's form ("SGD 2.20"), not the alert's spacing ("SGD2.20")
+        return Cents.chipText(printed: String(text[tokens[lo].range.lowerBound..<tokens[hi].range.upperBound]))
     }
 }

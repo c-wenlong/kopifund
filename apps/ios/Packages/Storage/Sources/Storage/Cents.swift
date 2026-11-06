@@ -1,4 +1,5 @@
 import Foundation
+import Matching
 
 /// G24 audit: the one way an amount becomes the integer cents a row stores.
 /// A parsed alert hands over a Decimal, Shortcuts and the edit field a
@@ -47,6 +48,17 @@ extension Cents {
     /// for 450 (zero reads "+").
     public static func signedText(_ cents: Int, currency: String) -> String {
         "\(cents < 0 ? "-" : "+")\(currency) \(digits(cents.magnitude))"
+    }
+
+    /// The Unmatched list's money flag, in the lists' own form: "SGD2.20"
+    /// as an alert printed it reads "SGD 2.20", like the Inbox row's figure
+    /// without its sign (an unmatched alert has no direction yet). A bare
+    /// number keeps no code; text the amount grammar cannot read is shown
+    /// as printed.
+    public static func chipText(printed: String) -> String {
+        let raw = printed.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let amount = Amounts.read(raw), let cents = from(amount.magnitude) else { return raw }
+        return (amount.currency.map { "\($0) " } ?? "") + digits(UInt(cents.magnitude))
     }
 
     private static func digits(_ cents: UInt) -> String {

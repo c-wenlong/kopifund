@@ -301,6 +301,9 @@ final class HubLane {
     func prepare(_ row: TransactionRecord, context: ModelContext) async {
         // what an intake saved since this context read the row
         Sync.reread(row, in: context)
+        // G24: a row with no amount or payee is no spend to tell the hub
+        // about; the YNAB send holds it back to review the same way
+        if Sync.holdIfMissingDetails(row, context: context) { return }
         // A first send is owed only by rows in the YNAB lane (a sibling
         // parked as a duplicate meanwhile must never post), while a retry is
         // owed whenever what the hub last accepted (kopifundSent) differs

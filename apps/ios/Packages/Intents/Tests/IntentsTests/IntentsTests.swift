@@ -431,3 +431,49 @@ private func rows(_ container: ModelContainer) throws -> [TransactionRecord] {
     #expect(tap.state == "duplicate")
     #expect(sent.currency == "SGD")
 }
+
+// MARK: - empty Wallet captures (G24, found on the owner's phone)
+
+@Test(arguments: [(0.0, ""), (0.0, "  "), (0.0, "Lawson"), (2.64, "")])
+@MainActor func anEmptyWalletCaptureIsKeptButNeverApprovable(amount: Double, merchant: String) throws {
+    // the trigger handed over amount 0 and no merchant: the row is kept (a
+    // real purchase whose details did not arrive is not lost) but waits for
+    // details instead of joining the approvable queue
+    let container = try Store.memory()
+    let (defaults, name) = scratchDefaults(planCurrency: "SGD")
+    defer { defaults.removePersistentDomain(forName: name) }
+    #expect(try Ingest.wallet(amount: amount, merchant: merchant, card: nil, date: day,
+                              currency: nil, container: container, defaults: defaults)
+            == "needs details")
+    let row = try #require(try rows(container).first)
+    #expect(row.state == "pending")
+    #expect(row.missingDetails != nil)
+}
+
+@Test @MainActor func aRealWalletTapStillQueues() throws {
+    let container = try Store.memory()
+    let (defaults, name) = scratchDefaults(planCurrency: "SGD")
+    defer { defaults.removePersistentDomain(forName: name) }
+    #expect(try Ingest.wallet(amount: 2.64, merchant: "Cheers", card: nil, date: day,
+                              currency: nil, container: container, defaults: defaults) == "queued")
+    #expect(try rows(container).first?.missingDetails == nil)
+}
+
+@Test @MainActor func emptyCapturesNeverPairAsDuplicates() throws {
+    // two empty taps on one day read alike; neither may park the other,
+    // and an empty one may not park a real row of the same day
+    let container = try Store.memory()
+    let (defaults, name) = scratchDefaults(planCurrency: "SGD")
+    defer { defaults.removePersistentDomain(forName: name) }
+    for _ in 0..<2 {
+        _ = try Ingest.wallet(amount: 0, merchant: "", card: nil, date: day,
+                              currency: nil, container: container, defaults: defaults)
+    }
+    _ = try Ingest.wallet(amount: 0, merchant: "SimplyGo", card: nil, date: day,
+                          currency: nil, container: container, defaults: defaults)
+    _ = try Ingest.wallet(amount: 0, merchant: "SimplyGo", card: nil, date: day,
+                          currency: nil, container: container, defaults: defaults)
+    let all = try rows(container)
+    #expect(all.count == 4)
+    #expect(all.allSatisfy { $0.state == "pending" && $0.duplicateOf == nil })
+}
