@@ -18,9 +18,10 @@ import { HEAD_ROW, ROW, TABLE_CARD, TH } from "../components/tableKit";
 import { Tile } from "../components/Tile";
 import { showToast } from "../components/Toast";
 import { useWide } from "../components/useWide";
+import { useAction } from "../components/useAction";
 import { formatDate, formatDay, formatMonth, formatRange, formatWeekday } from "../dates";
 import { onLinkClick, useUnsavedGuard } from "../router";
-import { useUrlParams } from "../useUrlParams";
+import { pageParam, useUrlPage, useUrlParams } from "../useUrlParams";
 import type { GroupKind, NeedClass } from "../types.gen";
 import { KIND_ICON, KindIcon, NEED_ICON, EYE_ICON, SCAM_FLAG_ICON, SCAM_ICON, TRIP_ICON } from "../icons";
 
@@ -202,7 +203,7 @@ export function Transactions() {
     return p.toString();
   }, [month, category, account, q, payee, named, keys, paymentsOnly, scope.from, scope.to, scope.home, scope.spend, scope.trip, scope.income, scope.transfer,
     scope.need, scope.bucket, scope.categories, scope.notCategories, scope.notPayees, scope.external, scope.standIn, noSynthetic, hideTransfers, scam, noFx]);
-  const urlPage = Math.max(1, Math.floor(Number(params.get("page"))) || 1);
+  const urlPage = pageParam(params);
   // G13: server-side pages. The page starts again at 1 when any filter changes
   // and is clamped when the total shrinks. The total is the one the last answer
   // gave for these filters: a view that has kept the old rows on screen while
@@ -211,18 +212,7 @@ export function Transactions() {
   const [answer, setAnswer] = useState<{ data: TxnPage | null; filters: string }>({ data: null, filters });
   const waiting = answer.filters !== filters && urlPage > 1;
   const pager = usePager("transactions", waiting ? undefined : answer.data?.total, filters, urlPage);
-  // the page and the address follow each other: a click on a page number writes
-  // it, a link to another page of this list (or none) moves the list there
-  const seenUrlPage = useRef(urlPage);
-  useEffect(() => {
-    if (urlPage !== seenUrlPage.current) {
-      seenUrlPage.current = urlPage;
-      if (urlPage !== pager.page) pager.setPage(urlPage);
-    } else if (pager.page !== urlPage) {
-      seenUrlPage.current = pager.page;
-      patch({ page: pager.page > 1 ? String(pager.page) : null });
-    }
-  }, [urlPage, pager, patch]);
+  useUrlPage(pager, urlPage, patch);
   const url = `/api/transactions?${new URLSearchParams({ limit: String(pager.size), offset: String(pager.offset) })}${filters ? `&${filters}` : ""}`;
   const { data, error, loading } = useApi<TxnPage>(url);
   const [open, setOpen] = useState<string | null>(null);   // the row whose panel is open, under it
@@ -515,21 +505,10 @@ function TransfersChip({ hidden, onClick }: { hidden: boolean; onClick: () => vo
 // G15: why the scam checks flag a row, and "This is fine", which saves the
 // choice in the record so that payee is not flagged again
 function ScamNote({ t }: { t: Txn }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // the row can stay on screen and be flagged again later (Flag again in Settings)
+  const { running: busy, error, run } = useAction();
   if (!t.flags?.length) return null;
-  async function fine() {
-    setBusy(true);
-    setError(null);
-    try {
-      await postJSON("/api/scam-checks/fine", JSON.stringify({ key: t.key }));
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      // the row can stay on screen and be flagged again later (Flag again in Settings)
-      setBusy(false);
-    }
-  }
+  const fine = () => run("fine", () => postJSON("/api/scam-checks/fine", JSON.stringify({ key: t.key })));
   return (
     <div className="mt-1 flex flex-col items-start gap-1 text-[12px]">
       <ul aria-label="Why this looks like a scam" className="m-0 list-none p-0 text-warn">
@@ -645,7 +624,7 @@ function RowPanel({ txnKey, drafts, shownForms, onUnsaved, onSaving, pin, onClos
     shownForms.add(txnKey);
     return () => { shownForms.delete(txnKey); };
   }, [mountForm, txnKey, shownForms]);
-  const [busy, setBusy] = useState(false);
+  const { running: busy, run } = useAction();
   // the pick's answer stands for the row's pin only until the row is asked again: after
   // that (a save through More, an Undo) the row's own pin is the newer word
   const [fresh, setFresh] = useState<PinSet | undefined>(pin ?? undefined);
@@ -674,16 +653,7 @@ function RowPanel({ txnKey, drafts, shownForms, onUnsaved, onSaving, pin, onClos
   if (!row) return <p className="m-0 text-[13px] text-warn">That row is no longer in the record.</p>;
   const similar = counted === query && hidden !== query && preview.data && !preview.data.error ? preview.data.changes ?? 0 : 0;
 
-  async function act(run: () => Promise<void>) {
-    setBusy(true);
-    try {
-      await run();
-    } catch (e) {
-      showToast({ tone: "error", message: (e as Error).message });
-    } finally {
-      setBusy(false);
-    }
-  }
+  const act = (write: () => Promise<void>) => run("act", write, { toast: true });
   // the same rule "Apply to similar rows" built before G13: the row's text as a pattern, with its category and payee
   const applySimilar = () => act(async () => {
     const r = await postJSON<RuleSavedEdit>("/api/rules/save", JSON.stringify({ rule: ruleOf(draft!), edit: null }));

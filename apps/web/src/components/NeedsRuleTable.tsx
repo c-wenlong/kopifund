@@ -8,6 +8,7 @@ import { formatDay } from "../dates";
 import { GroupRowsPanel } from "./PinRow";
 import { Pager, usePager } from "./Pager";
 import { Loading } from "./States";
+import { useAction } from "./useAction";
 import { HEAD_ROW, TABLE_BOX, TH } from "./tableKit";
 
 type Row = {
@@ -60,8 +61,7 @@ export function NeedsRuleTable({ groups, canLoad, onSaved }: {
   const [reply, setReply] = useState<SuggestReply | null>(null);
   const [rows, setRows] = useState<Row[]>([]);
   const [failed, setFailed] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { running: saving, error, run } = useAction();
   const [open, setOpen] = useState<string | null>(null);   // the group whose rows are listed
   const [patterns, setPatterns] = useState<Set<string>>(new Set());   // rows whose pattern box is open
 
@@ -104,9 +104,7 @@ export function NeedsRuleTable({ groups, canLoad, onSaved }: {
   const unsure = rows.length - rows.filter((r) => r.picked).length;
 
   async function save() {
-    setSaving(true);
-    setError(null);
-    try {
+    await run("save", async () => {
       await postJSON("/api/rules/batch", JSON.stringify({
         rules: chosen.map((r) => ({
           match_on: r.match_on, pattern: r.pattern, payee: r.payee.trim(), kind: r.kind,
@@ -114,11 +112,7 @@ export function NeedsRuleTable({ groups, canLoad, onSaved }: {
         })),
       }));
       await onSaved(canLoad);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
-      setSaving(false);
-    }
+    });
   }
 
   const n = chosen.length;

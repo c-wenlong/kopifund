@@ -16,6 +16,7 @@ import { formatDay } from "../dates";
 import { formatAmount } from "../money";
 import { Button } from "../components/Button";
 import { Card } from "../components/Card";
+import { useAction } from "../components/useAction";
 import type { LinkDevice, LinkDevices, LinkPending, PairToken, PendingRow } from "../types.gen";
 
 export function LinkCard() {
@@ -24,7 +25,7 @@ export function LinkCard() {
   const pending = useApi<LinkPending>(`/api/link/pending?v=${version}`);
   const [pair, setPair] = useState<PairToken | null>(null);
   const [expired, setExpired] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const { running: busy, run } = useAction();
   const [copied, setCopied] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   // a fresh code replaces the one shown: its ten minutes run from minting,
@@ -49,9 +50,8 @@ export function LinkCard() {
   const noAddress = data !== null && !data.url;
 
   async function mint() {
-    setBusy(true);
     setProblem(null);
-    try {
+    await run("mint", async () => {
       const fresh = await postJSON<PairToken>("/api/link/pair-token", JSON.stringify({}));
       setPair(fresh);
       setCopied(false);
@@ -60,11 +60,7 @@ export function LinkCard() {
       // code is past it the QR cannot work, so it leaves the screen
       if (expireTimer.current) clearTimeout(expireTimer.current);
       expireTimer.current = setTimeout(() => setExpired(true), fresh.expires_in * 1000);
-    } catch (e) {
-      setProblem((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    }, { onError: setProblem });
   }
 
   async function copy(payload: string) {
@@ -142,7 +138,7 @@ function DeviceRow({ device, onRevoked, onError }: {
   device: LinkDevice; onRevoked: () => void; onError: (m: string | null) => void;
 }) {
   const [armed, setArmed] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const { running: busy, run } = useAction();
   const disarm = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (disarm.current) clearTimeout(disarm.current);
@@ -158,16 +154,11 @@ function DeviceRow({ device, onRevoked, onError }: {
     }
     if (disarm.current) clearTimeout(disarm.current);
     setArmed(false);
-    setBusy(true);
     onError(null);
-    try {
+    await run("write", async () => {
       await postJSON("/api/link/devices/revoke", JSON.stringify({ id: device.id }));
       onRevoked();
-    } catch (e) {
-      onError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    }, { onError });
   }
 
   return (
@@ -191,7 +182,7 @@ function DismissAll({ count, onDone, onError }: {
   count: number; onDone: () => void; onError: (m: string | null) => void;
 }) {
   const [armed, setArmed] = useState(false);
-  const [busy, setBusy] = useState(false);
+  const { running: busy, run } = useAction();
   const disarm = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (disarm.current) clearTimeout(disarm.current);
@@ -206,16 +197,11 @@ function DismissAll({ count, onDone, onError }: {
     }
     if (disarm.current) clearTimeout(disarm.current);
     setArmed(false);
-    setBusy(true);
     onError(null);
-    try {
+    await run("write", async () => {
       await postJSON("/api/link/pending/dismiss-all", JSON.stringify({}));
       onDone();
-    } catch (e) {
-      onError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    }, { onError });
   }
 
   return (
@@ -233,19 +219,14 @@ function DismissAll({ count, onDone, onError }: {
 function PendingItem({ row, onDone, onError }: {
   row: PendingRow; onDone: () => void; onError: (m: string | null) => void;
 }) {
-  const [busy, setBusy] = useState(false);
+  const { running: busy, run } = useAction();
 
   async function act(url: string) {
-    setBusy(true);
     onError(null);
-    try {
+    await run("write", async () => {
       await postJSON(url, JSON.stringify({ import_id: row.import_id }));
       onDone();
-    } catch (e) {
-      onError((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    }, { onError });
   }
 
   return (
