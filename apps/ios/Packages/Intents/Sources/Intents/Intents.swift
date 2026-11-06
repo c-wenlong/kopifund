@@ -43,23 +43,38 @@ public enum Ingest {
         }.value
         switch outcome {
         case .matched(let t):
-            let pattern = patterns.first { $0.id == t.patternID }
-            let row = try TransactionRecord(from: t, accountID: pattern?.accountID ?? "",
-                                        categoryID: pattern?.defaultCategoryID)
-            if pattern?.autoApprove == true { row.state = "approved" }
-            context.insert(row)
-            settleDuplicates(of: row, in: context)
-            holdKeeperIfForeign(of: row, in: context, defaults: defaults)
+            try queue(t, patterns: patterns, in: context, defaults: defaults)
             try context.save()
             return "queued"
         case .unmatched(let rejections):
             context.insert(UnmatchedRecord(text: text, source: source, receivedAt: receivedAt,
-                                           arrivedOn: arrived,
-                                           reasons: rejections.map { "\($0.patternName): \($0.reason)" }
-                                               .joined(separator: "\n")))
+                                           arrivedOn: arrived, reasons: reasons(rejections)))
             try context.save()
             return "unmatched"
         }
+    }
+
+    /// A match becomes an Inbox row: the pattern's account, category and
+    /// auto-approve, then the same duplicate and currency checks every
+    /// capture gets. The caller saves. Shared by a fresh alert and by
+    /// `rematchUnmatched`, so a re-read alert queues exactly as it would
+    /// have on arrival.
+    @MainActor
+    static func queue(_ t: ParsedTransaction, patterns: [AlertPattern],
+                      in context: ModelContext, defaults: UserDefaults?) throws {
+        let pattern = patterns.first { $0.id == t.patternID }
+        let row = try TransactionRecord(from: t, accountID: pattern?.accountID ?? "",
+                                        categoryID: pattern?.defaultCategoryID)
+        if pattern?.autoApprove == true { row.state = "approved" }
+        context.insert(row)
+        settleDuplicates(of: row, in: context)
+        holdKeeperIfForeign(of: row, in: context, defaults: defaults)
+    }
+
+    /// Unmatched's "Why nothing matched": one "PatternName: reason" line
+    /// per pattern tried, in priority order.
+    static func reasons(_ rejections: [Rejection]) -> String {
+        rejections.map { "\($0.patternName): \($0.reason)" }.joined(separator: "\n")
     }
 
     /// Batched ingest for automation input: the Email and Message triggers

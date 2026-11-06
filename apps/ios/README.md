@@ -109,6 +109,18 @@ tagged; the save button says what is still missing rather than sitting grey.
 The same `Matcher.test` powers the live read, so what the preview shows is
 what intake does.
 
+Saving a pattern re-reads every alert waiting in Unmatched, not just the one
+it was taught from (`Ingest.rematchUnmatched`): the saved patterns run over
+each alert off the main thread, through the same path a fresh alert takes,
+so a match lands in the Inbox with the duplicate and currency checks a new
+capture gets, and a miss stays with its "Why nothing matched" re-read
+against today's patterns. A toast says how many moved ("4 waiting alerts now
+match Demo Wallet"). An alert already in the Inbox (same text, same arrival)
+leaves Unmatched without a second row, two passes never run at once, and an
+alert the record already covers ("in kopifund") or whose shape is ignored
+stays where it is. **Try patterns again** at the top of Unmatched runs the
+same pass by hand.
+
 A field is found by the stable words right around it, not by every word of
 the alert: the literal before a field keeps its nearest words on the field's
 line (at most two words that do not change, never past an earlier clause's
