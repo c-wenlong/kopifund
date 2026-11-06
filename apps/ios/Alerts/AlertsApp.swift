@@ -43,6 +43,14 @@ struct AlertsApp: App {
                     try? ctx.save()
                 }
             }
+            // `-seedNoCategories` empties the cached YNAB category lists, so a
+            // UI test sees the Review page as it is before any YNAB fetch
+            if ProcessInfo.processInfo.arguments.contains("-seedNoCategories") {
+                let ctx = ModelContext(c)
+                for m in (try? ctx.fetch(FetchDescriptor<MetadataRecord>())) ?? []
+                where m.key.hasPrefix("categories|") { ctx.delete(m) }
+                try? ctx.save()
+            }
             #if DEBUG
             // G24: a UI test parks alerts in Unmatched with one
             // `-seedUnmatched <text>` per alert, as if each arrived before

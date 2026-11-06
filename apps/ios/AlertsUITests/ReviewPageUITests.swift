@@ -6,7 +6,7 @@ final class ReviewPageUITests: XCTestCase {
     func testAmountShowsTwoDecimalsAndNoRawCategoryField() throws {
         let payee = "Review Payee \(Int(Date().timeIntervalSince1970) % 100_000)"
         let app = XCUIApplication()
-        app.launchArguments = ["-seedSpend", "580|SGD|\(payee)|2026-10-15"]
+        app.launchArguments = ["-seedNoCategories", "-seedSpend", "580|SGD|\(payee)|2026-10-15"]
         app.launch()
 
         let tab = app.tabBars.buttons["Inbox"]
@@ -21,5 +21,8 @@ final class ReviewPageUITests: XCTestCase {
         XCTAssertEqual(amount.value as? String, "5.80")
         XCTAssertFalse(app.textFields["Category ID"].exists)
         XCTAssertFalse(app.staticTexts["Category ID"].exists)
+        // no category control of any kind: not the Picker either
+        XCTAssertFalse(app.buttons["Category"].exists)
+        XCTAssertFalse(app.staticTexts["Category"].exists)
     }
 }
