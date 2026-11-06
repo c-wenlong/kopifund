@@ -1,8 +1,9 @@
 import { act, render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { revalidate } from "../api";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { Plan, fractionToPercent, percentToFraction } from "./Plan";
 import { Toaster } from "../components/Toast";
+import { json } from "../test-helpers";
 
 // A plan with every list filled, its money in cents as GET /api/plan sends it
 // (G17). Every figure and name here is invented.
@@ -22,20 +23,18 @@ function servePlan(plan: Record<string, unknown>) {
     if (init?.method === "POST") {
       const body = JSON.parse(init.body as string);
       posted.push(body);
-      return new Response(JSON.stringify(body), { status: 200 });
+      return json(body);
     }
     if (url.startsWith("/api/plan")) {
-      return new Response(JSON.stringify({ plan, categories: [], need_classes: [], spend_rates: ["window", "mean", "home", "phase"] }), { status: 200 });
+      return json({ plan, categories: [], need_classes: [], spend_rates: ["window", "mean", "home", "phase"] });
     }
-    if (url.startsWith("/api/budgets")) return new Response(JSON.stringify({ month: "2026-08", rows: [], months: [] }), { status: 200 });
-    return new Response(JSON.stringify({ error: "no result" }), { status: 404 });
+    if (url.startsWith("/api/budgets")) return json({ month: "2026-08", rows: [], months: [] });
+    return json({ error: "no result" }, 404);
   }));
   return posted;
 }
 
 describe("Plan", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("keeps the saved plan on screen, not the one from before the save", async () => {
     let saved = { insurance_minor: 10_000 };
     let release: () => void = () => {};
@@ -44,15 +43,15 @@ describe("Plan", () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === "POST") {
         saved = JSON.parse(init.body as string);
-        return new Response(JSON.stringify(saved), { status: 200 });
+        return json(saved);
       }
       if (url.startsWith("/api/plan")) {
         planGets += 1;
         if (planGets > 1) await slowReload;          // the refresh after the save is slow
-        return new Response(JSON.stringify({ plan: saved, categories: [], need_classes: [], spend_rates: ["home"] }), { status: 200 });
+        return json({ plan: saved, categories: [], need_classes: [], spend_rates: ["home"] });
       }
-      if (url.startsWith("/api/budgets")) return new Response(JSON.stringify({ month: "", rows: [], months: [] }), { status: 200 });
-      return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      if (url.startsWith("/api/budgets")) return json({ month: "", rows: [], months: [] });
+      return json({ results: [] });
     }));
     render(<Plan />);
     const insurance = await screen.findByDisplayValue("100");
@@ -72,13 +71,13 @@ describe("Plan", () => {
       if (url.startsWith("/api/budgets")) {
         const month = new URL(url, "http://x").searchParams.get("month") ?? "";
         asked.push(month);
-        return new Response(JSON.stringify({
+        return json({
           month, months: ["2026-08", "2026-07"], need_classes: ["Need"],
           rows: [{ category: "Groceries", need_class: "Need", bucket: "Spend", planned: 40000, actual: month === "2026-08" ? 31200 : 0 }],
-        }), { status: 200 });
+        });
       }
-      if (url.startsWith("/api/plan")) return new Response(JSON.stringify({ plan: {}, categories: [], need_classes: [], spend_rates: ["home"] }), { status: 200 });
-      return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      if (url.startsWith("/api/plan")) return json({ plan: {}, categories: [], need_classes: [], spend_rates: ["home"] });
+      return json({ results: [] });
     }));
     try {
       render(<Plan asOf="2026-08-28" />);
@@ -104,7 +103,7 @@ describe("Plan", () => {
   it("groups the budgets by bucket with a total row each, income on its own", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       if (url.startsWith("/api/budgets")) {
-        return new Response(JSON.stringify({
+        return json({
           month: "2026-08", months: ["2026-08"],
           groups: [{ name: "Food", kind: "spend" }, { name: "Getting around", kind: "spend" }, { name: "Income", kind: "income" }],
           rows: [
@@ -113,10 +112,10 @@ describe("Plan", () => {
             { category: "Transport", need_class: "Need", bucket: "Spend", category_group: "Getting around", kind: "spend", planned: null, actual: 9000 },
             { category: "Salary", need_class: "Income", bucket: "Income", category_group: "Income", kind: "income", planned: 400000, actual: 410000 },
           ],
-        }), { status: 200 });
+        });
       }
-      if (url.startsWith("/api/plan")) return new Response(JSON.stringify({ plan: {}, categories: [], need_classes: [], spend_rates: ["home"] }), { status: 200 });
-      return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      if (url.startsWith("/api/plan")) return json({ plan: {}, categories: [], need_classes: [], spend_rates: ["home"] });
+      return json({ results: [] });
     }));
     render(<Plan asOf="2026-08-28" />);
     const food = await screen.findByRole("row", { name: "Food total" });
@@ -140,10 +139,10 @@ describe("Plan", () => {
       if (url.startsWith("/api/budgets")) {
         const month = new URL(url, "http://x").searchParams.get("month") ?? "";
         asked.push(month);
-        return new Response(JSON.stringify({ month, months: [], rows: [] }), { status: 200 });
+        return json({ month, months: [], rows: [] });
       }
-      if (url.startsWith("/api/plan")) return new Response(JSON.stringify({ plan: {}, categories: [], need_classes: [], spend_rates: ["home"] }), { status: 200 });
-      return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      if (url.startsWith("/api/plan")) return json({ plan: {}, categories: [], need_classes: [], spend_rates: ["home"] });
+      return json({ results: [] });
     }));
     try {
       const { rerender } = render(<Plan asOf={undefined} />);
@@ -164,10 +163,10 @@ describe("Plan", () => {
       if (url.startsWith("/api/budgets")) {
         const month = new URL(url, "http://x").searchParams.get("month") ?? "";
         asked.push(month);
-        return new Response(JSON.stringify({ month, months: [], rows: [] }), { status: 200 });
+        return json({ month, months: [], rows: [] });
       }
-      if (url.startsWith("/api/plan")) return new Response(JSON.stringify({ plan: {}, categories: [], need_classes: [], spend_rates: ["home"] }), { status: 200 });
-      return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      if (url.startsWith("/api/plan")) return json({ plan: {}, categories: [], need_classes: [], spend_rates: ["home"] });
+      return json({ results: [] });
     }));
     try {
       render(<Plan asOf={null} />);
@@ -323,17 +322,17 @@ describe("Plan", () => {
   it("gives every budget column a header and the used share in words", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       if (url.startsWith("/api/budgets")) {
-        return new Response(JSON.stringify({
+        return json({
           month: "2026-08", months: ["2026-08"],
           groups: [{ name: "Food", kind: "spend" }, { name: "Income", kind: "income" }],
           rows: [
             { category: "Groceries", need_class: "Need", bucket: "Spend", category_group: "Food", kind: "spend", planned: 40000, actual: 31200 },
             { category: "Salary", need_class: "Income", bucket: "Income", category_group: "Income", kind: "income", planned: 400000, actual: 410000 },
           ],
-        }), { status: 200 });
+        });
       }
-      if (url.startsWith("/api/plan")) return new Response(JSON.stringify({ plan: {}, categories: [], need_classes: [], spend_rates: ["home"] }), { status: 200 });
-      return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      if (url.startsWith("/api/plan")) return json({ plan: {}, categories: [], need_classes: [], spend_rates: ["home"] });
+      return json({ results: [] });
     }));
     render(<Plan asOf="2026-08-28" />);
     await screen.findByRole("row", { name: "Food total" });
@@ -376,28 +375,26 @@ const budgets = {
 };
 
 /** Serve budgets and an empty plan; `save` answers the budget writes, and every write is recorded. */
-function serveBudgets(save: (body: Record<string, unknown>) => Response = (b) => new Response(JSON.stringify(b), { status: 200 })) {
+function serveBudgets(save: (body: Record<string, unknown>) => Response = (b) => json(b)) {
   const posts: { url: string; body: Record<string, unknown> }[] = [];
   vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
     if (init?.method === "POST") {
       const body = JSON.parse(init.body as string);
       posts.push({ url, body });
-      return url === "/api/budgets" ? save(body) : new Response(JSON.stringify(body), { status: 200 });
+      return url === "/api/budgets" ? save(body) : json(body);
     }
-    if (url.startsWith("/api/budgets")) return new Response(JSON.stringify(budgets), { status: 200 });
-    if (url.startsWith("/api/plan")) return new Response(JSON.stringify({ plan: {}, categories: [], need_classes: [], spend_rates: ["home"] }), { status: 200 });
+    if (url.startsWith("/api/budgets")) return json(budgets);
+    if (url.startsWith("/api/plan")) return json({ plan: {}, categories: [], need_classes: [], spend_rates: ["home"] });
     // G20: a forward view in cents with nothing to project, so the card raises no alert of its own
     if (url === "/api/results/forward-view") {
-      return new Response(JSON.stringify({ id: "forward-view", title: "Forward view", chart: { type: "line", unit: "sgd_minor" }, data: { months: [] } }), { status: 200 });
+      return json({ id: "forward-view", title: "Forward view", chart: { type: "line", unit: "sgd_minor" }, data: { months: [] } });
     }
-    return new Response(JSON.stringify({ results: [] }), { status: 200 });
+    return json({ results: [] });
   }));
   return posts;
 }
 
 describe("the plan card", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("never shows No plan yet, or any alert, on its way to showing the plan", async () => {
     servePlan(fullPlan);
     const seen: string[] = [];
@@ -413,8 +410,6 @@ describe("the plan card", () => {
 });
 
 describe("the budgets card", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("totals what is planned, what has gone and how many categories are over, income left out", async () => {
     serveBudgets();
     render(<Plan asOf="2026-08-28" />);
@@ -512,7 +507,7 @@ describe("the budgets card", () => {
   });
 
   it("puts the server's refusal of a row under that row", async () => {
-    serveBudgets(() => new Response(JSON.stringify({ error: "no category 'Coffee'" }), { status: 422 }));
+    serveBudgets(() => json({ error: "no category 'Coffee'" }, 422));
     render(<Plan asOf="2026-08-28" />);
     const coffee = await screen.findByLabelText("Planned for Coffee");
     fireEvent.focus(coffee);
@@ -524,10 +519,10 @@ describe("the budgets card", () => {
   it("shows a planned amount with cents as it was planned, not rounded", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       if (url.startsWith("/api/budgets")) {
-        return new Response(JSON.stringify({ ...budgets, groups: [], rows: [{ category: "Coffee", need_class: "Want", bucket: "Spend", planned: 12050, actual: 0 }] }), { status: 200 });
+        return json({ ...budgets, groups: [], rows: [{ category: "Coffee", need_class: "Want", bucket: "Spend", planned: 12050, actual: 0 }] });
       }
-      if (url.startsWith("/api/plan")) return new Response(JSON.stringify({ plan: {}, categories: [], need_classes: [], spend_rates: ["home"] }), { status: 200 });
-      return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      if (url.startsWith("/api/plan")) return json({ plan: {}, categories: [], need_classes: [], spend_rates: ["home"] });
+      return json({ results: [] });
     }));
     render(<Plan asOf="2026-08-28" />);
     expect(await screen.findByLabelText("Planned for Coffee")).toHaveValue("120.50");
@@ -549,8 +544,6 @@ describe("the budgets card", () => {
 const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 
 describe("the plan card's save", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("starts saved, says Unsaved changes after an edit, and Discard puts the saved plan back", async () => {
     const posted = servePlan(fullPlan);
     render(<Plan asOf="2026-08-28" />);
@@ -690,14 +683,14 @@ describe("the plan card's save", () => {
         if (init?.method === "POST") {
           const body = JSON.parse(init.body as string);
           posted.push(body);
-          return new Response(JSON.stringify(body), { status: 200 });
+          return json(body);
         }
-        if (url.startsWith("/api/suggestions")) return new Response(JSON.stringify(suggestions), { status: 200 });
+        if (url.startsWith("/api/suggestions")) return json(suggestions);
         if (url.startsWith("/api/plan")) {
-          return new Response(JSON.stringify({ plan, categories: [], need_classes: [], spend_rates: ["window"] }), { status: 200 });
+          return json({ plan, categories: [], need_classes: [], spend_rates: ["window"] });
         }
-        if (url.startsWith("/api/budgets")) return new Response(JSON.stringify({ month: "2026-08", rows: [], months: [] }), { status: 200 });
-        return new Response(JSON.stringify({ error: "no result" }), { status: 404 });
+        if (url.startsWith("/api/budgets")) return json({ month: "2026-08", rows: [], months: [] });
+        return json({ error: "no result" }, 404);
       }));
       return posted;
     }
@@ -763,21 +756,19 @@ describe("the plan card's save", () => {
 
 // G18: unsaved means typed here; a plan saved from another tab is not an edit on this one
 describe("the plan when another tab saves it", () => {
-  afterEach(() => vi.unstubAllGlobals());
-
   it("keeps typing made while its own save is on its way, back to the old saved value included", async () => {
     let saved: Record<string, unknown> = { ...fullPlan };
     let release: () => void = () => {};
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       if (init?.method === "POST") {
         const body = JSON.parse(init.body as string);
-        return new Promise<Response>((done) => { release = () => { saved = body; done(new Response(JSON.stringify(body), { status: 200 })); }; });
+        return new Promise<Response>((done) => { release = () => { saved = body; done(json(body)); }; });
       }
       if (url.startsWith("/api/plan")) {
-        return new Response(JSON.stringify({ plan: saved, categories: [], need_classes: [], spend_rates: ["home"] }), { status: 200 });
+        return json({ plan: saved, categories: [], need_classes: [], spend_rates: ["home"] });
       }
-      if (url.startsWith("/api/budgets")) return new Response(JSON.stringify({ month: "", rows: [], months: [] }), { status: 200 });
-      return new Response(JSON.stringify({ results: [] }), { status: 200 });
+      if (url.startsWith("/api/budgets")) return json({ month: "", rows: [], months: [] });
+      return json({ results: [] });
     }));
     render(<Plan asOf="2026-08-28" />);
     const insurance = await screen.findByLabelText("Insurance premiums (S$ a month)");

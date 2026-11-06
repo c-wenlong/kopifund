@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { Pager, clampPage, compactItems, pageCount, pageItems, usePager } from "./Pager";
+import { stubMatchMedia } from "../test-helpers";
 
 const range = (n: number) => Array.from({ length: n }, (_, i) => i + 1);
 
@@ -72,8 +73,6 @@ const shown = () => screen.getByTestId("items").textContent;
 const nav = () => screen.getByRole("navigation", { name: "Test pages" });
 
 describe("Pager", () => {
-  beforeEach(() => window.localStorage.clear());
-
   it("says where you are, as 1 to 25 of 312 with no dashes", () => {
     render(<Harness />);
     expect(within(nav()).getByRole("status")).toHaveTextContent("1 to 25 of 312");
@@ -99,10 +98,7 @@ describe("Pager", () => {
   });
 
   describe("on a phone", () => {
-    const phone = (on: boolean) => vi.stubGlobal("matchMedia", (q: string) => ({
-      matches: on && q.includes("max-width"), media: q, addEventListener() {}, removeEventListener() {},
-    }));
-    afterEach(() => vi.unstubAllGlobals());
+    const phone = (on: boolean) => stubMatchMedia((q) => on && q.includes("max-width"));
 
     it("shows the first, current and last page, with ellipses over the rest", () => {
       phone(true);

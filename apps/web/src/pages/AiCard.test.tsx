@@ -1,9 +1,10 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { choose } from "../test-select";
 import { notifyChanged } from "../api";
 import type { AiKey, AiSettings } from "../types.gen";
 import { AiCard } from "./AiCard";
+import { json } from "../test-helpers";
 
 // G22: the AI card on Settings: provider, models, the key (never shown), Test and consent.
 
@@ -28,14 +29,12 @@ function stub(first: AiSettings, after: (url: string, body: Record<string, unkno
       posts.push({ url, body });
       const out = after(url, body);
       if ("providers" in out) now = out as AiSettings;
-      return new Response(JSON.stringify(out), { status: 200 });
+      return json(out);
     }
-    if (url === "/api/ai") return new Response(JSON.stringify(now), { status: 200 });
-    return new Response(JSON.stringify({ provider: "anthropic", models: [], fetched_at: null, error: null }), { status: 200 });
+    if (url === "/api/ai") return json(now);
+    return json({ provider: "anthropic", models: [], fetched_at: null, error: null });
   }));
 }
-
-afterEach(() => vi.unstubAllGlobals());
 
 const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 const card = async () => (await screen.findByRole("heading", { name: "AI" })).closest("section")!;
@@ -118,10 +117,10 @@ describe("the AI card's settings", () => {
       if (url === "/api/ai/settings" && init?.method === "POST") {
         const body = JSON.parse(String(init.body));
         return new Promise<Response>((done) => {
-          release = () => { now = settings(keychain, body); done(new Response(JSON.stringify(now), { status: 200 })); };
+          release = () => { now = settings(keychain, body); done(json(now)); };
         });
       }
-      if (url === "/api/ai") return new Response(JSON.stringify(now), { status: 200 });
+      if (url === "/api/ai") return json(now);
       return ask(url, init);
     }));
     render(<AiCard />);
@@ -150,12 +149,12 @@ describe("the AI card's settings", () => {
       if (url === "/api/ai/settings" && init?.method === "POST") {
         const body = JSON.parse(String(init.body));
         return new Promise<Response>((done) => {
-          releasePost = () => { now = settings(keychain, body); posted = true; done(new Response(JSON.stringify(now), { status: 200 })); };
+          releasePost = () => { now = settings(keychain, body); posted = true; done(json(now)); };
         });
       }
       // the settings asked for again after the save wait until let go
-      if (url === "/api/ai" && posted) return new Promise<Response>((done) => { releaseRead = () => done(new Response(JSON.stringify(now), { status: 200 })); });
-      if (url === "/api/ai") return new Response(JSON.stringify(now), { status: 200 });
+      if (url === "/api/ai" && posted) return new Promise<Response>((done) => { releaseRead = () => done(json(now)); });
+      if (url === "/api/ai") return json(now);
       return ask(url, init);
     }));
     render(<AiCard />);
@@ -181,10 +180,10 @@ describe("the AI card's settings", () => {
     let now = settings(keychain);
     vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) => {
       if (url === "/api/ai/settings" && init?.method === "POST") {
-        return new Promise<Response>((done) => { fail = () => done(new Response(JSON.stringify({ error: "disk full" }), { status: 500 })); });
+        return new Promise<Response>((done) => { fail = () => done(json({ error: "disk full" }, 500)); });
       }
-      if (url === "/api/ai") return new Response(JSON.stringify(now), { status: 200 });
-      return new Response(JSON.stringify({ provider: "anthropic", models: [], fetched_at: null, error: null }), { status: 200 });
+      if (url === "/api/ai") return json(now);
+      return json({ provider: "anthropic", models: [], fetched_at: null, error: null });
     }));
     render(<AiCard />);
     const c = await card();
