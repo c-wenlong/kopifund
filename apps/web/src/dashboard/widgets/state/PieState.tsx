@@ -4,11 +4,13 @@
 // tokens, or a bucket's own when a slice names one; the legend's entries hide
 // a slice, never the last one (useHidden).
 import { useMemo } from "react";
-import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from "recharts";
-import { Card } from "../../../components/Card";
-import { SeriesLegend, TipBox, TipRow, useHidden, type LegendItem } from "../../../components/chartKit";
+import { Cell, Pie, PieChart, Tooltip } from "recharts";
+import { MaybeCard } from "../../../components/Card";
+import {
+  ChartBox, SeriesLegend, TipBox, TipRow, useHidden, type ChartHeight, type LegendItem,
+} from "../../../components/chartKit";
 import { EmptyState } from "../../../components/EmptyState";
-import { CardSkeleton, Problem } from "../../../components/States";
+import { CardSkeleton, Loading, Problem } from "../../../components/States";
 import { label } from "../../../stats/hint";
 import type { WidgetAnswer, WidgetQuery } from "../../../types.gen";
 import { navigate } from "../../../router";
@@ -29,7 +31,8 @@ export type PieStateConfig = {
   donut?: boolean;
   showTotal?: boolean;
   aggregate?: Aggregate;
-  height?: number;
+  /** px, or "fill" on a dashboard: the room the widget's cell leaves */
+  height?: ChartHeight;
 };
 
 /** A plain config for the editor to start from: this month's spend by bucket, as a ring with its total inside. */
@@ -42,30 +45,34 @@ export const defaultPieConfig: PieStateConfig = {
   height: 240,
 };
 
-export function PieState({ config = defaultPieConfig }: { config?: PieStateConfig }) {
+export function PieState({ config = defaultPieConfig, bare = false }: { config?: PieStateConfig; bare?: boolean }) {
   const queries = useMemo(() => (Array.isArray(config.query) ? config.query : [config.query]), [config.query]);
   // one useWidgetData per bound query, so the hook list's size is the query
   // count: an edit that changes it remounts here rather than change it mid-life
-  return <PieStateLoad key={queries.length} config={config} queries={queries} />;
+  return <PieStateLoad key={queries.length} config={config} queries={queries} bare={bare} />;
 }
 
-function PieStateLoad({ config, queries }: { config: PieStateConfig; queries: WidgetQuery[] }) {
+function PieStateLoad({ config, queries, bare }: { config: PieStateConfig; queries: WidgetQuery[]; bare: boolean }) {
   const { data: answers, error, loading } = combineAnswers(useWidgetAnswers(queries));
   const buckets = useBucketStyles(true);
   const height = config.height ?? 240;
 
   if (error) return <Problem message={error} retry />;
   if (!answers) {
-    return loading
-      ? <CardSkeleton height={height} what={`Loading ${config.title}`} />
-      : <Card title={config.title}><EmptyState title="Nothing to show yet" /></Card>;
+    if (loading) {
+      return bare
+        ? <Loading what={`Loading ${config.title}`} />
+        : <CardSkeleton height={typeof height === "number" ? height : 240} what={`Loading ${config.title}`} />;
+    }
+    return <MaybeCard title={config.title} bare={bare}><EmptyState title="Nothing to show yet" /></MaybeCard>;
   }
-  return <PieStateView config={config} answers={answers} buckets={buckets} height={height} />;
+  return <PieStateView config={config} answers={answers} buckets={buckets} height={height} bare={bare} />;
 }
 
 /** The widget once its answers are in: legend, chart and the ring's total. */
-function PieStateView({ config, answers, buckets, height }: {
-  config: PieStateConfig; answers: WidgetAnswer[]; buckets: ReturnType<typeof useBucketStyles>; height: number;
+function PieStateView({ config, answers, buckets, height, bare }: {
+  config: PieStateConfig; answers: WidgetAnswer[]; buckets: ReturnType<typeof useBucketStyles>; height: ChartHeight;
+  bare: boolean;
 }) {
   const slices = useMemo(() => slicesFor(answers, config.aggregate ?? "latest"), [answers, config.aggregate]);
   const unit = unitOf(answers);
@@ -100,34 +107,31 @@ function PieStateView({ config, answers, buckets, height }: {
   };
 
   return (
-    <Card title={config.title}>
+    <MaybeCard title={config.title} bare={bare}>
       {slices.length === 0 ? (
         <EmptyState title="Nothing to show yet">The widget's query answered with no figures.</EmptyState>
       ) : (
         <>
           {slices.length > 1 && <SeriesLegend items={items} hidden={hidden} onToggle={toggle} />}
-          <div className="relative">
-            <ResponsiveContainer width="100%" height={height}>
-              <PieChart>
-                <Tooltip content={tip} />
-                <Pie data={data} dataKey="value" nameKey="name" innerRadius={config.donut === false ? 0 : "58%"}
-                  outerRadius="85%" paddingAngle={config.donut === false ? 0 : 1} stroke="var(--panel)" strokeWidth={2}
-                  isAnimationActive={false} onClick={(_, i) => open(data[i])}>
-                  {data.map((s) => <Cell key={s.key} fill={s.colour} cursor={s.link ? "pointer" : undefined} />)}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-            {config.donut !== false && config.showTotal !== false && drawn.length > 0 && (
-              <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center" aria-hidden>
-                <span className="num text-[18px] font-semibold leading-tight">{fmtValue(total, unit)}</span>
-                <span className="text-[11px] text-ink-3">{answers.length > 1 ? "total" : label(answers[0].metric)}</span>
-              </div>
-            )}
-          </div>
+          <ChartBox height={height} overlay={config.donut !== false && config.showTotal !== false && drawn.length > 0 && (
+            <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center" aria-hidden>
+              <span className="num text-[18px] font-semibold leading-tight">{fmtValue(total, unit)}</span>
+              <span className="text-[11px] text-ink-3">{answers.length > 1 ? "total" : label(answers[0].metric)}</span>
+            </div>
+          )}>
+            <PieChart>
+              <Tooltip content={tip} />
+              <Pie data={data} dataKey="value" nameKey="name" innerRadius={config.donut === false ? 0 : "58%"}
+                outerRadius="85%" paddingAngle={config.donut === false ? 0 : 1} stroke="var(--panel)" strokeWidth={2}
+                isAnimationActive={false} onClick={(_, i) => open(data[i])}>
+                {data.map((s) => <Cell key={s.key} fill={s.colour} cursor={s.link ? "pointer" : undefined} />)}
+              </Pie>
+            </PieChart>
+          </ChartBox>
           {clickable && <p className="m-0 mt-1 text-[11px] text-ink-3">Click a slice to see its transactions.</p>}
           {note && <p className="m-0 mt-1 text-[11px] text-ink-3">{note}.</p>}
         </>
       )}
-    </Card>
+    </MaybeCard>
   );
 }

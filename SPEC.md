@@ -1551,9 +1551,19 @@ the starter presets in `presets.ts`; Reset restores the default one, and a
 removal or a reset offers an Undo toast. Named layouts switch in the page's
 actions when the record holds more than one. A widget's `type` names its
 entry in `registry.tsx`: the component that draws it, its picker's words and
-the cell and query it starts with. The registered bodies are placeholders
-until the chart widgets land; a saved `type` the build does not know keeps
-its cell and says so, rather than failing the board.
+the cell and query it starts with. The registered kinds are the state
+widgets (`kpi`, `pie`, `donut`, `treemap`), the change widgets (`line`,
+`area`, `waterfall`), the `flow` Sankey and `note`; `bind.tsx` reads a saved
+row's `query` and `options` into each component's config, so a layout saved
+while the placeholders held the ids keeps the question it asked. A chart
+fills the room its card leaves under its legend and notes, so it fits its
+cell and follows a resize; what still does not fit (a Sankey with many
+categories) scrolls inside the card, never clipped. Stacked under 768px, a
+card sizes to its contents and its chart draws at a phone's chart height. A widget's series count can change under
+it (another board, a refreshed layout) without breaking it, and the
+waterfall's default pins no months: its flows answer the record's last
+twelve and its balance opens on the month before them. A saved `type` the build does not
+know keeps its cell and says so, rather than failing the board.
 
 **A widget query** (`WidgetQuery`, `server/finance/types.py`) asks one
 question: a `source`, a `metric`, a `dimension` to spread it over, an optional

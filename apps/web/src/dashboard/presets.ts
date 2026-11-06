@@ -14,14 +14,16 @@ export type Preset = {
   widgets: () => DashboardWidget[];
 };
 
-function spawn(type: string, cell: Cell, title?: string, query?: WidgetQuery): DashboardWidget {
+function spawn(type: string, cell: Cell, title?: string, query?: WidgetQuery,
+  options?: Record<string, unknown>): DashboardWidget {
   const def = widgetDef(type);
   const w: DashboardWidget = { id: newWidgetId(), type, layout: { ...cell } };
   const t = title ?? def?.title;
   if (t) w.title = t;
   const made = def?.make?.();
   if (query ?? made?.query) w.query = (query ?? made?.query)!;
-  if (made?.options) w.options = made.options;
+  const opts = { ...made?.options, ...options };
+  if (Object.keys(opts).length) w.options = opts;
   return w;
 }
 
@@ -35,9 +37,11 @@ export const PRESETS: readonly Preset[] = [
       spawn("kpi", { x: 4, y: 0, w: 4, h: 2 }, "Cash runway",
         { source: "savings-runway", metric: "runway_months", dimension: "month" }),
       spawn("kpi", { x: 8, y: 0, w: 4, h: 2 }, "Spend by month",
-        { source: "spending", metric: "spend", dimension: "month" }),
-      spawn("line", { x: 0, y: 2, w: 8, h: 3 }, "Monthly spend"),
-      spawn("pie", { x: 8, y: 2, w: 4, h: 3 }, "Spend by bucket"),
+        { source: "spending", metric: "spend", dimension: "month" },
+        // spend falling reads well; the type's default ("up") is for balances
+        { goodWhen: "down" }),
+      spawn("line", { x: 0, y: 2, w: 8, h: 4 }, "Monthly spend"),
+      spawn("pie", { x: 8, y: 2, w: 4, h: 4 }, "Spend by bucket"),
     ]),
   },
   {

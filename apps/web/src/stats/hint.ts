@@ -288,7 +288,7 @@ export function columnUnit(column: string, units?: Record<string, string>, unit?
 // Series keys that read badly when only the underscores are replaced, and a
 // column whose name is not what the app calls it (category_group is a Bucket).
 const LABELS: Record<string, string> = {
-  oa: "OA", sa: "SA", ma: "MA", ra: "RA",
+  oa: "OA", sa: "SA", ma: "MA", ra: "RA", cpf: "CPF",
   contributed_sgd: "Put in", value_sgd: "Value",
   runway_months: "Runway", monthly_cost: "Monthly cost", per_month: "Per month",
   category_group: "Bucket",

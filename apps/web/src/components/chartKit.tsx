@@ -2,8 +2,9 @@
 // props, the hover card, and a legend whose entries hide and show a series.
 // Recharts only finds its axes, grid and tooltip among a chart's direct
 // children, so these are props to spread, not wrapper components.
-import { useRef, useState } from "react";
+import { createContext, useContext, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
+import { ResponsiveContainer } from "recharts";
 import { axisSgd, formatSgd, type Cents } from "../money";
 import { tickLabel } from "../stats/hint";
 
@@ -25,6 +26,43 @@ export const seriesColour = (index: number) => SERIES_COLOURS[index % SERIES_COL
 export const H_MAIN = 260;
 export const H_SMALL = 220;
 export const Y_WIDTH = 56;
+
+/**
+ * G26: a chart's height in px, or "fill": the room a dashboard widget's card
+ * (a bare MaybeCard) leaves once its legend and notes have theirs, so a chart
+ * fits its cell and follows a resize instead of spilling past it.
+ */
+export type ChartHeight = number | "fill";
+
+/**
+ * Whether a "fill" chart has a fixed-height card to fill: a dashboard's grid
+ * cell does; a card stacked on a phone sizes to its contents, so its chart
+ * draws at H_SMALL instead and the card grows to hold it.
+ */
+export const CanFill = createContext(true);
+
+/** The class a chart's own wrapper takes, so a filling ChartBox inside it can grow. */
+export const fillClass = (height: ChartHeight) => (height === "fill" ? "flex min-h-0 flex-1 flex-col" : "");
+
+/**
+ * The box a Recharts chart draws in: `height` px, or with "fill" the rest of
+ * its flex column, never under 120px (a card too short for that scrolls
+ * rather than squash the chart). `overlay` sits over the chart (a ring's total).
+ */
+export function ChartBox({ height, overlay, children }: {
+  height: ChartHeight; overlay?: React.ReactNode; children: React.ReactElement;
+}) {
+  const room = useContext(CanFill);
+  const fill = height === "fill" && room;
+  return (
+    <div className={fill ? "relative min-h-[120px] flex-1" : "relative"}>
+      <ResponsiveContainer width="100%" height={fill ? "100%" : height === "fill" ? H_SMALL : height}>
+        {children}
+      </ResponsiveContainer>
+      {overlay}
+    </div>
+  );
+}
 
 export const GRID = { stroke: "var(--grid)", vertical: false } as const;
 export const X_AXIS = {

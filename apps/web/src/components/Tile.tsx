@@ -14,11 +14,13 @@ const FIGURE: Record<Tone, string> = { neutral: "", good: "", warn: "text-warn",
  * the note alone, for a note that is only a comparison. `visual` is a small
  * picture under the note: a sparkline, a track, a progress bar.
  */
-export function Tile({ label, value, note, tone = "neutral", noteTone, visual }: {
+export function Tile({ label, value, note, tone = "neutral", noteTone, visual, bare = false }: {
   label: string; value: string; note?: string; tone?: Tone; noteTone?: Tone; visual?: React.ReactNode;
+  /** G26: no box of its own, for a card that already draws one (a dashboard widget's) */
+  bare?: boolean;
 }) {
   return (
-    <div className="flex min-w-0 flex-col rounded-lg bg-tile px-3 py-3 sm:px-4">
+    <div className={`flex min-w-0 flex-col${bare ? "" : " rounded-lg bg-tile px-3 py-3 sm:px-4"}`}>
       <div className="text-[13px] text-ink-2">{label}</div>
       <div className={`num mt-0.5 text-[20px] font-semibold tracking-tight sm:text-[22px] ${FIGURE[tone]}`}>{value}</div>
       {note && <div className={`num mt-0.5 text-[12px] ${NOTE[noteTone ?? tone]}`}>{note}</div>}

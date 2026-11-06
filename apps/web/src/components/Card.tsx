@@ -7,6 +7,29 @@ import { createContext, useContext } from "react";
 const CardTitle = createContext<string | null>(null);
 export const useCardTitle = () => useContext(CardTitle);
 
+/**
+ * A card, or just its contents when `bare`: the dashboard's widget cards
+ * (dashboard/Grid.tsx) already supply a border and a heading, so a widget
+ * bound there draws bare, while the CardTitle context still names the
+ * controls inside. `actions` sit right-aligned above the body in bare mode.
+ * Bare, it fills the card's body as a column, so a chart drawn at "fill"
+ * (chartKit's ChartBox) takes the room left, and scrolls whatever still
+ * does not fit (the flow's Sankey, which grows with its categories).
+ */
+export function MaybeCard({ title, bare = false, actions, children }: {
+  title: string; bare?: boolean; actions?: React.ReactNode; children: React.ReactNode;
+}) {
+  if (!bare) return <Card title={title} actions={actions}>{children}</Card>;
+  return (
+    <CardTitle.Provider value={title}>
+      <div className="flex h-full min-h-0 flex-col overflow-y-auto">
+        {actions && <div className="mb-2 flex justify-end">{actions}</div>}
+        {children}
+      </div>
+    </CardTitle.Provider>
+  );
+}
+
 // `pinned` keeps the heading, and the actions in it, at the top of the screen (the -top-4 is the page's own top padding)
 // on a phone while a long card scrolls under it: the Save of a form too tall
 // to see at once.

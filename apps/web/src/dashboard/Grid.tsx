@@ -6,8 +6,9 @@
 // dashed outline and a ring: no motion, so reduced-motion changes nothing.
 import { useEffect, useRef, useState } from "react";
 import { GripVertical, X } from "lucide-react";
-import { cellOf, clampCell, COLS, pack, settle, type Cell } from "./layout";
+import { cellOf, clampCell, COLS, GAP_PX, pack, ROW_PX, settle, type Cell } from "./layout";
 import { widgetDef } from "./registry";
+import { CanFill } from "../components/chartKit";
 import { ErrorBoundary } from "../components/ErrorBoundary";
 import { reloadViews, type DashboardWidget } from "../api";
 
@@ -32,10 +33,6 @@ function WidgetFailed({ retry }: { retry: () => void }) {
 const ARROW: Record<string, readonly [number, number]> = {
   ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1],
 };
-
-/** A grid row's height and the gap between cells, the px the pointer math shares with the style below. */
-const ROW_PX = 84;
-const GAP_PX = 12;
 
 type Drag = {
   id: string;
@@ -163,9 +160,12 @@ export function Grid({ widgets, interactive, onArrange, onRemove }: {
       return ac.y - bc.y || ac.x - bc.x;
     });
     return (
-      <div className="flex flex-col gap-3">
-        {order.map((w) => <WidgetCard key={w.id} widget={w} onRemove={onRemove} />)}
-      </div>
+      // G26: a stacked card sizes to its contents, so its charts draw at a phone's height, not "fill"
+      <CanFill.Provider value={false}>
+        <div className="flex flex-col gap-3">
+          {order.map((w) => <WidgetCard key={w.id} widget={w} onRemove={onRemove} />)}
+        </div>
+      </CanFill.Provider>
     );
   }
 

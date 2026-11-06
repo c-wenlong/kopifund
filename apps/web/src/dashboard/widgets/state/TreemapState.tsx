@@ -5,13 +5,15 @@
 // its series colour. Recharts lays the rectangles out; the drawing is ours so
 // every colour is a token.
 import { useMemo } from "react";
-import { ResponsiveContainer, Tooltip, Treemap } from "recharts";
+import { Tooltip, Treemap } from "recharts";
 import type { LucideIcon } from "lucide-react";
 import { useApi } from "../../../api";
-import { Card } from "../../../components/Card";
-import { cutName, SeriesLegend, TipBox, TipRow, useHidden, type LegendItem } from "../../../components/chartKit";
+import { MaybeCard } from "../../../components/Card";
+import {
+  ChartBox, cutName, SeriesLegend, TipBox, TipRow, useHidden, type ChartHeight, type LegendItem,
+} from "../../../components/chartKit";
 import { EmptyState } from "../../../components/EmptyState";
-import { CardSkeleton, Problem } from "../../../components/States";
+import { CardSkeleton, Loading, Problem } from "../../../components/States";
 import type { CategoriesState, CategoryGroup, WidgetAnswer, WidgetQuery } from "../../../types.gen";
 import { navigate } from "../../../router";
 import { useWidgetData } from "../../../widgets";
@@ -29,7 +31,8 @@ export type TreemapStateConfig = {
   query: WidgetQuery;
   groupBy?: "bucket" | "none";
   aggregate?: Aggregate;
-  height?: number;
+  /** px, or "fill" on a dashboard: the room the widget's cell leaves */
+  height?: ChartHeight;
 };
 
 /** A plain config for the editor to start from: this month's spend by category, grouped into buckets. */
@@ -126,7 +129,7 @@ function TreeNode(props: Partial<NodeProps>) {
   );
 }
 
-export function TreemapState({ config = defaultTreemapConfig }: { config?: TreemapStateConfig }) {
+export function TreemapState({ config = defaultTreemapConfig, bare = false }: { config?: TreemapStateConfig; bare?: boolean }) {
   const grouped = config.groupBy !== "none";
   const { data: answer, error, loading } = useWidgetData(config.query);
   const cats = useApi<CategoriesState>(grouped ? "/api/categories" : null);
@@ -134,16 +137,20 @@ export function TreemapState({ config = defaultTreemapConfig }: { config?: Treem
 
   if (error) return <Problem message={error} retry />;
   if (!answer) {
-    return loading
-      ? <CardSkeleton height={height} what={`Loading ${config.title}`} />
-      : <Card title={config.title}><EmptyState title="Nothing to show yet" /></Card>;
+    if (loading) {
+      return bare
+        ? <Loading what={`Loading ${config.title}`} />
+        : <CardSkeleton height={typeof height === "number" ? height : 300} what={`Loading ${config.title}`} />;
+    }
+    return <MaybeCard title={config.title} bare={bare}><EmptyState title="Nothing to show yet" /></MaybeCard>;
   }
-  return <TreemapStateView config={config} answer={answer} height={height} grouped={grouped}
+  return <TreemapStateView config={config} answer={answer} height={height} grouped={grouped} bare={bare}
     groups={grouped ? (cats.data?.groups ?? null) : null} />;
 }
 
-function TreemapStateView({ config, answer, groups, grouped, height }: {
-  config: TreemapStateConfig; answer: WidgetAnswer; groups: CategoryGroup[] | null; grouped: boolean; height: number;
+function TreemapStateView({ config, answer, groups, grouped, height, bare }: {
+  config: TreemapStateConfig; answer: WidgetAnswer; groups: CategoryGroup[] | null; grouped: boolean; height: ChartHeight;
+  bare: boolean;
 }) {
   const slices = useMemo(() => slicesFor([answer], config.aggregate ?? "latest"), [answer, config.aggregate]);
   const tree = useMemo(() => treeFor(slices, groups), [slices, groups]);
@@ -178,22 +185,22 @@ function TreemapStateView({ config, answer, groups, grouped, height }: {
   };
 
   return (
-    <Card title={config.title}>
+    <MaybeCard title={config.title} bare={bare}>
       {leaves.length === 0 ? (
         <EmptyState title="Nothing to show yet">The widget's query answered with no figures.</EmptyState>
       ) : (
         <>
           {items.length > 1 && <SeriesLegend items={items} hidden={hidden} onToggle={toggle} />}
-          <ResponsiveContainer width="100%" height={height}>
+          <ChartBox height={height}>
             <Treemap data={data} dataKey="value" nameKey="name" isAnimationActive={false}
               content={<TreeNode />} onClick={open}>
               <Tooltip content={tip} />
             </Treemap>
-          </ResponsiveContainer>
+          </ChartBox>
           {clickable && <p className="m-0 mt-1 text-[11px] text-ink-3">Click a tile to see its transactions.</p>}
           {answer.note && <p className="m-0 mt-1 text-[11px] text-ink-3">{answer.note.charAt(0).toUpperCase() + answer.note.slice(1)}.</p>}
         </>
       )}
-    </Card>
+    </MaybeCard>
   );
 }

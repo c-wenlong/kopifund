@@ -7,7 +7,7 @@
 // chart links idea (G13) carried to widgets.
 import { useWidgetData } from "../../../widgets";
 import { navigate } from "../../../router";
-import { fmt, tickLabel } from "../../../stats/hint";
+import { fmt, label, tickLabel } from "../../../stats/hint";
 import { CENTS_UNIT } from "../../../stats/money";
 import { axisSgd } from "../../../money";
 import { H_MAIN, H_SMALL, seriesColour } from "../../../components/chartKit";
@@ -100,7 +100,9 @@ export function joinFrames(specs: SeriesSpec[], answers: (WidgetAnswer | null)[]
       series.push({
         key: `s${series.length}`,
         id,
-        name: spec.label ?? s.name,
+        // a series named after its metric is the server's key ("runway_months"):
+        // written in words; a split's series are the record's own names, kept
+        name: spec.label ?? (s.name === a.metric ? label(s.name) : s.name),
         colour: seriesColour(series.length),
         unit: a.unit,
         values: labels.map((l) => {

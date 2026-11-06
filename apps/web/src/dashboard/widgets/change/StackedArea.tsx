@@ -6,16 +6,15 @@ import {
   CartesianGrid,
   ComposedChart,
   Line,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
-import { Card } from "../../../components/Card";
+import { MaybeCard } from "../../../components/Card";
 import { EmptyState } from "../../../components/EmptyState";
 import { Loading, Problem } from "../../../components/States";
 import {
-  activeDot, GRID, KeyItem, SeriesLegend, Swatch, TipBox, TipRow, useDotClick, useHidden, X_AXIS, Y_AXIS,
+  activeDot, ChartBox, fillClass, GRID, KeyItem, type ChartHeight, SeriesLegend, Swatch, TipBox, TipRow, useDotClick, useHidden, X_AXIS, Y_AXIS,
 } from "../../../components/chartKit";
 import { useChartView, ViewSwitch, viewsOf, type ChartView } from "../../../components/ViewSwitch";
 import { tickLabel } from "../../../stats/hint";
@@ -38,6 +37,8 @@ export type StackedAreaConfig = {
   series: SeriesSpec[];
   /** the range a query without its own inherits, e.g. a dashboard-level filter */
   range?: WidgetRange;
+  /** the chart's height: "fill" on a dashboard (its cell decides), the viewport's otherwise */
+  height?: ChartHeight;
 };
 
 /** An example binding: net worth's parts by month, the Net worth page as a widget. */
@@ -51,28 +52,36 @@ export const DEFAULT_STACKED_AREA_CONFIG: StackedAreaConfig = {
   ],
 };
 
-export function StackedAreaWidget({ config = DEFAULT_STACKED_AREA_CONFIG }: { config?: StackedAreaConfig }) {
+export function StackedAreaWidget({ config = DEFAULT_STACKED_AREA_CONFIG, bare = false }: { config?: StackedAreaConfig; bare?: boolean }) {
+  // one hook per series, so a config that changes the count remounts here
+  // rather than change the hook list mid-life
+  return <StackedAreaLoad key={config.series.length} config={config} bare={bare} />;
+}
+
+function StackedAreaLoad({ config, bare }: { config: StackedAreaConfig; bare: boolean }) {
   const { frame, error, loading } = useAnswers(config.series, config.range);
+  const autoHeight = useChartHeight();
   const [view, setView] = useChartView<ChartView>(`widget-${config.id}`, VIEW_KEYS, "stacked");
   const title = config.title ?? "Composition over time";
   return (
-    <Card title={title} actions={frame && frame.series.length > 0 ? (
+    <MaybeCard title={title} bare={bare} actions={frame && frame.series.length > 0 ? (
       <ViewSwitch label="Chart view" value={view} options={VIEWS} onChange={setView} />
     ) : null}>
       {loading && <Loading what={`Loading ${title.toLowerCase()}`} />}
       {!loading && error && <Problem message={error} retry />}
       {frame && (frame.labels.length === 0
         ? <EmptyState title="Nothing to show yet">The series this widget asks about have no figures in the range.</EmptyState>
-        : <StackedAreaChart frame={frame} view={view} />)}
-    </Card>
+        : <StackedAreaChart frame={frame} view={view} height={config.height ?? autoHeight} />)}
+    </MaybeCard>
   );
 }
 
 type Row = Record<string, number | string | null>;
 
 /** Stacked: the series piled up. Lines: each on its own scale. Total: the one line. */
-export function StackedAreaChart({ frame, view }: { frame: Frame; view: ChartView }) {
-  const height = useChartHeight();
+export function StackedAreaChart({ frame, view, height }: { frame: Frame; view: ChartView; height?: ChartHeight }) {
+  const autoHeight = useChartHeight();
+  height ??= autoHeight;
   const { hidden, toggle } = useHidden(frame.series.map((s) => s.id));
   const shown = frame.series.filter((s) => !hidden.has(s.id));
   const total = view === "total";
@@ -96,12 +105,12 @@ export function StackedAreaChart({ frame, view }: { frame: Frame; view: ChartVie
   const clickable = !total && linked.length > 0;
   const dots = useDotClick();
   return (
-    <div role="img" aria-label={frameSummary(frame)}>
+    <div role="img" aria-label={frameSummary(frame)} className={fillClass(height)}>
       {total
         ? <SeriesLegend items={[]} hidden={hidden} onToggle={() => {}} extra={<KeyItem><Swatch colour={TOTAL_INK} line />Total</KeyItem>} />
         : <SeriesLegend hidden={hidden} onToggle={toggle}
           items={frame.series.map((s) => ({ key: s.id, label: s.name, colour: s.colour, line: view === "lines" }))} />}
-      <ResponsiveContainer width="100%" height={height}>
+      <ChartBox height={height}>
         <ComposedChart data={rows} stackOffset="sign" margin={{ top: 8, right: 8, bottom: 0, left: 0 }}
           onClick={clickable ? (st: { activeLabel?: string | number }) => {
             const key = dots.take();
@@ -132,7 +141,7 @@ export function StackedAreaChart({ frame, view }: { frame: Frame; view: ChartVie
               activeDot={activeDot(TOTAL_INK)} connectNulls isAnimationActive={false} />
           )}
         </ComposedChart>
-      </ResponsiveContainer>
+      </ChartBox>
       {frame.note && <p className="m-0 mt-2 text-[12px] text-ink-3">{frame.note}</p>}
     </div>
   );

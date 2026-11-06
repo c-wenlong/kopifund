@@ -10,16 +10,15 @@ import {
   CartesianGrid,
   Cell,
   ReferenceLine,
-  ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis,
 } from "recharts";
-import { Card } from "../../../components/Card";
+import { MaybeCard } from "../../../components/Card";
 import { EmptyState } from "../../../components/EmptyState";
 import { Loading, Problem } from "../../../components/States";
 import {
-  cutName, GRID, KeyItem, Swatch, TipBox, X_AXIS, Y_AXIS,
+  ChartBox, cutName, fillClass, GRID, type ChartHeight, KeyItem, Swatch, TipBox, X_AXIS, Y_AXIS,
 } from "../../../components/chartKit";
 import { shiftMonth } from "../../../dates";
 import { navigate } from "../../../router";
@@ -51,6 +50,8 @@ export type WaterfallConfig = {
   flows: SeriesSpec[];
   /** the range a query without its own inherits, e.g. a dashboard-level filter */
   range?: WidgetRange;
+  /** the chart's height: "fill" on a dashboard (its cell decides), the viewport's otherwise */
+  height?: ChartHeight;
 };
 
 /**
@@ -156,9 +157,16 @@ export function waterfallSteps(balance: Frame | null, flows: Frame | null): Wate
   return steps;
 }
 
-export function WaterfallWidget({ config = DEFAULT_WATERFALL_CONFIG }: { config?: WaterfallConfig }) {
+export function WaterfallWidget({ config = DEFAULT_WATERFALL_CONFIG, bare = false }: { config?: WaterfallConfig; bare?: boolean }) {
+  // one hook per spec (the balance plus each flow), so a config that changes
+  // the count remounts here rather than change the hook list mid-life
+  return <WaterfallLoad key={config.flows.length + 1} config={config} bare={bare} />;
+}
+
+function WaterfallLoad({ config, bare }: { config: WaterfallConfig; bare: boolean }) {
   const balance = useAnswers([balanceSpec(config)], config.range);
   const flows = useAnswers(config.flows, config.range);
+  const autoHeight = useChartHeight();
   const title = config.title ?? "Waterfall";
   const loading = balance.loading || flows.loading;
   const error = balance.error ?? flows.error;
@@ -168,15 +176,16 @@ export function WaterfallWidget({ config = DEFAULT_WATERFALL_CONFIG }: { config?
   // a projection or preview answer marks its figures as estimates; show every note either frame carries
   const notes = [...new Set([balance.frame?.note, flows.frame?.note].filter((n): n is string => !!n))];
   return (
-    <Card title={title}>
+    <MaybeCard title={title} bare={bare}>
       {loading && <Loading what={`Loading ${title.toLowerCase()}`} />}
       {!loading && error && <Problem message={error} retry />}
       {!loading && !error && balance.frame && flows.frame && (steps === null
         ? <EmptyState title="Nothing to show yet">The balance this widget asks about has no figures in the range.</EmptyState>
         : steps && steps.length <= 2
           ? <EmptyState title="Nothing to show yet">The flows this widget asks about have no figures in the range.</EmptyState>
-          : steps && <WaterfallChart steps={steps} unit={balance.frame.unit ?? "sgd_minor"} notes={notes} />)}
-    </Card>
+          : steps && <WaterfallChart steps={steps} unit={balance.frame.unit ?? "sgd_minor"} notes={notes}
+            height={config.height ?? autoHeight} />)}
+    </MaybeCard>
   );
 }
 
@@ -190,10 +199,11 @@ const span = (s: WaterfallStep): [Cents, Cents] =>
     : s.kind === "out" ? [s.after, s.before]
     : [Math.min(0, s.value), Math.max(0, s.value)];
 
-export function WaterfallChart({ steps, unit = "sgd_minor", notes }: {
-  steps: WaterfallStep[]; unit?: WidgetUnit; notes?: string[];
+export function WaterfallChart({ steps, unit = "sgd_minor", notes, height }: {
+  steps: WaterfallStep[]; unit?: WidgetUnit; notes?: string[]; height?: ChartHeight;
 }) {
-  const height = useChartHeight();
+  const autoHeight = useChartHeight();
+  height ??= autoHeight;
   // a range bar, one rect a step: dataKey answers [low, high], so each bar
   // floats where its step crosses, no invisible baseline needed
   const rows: Row[] = steps.map((s) => {
@@ -205,13 +215,13 @@ export function WaterfallChart({ steps, unit = "sgd_minor", notes }: {
     : "Waterfall, nothing in it";
   const clickable = steps.some((s) => s.href);
   return (
-    <div role="img" aria-label={summary}>
+    <div role="img" aria-label={summary} className={fillClass(height)}>
       <div className="mb-2 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[12px] text-ink-2">
         <KeyItem><Swatch colour={END} />Balance</KeyItem>
         <KeyItem><Swatch colour={UP} />In</KeyItem>
         <KeyItem><Swatch colour={DOWN} />Out</KeyItem>
       </div>
-      <ResponsiveContainer width="100%" height={height}>
+      <ChartBox height={height}>
         <BarChart data={rows} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <CartesianGrid {...GRID} />
           <XAxis dataKey="step" {...X_AXIS} interval={0}
@@ -228,7 +238,7 @@ export function WaterfallChart({ steps, unit = "sgd_minor", notes }: {
             {rows.map((r) => <Cell key={r.step} fill={r.fill} />)}
           </Bar>
         </BarChart>
-      </ResponsiveContainer>
+      </ChartBox>
       {notes?.map((n) => <p key={n} className="m-0 mt-2 text-[12px] text-ink-3">{n}</p>)}
     </div>
   );
