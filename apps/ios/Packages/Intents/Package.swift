@@ -10,9 +10,11 @@ let package = Package(
         // Sync (the YNAB run) posts through it
         .package(path: "../YNABClient"),
         .package(path: "../Storage"),
+        // the tests' URLSession stand-in
+        .package(path: "../TestSupport"),
     ],
     targets: [
         .target(name: "Intents", dependencies: ["Matching", "YNABClient", "Storage"]),
-        .testTarget(name: "IntentsTests", dependencies: ["Intents", "Storage", "YNABClient"]),
+        .testTarget(name: "IntentsTests", dependencies: ["Intents", "Storage", "YNABClient", "TestSupport"]),
     ]
 )
