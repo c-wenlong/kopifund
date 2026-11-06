@@ -21,7 +21,7 @@ final class RematchUITests: XCTestCase {
     func testSavingAPatternMovesEveryWaitingAlertOfItsTemplate() throws {
         let app = launchSeeded()
         XCTAssertTrue(app.buttons["Try patterns again"].exists)
-        shot("1-unmatched-before-save")
+        rematchShot("1-unmatched-before-save")
 
         app.staticTexts["KOPI CORNER"].tap()
         app.buttons["Teach a pattern"].tap()
@@ -30,7 +30,7 @@ final class RematchUITests: XCTestCase {
 
         let toast = app.staticTexts["toast"]
         XCTAssertTrue(toast.waitForExistence(timeout: 10))
-        shot("2-unmatched-after-save")
+        rematchShot("2-unmatched-after-save")
         XCTAssertTrue(toast.label.hasPrefix("4 waiting alerts now match"), toast.label)
         for merchant in ["KOPI CORNER", "NOODLE HOUSE", "BOOK NOOK", "FRUIT STALL"] {
             XCTAssertFalse(app.staticTexts[merchant].exists, merchant)
@@ -39,7 +39,7 @@ final class RematchUITests: XCTestCase {
 
         app.tabBars.buttons["Inbox"].tap()
         XCTAssertTrue(app.staticTexts["FRUIT STALL"].waitForExistence(timeout: 5))
-        shot("3-inbox-after-save")
+        rematchShot("3-inbox-after-save")
     }
 }
 
@@ -47,7 +47,7 @@ final class RematchUITests: XCTestCase {
 extension XCTestCase {
     /// `SHOTS_DIR` (set as TEST_RUNNER_SHOTS_DIR on xcodebuild) keeps each
     /// screenshot as a PNG too; it is always attached to the result.
-    func shot(_ name: String) {
+    func rematchShot(_ name: String) {
         let s = XCUIScreen.main.screenshot()
         let a = XCTAttachment(screenshot: s)
         a.name = name
@@ -62,8 +62,13 @@ extension XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = RematchUITests.seeds.flatMap { ["-seedUnmatched", $0] }
         app.launch()
-        app.tabBars.buttons["Unmatched"].tap()
-        XCTAssertTrue(app.staticTexts["KOPI CORNER"].waitForExistence(timeout: 10))
+        let tab = app.tabBars.buttons["Unmatched"]
+        XCTAssertTrue(tab.waitForExistence(timeout: 10))
+        // a first launch can drop the first tap while the tab bar settles
+        for _ in 0..<3 where !app.staticTexts["KOPI CORNER"].waitForExistence(timeout: 4) {
+            tab.tap()
+        }
+        XCTAssertTrue(app.staticTexts["KOPI CORNER"].exists)
         return app
     }
 }

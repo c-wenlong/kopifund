@@ -59,8 +59,10 @@ struct PatternListView: View {
                     PasteToBuild(onSaved: patternSaved)
                 }
             }
-            .toast($notice)
         }
+        // on the stack, not the list: a list-level overlay never showed
+        // under the iOS 27 navigation bar (seen on the simulator)
+        .toast($notice)
     }
 
     /// G24: a new pattern can take alerts already waiting in Unmatched.

@@ -76,8 +76,10 @@ struct UnmatchedView: View {
                     path.removeAll()
                 }
             }
-            .toast($notice)
         }
+        // on the stack, not the list: a list-level overlay never showed
+        // under the iOS 27 navigation bar (seen on the simulator)
+        .toast($notice)
     }
 
     /// AlertView is done with its row: pop back to the list first, then
