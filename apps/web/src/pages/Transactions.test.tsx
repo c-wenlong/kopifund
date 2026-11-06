@@ -7,7 +7,7 @@ import { HIDE_TRANSFERS_KEY, Transactions } from "./Transactions";
 import { leadingIcon } from "../test-icons";
 import { choose } from "../test-select";
 import { Toaster } from "../components/Toast";
-import { json, stubMatchMedia } from "../test-helpers";
+import { expectAsks, expectFree, fakeClock, json, settle, stubMatchMedia } from "../test-helpers";
 
 // what the server sends for the days on a page: each day's rows, money in and money out
 type StubRow = { date: string; amount_sgd: number | null };
@@ -74,7 +74,6 @@ function stubFetch(rows = page.rows, pinnedPayee = "A friend", applied = true) {
 }
 
 // the address is shared by every test in this file: each starts on a bare /transactions
-const leaveAsks = () => !window.dispatchEvent(new Event("beforeunload", { cancelable: true }));
 const bare = () => window.history.replaceState(null, "", "/transactions");
 
 describe("Transactions", () => {
@@ -179,19 +178,21 @@ describe("Transactions", () => {
     render(<><Transactions /><Toaster /></>);
     fireEvent.click(await screen.findByRole("button", { name: /Set the category of the 12 Sep 2026 row/ }));
     fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Donations" }));
-    const chip = await screen.findByRole("button", { name: "Apply to 2 similar rows" });
+    await screen.findByRole("button", { name: "Apply to 2 similar rows" });
     // the rule is the row's text as a pattern, with the category and payee just set, and the pin's country
-    const asked = new URLSearchParams(calls.filter((c) => c.url.startsWith("/api/rules/preview")).at(-1)!.url.split("?")[1]);
-    expect(Object.fromEntries(asked)).toMatchObject({ match_on: "memo", pattern: "FAST PAYMENT*", payee: "A friend",
-      kind: "Person", country: "SGP", category: "Donations" });
-    fireEvent.click(chip);
+    // (the preview is asked again after the pause in the typing: wait for the question the chip answers)
+    const lastPreview = () => Object.fromEntries(new URLSearchParams(calls.filter((c) => c.url.startsWith("/api/rules/preview")).at(-1)!.url.split("?")[1]));
+    await waitFor(() => expect(lastPreview()).toMatchObject({ match_on: "memo", pattern: "FAST PAYMENT*", payee: "A friend",
+      kind: "Person", country: "SGP", category: "Donations" }));
+    fireEvent.click(screen.getByRole("button", { name: "Apply to 2 similar rows" }));
     expect(await screen.findByText("Rule saved, 2 rows changed.")).toBeInTheDocument();
     expect(JSON.parse(calls.find((c) => c.url === "/api/rules/save")!.body!)).toEqual({
       rule: { match_on: "memo", pattern: "FAST PAYMENT*", payee: "A friend", kind: "Person", country: "SGP",
         category: "Donations", recurring: "", notes: "" },
       edit: null,
     });
-    expect(screen.queryByRole("button", { name: "Apply to 2 similar rows" })).not.toBeInTheDocument();
+    // the chip goes when the preview, asked again after the save, counts no row left to change
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Apply to 2 similar rows" })).not.toBeInTheDocument());
     // Undo names the write it takes back, so another tab's newer one is refused, not undone
     const toast = screen.getByText("Rule saved, 2 rows changed.").closest("[role=status]") as HTMLElement;
     fireEvent.click(within(toast).getByRole("button", { name: "Undo" }));
@@ -259,12 +260,12 @@ describe("Transactions", () => {
     fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Donations" }));
     fireEvent.click(await screen.findByRole("button", { name: "More" }));
     await screen.findByRole("textbox", { name: "Payee for the 12 Sep 2026 row" });
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
     fireEvent.change(screen.getByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
     fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
     await waitFor(() => expect(screen.queryByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).not.toBeInTheDocument());
-    await waitFor(() => expect(leaveAsks()).toBe(false));
+    await expectFree();
   });
 
   it("still asks before leaving when Less or Close hides a typed form, since the page keeps what was typed", async () => {
@@ -276,9 +277,9 @@ describe("Transactions", () => {
     fireEvent.change(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
     fireEvent.click(screen.getByRole("button", { name: "Less" }));
     expect(screen.queryByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).not.toBeInTheDocument();
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
     fireEvent.click(screen.getByRole("button", { name: "Close" }));
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
   });
 
   it("keeps a row's form open on what was typed while its save was on its way", async () => {
@@ -303,13 +304,13 @@ describe("Transactions", () => {
     fireEvent.change(note, { target: { value: "a wedding gift" } });
     await waitFor(() => expect(release).not.toBeNull());
     await act(async () => release!());
-    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    await settle();
     // "a gift" is saved; the rest was never sent, so the form stays open on it and leaving asks
     expect(screen.getByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).toHaveValue("a wedding gift");
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
     // typed back to what was saved: nothing is left unsaved
     fireEvent.change(screen.getByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
-    expect(leaveAsks()).toBe(false);
+    await expectFree();
   });
 
   it("asks before leaving when a row's form is cleared while its save is on its way", async () => {
@@ -331,15 +332,15 @@ describe("Transactions", () => {
     fireEvent.change(note, { target: { value: "a gift" } });
     fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
     // a save on its way may still fail: leaving asks until it lands
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
     // cleared while "a gift" is being saved: the clear was never sent
     fireEvent.change(note, { target: { value: "" } });
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
     await waitFor(() => expect(release).not.toBeNull());
     await act(async () => release!());
-    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+    await settle();
     expect(screen.getByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).toHaveValue("");
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
   });
 
   it("stops asking when a form hidden during its save has nothing typed and the save fails", async () => {
@@ -359,11 +360,11 @@ describe("Transactions", () => {
     fireEvent.click(await screen.findByRole("button", { name: "More" }));
     await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" });
     fireEvent.click(screen.getByRole("button", { name: "Save for this row" }));
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
     fireEvent.click(screen.getByRole("button", { name: "Less" }));
     await waitFor(() => expect(fail).not.toBeNull());
     await act(async () => fail!());
-    await waitFor(() => expect(leaveAsks()).toBe(false));
+    await expectFree();
   });
 
   it("keeps asking about a form reopened and typed into while its earlier save fails", async () => {
@@ -388,8 +389,8 @@ describe("Transactions", () => {
     fireEvent.change(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
     await waitFor(() => expect(fail).not.toBeNull());
     await act(async () => fail!());
-    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
-    expect(leaveAsks()).toBe(true);
+    await settle();
+    await expectAsks();
   });
 
   it("keeps the question for a box cleared during a save, through Less and More before it lands", async () => {
@@ -414,11 +415,11 @@ describe("Transactions", () => {
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     // the same form, still measuring the clear against the note on its way
     expect(screen.getByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).toHaveValue("");
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
     await waitFor(() => expect(release).not.toBeNull());
     await act(async () => release!());
-    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
-    expect(leaveAsks()).toBe(true);
+    await settle();
+    await expectAsks();
   });
 
   it("stops asking when the category chip saves the only thing a hidden form held", async () => {
@@ -430,13 +431,13 @@ describe("Transactions", () => {
     const box = await screen.findByRole("combobox", { name: "Category for the 12 Sep 2026 row" });
     fireEvent.change(box, { target: { value: "Shop" } });
     fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Shopping" }));
-    await waitFor(() => expect(leaveAsks()).toBe(true));
+    await expectAsks();
     fireEvent.click(screen.getByRole("button", { name: "Less" }));
-    expect(leaveAsks()).toBe(true);
+    await expectAsks();
     // the chip saves Shopping, all the hidden form held
     fireEvent.click(screen.getByRole("button", { name: /Set the category of the 12 Sep 2026 row/ }));
     fireEvent.mouseDown(within(await screen.findByRole("listbox")).getByRole("option", { name: "Shopping" }));
-    await waitFor(() => expect(leaveAsks()).toBe(false));
+    await expectFree();
   });
 
   it("opens More again clean after a save, with no question about leaving", async () => {
@@ -450,7 +451,7 @@ describe("Transactions", () => {
     await waitFor(() => expect(screen.queryByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).not.toBeInTheDocument());
     fireEvent.click(screen.getByRole("button", { name: "More" }));
     expect(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" })).toHaveValue("");
-    await waitFor(() => expect(leaveAsks()).toBe(false));
+    await expectFree();
   });
 
   it("opens on the row's category, and picking it again saves nothing", async () => {
@@ -1089,6 +1090,7 @@ describe("Transactions filters in the address", () => {
   });
 
   it("drops a search still waiting for the pause when Clear filters is pressed", async () => {
+    const clock = fakeClock();
     window.history.replaceState(null, "", "/transactions?category=Donations");
     const calls = stubTxns({ rows: [money(1)], total: 1, ...months });
     render(<Transactions />);
@@ -1098,13 +1100,14 @@ describe("Transactions filters in the address", () => {
     fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
     expect(box).toHaveValue("");
     // well past the pause, the search never comes back
-    await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+    await clock.pass(400);
     expect(box).toHaveValue("");
     expect(window.location.search).toBe("");
     expect(calls.filter((u) => u.includes("q="))).toEqual([]);
   });
 
   it("drops a search still waiting for the pause when a link moves the page, and keeps it when a filter changes here", async () => {
+    const clock = fakeClock();
     window.history.replaceState(null, "", "/transactions?category=Donations");
     const calls = stubTxns({ rows: [money(1)], total: 1, ...months });
     render(<Transactions />);
@@ -1120,7 +1123,7 @@ describe("Transactions filters in the address", () => {
     fireEvent.change(box, { target: { value: "kopi" } });
     act(() => navigate("/transactions"));
     expect(box).toHaveValue("");
-    await act(async () => { await new Promise((r) => setTimeout(r, 400)); });
+    await clock.pass(400);
     expect(window.location.search).toBe("");
     expect(calls.filter((u) => u.includes("q=kopi"))).toEqual([]);
   });
@@ -1355,8 +1358,8 @@ describe("Transactions: a row save across a change of layout", () => {
     fireEvent.change(await screen.findByRole("textbox", { name: "Note for the 12 Sep 2026 row" }), { target: { value: "a gift" } });
     await waitFor(() => expect(fail).not.toBeNull());
     await act(async () => fail!());
-    await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
-    expect(leaveAsks()).toBe(true);
+    await settle();
+    await expectAsks();
   });
 });
 

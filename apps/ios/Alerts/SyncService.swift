@@ -107,7 +107,7 @@ final class SyncService {
             } catch {}
         }
 
-        let hub = await HubLane.start(context: context, planCurrency: settings.planCurrency)
+        let hub = HubLane.start(planCurrency: settings.planCurrency)
         // the hub owes no YNAB setup: rows a linked phone still owes the
         // record go first, whatever their YNAB state
         if let hub { await hub.sendOwed(context: context) }
@@ -231,7 +231,7 @@ final class HubLane {
     }
 
     /// nil when the phone is not linked.
-    static func start(context: ModelContext, planCurrency: String?) async -> HubLane? {
+    static func start(planCurrency: String?) -> HubLane? {
         guard let link = LinkStore.live.client() else { return nil }
         return HubLane(link: link, planCurrency: planCurrency)
     }

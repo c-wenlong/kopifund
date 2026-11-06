@@ -4,6 +4,7 @@ import Testing
 @testable import Intents
 import Storage
 import YNABClient
+import TestSupport
 
 /// G24: the sync engine against a mock YNAB. MockProtocol keeps its handler
 /// in a static, so this suite runs serially.

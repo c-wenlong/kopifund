@@ -1,4 +1,5 @@
 import Foundation
+import CoreData
 import SwiftData
 import Testing
 import Matching
@@ -83,43 +84,73 @@ private func scratchDefaults() -> (UserDefaults, String) {
 /// carrying `payeeID` (dropped as unused in the G24 audit). A store written
 /// with this shape must open under today's schema, the way an older install's
 /// store does on upgrade: one field added, one removed.
+///
+/// The old shape is a Core Data model built here, not a second `@Model`
+/// class: a SwiftData class with the entity name `TransactionRecord` beside
+/// the real one let SwiftData resolve today's rows against the old entity
+/// while the tests ran in parallel, and the run crashed now and then with
+/// "not key value coding-compliant for the key dateIsDay".
 enum LegacyStore {
-    @Model final class TransactionRecord {
-        @Attribute(.unique) var id: UUID
-        var payee: String
-        var amountCents: Int
-        var currency: String
-        var date: Date
-        var direction: String
-        var accountID: String
-        var categoryID: String?
-        var payeeID: String?
-        var memo: String
-        var accountHint: String?
-        var alertText: String
-        var source: String?
-        var receivedAt: Date
-        var patternID: UUID?
-        var state: String
-        var ynabID: String?
-        var importID: String?
-        var syncError: String?
-        var syncAttempts: Int
-
-        init(id: UUID, payee: String) {
-            self.id = id
-            self.payee = payee
-            amountCents = 480
-            currency = "SGD"
-            date = day
-            direction = "outflow"
-            accountID = "a1"
-            memo = ""
-            alertText = "alert"
-            receivedAt = day
-            state = "pending"
-            syncAttempts = 0
+    /// Built per write, so no model object is shared between tests.
+    static func model() -> NSManagedObjectModel {
+        func attribute(_ name: String, _ type: NSAttributeType,
+                       optional: Bool = false) -> NSAttributeDescription {
+            let a = NSAttributeDescription()
+            a.name = name
+            a.attributeType = type
+            a.isOptional = optional
+            return a
         }
+        let row = NSEntityDescription()
+        row.name = "TransactionRecord"
+        row.managedObjectClassName = NSStringFromClass(NSManagedObject.self)
+        row.properties = [
+            attribute("id", .UUIDAttributeType),
+            attribute("payee", .stringAttributeType),
+            attribute("amountCents", .integer64AttributeType),
+            attribute("currency", .stringAttributeType),
+            attribute("date", .dateAttributeType),
+            attribute("direction", .stringAttributeType),
+            attribute("accountID", .stringAttributeType),
+            attribute("categoryID", .stringAttributeType, optional: true),
+            attribute("payeeID", .stringAttributeType, optional: true),
+            attribute("memo", .stringAttributeType),
+            attribute("accountHint", .stringAttributeType, optional: true),
+            attribute("alertText", .stringAttributeType),
+            attribute("source", .stringAttributeType, optional: true),
+            attribute("receivedAt", .dateAttributeType),
+            attribute("patternID", .UUIDAttributeType, optional: true),
+            attribute("state", .stringAttributeType),
+            attribute("ynabID", .stringAttributeType, optional: true),
+            attribute("importID", .stringAttributeType, optional: true),
+            attribute("syncError", .stringAttributeType, optional: true),
+            attribute("syncAttempts", .integer64AttributeType),
+        ]
+        row.uniquenessConstraints = [["id"]]
+        let model = NSManagedObjectModel()
+        model.entities = [row]
+        return model
+    }
+
+    /// One pending row in the old shape, written to a SQLite store at `url`.
+    static func write(rowID: UUID, payee: String, to url: URL) throws {
+        let model = model()
+        let coordinator = NSPersistentStoreCoordinator(managedObjectModel: model)
+        let store = try coordinator.addPersistentStore(type: .sqlite, at: url)
+        let context = NSManagedObjectContext(.privateQueue)
+        context.persistentStoreCoordinator = coordinator
+        try context.performAndWait {
+            let row = NSEntityDescription.insertNewObject(forEntityName: "TransactionRecord",
+                                                          into: context)
+            let values: [String: Any] = [
+                "id": rowID, "payee": payee, "amountCents": 480, "currency": "SGD",
+                "date": day, "direction": "outflow", "accountID": "a1", "memo": "",
+                "alertText": "alert", "receivedAt": day, "state": "pending", "syncAttempts": 0,
+            ]
+            row.setValuesForKeys(values)
+            try context.save()
+        }
+        try coordinator.remove(store)
     }
 }
 
@@ -128,14 +159,7 @@ enum LegacyStore {
     defer { try? FileManager.default.removeItem(at: folder) }
     let url = folder.appendingPathComponent("alerts.store")
     let rowID = UUID()
-    do {
-        let schema = Schema([PatternRecord.self, LegacyStore.TransactionRecord.self,
-                             UnmatchedRecord.self, MetadataRecord.self])
-        let config = ModelConfiguration(schema: schema, url: url, cloudKitDatabase: .none)
-        let context = ModelContext(try ModelContainer(for: schema, configurations: [config]))
-        context.insert(LegacyStore.TransactionRecord(id: rowID, payee: "KOPITIAM"))
-        try context.save()
-    }
+    try LegacyStore.write(rowID: rowID, payee: "KOPITIAM", to: url)
     let context = ModelContext(try Store.container(at: url))
     let rows = try context.fetch(FetchDescriptor<TransactionRecord>())
     #expect(rows.map(\.id) == [rowID])
