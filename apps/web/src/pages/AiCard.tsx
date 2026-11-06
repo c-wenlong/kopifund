@@ -8,6 +8,7 @@ import { Button } from "../components/Button";
 import { Card } from "../components/Card";
 import { clearModelCache, ModelField } from "../components/ModelField";
 import { SaveBar } from "../components/SaveBar";
+import { useAction } from "../components/useAction";
 import { Select } from "../components/Select";
 import { useUnsavedGuard } from "../router";
 import type { AiKey, AiSettings, AiTest } from "../types.gen";
@@ -189,9 +190,8 @@ function KeyRow({ provider, keyInfo }: { provider: string; keyInfo: AiKey | null
   const has = !!keyInfo && keyInfo.where !== "none";
   const [typing, setTyping] = useState(false);
   const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
+  const { running: busy, error: problem, run, clear } = useAction();
   const [armed, setArmed] = useState(false);
-  const [problem, setProblem] = useState<string | null>(null);
   const disarm = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => () => {
     if (disarm.current) clearTimeout(disarm.current);
@@ -203,7 +203,7 @@ function KeyRow({ provider, keyInfo }: { provider: string; keyInfo: AiKey | null
     setTyping(false);
     setText("");
     setArmed(false);
-    setProblem(null);
+    clear();
   }
 
   async function saveKey() {
@@ -211,18 +211,12 @@ function KeyRow({ provider, keyInfo }: { provider: string; keyInfo: AiKey | null
     if (!key) return;
     // the key leaves the page's state before it is sent, whatever the answer
     setText("");
-    setBusy(true);
-    setProblem(null);
-    try {
+    await run("save", async () => {
       await postJSON<AiSettings>("/api/ai/key", JSON.stringify({ provider, key }));
       setTyping(false);
       // the models list the server can fetch changes with the key
       clearModelCache(provider);
-    } catch (e) {
-      setProblem((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   async function remove() {
@@ -235,16 +229,10 @@ function KeyRow({ provider, keyInfo }: { provider: string; keyInfo: AiKey | null
     }
     if (disarm.current) clearTimeout(disarm.current);
     setArmed(false);
-    setBusy(true);
-    setProblem(null);
-    try {
+    await run("remove", async () => {
       await postJSON<AiSettings>("/api/ai/key/remove", JSON.stringify({ provider }));
       clearModelCache(provider);
-    } catch (e) {
-      setProblem((e as Error).message);
-    } finally {
-      setBusy(false);
-    }
+    });
   }
 
   return (
@@ -275,19 +263,13 @@ function KeyRow({ provider, keyInfo }: { provider: string; keyInfo: AiKey | null
 }
 
 function TestRow() {
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<AiTest | null>(null);
-  async function run() {
-    setBusy(true);
-    setResult(null);
-    try {
-      setResult(await postJSON<AiTest>("/api/ai/test", JSON.stringify({})));
-    } catch (e) {
-      setResult({ ok: false, message: (e as Error).message, ms: null });
-    } finally {
-      setBusy(false);
-    }
-  }
+  const [answer, setAnswer] = useState<AiTest | null>(null);
+  const { running: busy, error, run: act } = useAction();
+  const run = () => {
+    setAnswer(null);
+    return act("test", async () => setAnswer(await postJSON<AiTest>("/api/ai/test", JSON.stringify({}))));
+  };
+  const result: AiTest | null = error !== null ? { ok: false, message: error, ms: null } : answer;
   return (
     <div className="flex flex-wrap items-center gap-3">
       <Button onClick={() => void run()} disabled={busy}>{busy ? "Testing" : "Test"}</Button>

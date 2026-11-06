@@ -19,6 +19,7 @@ import { HEAD_ROW, ROW, TABLE_BOX, TH } from "../components/tableKit";
 import { Loading, Problem } from "../components/States";
 import { showToast, type ToastAction } from "../components/Toast";
 import { useWide } from "../components/useWide";
+import { useAction } from "../components/useAction";
 import { useUnsavedGuard } from "../router";
 import { tierLabel } from "../ruleWords";
 import { KindLabel, PAYEE_KIND_ICON, STEP_STATUS_ICON } from "../icons";
@@ -64,7 +65,7 @@ export function Rules() {
   const [open, setOpen] = useState<Set<string>>(new Set());
   const [editing, setEditing] = useState<Editing | null>(null);
   const edits = useRef(0);   // a number for each editor opened, never reused, so a save from a closed one cannot reach a new one
-  const [busy, setBusy] = useState(false);
+  const { running: busy, run } = useAction();
   const [history, setHistory] = useState(false);
   const [needsOpen, setNeedsOpen] = useState<string | null>(null);   // the needs-rule group whose rows are listed
   // G18: leaving with a rule typed into and not saved asks first, as every other form does
@@ -118,19 +119,10 @@ export function Rules() {
   if (state.error || !s) return <Problem message={state.error ?? "No rules"} hint="Load your statements first, from the Upload page." retry />;
 
   // what a write says goes to a toast, where the click was; a delete offers Undo there
-  async function act(run: () => Promise<string | { message: string; action?: ToastAction }>): Promise<boolean> {
-    setBusy(true);
-    try {
-      const done = await run();
-      showToast(typeof done === "string" ? { message: done } : done);
-      return true;
-    } catch (e) {
-      showToast({ tone: "error", message: (e as Error).message });
-      return false;
-    } finally {
-      setBusy(false);
-    }
-  }
+  const act = (write: () => Promise<string | { message: string; action?: ToastAction }>) => run("act", async () => {
+    const done = await write();
+    showToast(typeof done === "string" ? { message: done } : done);
+  }, { toast: true });
   // G13: a save reaches the transactions at once, so Apply rules is only for rows the record holds
   // differently for another reason (a rules file changed by hand); it relinks them and reads no statement
   const apply = () => act(async () => {
