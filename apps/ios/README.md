@@ -95,6 +95,24 @@ tagged; the save button says what is still missing rather than sitting grey.
 The same `Matcher.test` powers the live read, so what the preview shows is
 what intake does.
 
+A field is found by the stable words right around it, not by every word of
+the alert: the literal before a field keeps its nearest words on the field's
+line (at most two words that do not change, never past an earlier clause's
+end), or the label line above when the field starts its line ("Amount:");
+the literal after a payee or card keeps the words that end it, or just its
+line break; an amount or a date, which read their own end, keep one word.
+Everything else (greeting, header, reworded sentences, the footer, extra
+lines between fields) becomes ignore, so the next alert of the kind reads
+when those change. A payee the sample followed with a blank line may wrap
+onto two more lines and reads joined with a space, and a name never holds
+the words the template opens on, so a line that repeats the template cannot
+leak into it. **More options > Found between** shows each field's before
+and after text and lets the owner change it (⏎ is a line break); clearing
+the text beside a payee or card is refused like a fresh build would be, and
+re-tagging picks the texts again. `CorpusTests` holds invented alerts of four
+kinds with their variants and look-alikes from other banks; every variant
+must read and no look-alike may.
+
 Anchors read as regex, not verbatim text: digits and date-shaped runs inside
 the fixed words fold into wildcards on their own, so a reference number or a
 dated line that changes every alert cannot break the match. A number that

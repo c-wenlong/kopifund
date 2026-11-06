@@ -29,6 +29,11 @@ enum LiteralPattern {
     /// take a line break that block requires when the ignored text is
     /// missing ("ref \nEnd" for a template "ref X\nEnd").
     static func pattern(for literal: String, trailingSpace: Bool = true) -> String {
+        // G24: the blank line the builder keeps after a payee: a blank line,
+        // or the end of the text when the alert stops there
+        if literal == "\n\n" {
+            return #"[^\S\n]*+(?:\n[^\S\n]*+\n|\n?[^\S\n]*+\z)"# + (trailingSpace ? #"\s*+"# : "")
+        }
         // a newline the sample printed is part of the template: it becomes a
         // required break in the regex, which also bounds a capture sitting
         // on the line before it. The space before the break must not eat

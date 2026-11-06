@@ -46,6 +46,9 @@ struct PatternBuilderView: View {
     @State private var matched: ParsedTransaction?
     @State private var accountOptions: [(String, String)] = []
     @State private var categoryOptions: [(String, String)] = []
+    /// G24: the owner's changes to a field's before or after text, applied
+    /// on top of what the tags build; a re-tag starts them over.
+    @State private var anchorEdits: [PatternAnchors.Edit] = []
     // keeps a store refresh from re-keying the tab under this draft
     @State private var draftHold = SyncService.DraftHold()
 
@@ -103,7 +106,8 @@ struct PatternBuilderView: View {
                 PatternMetaForm(name: $name, direction: $direction, accountID: $accountID,
                                 defaultCategoryID: $defaultCategoryID, sourceMatch: $sourceMatch,
                                 priority: $priority, autoApprove: $autoApprove,
-                                accountOptions: accountOptions, categoryOptions: categoryOptions) {
+                                accountOptions: accountOptions, categoryOptions: categoryOptions,
+                                anchors: anchorList, onEditAnchor: editAnchor) {
                     if name != autoName { nameTouched = true }
                 }
                 testSection
@@ -121,6 +125,7 @@ struct PatternBuilderView: View {
                         onSave: save)
         }
         .onChange(of: draft.tags) {
+            anchorEdits = []
             // a re-tagged payee renames the pattern too, until the name
             // field itself has been edited
             if !nameTouched, let s = spans.first(where: { $0.field == .payee }) {
@@ -130,6 +135,7 @@ struct PatternBuilderView: View {
             runTest()
         }
         .onChange(of: testText) { runTest() }
+        .onChange(of: anchorEdits) { runTest() }
         .onChange(of: sampleText) { prepare() }
         .onAppear {
             prepare()
@@ -225,10 +231,26 @@ struct PatternBuilderView: View {
         return ""
     }
 
+    /// The fields' before and after texts with every edit shown, a refused
+    /// one too: the row keeps what the owner typed while the card above
+    /// says why it cannot save, so the value to fix stays in view.
+    private var anchorList: [PatternAnchors.Anchor] {
+        guard let segs = try? PatternBuilder.segments(in: sampleText, tokens: tokens, spans: spans),
+              let shown = try? PatternAnchors.applying(anchorEdits, to: segs, check: false)
+        else { return [] }
+        return PatternAnchors.anchors(in: shown)
+    }
+
+    private func editAnchor(_ e: PatternAnchors.Edit) {
+        anchorEdits.removeAll { $0.field == e.field && $0.side == e.side }
+        anchorEdits.append(e)
+    }
+
     private func builtPattern() throws -> AlertPattern {
         // the builder refuses a field tagged twice and an unreadable date
         // span with a BuildError, shown below
-        let segs = try PatternBuilder.segments(in: sampleText, tokens: tokens, spans: spans)
+        let segs = try PatternAnchors.applying(
+            anchorEdits, to: PatternBuilder.segments(in: sampleText, tokens: tokens, spans: spans))
         return AlertPattern(name: name.isEmpty ? "Untitled" : name, direction: direction,
                             accountID: accountID,
                             defaultCategoryID: defaultCategoryID.isEmpty ? nil : defaultCategoryID,

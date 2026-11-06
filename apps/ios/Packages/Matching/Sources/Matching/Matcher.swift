@@ -116,6 +116,7 @@ public enum Matcher {
         // required
         let blocks = p.segments.split(separator: .ignore, omittingEmptySubsequences: true)
         var dateGroup = 0
+        let stop = restart(of: p)
         var pattern = #"\A"#
         for (b, block) in blocks.enumerated() {
             // a block that opens on a literal starts with that literal's
@@ -128,13 +129,21 @@ public enum Matcher {
             // line it closes from the line's first word, and the leftmost
             // match always started there. Trying every other place on the
             // line only repeated the same scan.
+            //
+            // G24: after the first block the skip never crosses the words
+            // the template opens on: with only the nearest words anchoring
+            // each field, a skip that ran over a second alert's opening
+            // could take the date and amount from one alert and the payee
+            // from the next. `apply` retries from each opening instead.
+            let any = b > 0 ? skipChar(stop) : #"[\s\S]"#
+            let last = b > 0 ? (stop.map { "(?!\($0))" } ?? "") : ""
             switch block.first {
             case .literal:
-                pattern += #"(?>(?:[\s\S]*?\S)??"#
+                pattern += #"(?>(?:\#(any)*?\#(last)\S)??"#
             case .payee where b == 0, .accountHint where b == 0:
                 pattern += #"(?>[\s\S]*?(?m:^)[^\S\r\n]*+"#
             default:
-                pattern += #"(?>[\s\S]*?"#
+                pattern += #"(?>\#(any)*?"#
             }
             for (k, seg) in zip(block.indices, block) {
                 switch seg {
@@ -152,7 +161,16 @@ public enum Matcher {
                     // payee that ends the template reaches its line's end,
                     // not the text's, so trailing boilerplate stays out of
                     // the name.
-                    pattern += lineCapture("payee", atLineEnd: atLineEnd(p, seg))
+                    //
+                    // G24: a payee the sample followed with a blank line is a
+                    // paragraph of its own, so a long name the bank wrapped
+                    // onto a second or third line still reads whole
+                    if k != block.index(before: block.endIndex),
+                       case .literal(let next) = block[block.index(after: k)], next.hasPrefix("\n\n") {
+                        pattern += paragraphCapture("payee", stop: stop)
+                    } else {
+                        pattern += lineCapture("payee", atLineEnd: atLineEnd(p, seg), stop: stop)
+                    }
                 case .date(let f):
                     pattern += Amounts.noNumberBefore + "(?<date\(dateGroup)>\(f.regex))"
                     dateGroup += 1
@@ -161,7 +179,7 @@ public enum Matcher {
                     // the capture reads the whole tagged text, punctuation
                     // and all; the sample's value is what a later alert must
                     // equal
-                    pattern += lineCapture("accountHint", atLineEnd: atLineEnd(p, seg))
+                    pattern += lineCapture("accountHint", atLineEnd: atLineEnd(p, seg), stop: stop)
                 }
             }
             pattern += ")"
@@ -182,9 +200,65 @@ public enum Matcher {
     /// tries one character first (`??`), then grows. One that ends the
     /// template reads greedily to its line's end; nothing follows it, so it
     /// never backtracks.
-    private static func lineCapture(_ name: String, atLineEnd: Bool) -> String {
-        atLineEnd ? #"(?<\#(name)>\S(?:[^\r\n]*\S)?)"#
-                  : #"(?<\#(name)>\S(?:[^\r\n]{0,\#(maxCaptureLength - 2)}?\S)??)"#
+    ///
+    /// G24: `stop`, when set, is the words the template opens on. A name
+    /// never holds them: with only the nearest words anchoring a field, a
+    /// line that repeats the template ("...was declined, you charged SGD
+    /// 4.80 at ...") would otherwise let the payee read across the repeat.
+    private static func lineCapture(_ name: String, atLineEnd: Bool, stop: String? = nil) -> String {
+        let c = char(stop)
+        let open = stop.map { "(?!\($0))" } ?? ""
+        return atLineEnd ? #"(?<\#(name)>\#(open)\S(?:\#(c)*\S)?)"#
+                         : #"(?<\#(name)>\#(open)\S(?:\#(c){0,\#(maxCaptureLength - 2)}?\S)??)"#
+    }
+
+    /// One skipped character between blocks, never the start of `stop`.
+    private static func skipChar(_ stop: String?) -> String {
+        stop.map { "(?:(?!\($0))[\\s\\S])" } ?? #"[\s\S]"#
+    }
+
+    /// One character of a line capture, never the start of `stop`.
+    private static func char(_ stop: String?) -> String {
+        stop.map { "(?:(?!\($0))[^\r\n])" } ?? #"[^\r\n]"#
+    }
+
+    /// A payee that may wrap: its first line, then up to two more non-blank
+    /// lines, as few as the blank line after it allows. Each line starts and
+    /// ends on a non-space; the reading joins the lines with one space.
+    private static func paragraphCapture(_ name: String, stop: String?) -> String {
+        let open = stop.map { "(?!\($0))" } ?? ""
+        let line = open + #"\S(?:\#(char(stop)){0,\#(maxCaptureLength - 2)}\S)?"#
+        return #"(?<\#(name)>"# + line + #"(?:[^\S\n]*+\n[^\S\n]*+"# + line + "){0,2}?)"
+    }
+
+    /// Where the template starts again, as a case-blind regex: the last
+    /// line of the literal before the first field, as whole words, and the
+    /// field itself when it is an amount or a date ("Paid SGD 4.80", "Date &
+    /// Time: 12 Oct"), so a name merely holding the words ("PREPAID", "PAID
+    /// PARKING") is no restart. Nil when the template opens on a field.
+    static func restart(of p: AlertPattern) -> String? {
+        for (i, seg) in p.segments.enumerated() {
+            switch seg {
+            case .ignore: continue
+            case .literal(let s):
+                let line = (s.components(separatedBy: "\n").last { $0.contains(where: \.isLetter) } ?? "")
+                    .trimmingCharacters(in: .whitespaces)
+                guard line.contains(where: \.isLetter) else { return nil }
+                let next = p.segments.indices.contains(i + 1) ? p.segments[i + 1] : nil
+                // without the literal's leading `\s*+`: tried at every
+                // place of a long whitespace run, it would rescan the run
+                var lit = LiteralPattern.pattern(for: line, trailingSpace: false)
+                if lit.hasPrefix(#"\s*+"#) { lit.removeFirst(4) }
+                let words = "(?<![A-Za-z0-9])(?i:" + lit + ")"
+                switch next {
+                case .amount?: return words + #"\s*+(?:"# + Amounts.pattern + ")"
+                case .date(let f)?: return words + #"\s*+(?:"# + f.regex + ")"
+                default: return words + "(?![A-Za-z0-9])"
+                }
+            default: return nil
+            }
+        }
+        return nil
     }
 
     /// A capture ends its line when nothing but whitespace literals follows
@@ -229,7 +303,7 @@ public enum Matcher {
         do { re = try cachedExpression(for: p) } catch { return .failure(MatchError("pattern builds a bad regex")) }
         let ns = text as NSString
         let m: NSTextCheckingResult
-        switch search(re, in: text) {
+        switch searchFromEachStart(p, re, in: text) {
         case .found(let hit): m = hit
         case .none: return .failure(MatchError("text does not match"))
         case .timedOut: return .failure(MatchError("text too long to read in time"))
@@ -259,7 +333,9 @@ public enum Matcher {
         guard parsed.decimals <= 2 else {
             return .failure(MatchError("amount \(a) has \(parsed.decimals) decimals; the app keeps cents"))
         }
-        guard let py = payee?.trimmingCharacters(in: .whitespacesAndNewlines)
+        // a wrapped payee's lines join with one space
+        guard let py = payee?.replacingOccurrences(of: #"\s*\n\s*"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
             .trimmingCharacters(in: CharacterSet(charactersIn: ".,;:-")), !py.isEmpty else {
             return .failure(MatchError("payee not readable"))
         }
@@ -280,9 +356,13 @@ public enum Matcher {
         // a tagged card or account is part of the pattern's identity: the
         // digits inside literals flex for references, so the hint is what
         // separates "card ending 1234" from "card ending 5678"
-        if p.segments.contains(.accountHint),
-           let expected = expectedHint(for: p, re: re), trimmedHint != expected {
-            return .failure(MatchError("different card or account"))
+        // G24: a tagged card the sample no longer yields fails closed: a
+        // skipped check would let another card's alerts in
+        if p.segments.contains(.accountHint) {
+            guard let expected = expectedHint(for: p, re: re) else {
+                return .failure(MatchError("the sample's card could not be read"))
+            }
+            if trimmedHint != expected { return .failure(MatchError("different card or account")) }
         }
         return .success(ParsedTransaction(payee: py, amount: parsed.magnitude, date: date,
                                           direction: p.direction, accountHint: trimmedHint,
@@ -291,11 +371,38 @@ public enum Matcher {
                                           alertText: text, source: nil, receivedAt: receivedAt))
     }
 
+    /// The match from the text's start, or, when that fails, from each later
+    /// place the template opens (`restart`), at most `restartTries` of them:
+    /// a text holding a cut-off alert ahead of a whole one reads the whole
+    /// one, where the skips between fields may not cross an opening.
+    private static func searchFromEachStart(_ p: AlertPattern, _ re: NSRegularExpression,
+                                            in text: String) -> Search {
+        let first = search(re, in: text)
+        guard case .none = first, let stop = restart(of: p),
+              let opener = try? expressions.value(for: "restart:" + stop, build: {
+                  try NSRegularExpression(pattern: stop) })
+        else { return first }
+        let ns = text as NSString
+        var tries = 0
+        for o in opener.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        where o.range.location > 0 {
+            tries += 1
+            if tries > restartTries { break }
+            let r = search(re, in: text, from: o.range.location)
+            if case .none = r { continue }
+            return r
+        }
+        return .none
+    }
+
+    static let restartTries = 4
+
     /// The account or card number the sample printed, recovered by running
-    /// the same regex on it: the value a later alert's hint must equal.
+    /// the same search on it, retries included: the value a later alert's
+    /// hint must equal.
     private static func expectedHint(for p: AlertPattern, re: NSRegularExpression) -> String? {
         let ns = p.sampleText as NSString
-        guard case .found(let m) = search(re, in: p.sampleText) else { return nil }
+        guard case .found(let m) = searchFromEachStart(p, re, in: p.sampleText) else { return nil }
         let r = m.range(withName: "accountHint")
         guard r.location != NSNotFound else { return nil }
         return ns.substring(with: r).trimmingCharacters(in: .whitespacesAndNewlines)
@@ -319,14 +426,14 @@ extension Matcher {
     /// The first match, or `timedOut` once `budget` has passed. ICU calls
     /// the progress block periodically while it works, which is the only
     /// place a running match can be stopped.
-    static func search(_ re: NSRegularExpression, in text: String,
+    static func search(_ re: NSRegularExpression, in text: String, from start: Int = 0,
                        budget: Duration = matchBudget) -> Search {
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: budget)
         var hit: NSTextCheckingResult?
         var late = false
         re.enumerateMatches(in: text, options: [.reportProgress],
-                            range: NSRange(location: 0, length: (text as NSString).length)) { m, _, stop in
+                            range: NSRange(location: start, length: (text as NSString).length - start)) { m, _, stop in
             if let m {
                 hit = m
                 stop.pointee = true

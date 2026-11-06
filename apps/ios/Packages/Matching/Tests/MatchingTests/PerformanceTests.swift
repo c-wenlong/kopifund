@@ -202,4 +202,22 @@ final class MatcherSpeedTests: XCTestCase {
             assertFast(p, body, label + " alone")
         }
     }
+
+    /// G24: the wallet email's payee may wrap onto more lines and its
+    /// anchors are only the labels beside each field, so long near-miss
+    /// text full of those labels must still fail fast.
+    func test_a_wrapping_payee_and_label_anchors_stay_fast() throws {
+        let p = try CorpusTests.teach(CorpusTests.walletTemplate)
+        for (label, unit) in [
+            ("labels", "Amount:\nSGD4.50\nTo:\n"),
+            ("long lines", String(repeating: "WORD ", count: 300) + "\n"),
+            ("short lines", "A\n"),
+            ("template restarts", "Date & Time:\n12 Oct 14:05 (SGT)\nAmount:\nSGD4.50\nTo:\nX\nY\nZ\nW\n"),
+        ] {
+            let body = String(repeating: unit, count: 10_240 / unit.count + 1)
+            assertFast(p, body, "10 KB of \(label)")
+            assertFast(p, CorpusTests.wallet().replacingOccurrences(of: "LUCKY BOWL", with: body),
+                       "10 KB of \(label) inside the payee")
+        }
+    }
 }
