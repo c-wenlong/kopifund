@@ -8,9 +8,9 @@ import Foundation
 /// never deleted, because two real charges at the same amount on one day
 /// exist and a silent merge would lose one.
 public enum Dedup {
-    /// Case and punctuation out, letters and digits kept: "SGH - DIGESTIVE &
-    /// LIVE" from the bank and "Sgh - Digestive & Live" from Apple's Wallet
-    /// record both become "sghdigestivelive".
+    /// Case and punctuation out, letters and digits kept: "HVC - DENTAL &
+    /// EYE" from the bank and "Hvc - Dental & Eye" from Apple's Wallet
+    /// record both become "hvcdentaleye".
     static func normalizedPayee(_ s: String) -> String {
         String(s.lowercased().filter { $0.isLetter || $0.isNumber })
     }

@@ -48,6 +48,37 @@ final class LinkUITests: XCTestCase {
         return try XCTUnwrap(token)
     }
 
+    /// The newest SGD spend in the hub's record with a plain payee, read on
+    /// loopback, as the alert text prints it: the day with its year ("12 Oct
+    /// 2026", so a row from another year reads right), the amount as
+    /// "SGD12.50" and the payee in capitals.
+    private func recordSpend() async throws -> (day: String, amount: String, payee: String) {
+        var url = URLComponents(url: hub.appendingPathComponent("api/transactions"),
+                                resolvingAgainstBaseURL: false)!
+        url.queryItems = [URLQueryItem(name: "limit", value: "200")]
+        let (data, _) = try await URLSession.shared.data(from: try XCTUnwrap(url.url))
+        let body = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let rows = body?["rows"] as? [[String: Any]] ?? []
+        let plain = try NSRegularExpression(pattern: "^[A-Za-z][A-Za-z ]{2,30}$")
+        let row = try XCTUnwrap(rows.first { r in
+            let payee = r["payee"] as? String ?? ""
+            return r["currency"] as? String == "SGD" && (r["amount"] as? Int ?? 0) < 0
+                && plain.firstMatch(in: payee, range: NSRange(payee.startIndex..., in: payee)) != nil
+        }, "no SGD spend with a plain payee in the hub's record")
+        let read = DateFormatter()
+        read.locale = Locale(identifier: "en_US_POSIX")
+        read.timeZone = TimeZone(identifier: "UTC")
+        read.dateFormat = "yyyy-MM-dd"
+        let print = DateFormatter()
+        print.locale = read.locale
+        print.timeZone = read.timeZone
+        print.dateFormat = "d MMM yyyy"
+        let day = try XCTUnwrap(read.date(from: row["date"] as? String ?? ""))
+        let cents = -(row["amount"] as? Int ?? 0)
+        return (print.string(from: day), String(format: "SGD%d.%02d", cents / 100, cents % 100),
+                (row["payee"] as? String ?? "").uppercased())
+    }
+
     /// Type the payload into Settings' paste field and wait for Linked. A
     /// phone left linked by a failed run gets unlinked first, so the paste
     /// field is always the starting point.
@@ -102,8 +133,9 @@ final class LinkUITests: XCTestCase {
 
     /// A spend the record already covers is marked, never posted: the pasted
     /// alert reads as no saved pattern, lands in Unmatched, and the link
-    /// sweep flags it "in kopifund" against the hub's real September rows
-    /// (2026-09-30, SGD30.40, Eunos Polyclinic).
+    /// sweep flags it "in kopifund" against a row the hub's record holds.
+    /// The row is read off the hub at run time, so no spend from the data
+    /// folder is written into this file.
     func testDedupeMarksACoveredAlert() async throws {
         guard await hubUp() else {
             throw XCTSkip("link e2e rig not running: python3 apps/ios/link_e2e.py")
@@ -114,7 +146,8 @@ final class LinkUITests: XCTestCase {
 
         // one line: a newline in the alert's field submits its default
         // action and the dialog closes mid-typing
-        let alert = "Transaction Alerts We refer to your PayLah! Scan & Pay Transfer dated 30 Sep. We are pleased to confirm that the transaction was completed. Date & Time: 30 Sep 14:55 (SGT) Amount: SGD30.40 To: EUNOS POLYCLINIC"
+        let spend = try await recordSpend()
+        let alert = "Transaction Alerts We refer to your PayLah! Scan & Pay Transfer dated \(spend.day). We are pleased to confirm that the transaction was completed. Date & Time: \(spend.day) 14:55 (SGT) Amount: \(spend.amount) To: \(spend.payee)"
         app.tabBars.buttons["Inbox"].tap()
         app.buttons["doc.on.clipboard"].tap()
         let field = app.textFields["Alert text"]
@@ -131,7 +164,7 @@ final class LinkUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts
             .matching(NSPredicate(format: "label CONTAINS %@", "in kopifund"))
             .firstMatch.waitForExistence(timeout: 25),
-            "the record's Eunos Polyclinic row should cover the alert; labels: \(app.staticTexts.allElementsBoundByIndex.map(\.label))")
+            "the record's \(spend.payee) row should cover the alert; labels: \(app.staticTexts.allElementsBoundByIndex.map(\.label))")
 
         app.tabBars.buttons["Settings"].tap()
         app.buttons["Unlink"].tap()

@@ -9,13 +9,13 @@ import Storage
 /// the queue. Fixtures stand in for a Wallet row (alertText empty) and an
 /// alert row (alertText set); dates share one local calendar day.
 @MainActor
-private func makeRow(payee: String = "Sgh - Digestive & Live", cents: Int = 4453,
+private func makeRow(payee: String = "Hvc - Dental & Eye", cents: Int = 3817,
                      state: String = "pending", at: Date, rich: Bool = false) -> TransactionRecord {
     let row = TransactionRecord(walletAmountCents: cents, merchant: payee,
                                 card: nil, date: at, accountID: "a1")
     row.state = state
     row.receivedAt = at
-    if rich { row.alertText = "A card txn of SGD44.53 ... was completed." }
+    if rich { row.alertText = "A card txn of SGD38.17 ... was completed." }
     return row
 }
 
@@ -24,7 +24,7 @@ private let day = Calendar.current.date(
 
 @Test @MainActor func syncedSiblingParksNewRow() throws {
     let context = ModelContext(try Store.memory())
-    let sib = makeRow(payee: "SGH - DIGESTIVE & LIVE", state: "synced", at: day)
+    let sib = makeRow(payee: "HVC - DENTAL & EYE", state: "synced", at: day)
     context.insert(sib)
     let row = makeRow(at: day.addingTimeInterval(3600), rich: true)
     context.insert(row)
@@ -63,7 +63,7 @@ private let day = Calendar.current.date(
     let context = ModelContext(try Store.memory())
     let sib = makeRow(at: day)
     context.insert(sib)
-    let row = makeRow(payee: "SGH - DIGESTIVE & LIVE", at: day, rich: true)
+    let row = makeRow(payee: "HVC - DENTAL & EYE", at: day, rich: true)
     context.insert(row)
     Ingest.settleDuplicates(of: row, in: context)
     #expect(sib.state == "duplicate")
@@ -75,7 +75,7 @@ private let day = Calendar.current.date(
     let context = ModelContext(try Store.memory())
     let sib = makeRow(at: day, rich: true)
     context.insert(sib)
-    let row = makeRow(payee: "SGH - DIGESTIVE & LIVE", at: day)
+    let row = makeRow(payee: "HVC - DENTAL & EYE", at: day)
     context.insert(row)
     Ingest.settleDuplicates(of: row, in: context)
     #expect(row.state == "duplicate")
@@ -369,7 +369,7 @@ private func rows(_ container: ModelContainer) throws -> [TransactionRecord] {
 
 @Test @MainActor func walletRowWithNoCurrencyPairsWithTheBanksSMS() throws {
     let context = ModelContext(try Store.memory())
-    let sms = makeRow(payee: "SGH - DIGESTIVE & LIVE", at: day, rich: true)
+    let sms = makeRow(payee: "HVC - DENTAL & EYE", at: day, rich: true)
     sms.currency = "SGD"
     context.insert(sms)
     let tap = makeRow(at: day)          // Wallet initialiser: currency ""
