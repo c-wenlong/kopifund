@@ -34,4 +34,43 @@ final class PasteSheetUITests: XCTestCase {
         XCTAssertTrue(app.staticTexts["\(tag) LAMP"].exists)
         keepShot("paste-alert-page")
     }
+
+    /// The Patterns tab's paste screen is the same editor: its hint shows
+    /// while empty (an opaque editor background once hid it) and "Paste
+    /// from clipboard" fills it.
+    func testPatternsPasteScreenShowsItsHintAndTakesTheClipboard() throws {
+        let app = XCUIApplication()
+        app.launch()
+        openTab("Patterns", in: app)
+        app.buttons["plus"].tap()
+
+        let editor = app.textViews["pasteAlertText"]
+        XCTAssertTrue(editor.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Paste alert text"].exists)
+        XCTAssertFalse(app.buttons["Build pattern"].isEnabled)
+        keepShot("patterns-paste-empty")
+
+        // The simulator denies the app a clipboard the test runner wrote
+        // (another process), so the text is put on the clipboard by the app
+        // itself: type it, cut it with the editor's menu, then paste it back
+        // with the button.
+        editor.tap()
+        editor.typeText("Wallet payment\nYou paid SGD 4.20\nTo:\nHINT LAMP")
+        editor.press(forDuration: 1.2)
+        let selectAll = app.menuItems["Select All"]
+        XCTAssertTrue(selectAll.waitForExistence(timeout: 5))
+        selectAll.tap()
+        let cut = app.menuItems["Cut"]
+        XCTAssertTrue(cut.waitForExistence(timeout: 5))
+        cut.tap()
+        XCTAssertTrue(app.staticTexts["Paste alert text"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Build pattern"].isEnabled)
+
+        app.buttons["Paste from clipboard"].tap()
+        sleep(1)
+        XCTAssertFalse(app.staticTexts["Paste alert text"].exists)
+        XCTAssertEqual((editor.value as? String)?.components(separatedBy: "\n").count, 4)
+        XCTAssertTrue(app.buttons["Build pattern"].isEnabled)
+        keepShot("patterns-paste-filled")
+    }
 }

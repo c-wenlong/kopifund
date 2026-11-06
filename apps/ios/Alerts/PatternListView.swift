@@ -98,36 +98,21 @@ struct PatternListView: View {
         var onSaved: () -> Void = {}
         @State private var text = ""
         var body: some View {
-            VStack {
-                ZStack(alignment: .topLeading) {
-                    // TextEditor shows nothing when empty; a hint is needed
-                    if text.isEmpty {
-                        Text("Paste a real bank alert here")
-                            .foregroundStyle(.tertiary)
-                            .padding(.leading, 21).padding(.top, 24)
-                            .allowsHitTesting(false)
-                    }
-                    TextEditor(text: $text)
-                        .padding()
-                        .frame(minHeight: 120)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                }
+            VStack(alignment: .leading, spacing: 12) {
+                PasteEditor(text: $text)
                 HStack {
-                    Button {
-                        if let s = UIPasteboard.general.string { text = s }
-                    } label: {
-                        Label("Paste", systemImage: "doc.on.clipboard")
-                    }
                     Spacer()
                     NavigationLink("Build pattern") {
                         PatternBuilderView(sampleText: text, source: nil, onSaved: onSaved)
                     }
                     .disabled(text.isEmpty)
                 }
-                .padding(.horizontal)
+                Spacer()
             }
+            .padding()
+            .background(Color(.systemGroupedBackground))
             .navigationTitle("Paste alert")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar { Button("Cancel") { dismiss() } }
         }
     }
