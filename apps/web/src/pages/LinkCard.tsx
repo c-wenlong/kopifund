@@ -168,7 +168,7 @@ export function LinkCard() {
         {pending.error && <p role="alert" className="m-0 text-[13px] text-warn">{pending.error}</p>}
         {problem && <p role="alert" className="m-0 text-[13px] text-danger">{problem}</p>}
       </div>
-      <PhoneRowHistory filter={filter} rows={rows}
+      <PhoneRowHistory filter={filter} rows={rows} error={pending.error}
         onFilter={(f) => patch({ [HISTORY_PARAM]: f })} onClose={() => patch({ [HISTORY_PARAM]: null })}
         onDone={() => setVersion((v) => v + 1)} />
     </Card>
@@ -177,8 +177,8 @@ export function LinkCard() {
 
 // G25: every phone row ever posted, newest first, filtered by state; each
 // row says when it last changed, and keeps the call that moves it on
-function PhoneRowHistory({ filter, rows, onFilter, onClose, onDone }: {
-  filter: HistoryFilter | null; rows: PendingRow[] | null; onFilter: (f: HistoryFilter) => void;
+function PhoneRowHistory({ filter, rows, error, onFilter, onClose, onDone }: {
+  filter: HistoryFilter | null; rows: PendingRow[] | null; error?: string | null; onFilter: (f: HistoryFilter) => void;
   onClose: () => void; onDone: () => void;
 }) {
   const [problem, setProblem] = useState<string | null>(null);
@@ -198,6 +198,8 @@ function PhoneRowHistory({ filter, rows, onFilter, onClose, onDone }: {
           : <p className="m-0 text-[13px] text-ink-3">
               {rows.length === 0 ? "The phone has sent no rows yet." : "No phone rows in this state."}
             </p>)}
+        {/* the card behind is inert while the sheet is open, so a failed read is said here too */}
+        {error && <p role="alert" className="m-0 text-[13px] text-warn">{error}</p>}
         {problem && <p role="alert" className="m-0 text-[13px] text-danger">{problem}</p>}
       </div>
     </Sheet>
@@ -270,9 +272,9 @@ function PendingItem({ row, onDone, onError }: {
   // a matched row opens its record row, and only that row (a transfer too)
   const to = row.state === "matched" && row.matched_txn_key
     ? `/transactions?${new URLSearchParams({ key: row.matched_txn_key, hide_transfers: "0" })}` : null;
-  const when = row.state === "waiting"
-    ? (row.expires_on ? `expires ${formatDay(row.expires_on)}` : "")
-    : formatStampDay(row.state_changed_at);
+  // when the state began; a waiting row also says when its wait ends
+  const since = formatStampDay(row.state_changed_at);
+  const when = row.state === "waiting" && row.expires_on ? `${since}, expires ${formatDay(row.expires_on)}` : since;
 
   async function act(url: string) {
     onError(null);

@@ -161,7 +161,7 @@ describe("the Link a phone card", () => {
     const c = await card();
     const list = await within(c).findByLabelText("Waiting phone rows");
     expect(within(list).getByText("Grab")).toBeInTheDocument();
-    expect(within(list).getByText("expires 19 Dec 2026")).toBeInTheDocument();
+    expect(within(list).getByText("20 Oct 2026, expires 19 Dec 2026")).toBeInTheDocument();
     // a matched row is history, not something to act on
     expect(within(list).queryByText("FairPrice")).not.toBeInTheDocument();
     expect(within(c).getByText("2 phone rows in all.")).toBeInTheDocument();
@@ -227,6 +227,17 @@ describe("the Link a phone card", () => {
     await userEvent.click(within(sheet).getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(window.location.search).toBe("");
+  });
+
+  it("says in the history when the rows cannot be read", async () => {
+    window.history.replaceState(null, "", "/settings?phone_rows=waiting");
+    stub(devices([phone()]));
+    const ok = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (url: string, init?: RequestInit) =>
+      url.split("?")[0] === "/api/link/pending" ? json({ error: "the record is busy" }, 422) : ok(url, init)));
+    render(<LinkCard />);
+    const sheet = await screen.findByRole("dialog", { name: "Phone row history" });
+    expect(await within(sheet).findByRole("alert")).toHaveTextContent("the record is busy");
   });
 
   it("shows no phone rows list when the phone has posted none", async () => {

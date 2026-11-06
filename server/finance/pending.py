@@ -53,9 +53,14 @@ def _row(d):
     try:
         # store the parsed form: "20261015" or a week date would slip past
         # fromisoformat, then SQLite's date() never sees them as that day
-        when = date.fromisoformat(when).isoformat()
+        day = date.fromisoformat(when)
     except ValueError:
         raise ValueError("date is YYYY-MM-DD")
+    # a day so late that its wait would run past the calendar is no spend
+    # (_expires_on could not add the wait to it)
+    if day > date.max - timedelta(days=EXPIRE_LIMITS[1]):
+        raise ValueError("date is too far ahead")
+    when = day.isoformat()
     amount = d.get("amount_minor")
     if not isinstance(amount, int) or isinstance(amount, bool):
         raise ValueError("amount_minor is integer cents")
@@ -218,7 +223,10 @@ def _expires_on(r, days):
     became = _local_day(r["state_changed_at"])
     if became and became > since:
         since = became
-    return since + timedelta(days=days)
+    try:
+        return since + timedelta(days=days)
+    except OverflowError:
+        return date.max           # a row stored before _row refused such a day never expires
 
 
 def _due(r, today, days):
@@ -231,17 +239,21 @@ def expire(conn, today=None):
     on a timer. Reads first and writes only when a row is due, so a read
     with nothing to expire takes no write lock."""
     today = today or date.today()
-    days = expire_days(conn)
-    due = [r["id"] for r in conn.execute(
-        "SELECT id, txn_date, state_changed_at FROM pending_txn WHERE state = 'waiting'")
-        if _due(r, today, days)]
-    if not due:
+
+    def due():
+        days = expire_days(conn)
+        return [r["id"] for r in conn.execute(
+            "SELECT id, txn_date, state_changed_at FROM pending_txn WHERE state = 'waiting'")
+            if _due(r, today, days)]
+    if not due():
         return 0
+    # decided again under the write lock: a correction or a Put back that
+    # landed since the first look gave its row a new wait
     with db.transaction(conn):
         stamp = db.now()
         return sum(conn.execute(
             "UPDATE pending_txn SET state = 'expired', state_changed_at = ? WHERE id = ? AND state = 'waiting'",
-            (stamp, i)).rowcount for i in due)
+            (stamp, i)).rowcount for i in due())
 
 
 # ---------------------------------------------------------------- reads

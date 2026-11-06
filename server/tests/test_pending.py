@@ -264,16 +264,60 @@ class ExpiryTest(unittest.TestCase):
         self.assertGreater(out[2]["state_changed_at"], out[2]["posted_at"][:10])
 
 
+    def test_a_row_put_back_meanwhile_is_not_expired_by_a_stale_look(self):
+        # the first look sees the row due; a Put back lands before the write lock
+        late = date(2026, 12, 1)
+        real = pending.expire_days
+        calls = []
+
+        def days_then_put_back(conn):
+            calls.append(1)
+            if len(calls) == 2:            # between the look and the write
+                self.conn.execute("UPDATE pending_txn SET state_changed_at = ? ", (f"{late}T02:00:00+00:00",))
+            return real(conn)
+        from unittest import mock
+        with mock.patch.object(pending, "expire_days", days_then_put_back):
+            self.assertEqual(pending.expire(self.conn, late), 0)
+        self.assertEqual(self.state()["state"], "waiting")
+
+    def test_a_day_past_the_calendar_is_refused_and_one_stored_never_expires(self):
+        with self.assertRaises(ValueError):
+            pending.post_rows(self.conn, "d", [spend("far", date="9999-12-31")])
+        self.conn.execute("INSERT INTO pending_txn(import_id, txn_date, amount_minor, currency, created_at, "
+                          "state_changed_at) VALUES ('far', '9999-12-31', -1, 'SGD', 'x', 'x')")
+        self.assertEqual(pending.expire(self.conn, date(2026, 12, 1)), 1)          # imp1 only
+        far = next(r for r in pending.rows(self.conn) if r["import_id"] == "far")
+        self.assertEqual((far["state"], far["expires_on"]), ("waiting", "9999-12-31"))
+        self.assertEqual(pending.waiting_count(self.conn, date(2026, 12, 1)), 1)
+
+
 class UpgradeTest(unittest.TestCase):
     def test_a_version_7_row_takes_its_posted_stamp_and_the_new_state(self):
         with tempfile.TemporaryDirectory() as d:
             path = Path(d) / "k.db"
             db.connect(path).close()
-            with closing(sqlite3.connect(path)) as c:
-                c.execute("INSERT INTO pending_txn(import_id, txn_date, amount_minor, currency, created_at) "
-                          "VALUES ('i', '2026-08-03', -1, 'SGD', '2026-08-03T01:00:00+00:00')")
-                c.execute("PRAGMA user_version = 7")
-                c.commit()
+            with closing(sqlite3.connect(path)) as c:      # pending_txn as version 7 built it
+                c.executescript("""
+DROP TABLE pending_txn;
+CREATE TABLE pending_txn (
+  id INTEGER PRIMARY KEY,
+  import_id TEXT NOT NULL UNIQUE,
+  device_id TEXT NOT NULL DEFAULT '',
+  txn_date TEXT NOT NULL CHECK (date(txn_date) = txn_date),
+  amount_minor INTEGER NOT NULL,
+  currency TEXT NOT NULL CHECK (currency GLOB '[A-Z][A-Z][A-Z]'),
+  payee TEXT NOT NULL DEFAULT '',
+  state TEXT NOT NULL DEFAULT 'waiting' CHECK (state IN ('waiting', 'matched', 'dismissed')),
+  matched_txn_key TEXT,
+  rejected TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL
+) STRICT;
+INSERT INTO pending_txn(import_id, txn_date, amount_minor, currency, created_at)
+  VALUES ('i', '2026-08-03', -1, 'SGD', '2026-08-03T01:00:00+00:00');
+PRAGMA user_version = 7;
+""")
+                with self.assertRaises(sqlite3.IntegrityError):
+                    c.execute("UPDATE pending_txn SET state = 'expired'")
             with closing(db.connect(path)) as conn:
                 self.assertEqual(conn.execute("SELECT state_changed_at FROM pending_txn").fetchone()[0],
                                  "2026-08-03T01:00:00+00:00")

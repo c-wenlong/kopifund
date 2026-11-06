@@ -1432,7 +1432,9 @@ whois` on that IP names the tailnet caller when it matters.
   checks' thresholds are, with no field on the page yet. It happens at each
   load (after the load's matching, so a statement that lands that load
   still matches) and each time `GET /api/link/pending` or a pending write
-  reads the rows, never on a timer; a read with nothing due writes nothing.
+  reads the rows, never on a timer; a read with nothing due writes nothing,
+  and what is due is decided again under the write lock. A posted date so
+  late that its wait would run past the calendar is refused.
   An expired row still matches a statement that lands later; a dismissed
   one never does. Every change of state stamps `state_changed_at`.
 - **Where the rows show.** Home's Needs your eye counts only the rows still
@@ -1446,7 +1448,7 @@ whois` on that IP names the tailnet caller when it matters.
   of every row the phone ever posted, newest first, filtered by All,
   Waiting, Matched, To review or Expired (the address's `phone_rows`, so a
   link opens it on one state and Back returns to it). Each row says its
-  date, payee, amount, state and when that state began: Waiting (with the
+  date, payee, amount, state and when that state began: Waiting (and the
   day it expires), Matched (with See the row, which opens exactly the
   record row it matched, `key` with `hide_transfers=0`, and Not it), "Dismissed,
   to review" and Expired, both with Put back (`POST /api/link/pending/restore`,
