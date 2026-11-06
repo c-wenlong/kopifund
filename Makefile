@@ -45,23 +45,14 @@ link: ## the phone link's checklist (G25): tailscale serve must proxy 443 to 127
 # build_macos.sh take one lock, since they also share the bundle folder
 CARGO_TARGET = $${CARGO_TARGET_DIR:-$$HOME/Library/Caches/Kopifund/cargo-target}
 
+# where `make desktop` installs; a scratch folder in its place tests the install
+DESKTOP_APPS ?= $(HOME)/Applications
+
 desktop: build ## build Kopifund.app, the desktop app (G23), and put it in ~/Applications
-	@set -e; export CARGO_TARGET_DIR="$(CARGO_TARGET)"; \
-	  lock="$$HOME/Library/Application Support/Kopifund"; mkdir -p "$$lock"; exec 9>"$$lock/build.lock.file"; \
-	  $(PY) -c 'import fcntl; fcntl.flock(9, fcntl.LOCK_EX | fcntl.LOCK_NB)' 2>/dev/null \
-	    || { echo "make desktop: another build (build_macos.sh or make desktop) is running; wait for it to finish" >&2; exit 1; }; \
+	@export CARGO_TARGET_DIR="$(CARGO_TARGET)"; \
 	  case "$$CARGO_TARGET_DIR" in (/*) ;; (*) CARGO_TARGET_DIR="$(CURDIR)/apps/desktop/src-tauri/$$CARGO_TARGET_DIR" ;; esac; \
-	  built="$$CARGO_TARGET_DIR/release/bundle/macos/Kopifund.app"; \
-	  rm -rf "$$built"; \
-	  (cd apps/desktop && npm ci && npm run tauri -- build --bundles app -- --locked); \
-	  [ -d "$$built" ] || { echo "make desktop: the build finished but $$built is not there" >&2; exit 1; }; \
-	  apps="$(HOME)/Applications"; mkdir -p "$$apps"; \
-	  rm -rf "$$apps/.Kopifund.app.new" "$$apps/.Kopifund.app.old"; cp -R "$$built" "$$apps/.Kopifund.app.new"; \
-	  if [ -e "$$apps/Kopifund.app" ]; then mv "$$apps/Kopifund.app" "$$apps/.Kopifund.app.old"; fi; \
-	  mv "$$apps/.Kopifund.app.new" "$$apps/Kopifund.app" \
-	    || { [ ! -e "$$apps/.Kopifund.app.old" ] || mv "$$apps/.Kopifund.app.old" "$$apps/Kopifund.app"; exit 1; }; \
-	  rm -rf "$$apps/.Kopifund.app.old"
-	@echo "Kopifund.app is in ~/Applications: open it from Launchpad or Spotlight, then keep it in the Dock"
+	  apps/desktop/install.sh apps/desktop "$(DESKTOP_APPS)"
+	@echo "Kopifund.app is in $(DESKTOP_APPS): open it from Launchpad or Spotlight, then keep it in the Dock"
 
 app-icon: ## write app-icons/ into the web, iOS and desktop apps; SET=iso makes iso the default first
 	cd apps/desktop && npm ci
