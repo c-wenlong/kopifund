@@ -75,12 +75,11 @@ struct InboxView: View {
                 Button("Delete all", role: .destructive) { delete(needsDetails) }
                 Button("Cancel", role: .cancel) {}
             }
-            .alert("Paste alert text", isPresented: $showPaste) {
-                TextField("Alert text", text: $pasteText, axis: .vertical)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                Button("Ingest") { ingestPaste() }
-                Button("Cancel", role: .cancel) { pasteText = "" }
+            // G24: a sheet, not an alert: an alert's text field is one
+            // line, and a pasted alert must keep its line breaks
+            .sheet(isPresented: $showPaste) {
+                PasteAlertSheet(text: $pasteText) { ingestPaste($0) }
+                    .presentationDetents([.medium, .large])
             }
         }
     }
@@ -170,17 +169,14 @@ struct InboxView: View {
         }
     }
 
-    private func ingestPaste() {
+    private func ingestPaste(_ text: String) {
         // the box can be reopened while the match runs: clear only the
         // draft this ingest took, never a newer one
-        let text = pasteText
         Task {
             do {
                 // the view's own container: a second one on the same file
                 // would not merge its save into this list
-                let outcome = try await Ingest.alert(text: text, source: "paste",
-                                                     receivedAt: Date(),
-                                                     container: context.container)
+                let outcome = try await PastedAlert.ingest(text, container: context.container)
                 if pasteText == text { pasteText = "" }
                 // an auto-approving pattern queues the row approved
                 if outcome == "queued" { await SyncService.flush(context: context) }

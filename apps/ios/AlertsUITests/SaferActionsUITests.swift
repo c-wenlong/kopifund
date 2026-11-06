@@ -24,11 +24,12 @@ final class SaferActionsUITests: XCTestCase {
     private func paste(_ app: XCUIApplication, _ text: String) {
         open("Inbox", in: app)
         app.buttons["doc.on.clipboard"].tap()
-        let field = app.alerts.textFields.firstMatch
+        // G24: the paste box is a sheet with a multi-line editor
+        let field = app.textViews["pasteAlertText"]
         XCTAssertTrue(field.waitForExistence(timeout: 5))
         field.tap()
         field.typeText(text)
-        app.alerts.buttons["Ingest"].tap()
+        app.buttons["Ingest"].tap()
     }
 
     private func label(containing s: String, in app: XCUIApplication) -> XCUIElement {
