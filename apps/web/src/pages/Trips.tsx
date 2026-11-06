@@ -5,7 +5,7 @@ import {
 } from "recharts";
 import { postJSON, rowsChanged, useApi, type Country, type Relinked, type Trip, type TripList } from "../api";
 import { axisSgd, formatSgd, type Cents } from "../money";
-import { formatRange, isoDay } from "../dates";
+import { formatRange, isoDay, MONTHS } from "../dates";
 import { navigate, onLinkClick } from "../router";
 import { Button } from "../components/Button";
 import { TextInput } from "../components/TextInput";
@@ -454,7 +454,6 @@ function TripTip({ t, avg }: { t: Trip; avg: Cents | null }) {
 // pixels, and its domain starts at nothing, so area stays in proportion to spend.
 // Long stays are a chart of their own under the trips, with a scale of their own.
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 // the day of a common year each month starts on; a leap year is a day out after February, which no eye can see
 const MONTH_DAYS = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335];
 /** The radius of the dearest trip's circle; every other circle's area is in proportion to it. */

@@ -492,4 +492,3 @@ export function InputsEditor({ draft, onChange, hint, inflation, errors = {}, br
 }
 
 /** "Oct 2026" for a month the server named, or the word for none. */
-export const monthOrNone = (m: string | null | undefined, none: string) => (m ? formatMonth(m) : none);
