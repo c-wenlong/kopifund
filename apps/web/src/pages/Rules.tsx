@@ -6,7 +6,7 @@ import {
 } from "../api";
 import { formatAmount, formatSgd } from "../money";
 import { formatDateTime, formatDay } from "../dates";
-import { Button } from "../components/Button";
+import { Button, IconButton } from "../components/Button";
 import { Card } from "../components/Card";
 import { EmptyState } from "../components/EmptyState";
 import { StatusChip } from "../components/StatusChip";
@@ -436,15 +436,14 @@ function RuleLine({ rule: r, group, edit, remove, busy }: RowActions & { rule: R
 function Actions({ rule: r, edit, remove, busy }: Pick<RowActions, "edit" | "remove" | "busy"> & { rule: Rule }) {
   return (
     <span className="ml-auto inline-flex gap-1">
-      <button type="button" aria-label={`Edit ${r.tier} ${r.pattern}`} title={r.shared ? "Edit: saved as your own rule" : "Edit"}
-        onClick={() => edit(r, draftOf(r))} className="rounded-md p-1 text-ink-3 hover:bg-hover hover:text-ink">
+      <IconButton label={`Edit ${r.tier} ${r.pattern}`} title={r.shared ? "Edit: saved as your own rule" : "Edit"}
+        onClick={() => edit(r, draftOf(r))}>
         <Pencil size={14} aria-hidden />
-      </button>
+      </IconButton>
       {!r.shared && (
-        <button type="button" aria-label={`Delete ${r.tier} ${r.pattern}`} title="Delete" disabled={busy}
-          onClick={() => remove(r)} className="rounded-md p-1 text-ink-3 hover:bg-hover hover:text-ink disabled:opacity-40">
+        <IconButton label={`Delete ${r.tier} ${r.pattern}`} title="Delete" disabled={busy} onClick={() => remove(r)}>
           <Trash2 size={14} aria-hidden />
-        </button>
+        </IconButton>
       )}
     </span>
   );
