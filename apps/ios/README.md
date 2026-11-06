@@ -211,7 +211,8 @@ file. The unsigned sources live in `Shortcuts/unsigned/`; if iOS refuses one of
 those, enable **Allow Untrusted Shortcuts** (Settings > Apps > Shortcuts) once,
 then add it again. To regenerate a bundled copy, run
 `shortcuts sign -m anyone -i <unsigned> -o <bundled>` on a Mac signed into
-iCloud.
+iCloud with iCloud Sync turned on in the Shortcuts app's settings; without it
+the command answers that you must be signed into iCloud.
 
 The Wallet trigger does not always hand over a purchase: it fires for every
 tap of a card or pass, and a tap can reach the shortcut before the card's
