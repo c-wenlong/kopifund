@@ -571,10 +571,7 @@ wins.
 The text comes from `pdftotext -layout`, the same way the DBS statements are
 read, and the same three habits of a PDF table apply: column positions move
 between years, a cell can wrap over three lines, and the page header and the
-tax-invoice footer interrupt a table wherever a page happens to break. Every
-export from the 2022 layout on also prints each Forex and Stock trade twice, once with the
-symbol and once without, so the symbol-less copy inherits the symbol above it
-and trades are then de-duplicated on date, symbol, quantity and price.
+tax-invoice footer interrupt a table wherever a page happens to break.
 
 What is read out of each statement:
 
@@ -583,10 +580,13 @@ What is read out of each statement:
 | Account Overview | opening and closing cash, stock, dividend accruals and total, in the account's base currency |
 | Cash Report, base currency summary | every printed row by its own label, plus the deposits, dividends, fees and withholding tax totals |
 | Deposits and Withdrawals | one row per transfer with its date, amount and currency, and the base-currency total |
-| Dividends | the paid rows only, with gross, tax and net; the accrual increase and reduction rows are not money that moved |
 | Holdings | the positions at the end of the period: quantity, cost, close price, value and unrealised profit |
-| Trades and Forex | the stock and currency trades, de-duplicated |
 | Base Currency Exchange Rate | one unit of each currency in the base currency at the period end, which is how everything reaches SGD |
+
+The Trades, Forex and Dividends tables are not read row by row: nothing in
+Kopifund used their rows, and the dividends come from the Cash Report's total.
+They still open sections of their own, so their rows never leak into another
+table.
 
 **What is deliberately not loaded.** These statements produce no Transactions
 rows and no Period balances blocks, and nothing about them reaches Notion. Three
@@ -754,7 +754,7 @@ which path is missing, and the suite still ends clean. Those modules also skip u
 | `test_parse_page_break` | a consolidated card row whose detail lines fall behind a page break keeps its merchant, parses to the same rows and keeps the same keys, and nothing from the footer leaks into a row |
 | `test_parse_revolut` | the Revolut export: pages grouped into wallet sections, every row kind and the type it gets, a fee left inside the column amount, one block per month with the export month closing the section, the borrowed FX rate, the real export's five wallets all reconciled, a section with no balance summary stopping the parser before it writes anything, and that the shared city table is the same table whatever order the parsers are imported in |
 | `test_parse_wise` | the Wise export set: the column split at the real column positions, the currency read off the heading, every balance taking the SGD file's account number, every row kind and the type it gets, the transaction id as the reference, rows reversed into oldest first, one block per month plus the export month, the opening derived twice, the SEK rate off the conversion, the real export's three balances all reconciled, a statement over two pages read as one, and a file with no printed closing stopping the parser before it writes anything |
-| `test_parse_tiger` | the Tiger Brokers parser on five invented statements across the two layouts: the bare-symbol layout, the wrapped 2026 layout with every trade printed twice, and a quiet period with no trades, withdrawals or dividends: every field, the duplicated trades and the interrupted tables |
+| `test_parse_tiger` | the Tiger Brokers parser on five invented statements across the two layouts: the bare-symbol layout, the wrapped 2026 layout, and a quiet period with no trades, withdrawals or dividends: every field and the interrupted tables |
 | `test_parse_cpf` | the CPF parser on five invented yearly statements, one per layout plus a quiet year and a year whose transactions table is torn across a page break: every field, the positional column reading and the page furniture, and a year that does not reconcile left out of `parse_folder` and named |
 | `test_parse_uob` | the UOB One and Stash layouts on invented statements from the public sample: a statement that balances, one that does not and is refused by the run, the table broken across pages with a carried and a brought forward balance, a credit and a debit on one day, a month brought forward from the last one's closing, and the One and savings statements filed apart |
 | `test_sniff` | every fixture here, the Tiger Brokers ones and the CPF ones read as exactly one layout and go to the right account and currency, with the config's numbers, with none and with statements already filed; two accounts it cannot tell apart, a number no account knows, a wallet currency with no folder and a file that reads as two statements all ask; a statement no layout reads is not supported and kept nowhere; an upload whose text names another account is refused |

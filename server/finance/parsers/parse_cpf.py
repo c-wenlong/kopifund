@@ -61,6 +61,7 @@ from pathlib import Path
 from finance.paths import current_statements, statements_dir
 from finance.pdftext import pdf_to_text, require as require_pdftotext
 
+from .common import header_spans
 from .layouts import CHECKED, Bank, Layout, Seen, register, register_bank
 
 MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN",
@@ -110,12 +111,6 @@ def cents(x):
 
 
 # ---------------------------------------------------------------- table layout
-
-def header_spans(ln):
-    """The words of a header line, grouped so a single space keeps them
-    together: "Ordinary Account ($)" is one heading, two spaces start the next."""
-    return [(m.start(), m.end(), m.group()) for m in re.finditer(r"\S+(?: \S+)*", ln)]
-
 
 class Columns:
     """The columns of the transactions table, read off its header block.
