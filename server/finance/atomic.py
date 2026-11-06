@@ -23,10 +23,9 @@ def write_private(path, data):
     path = Path(path)
     if isinstance(data, str):
         data = data.encode("utf-8")
-    # the name is cut to 64 bytes (not characters: a name can be all four-byte
-    # ones) so the temp file's name fits in 255 bytes, whatever `path` is
-    short = path.name.encode("utf-8")[:64].decode("utf-8", "ignore")
-    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{short}.", suffix=".tmp")
+    # a short ASCII name of its own, so it fits and encodes whatever `path`'s
+    # name is (long, four-byte characters, or bytes that are not UTF-8)
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".kopifund-", suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as fh:
             fh.write(data)

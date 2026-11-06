@@ -47,10 +47,17 @@ class WritePrivate(unittest.TestCase):
         self.assertEqual([p.name for p in self.dir.iterdir()], ["keys.env"])
 
     def test_a_long_name_still_gets_a_temp_file(self):
-        # 250 one-byte characters, and 62 four-byte ones (252 bytes with .txt)
-        for name in ("x" * 250, "\U0001F600" * 62 + ".txt"):
-            with self.subTest(len(name.encode("utf-8"))):
+        # 250 one-byte characters, 62 four-byte ones (252 bytes with .txt), and
+        # a name that is not UTF-8, as Linux allows (Python holds it as surrogates)
+        odd = os.fsdecode(b"caf\xe9.txt")
+        for name in ("x" * 250, "\U0001F600" * 62 + ".txt", odd):
+            with self.subTest(ascii(name)[:20]):
                 path = self.dir / name
+                if name == odd:
+                    try:
+                        path.touch()     # APFS refuses a name that is not UTF-8
+                    except OSError:
+                        continue
                 write_private(path, "ok")
                 self.assertEqual(path.read_text(), "ok")
 
