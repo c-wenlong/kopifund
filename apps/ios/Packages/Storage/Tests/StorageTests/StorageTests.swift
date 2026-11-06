@@ -215,10 +215,10 @@ func centsRoundHalfUpFromTheParsedDecimal(amount: String, cents: Int) throws {
 }
 
 @Test func walletRowIsAnOutflowWithNoAlertText() {
-    let row = TransactionRecord(walletAmountCents: 4453, merchant: "Sgh - Digestive & Live",
+    let row = TransactionRecord(walletAmountCents: 3817, merchant: "Hvc - Dental & Eye",
                                 card: "DBS Altitude", date: day, accountID: "a1")
-    #expect(row.amountCents == 4453)
-    #expect(row.payee == "Sgh - Digestive & Live")
+    #expect(row.amountCents == 3817)
+    #expect(row.payee == "Hvc - Dental & Eye")
     #expect(row.accountHint == "DBS Altitude")
     #expect(row.source == "wallet")
     #expect(row.alertText.isEmpty)

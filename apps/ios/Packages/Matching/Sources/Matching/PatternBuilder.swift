@@ -42,7 +42,7 @@ public struct PatternBuilder {
     private static let edgeAnchor = 24
 
     /// The most words that do not change between alerts an anchor keeps
-    /// beside a capture: "Date & Time:", "card ending 6529 to", "You
+    /// beside a capture: "Date & Time:", "card ending 3141 to", "You
     /// charged". Two pin the field down; a third word away from it is
     /// usually the part of the sentence that changes ("Scan & Pay Transfer
     /// dated" vs "Transfer dated").
