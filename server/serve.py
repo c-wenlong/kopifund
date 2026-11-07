@@ -281,11 +281,15 @@ def _failure(exc: Exception) -> tuple[dict, HTTPStatus]:
 LOOPBACK = ("127.0.0.1", "localhost", "::1")
 
 
-def _allowed_names() -> set[str]:
-    """This machine's names plus KOPIFUND_HOSTS, read per request so a test
-    can set it."""
+def _listed_names() -> set[str]:
+    """The names in KOPIFUND_HOSTS, read per request so a test can set it."""
     extra = os.environ.get("KOPIFUND_HOSTS", "")
-    return set(LOOPBACK) | {n.strip().lower().strip("[]") for n in extra.split(",") if n.strip()}
+    return {n.strip().lower().strip("[]") for n in extra.split(",") if n.strip()}
+
+
+def _allowed_names() -> set[str]:
+    """This machine's names plus KOPIFUND_HOSTS."""
+    return set(LOOPBACK) | _listed_names()
 
 
 def _local_origin(origin: str | None) -> bool:
@@ -427,8 +431,19 @@ def make_handler(dist: Path, page: str | None = None) -> type[BaseHTTPRequestHan
 
         def _proxied(self) -> bool:
             """G25: arrived through `tailscale serve`, which forwards to
-            loopback with the caller's tailnet IP in X-Forwarded-For."""
-            return bool(self.headers.get("X-Forwarded-For"))
+            loopback with the caller's tailnet IP in X-Forwarded-For.
+
+            Docker: on a home server `tailscale serve` is also how the owner
+            opens the page, and it keeps the browser's Host. A forwarded
+            request whose Host is a name in KOPIFUND_HOSTS and that carries no
+            bearer is the owner's page, so it takes the loopback path; a
+            paired device's bearer still takes the link path."""
+            if not self.headers.get("X-Forwarded-For"):
+                return False
+            if self.headers.get("Authorization", "").startswith("Bearer "):
+                return True
+            host = urlsplit(f"//{self.headers.get('Host') or ''}").hostname or ""
+            return host not in _listed_names()
 
         def _link_device(self):
             """G25: the paired device this request's bearer names, or None."""

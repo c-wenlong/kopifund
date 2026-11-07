@@ -56,11 +56,14 @@ docker run -d --name kopifund --restart unless-stopped -p 8770:8770 \
 `KOPIFUND_HOSTS` names the hostnames or IPs you open the page under; any other
 name is refused. There is no login, so anyone who can reach the port under one
 of those names sees everything: keep it on your home network or tailnet.
+Behind `tailscale serve`, list the server's tailnet name
+(`homeserver.tailXXXX.ts.net`) in `KOPIFUND_HOSTS` and the page opens at its
+`https://` address.
 Secrets go in as environment variables (or a `.env` in the volume, mode 600):
 `NOTION_TOKEN` for the Notion mirror and `<PROVIDER>_API_KEY` (for example
-`ANTHROPIC_API_KEY`) for AI suggestions. A reverse proxy that adds
-`X-Forwarded-For` turns every request into the phone link's bearer-only path,
-so publish the port directly rather than behind one.
+`ANTHROPIC_API_KEY`) for AI suggestions. Any other proxy that adds
+`X-Forwarded-For` gets the phone link's bearer-only path unless the name it
+forwards is listed too.
 
 ### The build warns that a chunk is over 500 kB
 
