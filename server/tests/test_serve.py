@@ -66,6 +66,26 @@ class ServeTest(unittest.TestCase):
         for host in (f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"):
             self.assertEqual(self.status_with_host(host), 200, host)
 
+    def test_a_name_in_kopifund_hosts_is_answered(self):
+        # Docker: the owner opens the page on a home server under its own name
+        port = self.server.server_address[1]
+        with mock.patch.dict(os.environ, {"KOPIFUND_HOSTS": "homeserver.local, 192.168.1.20"}):
+            self.assertEqual(self.status_with_host(f"homeserver.local:{port}"), 200)
+            self.assertEqual(self.status_with_host(f"192.168.1.20:{port}"), 200)
+            self.assertEqual(self.status_with_host(f"evil.example:{port}"), 421)
+            self.assertTrue(serve._local_origin("http://homeserver.local:8770"))
+            self.assertFalse(serve._local_origin("http://evil.example"))
+        self.assertEqual(self.status_with_host(f"homeserver.local:{port}"), 421)
+
+    def test_sigterm_drains_then_stops(self):
+        # Docker: docker stop is a SIGTERM, which takes the Server card's stop path
+        ran = threading.Event()
+        with mock.patch.object(serve, "_stop", side_effect=ran.set):
+            serve._on_sigterm(15, None)
+            self.assertTrue(ran.wait(5))
+        self.assertTrue(serve._STOPPING)
+        serve._STOPPING = False
+
     def test_binds_loopback_only(self):
         self.assertEqual(self.server.server_address[0], "127.0.0.1")
 
@@ -241,6 +261,16 @@ class ReloadLoopTest(unittest.TestCase):
         self.assertEqual(popen.call_count, 2)          # the first child and the one after the change
         for call in popen.call_args_list:
             self.assertEqual(call.args[0][-2:], ["--page", "http://localhost:5173"])
+
+    def test_the_bind_address_reaches_every_child(self):
+        # review: --host with --reload must not fall back to loopback
+        popen = mock.Mock(side_effect=[self.child(), self.child()])
+        with mock.patch("dev_reload.python_files", side_effect=[{"a": 1}, {"a": 2}]), \
+                mock.patch.object(dev_reload.subprocess, "Popen", popen), \
+                mock.patch.object(dev_reload.time, "sleep", side_effect=[None, KeyboardInterrupt]):
+            dev_reload.reload_forever(8770, host="0.0.0.0")
+        for call in popen.call_args_list:
+            self.assertEqual(call.args[0][-2:], ["--host", "0.0.0.0"])
 
     def test_a_crashed_child_is_started_again_on_the_next_change(self):
         crashed, fixed = self.child(alive=False), self.child()

@@ -41,7 +41,7 @@ def port_answers(port: int) -> bool:
         return False
 
 
-def reload_forever(port: int, every: float = 1.0, page: str | None = None) -> None:
+def reload_forever(port: int, every: float = 1.0, page: str | None = None, host: str | None = None) -> None:
     """Run the server in a child process and start a fresh one whenever a
     watched file is added, removed or changed, so an edit or a `git pull`
     shows up without stopping anything by hand. A child that crashes (a
@@ -52,7 +52,8 @@ def reload_forever(port: int, every: float = 1.0, page: str | None = None) -> No
     would forward /api to that server and show this checkout's page against
     its Python, so the loop stops with an error (exit 1) and `make dev` with
     it."""
-    argv = [sys.executable, str(ROOT / "serve.py"), "--port", str(port)] + (["--page", page] if page else [])
+    argv = [sys.executable, str(ROOT / "serve.py"), "--port", str(port)] + (["--page", page] if page else []) \
+        + (["--host", host] if host else [])
 
     def stop(signum, frame):
         raise KeyboardInterrupt

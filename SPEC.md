@@ -89,7 +89,12 @@ flowchart LR
   their tests. It runs as a local server on the user's machine, because PDF
   parsing uses `pdftotext` (poppler). [serve.py](server/serve.py) is that server: it
   binds `127.0.0.1:8770` only, serves the built app from `apps/web/dist`, answers
-  `/api/*` with JSON. Every write is a POST that must carry the header
+  `/api/*` with JSON. The Docker image ([Dockerfile](Dockerfile)) is the one
+  exception to loopback: it binds `0.0.0.0` (`--host`) inside the container, and
+  the Host and Origin checks then also accept the names in `KOPIFUND_HOSTS`
+  (comma separated), the names the owner opens a home server under. Any other
+  name still gets a 421. Whoever reaches the port under a listed name gets the
+  whole app, so the list holds only names on a trusted network. Every write is a POST that must carry the header
   `X-Kopifund: 1` and, when the browser sends one, an Origin on this machine,
   so a page on another site cannot write. An `/api/` GET whose
   `Sec-Fetch-Site` header names another site (`cross-site` or `same-site`) is

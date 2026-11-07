@@ -195,6 +195,14 @@ again without working it out. Every other GET is worked out each time.
     python3 server/serve.py --reload        # restart whenever a Python file changes (make dev)
     python3 server/serve.py --page URL      # send pages to URL, the Vite dev server (make dev)
     python3 server/serve.py --app           # the desktop app's sidecar on http://127.0.0.1:8771
+    python3 server/serve.py --host 0.0.0.0  # every interface, for the Docker image (Dockerfile)
+
+Docker: a container's loopback is not the machine's, so the image binds
+0.0.0.0. The Host and Origin checks still refuse every name but this machine's,
+plus the names in KOPIFUND_HOSTS (comma separated, such as
+`homeserver.local,192.168.1.20`), which is how the owner opens the page on a
+home server. Anyone who reaches the port under one of those names gets the
+whole app, so list only names on a network the owner trusts.
 
 G23: --app is how the desktop shell runs the server. It listens on APP_PORT,
 fixed so the page's origin (and its local storage) is the same every launch,
@@ -213,6 +221,7 @@ import json
 import mimetypes
 import os
 import re
+import signal
 import sqlite3
 import sys
 import threading
@@ -269,12 +278,23 @@ def _failure(exc: Exception) -> tuple[dict, HTTPStatus]:
     return {"error": "Something went wrong on the server; try again"}, HTTPStatus.INTERNAL_SERVER_ERROR
 
 
+LOOPBACK = ("127.0.0.1", "localhost", "::1")
+
+
+def _allowed_names() -> set[str]:
+    """This machine's names plus KOPIFUND_HOSTS, read per request so a test
+    can set it."""
+    extra = os.environ.get("KOPIFUND_HOSTS", "")
+    return set(LOOPBACK) | {n.strip().lower().strip("[]") for n in extra.split(",") if n.strip()}
+
+
 def _local_origin(origin: str | None) -> bool:
-    """No Origin (a same-origin GET-style client) or one on this machine."""
+    """No Origin (a same-origin GET-style client) or one on this machine (or
+    named in KOPIFUND_HOSTS)."""
     if not origin:
         return True
     host = urlsplit(origin).hostname or ""
-    return host in ("127.0.0.1", "localhost", "::1")
+    return host in _allowed_names()
 
 
 def _local_host(host: str | None) -> bool:
@@ -283,7 +303,7 @@ def _local_host(host: str | None) -> bool:
     name is refused before anything is read."""
     if not host:
         return False
-    return (urlsplit(f"//{host}").hostname or "") in ("127.0.0.1", "localhost", "::1")
+    return (urlsplit(f"//{host}").hostname or "") in _allowed_names()
 
 
 # ---------------------------------------------------------------- G13: caching
@@ -889,6 +909,17 @@ def _ending(fn: Callable[[], None]) -> dict:
     return {"ok": True, "waiting_for": _running_work(), "timeout": DRAIN_TIMEOUT}
 
 
+def _on_sigterm(signum, frame) -> None:
+    """Docker: `docker stop` sends SIGTERM. Take it as the Server card's
+    stop: refuse new writes, wait for running work (DRAIN_TIMEOUT), then end.
+    The wait runs on a thread, since shutdown() from the thread inside
+    serve_forever would wait on itself."""
+    global _STOPPING
+    with _BUSY:
+        _STOPPING = True
+    threading.Thread(target=_stop, daemon=True).start()
+
+
 def _post_server_stop(req):
     return _ending(_stop)
 
@@ -1062,9 +1093,10 @@ def write(path: str, query: dict, body: bytes, device: dict | None = None) -> ob
     return _dispatch("POST", path, query, body, device=device)
 
 
-def make_server(port: int = PORT, dist: Path = DIST, page: str | None = None, mode: str = "serve") -> ThreadingHTTPServer:
+def make_server(port: int = PORT, dist: Path = DIST, page: str | None = None, mode: str = "serve",
+                host: str = HOST) -> ThreadingHTTPServer:
     global _SERVER, _PORT, _MODE
-    _SERVER = ThreadingHTTPServer((HOST, port), make_handler(dist, page))
+    _SERVER = ThreadingHTTPServer((host, port), make_handler(dist, page))
     _PORT = _SERVER.server_address[1]
     _MODE = mode
     return _SERVER
@@ -1102,20 +1134,25 @@ def main() -> None:
                         help="restart the server whenever a Python file changes")
     parser.add_argument("--page", metavar="URL",
                         help="send page requests to this URL (the Vite dev server) instead of serving apps/web/dist")
+    parser.add_argument("--host", default=HOST,
+                        help=f"address to listen on, default {HOST}; the Docker image uses 0.0.0.0")
     parser.add_argument("--app", action="store_true",
                         help="run as the desktop app's sidecar: print a ready line, stop when stdin closes")
     args = parser.parse_args()
     port = args.port if args.port is not None else (APP_PORT if args.app else PORT)
     if args.reload:
-        dev_reload.reload_forever(port, page=args.page)
+        dev_reload.reload_forever(port, page=args.page,
+                                  host=args.host if args.host != HOST else None)
         return
     try:
-        server = make_server(port, page=args.page, mode="app" if args.app else "dev" if args.page else "serve")
+        server = make_server(port, page=args.page, mode="app" if args.app else "dev" if args.page else "serve",
+                             host=args.host)
     except OSError as exc:
-        print(f"Kopifund could not listen on {HOST}:{port}: {exc.strerror or exc}. "
+        print(f"Kopifund could not listen on {args.host}:{port}: {exc.strerror or exc}. "
               "Another program is using that port.", file=sys.stderr, flush=True)
         sys.exit(1)
-    address = f"http://{HOST}:{server.server_address[1]}"
+    address = f"http://{args.host}:{server.server_address[1]}"
+    signal.signal(signal.SIGTERM, _on_sigterm)
     if args.app:
         stop_when_stdin_closes(server)
         print(f"{READY} {address}", flush=True)

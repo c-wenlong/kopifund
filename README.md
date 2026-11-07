@@ -38,6 +38,30 @@ make analyse                      # run the stats from kopifund.db
 make serve                        # build the app and open http://127.0.0.1:8770
 ```
 
+### On a home server, with Docker
+
+The [Dockerfile](Dockerfile) builds the web app and runs the server in one
+container. The data folder is a volume at `/data`; copy `~/.kopifund` into it
+to bring an existing record over.
+
+```bash
+docker build -t kopifund .
+docker run -d --name kopifund --restart unless-stopped -p 8770:8770 \
+  --stop-timeout 130 -v kopifund-data:/data -e KOPIFUND_HOSTS=homeserver.local kopifund
+```
+
+`--stop-timeout 130` lets a stop wait out a running load or stats rebuild
+(up to 120 s) instead of killing it after Docker's default 10 s.
+
+`KOPIFUND_HOSTS` names the hostnames or IPs you open the page under; any other
+name is refused. There is no login, so anyone who can reach the port under one
+of those names sees everything: keep it on your home network or tailnet.
+Secrets go in as environment variables (or a `.env` in the volume, mode 600):
+`NOTION_TOKEN` for the Notion mirror and `<PROVIDER>_API_KEY` (for example
+`ANTHROPIC_API_KEY`) for AI suggestions. A reverse proxy that adds
+`X-Forwarded-For` turns every request into the phone link's bearer-only path,
+so publish the port directly rather than behind one.
+
 ### The build warns that a chunk is over 500 kB
 
 `make serve` ends its build with Vite's warning that `index-*.js` is larger
