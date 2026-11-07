@@ -77,16 +77,19 @@ class ServeTest(unittest.TestCase):
             self.assertFalse(serve._local_origin("http://evil.example"))
         self.assertEqual(self.status_with_host(f"homeserver.local:{port}"), 421)
 
-    def forwarded(self, host, bearer=None):
+    def forwarded(self, host, bearer=None, method="GET", path="/", body=b""):
         from http.client import HTTPConnection
         conn = HTTPConnection("127.0.0.1", self.server.server_address[1], timeout=10)
         try:
-            conn.putrequest("GET", "/", skip_host=True)
+            conn.putrequest(method, path, skip_host=True)
             conn.putheader("Host", host)
             conn.putheader("X-Forwarded-For", "100.64.0.2")
             if bearer:
                 conn.putheader("Authorization", f"Bearer {bearer}")
-            conn.endheaders()
+            if method == "POST":
+                conn.putheader("Content-Type", "application/json")
+                conn.putheader("Content-Length", str(len(body)))
+            conn.endheaders(body or None)
             return conn.getresponse().status
         finally:
             conn.close()
@@ -101,6 +104,21 @@ class ServeTest(unittest.TestCase):
             # a bearer still means the phone link, which never serves pages
             with mock.patch.object(serve.link, "device_for", return_value={"id": "d"}):
                 self.assertEqual(self.forwarded(f"{name}:8300", bearer="t"), 403)
+
+    def test_a_new_phone_pairs_under_a_listed_name(self):
+        # review: the pairing write has no bearer and no X-Kopifund, so it
+        # must stay on the link path even when the name is listed
+        name = "home.tail0.ts.net"
+        seen = []
+        def fake_write(path, *args, **kwargs):
+            seen.append(path)
+            return {"ok": True}
+        with mock.patch.dict(os.environ, {"KOPIFUND_HOSTS": name}), \
+                mock.patch.object(serve, "write", side_effect=fake_write):
+            status = self.forwarded(f"{name}:8300", method="POST", path="/api/pair/redeem",
+                                    body=b'{"token": "t", "name": "n"}')
+        self.assertNotEqual(status, 403)
+        self.assertEqual(seen[:1], ["/api/pair/redeem"])
 
     def test_sigterm_drains_then_stops(self):
         # Docker: docker stop is a SIGTERM, which takes the Server card's stop path

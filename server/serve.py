@@ -437,11 +437,14 @@ def make_handler(dist: Path, page: str | None = None) -> type[BaseHTTPRequestHan
             opens the page, and it keeps the browser's Host. A forwarded
             request whose Host is a name in KOPIFUND_HOSTS and that carries no
             bearer is the owner's page, so it takes the loopback path; a
-            paired device's bearer still takes the link path."""
+            paired device's bearer, and the pairing write a new phone sends
+            before it has one, still take the link path."""
             if not self.headers.get("X-Forwarded-For"):
                 return False
             if self.headers.get("Authorization", "").startswith("Bearer "):
                 return True
+            if unquote(urlsplit(self.path).path) in LINK_WRITES:
+                return True     # pairing: a new phone has no bearer yet
             host = urlsplit(f"//{self.headers.get('Host') or ''}").hostname or ""
             return host not in _listed_names()
 
