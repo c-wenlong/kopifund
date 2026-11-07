@@ -66,6 +66,17 @@ class ServeTest(unittest.TestCase):
         for host in (f"127.0.0.1:{port}", f"localhost:{port}", f"[::1]:{port}"):
             self.assertEqual(self.status_with_host(host), 200, host)
 
+    def test_a_name_in_kopifund_hosts_is_answered(self):
+        # Docker: the owner opens the page on a home server under its own name
+        port = self.server.server_address[1]
+        with mock.patch.dict(os.environ, {"KOPIFUND_HOSTS": "homeserver.local, 192.168.1.20"}):
+            self.assertEqual(self.status_with_host(f"homeserver.local:{port}"), 200)
+            self.assertEqual(self.status_with_host(f"192.168.1.20:{port}"), 200)
+            self.assertEqual(self.status_with_host(f"evil.example:{port}"), 421)
+            self.assertTrue(serve._local_origin("http://homeserver.local:8770"))
+            self.assertFalse(serve._local_origin("http://evil.example"))
+        self.assertEqual(self.status_with_host(f"homeserver.local:{port}"), 421)
+
     def test_binds_loopback_only(self):
         self.assertEqual(self.server.server_address[0], "127.0.0.1")
 

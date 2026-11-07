@@ -1,0 +1,21 @@
+# Only server/, data/rules/ and apps/web/ go into the image (Dockerfile)
+.git
+.github
+.claude
+.playwright-mcp
+**/node_modules
+**/dist
+**/__pycache__
+**/.DS_Store
+apps/ios
+apps/desktop
+app-icons
+docs
+backups
+.env
+.env.*
+*.db
+*.db-wal
+*.db-shm
+data/*
+!data/rules/
