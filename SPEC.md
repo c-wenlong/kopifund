@@ -93,7 +93,11 @@ flowchart LR
   exception to loopback: it binds `0.0.0.0` (`--host`) inside the container, and
   the Host and Origin checks then also accept the names in `KOPIFUND_HOSTS`
   (comma separated), the names the owner opens a home server under. Any other
-  name still gets a 421. Whoever reaches the port under a listed name gets the
+  name still gets a 421. A request `tailscale serve` forwarded (it carries
+  `X-Forwarded-For` and keeps the browser's Host) under a listed name, with no
+  bearer, is the owner's page and takes the loopback path, so the app opens at
+  the server's tailnet address; one with a bearer is the phone link as before.
+  Whoever reaches the port under a listed name gets the
   whole app, so the list holds only names on a trusted network. Every write is a POST that must carry the header
   `X-Kopifund: 1` and, when the browser sends one, an Origin on this machine,
   so a page on another site cannot write. An `/api/` GET whose
