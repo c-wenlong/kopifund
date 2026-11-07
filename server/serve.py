@@ -221,6 +221,7 @@ import json
 import mimetypes
 import os
 import re
+import signal
 import sqlite3
 import sys
 import threading
@@ -908,6 +909,17 @@ def _ending(fn: Callable[[], None]) -> dict:
     return {"ok": True, "waiting_for": _running_work(), "timeout": DRAIN_TIMEOUT}
 
 
+def _on_sigterm(signum, frame) -> None:
+    """Docker: `docker stop` sends SIGTERM. Take it as the Server card's
+    stop: refuse new writes, wait for running work (DRAIN_TIMEOUT), then end.
+    The wait runs on a thread, since shutdown() from the thread inside
+    serve_forever would wait on itself."""
+    global _STOPPING
+    with _BUSY:
+        _STOPPING = True
+    threading.Thread(target=_stop, daemon=True).start()
+
+
 def _post_server_stop(req):
     return _ending(_stop)
 
@@ -1129,7 +1141,8 @@ def main() -> None:
     args = parser.parse_args()
     port = args.port if args.port is not None else (APP_PORT if args.app else PORT)
     if args.reload:
-        dev_reload.reload_forever(port, page=args.page)
+        dev_reload.reload_forever(port, page=args.page,
+                                  host=args.host if args.host != HOST else None)
         return
     try:
         server = make_server(port, page=args.page, mode="app" if args.app else "dev" if args.page else "serve",
@@ -1139,6 +1152,7 @@ def main() -> None:
               "Another program is using that port.", file=sys.stderr, flush=True)
         sys.exit(1)
     address = f"http://{args.host}:{server.server_address[1]}"
+    signal.signal(signal.SIGTERM, _on_sigterm)
     if args.app:
         stop_when_stdin_closes(server)
         print(f"{READY} {address}", flush=True)

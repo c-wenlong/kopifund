@@ -47,8 +47,11 @@ to bring an existing record over.
 ```bash
 docker build -t kopifund .
 docker run -d --name kopifund --restart unless-stopped -p 8770:8770 \
-  -v kopifund-data:/data -e KOPIFUND_HOSTS=homeserver.local kopifund
+  --stop-timeout 130 -v kopifund-data:/data -e KOPIFUND_HOSTS=homeserver.local kopifund
 ```
+
+`--stop-timeout 130` lets a stop wait out a running load or stats rebuild
+(up to 120 s) instead of killing it after Docker's default 10 s.
 
 `KOPIFUND_HOSTS` names the hostnames or IPs you open the page under; any other
 name is refused. There is no login, so anyone who can reach the port under one

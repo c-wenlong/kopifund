@@ -9,7 +9,8 @@
 **/.DS_Store
 apps/ios
 apps/desktop
-app-icons
+app-icons/*
+!app-icons/sets.json
 docs
 backups
 .env
